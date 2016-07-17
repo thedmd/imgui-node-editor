@@ -1,0 +1,135 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="ImGui">
+      <UniqueIdentifier>{917f46dc-1830-4bef-86f2-92146f795b0a}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ImWindow">
+      <UniqueIdentifier>{4d3b4250-a27f-4b70-a719-7b7b0827645c}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Backend">
+      <UniqueIdentifier>{680d2fbb-accb-40b5-a24c-03d3efe72b58}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Editor">
+      <UniqueIdentifier>{0a3006ef-56cc-4b61-b811-f41836ad94de}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="External">
+      <UniqueIdentifier>{a82fb34f-37e9-4de5-a432-0641a6b2c1ba}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="ImGui\imgui.cpp">
+      <Filter>ImGui</Filter>
+    </ClCompile>
+    <ClCompile Include="ImGui\imgui_demo.cpp">
+      <Filter>ImGui</Filter>
+    </ClCompile>
+    <ClCompile Include="ImGui\imgui_draw.cpp">
+      <Filter>ImGui</Filter>
+    </ClCompile>
+    <ClCompile Include="ImWindow\ImwContainer.cpp">
+      <Filter>ImWindow</Filter>
+    </ClCompile>
+    <ClCompile Include="ImWindow\ImwMenu.cpp">
+      <Filter>ImWindow</Filter>
+    </ClCompile>
+    <ClCompile Include="ImWindow\ImwPlatformWindow.cpp">
+      <Filter>ImWindow</Filter>
+    </ClCompile>
+    <ClCompile Include="ImWindow\ImwStatusBar.cpp">
+      <Filter>ImWindow</Filter>
+    </ClCompile>
+    <ClCompile Include="ImWindow\ImwToolBar.cpp">
+      <Filter>ImWindow</Filter>
+    </ClCompile>
+    <ClCompile Include="ImWindow\ImwWindow.cpp">
+      <Filter>ImWindow</Filter>
+    </ClCompile>
+    <ClCompile Include="ImWindow\ImwWindowManager.cpp">
+      <Filter>ImWindow</Filter>
+    </ClCompile>
+    <ClCompile Include="Backend\imgui_impl_dx11.cpp">
+      <Filter>Backend</Filter>
+    </ClCompile>
+    <ClCompile Include="Backend\ImwPlatformWindowDX11.cpp">
+      <Filter>Backend</Filter>
+    </ClCompile>
+    <ClCompile Include="Backend\ImwWindowManagerDX11.cpp">
+      <Filter>Backend</Filter>
+    </ClCompile>
+    <ClCompile Include="Editor\main.cpp">
+      <Filter>Editor</Filter>
+    </ClCompile>
+    <ClCompile Include="Editor\NodeWindow.cpp">
+      <Filter>Editor</Filter>
+    </ClCompile>
+    <ClCompile Include="Backend\Win32MessageHelper.cpp">
+      <Filter>Backend</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\DXSDK\src\dxerr.cpp">
+      <Filter>External</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="ImGui\imconfig.h">
+      <Filter>ImGui</Filter>
+    </ClInclude>
+    <ClInclude Include="ImGui\imgui.h">
+      <Filter>ImGui</Filter>
+    </ClInclude>
+    <ClInclude Include="ImGui\imgui_internal.h">
+      <Filter>ImGui</Filter>
+    </ClInclude>
+    <ClInclude Include="ImGui\stb_rect_pack.h">
+      <Filter>ImGui</Filter>
+    </ClInclude>
+    <ClInclude Include="ImGui\stb_textedit.h">
+      <Filter>ImGui</Filter>
+    </ClInclude>
+    <ClInclude Include="ImGui\stb_truetype.h">
+      <Filter>ImGui</Filter>
+    </ClInclude>
+    <ClInclude Include="ImWindow\ImwConfig.h">
+      <Filter>ImWindow</Filter>
+    </ClInclude>
+    <ClInclude Include="ImWindow\ImwContainer.h">
+      <Filter>ImWindow</Filter>
+    </ClInclude>
+    <ClInclude Include="ImWindow\ImwMenu.h">
+      <Filter>ImWindow</Filter>
+    </ClInclude>
+    <ClInclude Include="ImWindow\ImwPlatformWindow.h">
+      <Filter>ImWindow</Filter>
+    </ClInclude>
+    <ClInclude Include="ImWindow\ImwStatusBar.h">
+      <Filter>ImWindow</Filter>
+    </ClInclude>
+    <ClInclude Include="ImWindow\ImwToolBar.h">
+      <Filter>ImWindow</Filter>
+    </ClInclude>
+    <ClInclude Include="ImWindow\ImwWindow.h">
+      <Filter>ImWindow</Filter>
+    </ClInclude>
+    <ClInclude Include="ImWindow\ImwWindowManager.h">
+      <Filter>ImWindow</Filter>
+    </ClInclude>
+    <ClInclude Include="Backend\imgui_impl_dx11.h">
+      <Filter>Backend</Filter>
+    </ClInclude>
+    <ClInclude Include="Backend\ImwWindowManagerDX11.h">
+      <Filter>Backend</Filter>
+    </ClInclude>
+    <ClInclude Include="Backend\ImwPlatformWindowDX11.h">
+      <Filter>Backend</Filter>
+    </ClInclude>
+    <ClInclude Include="Editor\NodeWindow.h">
+      <Filter>Editor</Filter>
+    </ClInclude>
+    <ClInclude Include="Backend\Win32MessageHelper.h">
+      <Filter>Backend</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Configuration.props" />
+  </ItemGroup>
+</Project>

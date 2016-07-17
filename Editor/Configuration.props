@@ -1,0 +1,60 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ImportGroup Label="PropertySheets" />
+  <PropertyGroup Label="UserMacros">
+    <ConfigurationTargetSuffix Condition="'$(Configuration)'=='Debug'">_d</ConfigurationTargetSuffix>
+    <ConfigurationTargetSuffix Condition="'$(Configuration)'=='Release'"></ConfigurationTargetSuffix>
+
+    <PlatformTargetSuffix Condition="'$(Platform)'=='Win32'"></PlatformTargetSuffix>
+    <PlatformTargetSuffix Condition="'$(Platform)'=='x64'">64</PlatformTargetSuffix>
+
+    <DXSDK_Platform Condition="'$(Platform)'=='Win32'">x86</DXSDK_Platform>
+    <DXSDK_Platform Condition="'$(Platform)'=='x64'">x64</DXSDK_Platform>
+
+    <TargetSuffix>$(PlatformTargetSuffix)$(ConfigurationTargetSuffix)</TargetSuffix>
+    <DXSDK>$(SolutionDir)\External\DXSDK\</DXSDK>
+    <DXSDK_Include>$(DXSDK)Include\</DXSDK_Include>
+    <DXSDK_Lib>$(DXSDK)Lib;$(DXSDK)Lib\$(DXSDK_Platform)\</DXSDK_Lib>
+    <dxgi_lib>dxgi.lib</dxgi_lib>
+    <d3dcompiler_lib>d3dcompiler.lib</d3dcompiler_lib>
+    <d3d11_lib>d3d11.lib</d3d11_lib>
+    <d3dx11_lib>d3dx11$(DXSDK_LibSuffix).lib</d3dx11_lib>
+  </PropertyGroup>
+  <PropertyGroup />
+  <ItemDefinitionGroup />
+  <ItemGroup>
+    <BuildMacro Include="ConfigurationTargetSuffix">
+      <Value>$(ConfigurationTargetSuffix)</Value>
+    </BuildMacro>
+    <BuildMacro Include="PlatformTargetSuffix">
+      <Value>$(PlatformTargetSuffix)</Value>
+    </BuildMacro>
+    <BuildMacro Include="DXSDK_Platform">
+      <Value>$(DXSDK_Platform)</Value>
+    </BuildMacro>
+    <BuildMacro Include="TargetSuffix">
+      <Value>$(TargetSuffix)</Value>
+    </BuildMacro>
+    <BuildMacro Include="DXSDK">
+      <Value>$(DXSDK)</Value>
+    </BuildMacro>
+    <BuildMacro Include="DXSDK_Include">
+      <Value>$(DXSDK_Include)</Value>
+    </BuildMacro>
+    <BuildMacro Include="DXSDK_Lib">
+      <Value>$(DXSDK_Lib)</Value>
+    </BuildMacro>
+    <BuildMacro Include="dxgi_lib">
+      <Value>$(dxgi_lib)</Value>
+    </BuildMacro>
+    <BuildMacro Include="d3dcompiler_lib">
+      <Value>$(d3dcompiler_lib)</Value>
+    </BuildMacro>
+    <BuildMacro Include="d3d11_lib">
+      <Value>$(d3d11_lib)</Value>
+    </BuildMacro>
+    <BuildMacro Include="d3dx11_lib">
+      <Value>$(d3dx11_lib)</Value>
+    </BuildMacro>
+  </ItemGroup>
+</Project>
