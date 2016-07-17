@@ -6,8 +6,7 @@
 class NodeWindow : public ImWindow::ImwWindow
 {
 public:
-	NodeWindow(void);
+    NodeWindow(void);
 
-	virtual void OnGui();
+    virtual void OnGui();
 };
-
