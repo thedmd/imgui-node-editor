@@ -1,4 +1,5 @@
 #include "NodeWindow.h"
+#include <vector>
 
 
 static inline ImVec2 operator+(const ImVec2& lhs, const ImVec2& rhs) { return ImVec2(lhs.x+rhs.x, lhs.y+rhs.y); }
@@ -35,8 +36,8 @@ void NodeWindow::OnGui()
 		NodeLink(int input_idx, int input_slot, int output_idx, int output_slot) { InputIdx = input_idx; InputSlot = input_slot; OutputIdx = output_idx; OutputSlot = output_slot; }
 	};
 
-	static ImVector<Node> nodes;
-	static ImVector<NodeLink> links;
+	static std::vector<Node> nodes;
+	static std::vector<NodeLink> links;
 	static bool inited = false;
 	static ImVec2 scrolling = ImVec2(0.0f, 0.0f);
 	static bool show_grid = true;
@@ -58,7 +59,7 @@ void NodeWindow::OnGui()
 	ImGui::BeginChild("node_list", ImVec2(100,0));
 	ImGui::Text("Nodes");
 	ImGui::Separator();
-	for (int node_idx = 0; node_idx < nodes.Size; node_idx++)
+	for (int node_idx = 0; node_idx < (int)nodes.size(); node_idx++)
 	{
 		Node* node = &nodes[node_idx];
 		ImGui::PushID(node->ID);
@@ -108,18 +109,18 @@ void NodeWindow::OnGui()
 
 	// Display links
 	draw_list->ChannelsSetCurrent(0); // Background
-	for (int link_idx = 0; link_idx < links.Size; link_idx++)
+	for (int link_idx = 0; link_idx < (int)links.size(); link_idx++)
 	{
 		NodeLink* link = &links[link_idx];
 		Node* node_inp = &nodes[link->InputIdx];
 		Node* node_out = &nodes[link->OutputIdx];
 		ImVec2 p1 = offset + node_inp->GetOutputSlotPos(link->InputSlot);
-		ImVec2 p2 = offset + node_out->GetInputSlotPos(link->OutputSlot);		
+		ImVec2 p2 = offset + node_out->GetInputSlotPos(link->OutputSlot);
 		draw_list->AddBezierCurve(p1, p1+ImVec2(+50,0), p2+ImVec2(-50,0), p2, ImColor(200,200,100), 3.0f);
 	}
 
 	// Display nodes
-	for (int node_idx = 0; node_idx < nodes.Size; node_idx++)
+	for (int node_idx = 0; node_idx < (int)nodes.size(); node_idx++)
 	{
 		Node* node = &nodes[node_idx];
 		ImGui::PushID(node->ID);
@@ -156,8 +157,8 @@ void NodeWindow::OnGui()
 			node->Pos = node->Pos + ImGui::GetIO().MouseDelta;
 
 		ImU32 node_bg_color = (node_hovered_in_list == node->ID || node_hovered_in_scene == node->ID || (node_hovered_in_list == -1 && node_selected == node->ID)) ? ImColor(75,75,75) : ImColor(60,60,60);
-		draw_list->AddRectFilled(node_rect_min, node_rect_max, node_bg_color, 3.0f); 
-		draw_list->AddRect(node_rect_min, node_rect_max, ImColor(100,100,100), 3.0f); 
+		draw_list->AddRectFilled(node_rect_min, node_rect_max, node_bg_color, 3.0f);
+		draw_list->AddRect(node_rect_min, node_rect_max, ImColor(100,100,100), 3.0f);
 		for (int slot_idx = 0; slot_idx < node->InputsCount; slot_idx++)
 			draw_list->AddCircleFilled(offset + node->GetInputSlotPos(slot_idx), NODE_SLOT_RADIUS, ImColor(150,150,150,150));
 		for (int slot_idx = 0; slot_idx < node->OutputsCount; slot_idx++)
@@ -198,7 +199,7 @@ void NodeWindow::OnGui()
 		}
 		else
 		{
-			if (ImGui::MenuItem("Add")) { nodes.push_back(Node(nodes.Size, "New node", scene_pos, 0.5f, ImColor(100,100,200), 2, 2)); }
+			if (ImGui::MenuItem("Add")) { nodes.push_back(Node((int)nodes.size(), "New node", scene_pos, 0.5f, ImColor(100,100,200), 2, 2)); }
 			if (ImGui::MenuItem("Paste", NULL, false, false)) {}
 		}
 		ImGui::EndPopup();

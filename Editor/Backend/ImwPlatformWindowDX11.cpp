@@ -86,7 +86,7 @@ bool ImwPlatformWindowDX11::Init(ImwPlatformWindow* pMain)
         iWindowStyle = WS_OVERLAPPEDWINDOW;
     }
 
-    RECT wr = { 0, 0, 800, 600 };
+    RECT wr = { 0, 0, 1440, 800 };
     AdjustWindowRect(&wr, iWindowStyle, FALSE);
 
     m_hWnd = CreateWindowEx(NULL,

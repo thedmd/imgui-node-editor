@@ -5,86 +5,86 @@
 namespace ImWindow
 {
 //SFF_BEGIN
-	int ImwWindow::s_iNextId = 0;
+    int ImwWindow::s_iNextId = 0;
 
-	ImwWindow::ImwWindow()
-	{
-		m_pTitle = NULL;
-		m_bClosable  = true;
-		m_iId = s_iNextId++;
-	
-		//Write Id to string
-		int iIndex = 0;
-		int iNumber = m_iId;
-		do
-		{
-			m_pId[iIndex++] = iNumber % 10 + '0';
-		}
-		while ((iNumber /= 10) > 0 && iIndex <= 10);
-		m_pId[iIndex] = '\0';
+    ImwWindow::ImwWindow()
+    {
+        m_pTitle = NULL;
+        m_bClosable  = true;
+        m_iId = s_iNextId++;
 
-		ImwWindowManager::GetInstance()->AddWindow(this);
-	}
+        //Write Id to string
+        int iIndex = 0;
+        int iNumber = m_iId;
+        do
+        {
+            m_pId[iIndex++] = iNumber % 10 + '0';
+        }
+        while ((iNumber /= 10) > 0 && iIndex <= 10);
+        m_pId[iIndex] = '\0';
 
-	ImwWindow::~ImwWindow()
-	{
-		ImwWindowManager::GetInstance()->RemoveWindow(this);
-		ImwSafeFree(m_pTitle);
-	}
+        ImwWindowManager::GetInstance()->AddWindow(this);
+    }
 
-	void ImwWindow::OnContextMenu()
-	{
-	}
+    ImwWindow::~ImwWindow()
+    {
+        ImwWindowManager::GetInstance()->RemoveWindow(this);
+        ImwSafeFree(m_pTitle);
+    }
 
-	ImU32 ImwWindow::GetId() const
-	{
-		return m_iId;
-	}
+    void ImwWindow::OnContextMenu()
+    {
+    }
 
-	const char* ImwWindow::GetIdStr() const
-	{
-		return m_pId;
-	}
+    ImU32 ImwWindow::GetId() const
+    {
+        return m_iId;
+    }
 
-	void ImwWindow::Destroy()
-	{
-		ImwWindowManager::GetInstance()->DestroyWindow(this);
-	}
+    const char* ImwWindow::GetIdStr() const
+    {
+        return m_pId;
+    }
 
-	void ImwWindow::SetTitle(const char* pTitle)
-	{
-		ImwSafeFree(m_pTitle);
-		if (NULL != pTitle)
-		{
-			size_t iLen = strlen(pTitle) + 1;
-			m_pTitle = (char*)ImwMalloc(sizeof(char) * iLen);
-			strcpy(m_pTitle, pTitle);
-		}
-	}
+    void ImwWindow::Destroy()
+    {
+        ImwWindowManager::GetInstance()->DestroyWindow(this);
+    }
 
-	const char* ImwWindow::GetTitle() const
-	{
-		return m_pTitle;
-	}
+    void ImwWindow::SetTitle(const char* pTitle)
+    {
+        ImwSafeFree(m_pTitle);
+        if (NULL != pTitle)
+        {
+            size_t iLen = strlen(pTitle) + 1;
+            m_pTitle = (char*)ImwMalloc(sizeof(char) * iLen);
+            strcpy(m_pTitle, pTitle);
+        }
+    }
 
-	void ImwWindow::SetClosable( bool bClosable )
-	{
-		m_bClosable = bClosable;
-	}
+    const char* ImwWindow::GetTitle() const
+    {
+        return m_pTitle;
+    }
 
-	bool ImwWindow::IsClosable() const
-	{
-		return m_bClosable;
-	}
+    void ImwWindow::SetClosable( bool bClosable )
+    {
+        m_bClosable = bClosable;
+    }
 
-	const ImVec2& ImwWindow::GetLastPosition() const
-	{
-		return m_oLastPosition;
-	}
+    bool ImwWindow::IsClosable() const
+    {
+        return m_bClosable;
+    }
 
-	const ImVec2& ImwWindow::GetLastSize() const
-	{
-		return m_oLastSize;
-	}
+    const ImVec2& ImwWindow::GetLastPosition() const
+    {
+        return m_oLastPosition;
+    }
+
+    const ImVec2& ImwWindow::GetLastSize() const
+    {
+        return m_oLastSize;
+    }
 //SFF_END
 }

@@ -7,22 +7,22 @@
 namespace ImWindow
 {
 //SFF_BEGIN
-	class IMGUI_API ImwToolBar
-	{
-	public:
-		ImwToolBar(int iHorizontalPriority = 0);
-		ImwToolBar(const ImwToolBar& oToolBar);
-		virtual						~ImwToolBar();
+    class IMGUI_API ImwToolBar
+    {
+    public:
+        ImwToolBar(int iHorizontalPriority = 0);
+        ImwToolBar(const ImwToolBar& oToolBar);
+        virtual                     ~ImwToolBar();
 
-		void						Destroy();
+        void                        Destroy();
 
-		virtual void				OnToolBar() = 0;
+        virtual void                OnToolBar() = 0;
 
-		int							GetHorizontalPriority() const;
-	private:
-		int							m_iHorizontalPriority;
-	};
-	typedef ImwList<ImwToolBar*> ImwToolBarList;
+        int                         GetHorizontalPriority() const;
+    private:
+        int                         m_iHorizontalPriority;
+    };
+    typedef ImwList<ImwToolBar*> ImwToolBarList;
 //SFF_END
 }
 

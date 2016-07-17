@@ -39,6 +39,7 @@ ImwWindowManager::ImwWindowManager()
     m_bDragOnTab = false;
     m_iDragBestContainerPosition = -1;
     m_oDragPreviewOffset = ImVec2(-20, -10);
+    m_MainContext = nullptr;
 }
 
 ImwWindowManager::~ImwWindowManager()
@@ -49,10 +50,15 @@ ImwWindowManager::~ImwWindowManager()
 
 bool ImwWindowManager::Init()
 {
+    m_MainContext = ImGui::CreateContext();
+    ImGui::SetCurrentContext(m_MainContext);
+
     ImGuiIO& io = ImGui::GetIO();
     ImGuiStyle& style = ImGui::GetStyle();
 
-    io.IniFilename = NULL;
+    io.Fonts = &m_FontAtlas;
+    //io.IniFilename = NULL;
+
 
 #if defined(_WINDOWS)
     if (auto windir = getenv("WINDIR"))
@@ -100,6 +106,14 @@ void ImwWindowManager::Destroy()
     for (ImwList<ImwPlatformWindow*>::iterator it = m_lPlatformWindows.begin(); it != m_lPlatformWindows.end(); ++it)
     {
         ImwSafeDelete(*it);
+    }
+
+    if (m_MainContext)
+    {
+        ImGui::SetCurrentContext(m_MainContext);
+        ImGui::Shutdown();
+        ImGui::DestroyContext(m_MainContext);
+        m_MainContext = nullptr;
     }
 }
 
@@ -451,13 +465,16 @@ void ImwWindowManager::Paint(ImwPlatformWindow* pWindow)
     float fBottom = 0.f;
     if (pWindow->IsMain())
     {
-        ImGui::BeginMainMenuBar();
-        for (ImwMenuList::iterator it = m_lMenus.begin(), itEnd = m_lMenus.end(); it != itEnd; ++it)
+        if (!m_lMenus.empty())
         {
-            (*it)->OnMenu();
+            ImGui::BeginMainMenuBar();
+            for (ImwMenuList::iterator it = m_lMenus.begin(), itEnd = m_lMenus.end(); it != itEnd; ++it)
+            {
+                (*it)->OnMenu();
+            }
+            fTop = ImGui::GetWindowHeight();
+            ImGui::EndMainMenuBar();
         }
-        fTop = ImGui::GetWindowHeight();
-        ImGui::EndMainMenuBar();
         if (m_lStatusBars.size() > 0)
         {
             fBottom = 25.f;
@@ -574,7 +591,7 @@ void ImwWindowManager::StartDragWindow(ImwWindow* pWindow, ImVec2 oOffset)
             pAction->m_oSize = ImVec2(pWindow->GetLastSize().x, pWindow->GetLastSize().y);
             m_lPlatformWindowActions.push_back(pAction);
             Dock(pWindow, E_DOCK_ORIENTATION_CENTER, 0.5f, m_pDragPlatformWindow);
-            ((ImGuiState*)m_pDragPlatformWindow->m_pState)->IO.MouseDown[0] = true;
+            ImGui::GetIO().MouseDown[0] = true;
         }
         else
         {

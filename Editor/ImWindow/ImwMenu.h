@@ -7,20 +7,20 @@
 namespace ImWindow
 {
 //SFF_BEGIN
-	class IMGUI_API ImwMenu
-	{
-	public:
-		ImwMenu(int iHorizontalPriority = 0);
-		ImwMenu(const ImwMenu& oStatusBar);
-		virtual						~ImwMenu();
+    class IMGUI_API ImwMenu
+    {
+    public:
+        ImwMenu(int iHorizontalPriority = 0);
+        ImwMenu(const ImwMenu& oStatusBar);
+        virtual                     ~ImwMenu();
 
-		virtual void				OnMenu() = 0;
+        virtual void                OnMenu() = 0;
 
-		int							GetHorizontalPriority() const;
-	private:
-		int							m_iHorizontalPriority;
-	};
-	typedef ImwList<ImwMenu*> ImwMenuList;
+        int                         GetHorizontalPriority() const;
+    private:
+        int                         m_iHorizontalPriority;
+    };
+    typedef ImwList<ImwMenu*> ImwMenuList;
 //SFF_END
 }
 
