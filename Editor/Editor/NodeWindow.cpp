@@ -66,7 +66,7 @@ struct Port
         {
             IconRect.x = 0;
             if (hasLabel)
-                LabelRect.x = IconRect.GetRight() + innerSpacingX;
+                LabelRect.x = IconRect.right() + innerSpacingX;
             else
                 LabelRect.x = 0;
         }
@@ -75,7 +75,7 @@ struct Port
             LabelRect.x = 0;
             IconRect.x = 0;
             if (hasLabel)
-                IconRect.x = LabelRect.GetRight() + innerSpacingX;
+                IconRect.x = LabelRect.right() + innerSpacingX;
             else
                 IconRect.x = 0;
         }
@@ -106,7 +106,7 @@ struct Port
         }
 
         // Calculate whole widget size
-        FrameRect = Rect::Union(IconRect, LabelRect);
+        FrameRect = Rect::make_union(IconRect, LabelRect);
     }
 
     void MoveLayout(const Point& offset)
@@ -185,20 +185,20 @@ struct Node
 
         // Calculate port areas, inputs are aligned to left, outputs are aligned to right
         InputsRect.x = framePaddingX;
-        InputsRect.y = HeaderRect.GetBottom() + innerSpacingY;
+        InputsRect.y = HeaderRect.bottom() + innerSpacingY;
         InputsRect.w = maxInputLayoutWidth;
         InputsRect.h = hasInputs ? (totalInputPortsHeight + (Inputs.size() - 1) * innerSpacingY) : 0;
 
         OutputsRect.w = maxOutputLayoutWidth;
         OutputsRect.h = hasOutputs ? (totalOutputPortsHeight + (Outputs.size() - 1) * innerSpacingY) : 0;
         OutputsRect.x = HeaderRect.w - framePaddingX - OutputsRect.w;
-        OutputsRect.y = HeaderRect.GetBottom() + innerSpacingY;
+        OutputsRect.y = HeaderRect.bottom() + innerSpacingY;
 
         // Client area contain inputs and outputs without padding
-        ClientRect = Rect::Union(InputsRect, OutputsRect);
+        ClientRect = Rect::make_union(InputsRect, OutputsRect);
 
         // Widget frame contain header and client area with padding
-        FrameRect  = Rect::Union(HeaderRect, ClientRect);
+        FrameRect  = Rect::make_union(HeaderRect, ClientRect);
         FrameRect.h += framePaddingY;
 
         // Move ports to positions inside node
@@ -212,7 +212,7 @@ struct Node
         cursor = OutputsRect.location;
         for (auto& output : Outputs)
         {
-            cursor.x = OutputsRect.GetRight() - output.FrameRect.w;
+            cursor.x = OutputsRect.right() - output.FrameRect.w;
             output.MoveLayout(cursor);
             cursor.y += output.FrameRect.h + innerSpacingY;
         }
@@ -300,7 +300,7 @@ void NodeWindow::OnGui()
 
     ImDrawList* drawList1 = ImGui::GetWindowDrawList();
 
-    ImGui::BeginChild("scrolling_region", ImVec2(0, 0), true, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoMove);
+    ImGui::BeginChild("scrolling_region", ImVec2(0, 0), true, /*ImGuiWindowFlags_NoScrollbar | */ImGuiWindowFlags_NoMove);
 
     ImDrawList* drawList = ImGui::GetWindowDrawList();
 
@@ -366,22 +366,22 @@ void NodeWindow::OnGui()
         drawList->ChannelsSetCurrent(1);
         auto drawRect = [drawList, &nodeTopLeft](const Rect& rect, ImU32 color)
         {
-            if (rect.IsEmpty())
+            if (rect.is_empty())
                 return;
 
-            auto tl = to_imvec(rect.GetTopLeft());
-            auto br = to_imvec(rect.GetBottomRight());
+            auto tl = to_imvec(rect.top_left());
+            auto br = to_imvec(rect.bottom_right());
 
             drawList->AddRect(tl, br, color);
         };
 
         auto fillRect = [drawList, &nodeTopLeft](const Rect& rect, ImU32 color)
         {
-            if (rect.IsEmpty())
+            if (rect.is_empty())
                 return;
 
-            auto tl = to_imvec(rect.GetTopLeft());
-            auto br = to_imvec(rect.GetBottomRight());
+            auto tl = to_imvec(rect.top_left());
+            auto br = to_imvec(rect.bottom_right());
 
             drawList->AddRectFilled(tl, br, color);
         };
@@ -456,8 +456,8 @@ void NodeWindow::OnGui()
         auto start = findPort(join.StartPortID);
         auto end   = findPort(join.EndPortID);
 
-        auto startPoint   = to_imvec(Point(start->IconRect.GetRight(), (start->IconRect.GetTop() + start->IconRect.GetBottom()) / 2));
-        auto endPoint     = to_imvec(Point(end->IconRect.GetLeft(), (end->IconRect.GetTop() + end->IconRect.GetBottom()) / 2));
+        auto startPoint   = to_imvec(Point(start->IconRect.right(), start->IconRect.center_y()));
+        auto endPoint     = to_imvec(Point(end->IconRect.left(), end->IconRect.center_y()));
         auto startControl = startPoint + ImVec2(JoinBezierStrength, 0);
         auto endControl   = endPoint - ImVec2(JoinBezierStrength, 0);
 
@@ -467,12 +467,32 @@ void NodeWindow::OnGui()
     drawList->ChannelsSetCurrent(0);
     drawList->ChannelsMerge();
 
+
+    //ImGui::SetCursorScreenPos(cursorTopLeft + ImVec2(400, 400));
+    ImVec2 iconOrigin(500, 400);
+
+
+    auto drawIcon = [&drawList](Rect rect, bool filled)
+    {
+        drawList->AddRectFilled(to_imvec(rect.top_left()), to_imvec(rect.bottom_right()), ImColor(255, 255, 255));
+
+        if (filled)
+            drawList->AddCircleFilled(to_imvec(rect.center()), 0.5f * rect.w / 2.0f, ImColor(0, 0, 0));
+        else
+            drawList->AddCircle(to_imvec(rect.center()), 0.5f * rect.w / 2.0f, ImColor(0, 0, 0));
+
+
+    };
+
+    drawIcon(Rect(to_point(iconOrigin), to_size(ImVec2(PortIconSize, PortIconSize))), false);
+    drawIcon(Rect(to_point(iconOrigin) + Point(0, 32), to_size(ImVec2(PortIconSize, PortIconSize))), true);
+
     ImGui::SetCursorScreenPos(cursorTopLeft);
     ImGui::Text("IsAnyItemActive: %d", ImGui::IsAnyItemActive() ? 1 : 0);
 
     ImGui::EndChild();
 
-    ImGui::ShowMetricsWindow();
+    //ImGui::ShowMetricsWindow();
 }
 
 void Dummy()

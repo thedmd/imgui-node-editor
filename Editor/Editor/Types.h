@@ -99,30 +99,31 @@ struct Rect
     Rect(const Point& l, const Size& s): location(l), size(s) {}
     Rect(int x, int y, int w, int h): x(x), y(y), w(w), h(h) {}
 
-    Point GetLocation() const { return Point(x, y); }
-    Size GetSize() const { return Size(w, h); }
+    Point top_left() const { return Point(x, y); }
+    Point top_right() const { return Point(x + w, y); }
+    Point bottom_left() const { return Point(x, y + h); }
+    Point bottom_right() const { return Point(x + w, y + h); }
 
-    Point GetTopLeft() const { return Point(x, y); }
-    Point GetTopRight() const { return Point(x + w, y); }
-    Point GetBottomLeft() const { return Point(x, y + h); }
-    Point GetBottomRight() const { return Point(x + w, y + h); }
+    int left() const { return x; }
+    int right() const { return x + w; }
+    int top() const { return y; }
+    int bottom() const { return y + h; }
 
-    int GetLeft() const { return x; }
-    int GetRight() const { return x + w; }
-    int GetTop() const { return y; }
-    int GetBottom() const { return y + h; }
+    Point center() const { return Point(center_x(), center_y()); }
+    int center_x() const { return x + w / 2; }
+    int center_y() const { return y + h / 2; }
 
-    bool IsEmpty() const { return w <= 0 || h <= 0; }
+    bool is_empty() const { return w <= 0 || h <= 0; }
 
-    static inline Rect Union(const Rect& lhs, const Rect& rhs)
+    static inline Rect make_union(const Rect& lhs, const Rect& rhs)
     {
-        if (lhs.IsEmpty())
+        if (lhs.is_empty())
             return rhs;
-        else if (rhs.IsEmpty())
+        else if (rhs.is_empty())
             return lhs;
 
-        const auto tl = lhs.GetTopLeft().CwiseMin(rhs.GetTopLeft());
-        const auto br = lhs.GetBottomRight().CwiseMax(rhs.GetBottomRight());
+        const auto tl = lhs.top_left().CwiseMin(rhs.top_left());
+        const auto br = lhs.bottom_right().CwiseMax(rhs.bottom_right());
 
         return Rect(tl, br);
     }
