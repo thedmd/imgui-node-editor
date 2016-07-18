@@ -81,6 +81,9 @@ namespace ImWindow
 		ImVec2								m_iCursorPosStartDrag;
 		ImVec2								m_iWindowPosStartDrag;
 
+        bool                                m_IsCursorCaptured;
+        HWND                                m_PreviousCapture;
+
 		HCURSOR								m_hCursorArrow;
 		HCURSOR								m_hCursorResizeNS;
 		HCURSOR								m_hCursorResizeWE;

@@ -50,6 +50,7 @@ ImwPlatformWindowDX11::ImwPlatformWindowDX11(bool bMain, bool bIsDragWindow, boo
     m_bDrag = false;
     m_oSize = ImVec2(0, 0);
     m_oPosition = ImVec2(-1, -1);
+    m_IsCursorCaptured = false;
 }
 
 ImwPlatformWindowDX11::~ImwPlatformWindowDX11()
@@ -309,6 +310,17 @@ void ImwPlatformWindowDX11::Paint()
 
         ImwPlatformWindow::Paint();
 
+        if (ImGui::IsMouseDragging() && !m_IsCursorCaptured)
+        {
+            m_PreviousCapture = SetCapture(GetHWnd());
+            m_IsCursorCaptured = true;
+        }
+        else if (!ImGui::IsMouseDragging() && m_IsCursorCaptured)
+        {
+            SetCapture(m_PreviousCapture);
+            m_IsCursorCaptured = false;
+        }
+
         if (this == s_pLastHoveredWindow)
         {
             switch (ImGui::GetMouseCursor())
@@ -499,25 +511,37 @@ LRESULT ImwPlatformWindowDX11::OnMessage(UINT message, WPARAM wParam, LPARAM lPa
             return 1;
             break;
         case WM_LBUTTONDOWN:
+            io.MousePos.x = (signed short)(lParam);
+            io.MousePos.y = (signed short)(lParam >> 16);
             io.MouseDown[0] = true;
             return 1;
         case WM_LBUTTONUP:
+            io.MousePos.x = (signed short)(lParam);
+            io.MousePos.y = (signed short)(lParam >> 16);
             io.MouseDown[0] = false;
             return 1;
         case WM_RBUTTONDOWN:
+            io.MousePos.x = (signed short)(lParam);
+            io.MousePos.y = (signed short)(lParam >> 16);
             io.MouseDown[1] = true;
             return 1;
         case WM_RBUTTONUP:
+            io.MousePos.x = (signed short)(lParam);
+            io.MousePos.y = (signed short)(lParam >> 16);
             io.MouseDown[1] = false;
             return 1;
         case WM_MBUTTONDOWN:
+            io.MousePos.x = (signed short)(lParam);
+            io.MousePos.y = (signed short)(lParam >> 16);
             io.MouseDown[2] = true;
             return 1;
         case WM_MBUTTONUP:
+            io.MousePos.x = (signed short)(lParam);
+            io.MousePos.y = (signed short)(lParam >> 16);
             io.MouseDown[2] = false;
             return 1;
         case WM_MOUSEWHEEL:
-            io.MouseWheel += GET_WHEEL_DELTA_WPARAM(wParam) / WHEEL_DELTA;
+            io.MouseWheel += GET_WHEEL_DELTA_WPARAM(wParam) / (float)WHEEL_DELTA;
             return 1;
         case WM_MOUSEMOVE:
             io.MousePos.x = (signed short)(lParam);
