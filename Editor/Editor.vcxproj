@@ -183,7 +183,6 @@
     <ClCompile Include="Backend\ImwWindowManagerDX11.cpp" />
     <ClCompile Include="Editor\main.cpp" />
     <ClCompile Include="Editor\NodeWindow.cpp" />
-    <ClCompile Include="Backend\Win32MessageHelper.cpp" />
     <ClCompile Include="ImWindow\ImwContainer.cpp" />
     <ClCompile Include="ImWindow\ImwMenu.cpp" />
     <ClCompile Include="ImWindow\ImwPlatformWindow.cpp" />
@@ -194,6 +193,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Backend\imgui_impl_dx11.h" />
+    <ClInclude Include="Editor\Types.h" />
     <ClInclude Include="ImGui\imconfig.h" />
     <ClInclude Include="ImGui\imgui.h" />
     <ClInclude Include="ImGui\imgui_internal.h" />
@@ -203,7 +203,6 @@
     <ClInclude Include="Backend\ImwPlatformWindowDX11.h" />
     <ClInclude Include="Backend\ImwWindowManagerDX11.h" />
     <ClInclude Include="Editor\NodeWindow.h" />
-    <ClInclude Include="Backend\Win32MessageHelper.h" />
     <ClInclude Include="ImWindow\ImwConfig.h" />
     <ClInclude Include="ImWindow\ImwContainer.h" />
     <ClInclude Include="ImWindow\ImwMenu.h" />
@@ -217,6 +216,7 @@
     <None Include="Configuration.props">
       <SubType>Designer</SubType>
     </None>
+    <None Include="Editor\Types.inl" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

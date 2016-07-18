@@ -63,9 +63,6 @@
     <ClCompile Include="Editor\NodeWindow.cpp">
       <Filter>Editor</Filter>
     </ClCompile>
-    <ClCompile Include="Backend\Win32MessageHelper.cpp">
-      <Filter>Backend</Filter>
-    </ClCompile>
     <ClCompile Include="..\External\DXSDK\src\dxerr.cpp">
       <Filter>External</Filter>
     </ClCompile>
@@ -125,11 +122,14 @@
     <ClInclude Include="Editor\NodeWindow.h">
       <Filter>Editor</Filter>
     </ClInclude>
-    <ClInclude Include="Backend\Win32MessageHelper.h">
-      <Filter>Backend</Filter>
+    <ClInclude Include="Editor\Types.h">
+      <Filter>Editor</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="Configuration.props" />
+    <None Include="Editor\Types.inl">
+      <Filter>Editor</Filter>
+    </None>
   </ItemGroup>
 </Project>
