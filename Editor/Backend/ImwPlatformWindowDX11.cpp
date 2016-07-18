@@ -93,7 +93,7 @@ bool ImwPlatformWindowDX11::Init(ImwPlatformWindow* pMain)
         TEXT("ImwWindow"),
         iWindowStyle,
         300,
-        300,
+        100,
         wr.right - wr.left,
         wr.bottom - wr.top,
         (pMain != NULL) ? ((ImwPlatformWindowDX11*)pMain)->GetHWnd() : NULL,
