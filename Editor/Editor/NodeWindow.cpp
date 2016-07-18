@@ -1,18 +1,481 @@
 #include "NodeWindow.h"
+#include <string>
 #include <vector>
-
+#include <algorithm>
+#include <utility>
+#include "Types.h"
+#include "Types.inl"
 
 static inline ImVec2 operator+(const ImVec2& lhs, const ImVec2& rhs) { return ImVec2(lhs.x+rhs.x, lhs.y+rhs.y); }
 static inline ImVec2 operator-(const ImVec2& lhs, const ImVec2& rhs) { return ImVec2(lhs.x-rhs.x, lhs.y-rhs.y); }
+
+inline int roundi(float value) { return static_cast<int>(value); }
+inline Point to_point(const ImVec2& value) { return Point(roundi(value.x), roundi(value.y)); }
+inline Size  to_size (const ImVec2& value) { return Size (roundi(value.x), roundi(value.y)); }
+inline ImVec2 to_imvec(const Point& value) { return ImVec2(static_cast<float>(value.x), static_cast<float>(value.y)); }
+inline ImVec2 to_imvec(const Size& value)  { return ImVec2(static_cast<float>(value.w), static_cast<float>(value.h)); }
+
+
+const int PortIconSize = 24;
+const float JoinBezierStrength = 50;
+
+enum class PortType
+{
+    Flow,
+
+    Bool,
+    Int,
+    Float
+};
+
+enum class PortLayout
+{
+    Left,
+    Right
+};
+
+struct Port
+{
+    int ID;
+    int NodeID;
+    std::string Name;
+    PortType Type;
+
+    Rect FrameRect;
+    Rect IconRect;
+    Rect LabelRect;
+
+    Port(int id, int nodeId, const char* name, PortType type):
+        ID(id), NodeID(nodeId), Name(name), Type(type)
+    {
+    }
+
+    void Layout(PortLayout layout)
+    {
+        auto& style = ImGui::GetStyle();
+
+        const auto hasLabel = !Name.empty();
+        const auto innerSpacingX = roundi(style.ItemInnerSpacing.x);
+
+        // Measure side of every component
+        IconRect.size      = Size(PortIconSize, PortIconSize);
+        LabelRect.size     = to_size(ImGui::CalcTextSize(Name.c_str()));
+
+        // Align items to left or right
+        if (layout == PortLayout::Left)
+        {
+            IconRect.x = 0;
+            if (hasLabel)
+                LabelRect.x = IconRect.GetRight() + innerSpacingX;
+            else
+                LabelRect.x = 0;
+        }
+        else
+        {
+            LabelRect.x = 0;
+            IconRect.x = 0;
+            if (hasLabel)
+                IconRect.x = LabelRect.GetRight() + innerSpacingX;
+            else
+                IconRect.x = 0;
+        }
+
+        // Align text vertically
+        if (IconRect.h >= LabelRect.h)
+        {
+            // Icon is bigger, put label in middle
+            IconRect.y  = 0;
+            LabelRect.y = (IconRect.h - LabelRect.h) / 2;
+        }
+        else if (IconRect.h < LabelRect.h)
+        {
+            const auto lineHeight = roundi(ImGui::GetTextLineHeight());
+
+            // Label is higher than icon, make sure we start rendering
+            // label at same position as in case when icon is bigger.
+            if (IconRect.h >= lineHeight)
+            {
+                IconRect.y  = 0;
+                LabelRect.y = (IconRect.h - lineHeight) / 2;
+            }
+            else
+            {
+                IconRect.y  = (lineHeight - IconRect.h) / 2;
+                LabelRect.y = 0;
+            }
+        }
+
+        // Calculate whole widget size
+        FrameRect = Rect::Union(IconRect, LabelRect);
+    }
+
+    void MoveLayout(const Point& offset)
+    {
+        FrameRect.location += offset;
+        IconRect.location  += offset;
+        LabelRect.location += offset;
+    }
+};
+
+struct Node
+{
+    int ID;
+    std::string Name;
+    Point Position;
+    std::vector<Port> Inputs;
+    std::vector<Port> Outputs;
+
+    Rect FrameRect;
+    Rect HeaderRect;
+    Rect LabelRect;
+    Rect ClientRect;
+    Rect InputsRect;
+    Rect OutputsRect;
+
+    Node(int id, const char* name, const Point& position):
+        ID(id), Name(name), Position(position)
+    {
+    }
+
+    void Layout()
+    {
+        auto& style = ImGui::GetStyle();
+
+        const auto hasLabel      = !Name.empty();
+        const auto hasInputs     = !Inputs.empty();
+        const auto hasOutputs    = !Outputs.empty();
+        const auto innerSpacingX = roundi(style.ItemInnerSpacing.x);
+        const auto innerSpacingY = roundi(style.ItemInnerSpacing.y);
+        const auto framePaddingX = roundi(style.FramePadding.x);
+        const auto framePaddingY = roundi(style.FramePadding.y);
+
+        int maxInputLayoutWidth    = 0;
+        int totalInputPortsHeight  = 0;
+        int maxOutputLayoutWidth   = 0;
+        int totalOutputPortsHeight = 0;
+
+        for (auto& input : Inputs)
+        {
+            input.Layout(PortLayout::Left);
+            maxInputLayoutWidth = std::max(maxInputLayoutWidth, input.FrameRect.w);
+            totalInputPortsHeight += input.FrameRect.h;
+        }
+
+        for (auto& output : Outputs)
+        {
+            output.Layout(PortLayout::Right);
+            maxOutputLayoutWidth = std::max(maxOutputLayoutWidth, output.FrameRect.w);
+            totalOutputPortsHeight += output.FrameRect.h;
+        }
+
+        const auto portAreaWidth = maxInputLayoutWidth + maxOutputLayoutWidth + ((hasInputs && hasOutputs) ? innerSpacingX * 4: 0);
+
+        // Measure label size
+        LabelRect.size = to_size(ImGui::CalcTextSize(Name.c_str()));
+
+        // Measure header size with paddings
+        HeaderRect.location = Point(0, 0);
+        HeaderRect.w = std::max(LabelRect.w, portAreaWidth) + framePaddingX * 2;
+        HeaderRect.h = LabelRect.h + framePaddingY * 2;
+
+        // Center label on header horizontally
+        //LabelRect.x  = (HeaderRect.w - LabelRect.w) / 2;
+        LabelRect.x  = framePaddingX;
+        LabelRect.y  = framePaddingY;
+
+        // Calculate port areas, inputs are aligned to left, outputs are aligned to right
+        InputsRect.x = framePaddingX;
+        InputsRect.y = HeaderRect.GetBottom() + innerSpacingY;
+        InputsRect.w = maxInputLayoutWidth;
+        InputsRect.h = hasInputs ? (totalInputPortsHeight + (Inputs.size() - 1) * innerSpacingY) : 0;
+
+        OutputsRect.w = maxOutputLayoutWidth;
+        OutputsRect.h = hasOutputs ? (totalOutputPortsHeight + (Outputs.size() - 1) * innerSpacingY) : 0;
+        OutputsRect.x = HeaderRect.w - framePaddingX - OutputsRect.w;
+        OutputsRect.y = HeaderRect.GetBottom() + innerSpacingY;
+
+        // Client area contain inputs and outputs without padding
+        ClientRect = Rect::Union(InputsRect, OutputsRect);
+
+        // Widget frame contain header and client area with padding
+        FrameRect  = Rect::Union(HeaderRect, ClientRect);
+        FrameRect.h += framePaddingY;
+
+        // Move ports to positions inside node
+        Point cursor = InputsRect.location;
+        for (auto& input : Inputs)
+        {
+            input.MoveLayout(cursor);
+            cursor.y += input.FrameRect.h + innerSpacingY;
+        }
+
+        cursor = OutputsRect.location;
+        for (auto& output : Outputs)
+        {
+            cursor.x = OutputsRect.GetRight() - output.FrameRect.w;
+            output.MoveLayout(cursor);
+            cursor.y += output.FrameRect.h + innerSpacingY;
+        }
+    }
+
+    void MoveLayout(const Point& offset)
+    {
+        FrameRect.location += offset;
+        HeaderRect.location += offset;
+        LabelRect.location += offset;
+        ClientRect.location += offset;
+        InputsRect.location += offset;
+        OutputsRect.location += offset;
+
+        for (auto& input : Inputs)
+            input.MoveLayout(offset);
+
+        for (auto& output : Outputs)
+            output.MoveLayout(offset);
+    }
+
+};
+
+struct NodeJoin
+{
+    int ID;
+
+    int StartPortID;
+    int EndPortID;
+
+    NodeJoin(int id, int startPortId, int endPortId):
+        ID(id), StartPortID(startPortId), EndPortID(endPortId)
+    {
+    }
+};
+
+static std::vector<Node>        s_Nodes;
+static std::vector<NodeJoin>    s_Joins;
 
 
 NodeWindow::NodeWindow(void)
 {
     SetTitle("Node editor");
+
+    ImGui::GetIO().IniFilename = "NodeEditor.ini";
+
+    int nextId = 1;
+    auto genId = [&nextId]() { return nextId++; };
+
+    s_Nodes.emplace_back(genId(), "InputAction Fire", Point(150, 200));
+    s_Nodes.back().Outputs.emplace_back(genId(), s_Nodes.back().ID, "Pressed", PortType::Flow);
+    s_Nodes.back().Outputs.emplace_back(genId(), s_Nodes.back().ID, "Released", PortType::Flow);
+
+    s_Nodes.emplace_back(genId(), "Branch", Point(300, 20));
+    s_Nodes.back().Inputs.emplace_back(genId(), s_Nodes.back().ID, "", PortType::Flow);
+    s_Nodes.back().Inputs.emplace_back(genId(), s_Nodes.back().ID, "Condition", PortType::Bool);
+    s_Nodes.back().Outputs.emplace_back(genId(), s_Nodes.back().ID, "True", PortType::Flow);
+    s_Nodes.back().Outputs.emplace_back(genId(), s_Nodes.back().ID, "False", PortType::Flow);
+
+    s_Nodes.emplace_back(genId(), "Do N", Point(600, 30));
+    s_Nodes.back().Inputs.emplace_back(genId(), s_Nodes.back().ID, "Enter", PortType::Flow);
+    s_Nodes.back().Inputs.emplace_back(genId(), s_Nodes.back().ID, "N", PortType::Int);
+    s_Nodes.back().Inputs.emplace_back(genId(), s_Nodes.back().ID, "Reset", PortType::Flow);
+    s_Nodes.back().Outputs.emplace_back(genId(), s_Nodes.back().ID, "Exit", PortType::Flow);
+    s_Nodes.back().Outputs.emplace_back(genId(), s_Nodes.back().ID, "Counter", PortType::Int);
+
+    s_Nodes.emplace_back(genId(), "OutputAction", Point(400, 200));
+    s_Nodes.back().Inputs.emplace_back(genId(), s_Nodes.back().ID, "Sample", PortType::Float);
+
+    s_Joins.emplace_back(genId(), s_Nodes[0].Outputs[0].ID, s_Nodes[1].Inputs[1].ID);
+    s_Joins.emplace_back(genId(), s_Nodes[2].Outputs[0].ID, s_Nodes[3].Inputs[0].ID);
 }
 
 
+void Dummy();
+
+static int s_ActiveNodeId = 0;
+static Point s_DragOffset;
+
 void NodeWindow::OnGui()
+{
+    //Dummy();
+
+    auto& style = ImGui::GetStyle();
+
+    ImDrawList* drawList1 = ImGui::GetWindowDrawList();
+
+    ImGui::BeginChild("scrolling_region", ImVec2(0, 0), true, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoMove);
+
+    ImDrawList* drawList = ImGui::GetWindowDrawList();
+
+    drawList->ChannelsSplit(3);
+
+    auto cursorTopLeft = ImGui::GetCursorScreenPos();
+
+    std::stable_sort(s_Nodes.begin(), s_Nodes.end(), [](const Node& lhs, const Node& rhs)
+    {
+        if (rhs.ID == s_ActiveNodeId)
+            return true;
+        else
+            return false;
+    });
+
+    drawList->ChannelsSetCurrent(2);
+    for (auto& node : s_Nodes)
+    {
+        node.Layout();
+
+        auto nodeTopLeft = to_point(cursorTopLeft) + node.Position;
+        node.MoveLayout(nodeTopLeft);
+
+        drawList->ChannelsSetCurrent(1);
+        ImGui::PushID(node.ID);
+        ImGui::SetCursorScreenPos(to_imvec(nodeTopLeft));
+        ImGui::InvisibleButton("node", to_imvec(node.FrameRect.size));
+        ImGui::PopID();
+
+        if (ImGui::IsItemActive())
+        {
+            s_ActiveNodeId = node.ID;
+            s_DragOffset = to_point(ImGui::GetMouseDragDelta(0, 0.0f));
+
+            node.MoveLayout(s_DragOffset);
+        }
+        else if (s_ActiveNodeId == node.ID)
+        {
+            node.Position += s_DragOffset;
+            node.MoveLayout(s_DragOffset);
+            s_ActiveNodeId = 0;
+        }
+
+        drawList->ChannelsSetCurrent(2);
+        for (auto& input : node.Inputs)
+        {
+            ImGui::PushID(input.ID);
+            ImGui::SetCursorScreenPos(to_imvec(input.IconRect.location));
+            ImGui::SetItemAllowOverlap();
+            ImGui::Button("X", to_imvec(input.IconRect.size));
+            ImGui::PopID();
+        }
+
+        for (auto& output : node.Outputs)
+        {
+            ImGui::PushID(output.ID);
+            ImGui::SetCursorScreenPos(to_imvec(output.IconRect.location));
+            ImGui::SetItemAllowOverlap();
+            ImGui::Button("X", to_imvec(output.IconRect.size));
+            ImGui::PopID();
+        }
+
+        drawList->ChannelsSetCurrent(1);
+        auto drawRect = [drawList, &nodeTopLeft](const Rect& rect, ImU32 color)
+        {
+            if (rect.IsEmpty())
+                return;
+
+            auto tl = to_imvec(rect.GetTopLeft());
+            auto br = to_imvec(rect.GetBottomRight());
+
+            drawList->AddRect(tl, br, color);
+        };
+
+        auto fillRect = [drawList, &nodeTopLeft](const Rect& rect, ImU32 color)
+        {
+            if (rect.IsEmpty())
+                return;
+
+            auto tl = to_imvec(rect.GetTopLeft());
+            auto br = to_imvec(rect.GetBottomRight());
+
+            drawList->AddRectFilled(tl, br, color);
+        };
+
+        auto drawText = [drawList, &nodeTopLeft](const Rect& rect, const std::string& text)
+        {
+            if (text.empty())
+                return;
+
+            drawList->AddText(to_imvec(rect.location), ImColor(255, 255, 255), text.c_str());
+        };
+
+        fillRect(node.FrameRect, ImColor(0, 32, 64));
+        fillRect(node.HeaderRect, ImColor(0, 32, 0));
+        drawRect(node.FrameRect, ImColor(255, 0, 255));
+        drawRect(node.HeaderRect, ImColor(255, 0, 0));
+        /* *///drawRect(node.LabelRect, ImColor(255, 255, 0));
+        /* *///drawRect(node.InputsRect, ImColor(0, 0, 255));
+        /* *///drawRect(node.OutputsRect, ImColor(0, 0, 255));
+        drawText(node.LabelRect, node.Name);
+
+        for (auto& input : node.Inputs)
+        {
+            /* *///drawRect(input.FrameRect, ImColor(255, 0, 0));
+            /* *///drawRect(input.LabelRect, ImColor(255, 255, 0));
+            drawRect(input.IconRect, ImColor(0, 255, 255));
+            drawText(input.LabelRect, input.Name);
+        }
+
+        for (auto& output : node.Outputs)
+        {
+            /* *///drawRect(output.FrameRect, ImColor(255, 0, 0));
+            /* *///drawRect(output.LabelRect, ImColor(255, 255, 0));
+            drawRect(output.IconRect, ImColor(0, 255, 255));
+            drawText(output.LabelRect, output.Name);
+        }
+
+        //    const float rounding = 6;
+
+        //    auto cursor = ImGui::GetCursorScreenPos();
+        //    ImRect headerRect(cursor, cursor + ImVec2(headerWidth, ImGui::GetTextLineHeightWithSpacing()));
+
+        //    drawList->PathLineTo(headerRect.GetBL());
+        //    drawList->PathLineTo(headerRect.GetTL() + ImVec2(0, rounding));
+        //    drawList->PathArcTo(headerRect.GetTL() + ImVec2(rounding, rounding), rounding, IM_PI, IM_PI + IM_PI / 2);
+        //    drawList->PathLineTo(headerRect.GetTR() - ImVec2(rounding, 0));
+        //    drawList->PathArcTo(headerRect.GetTR() + ImVec2(-rounding, rounding), rounding, IM_PI + IM_PI / 2, 2 * IM_PI);
+        //    drawList->PathLineTo(headerRect.GetBR());
+        //    drawList->PathFill(ImColor(255, 0, 255));
+        //}
+    }
+
+    drawList->ChannelsSetCurrent(0);
+    for (auto& join : s_Joins)
+    {
+        auto findPort = [](int id) -> const Port*
+        {
+            for (auto& node : s_Nodes)
+            {
+                for (auto& input : node.Inputs)
+                    if (input.ID == id)
+                        return &input;
+
+                for (auto& output : node.Outputs)
+                    if (output.ID == id)
+                        return &output;
+            }
+
+            return nullptr;
+        };
+
+        auto start = findPort(join.StartPortID);
+        auto end   = findPort(join.EndPortID);
+
+        auto startPoint   = to_imvec(Point(start->IconRect.GetRight(), (start->IconRect.GetTop() + start->IconRect.GetBottom()) / 2));
+        auto endPoint     = to_imvec(Point(end->IconRect.GetLeft(), (end->IconRect.GetTop() + end->IconRect.GetBottom()) / 2));
+        auto startControl = startPoint + ImVec2(JoinBezierStrength, 0);
+        auto endControl   = endPoint - ImVec2(JoinBezierStrength, 0);
+
+        drawList->AddBezierCurve(startPoint, startControl, endControl, endPoint, ImColor(255, 255, 0), 2.0f);
+    }
+
+    drawList->ChannelsSetCurrent(0);
+    drawList->ChannelsMerge();
+
+    ImGui::SetCursorScreenPos(cursorTopLeft);
+    ImGui::Text("IsAnyItemActive: %d", ImGui::IsAnyItemActive() ? 1 : 0);
+
+    ImGui::EndChild();
+
+    ImGui::ShowMetricsWindow();
+}
+
+void Dummy()
 {
     // Dummy
     struct Node
@@ -82,8 +545,11 @@ void NodeWindow::OnGui()
 
     // Create our child canvas
     ImGui::Text("Hold middle mouse button to scroll (%.2f,%.2f)", scrolling.x, scrolling.y);
-    ImGui::SameLine(ImGui::GetWindowWidth()-100);
+    ImGui::SameLine(ImGui::GetWindowWidth()-180);
     ImGui::Checkbox("Show grid", &show_grid);
+    auto mp = ImGui::GetMousePos();
+    ImGui::SameLine(ImGui::GetWindowWidth() - 480);
+    ImGui::Text("X: %f Y: %f", mp.x, mp.y);
     ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(1,1));
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0,0));
     ImGui::PushStyleColor(ImGuiCol_ChildWindowBg, ImColor(60,60,70,200));

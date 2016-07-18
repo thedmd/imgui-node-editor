@@ -3,10 +3,11 @@
 
 #include "ImWindow/ImwWindow.h"
 
-class NodeWindow : public ImWindow::ImwWindow
+class NodeWindow:
+    public ImWindow::ImwWindow
 {
 public:
-    NodeWindow(void);
+    NodeWindow();
 
     virtual void OnGui();
 };
