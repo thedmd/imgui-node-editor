@@ -52,6 +52,7 @@ bool ImwWindowManager::Init()
 {
     m_MainContext = ImGui::CreateContext();
     ImGui::SetCurrentContext(m_MainContext);
+    m_MainContext->Style = &m_Style;
 
     ImGuiIO& io = ImGui::GetIO();
     ImGuiStyle& style = ImGui::GetStyle();
@@ -65,8 +66,11 @@ bool ImwWindowManager::Init()
     {
         std::string fontPath(windir);
         fontPath += "\\Fonts\\segoeui.ttf";
+        //fontPath += "\\Fonts\\arial.ttf";
 
-        io.Fonts->AddFontFromFileTTF(fontPath.c_str(), 22);
+        auto font = io.Fonts->AddFontFromFileTTF(fontPath.c_str(), 22);
+        if (font)
+            font->DisplayOffset = ImVec2(0, -1);
     }
 #endif
         //io.Fonts->AddFontFromFileTTF( "res/DroidSans.ttf", 16 ) || io.Fonts->AddFontDefault();

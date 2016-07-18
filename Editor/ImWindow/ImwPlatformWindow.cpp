@@ -21,6 +21,13 @@ namespace ImWindow
             auto& io = ImGui::GetIO();
             io.IniFilename = nullptr;
             io.Fonts = ImwWindowManager::GetInstance()->GetFontAtlas();
+
+            m_pState->Style = ImwWindowManager::GetInstance()->GetStyle();
+//
+//             auto& style = ImGui::GetStyle();
+//             style.FrameRounding = 2.f;
+//             style.WindowRounding = 0.f;
+//             style.ScrollbarRounding = 0.f;
         }
     }
 

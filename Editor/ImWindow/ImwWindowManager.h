@@ -94,6 +94,7 @@ namespace ImWindow
         ImwPlatformWindow*                  GetWindowParent(ImwWindow* pWindow);
 
         ImFontAtlas*                        GetFontAtlas() { return &m_FontAtlas; }
+        ImGuiStyle*                         GetStyle() { return &m_Style; }
 
     protected:
         //To override for use multi window mode
@@ -176,6 +177,7 @@ namespace ImWindow
 
         ImGuiContext*                       m_MainContext;
         ImFontAtlas                         m_FontAtlas;
+        ImGuiStyle                          m_Style;
 
         // Static
     public:
