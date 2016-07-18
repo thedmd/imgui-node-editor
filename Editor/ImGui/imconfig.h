@@ -32,6 +32,9 @@
 //---- Do not create global state and relay on user to create and manage context
 #define IMGUI_DISABLE_GLOBAL_STATE
 
+//---- Allow to drag items around even outside of window area
+#define IMGUI_ENABLE_BOUNDLESS_MOUSE_INPUT
+
 //---- Define constructor and implicit cast operators to convert back<>forth from your math types and ImVec2/ImVec4.
 /*
 #define IM_VEC2_CLASS_EXTRA                                                 \
