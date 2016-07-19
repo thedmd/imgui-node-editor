@@ -1,4 +1,30 @@
 #include "NodeEditorInternal.h"
+#include <string>
+
+extern "C" __declspec(dllimport) void __stdcall OutputDebugStringA(const char* string);
+
+static void LogV(const char* fmt, va_list args)
+{
+    const int buffer_size = 1024;
+    static char buffer[1024];
+
+    int w = vsnprintf(buffer, buffer_size - 1, fmt, args);
+    buffer[buffer_size - 1] = 0;
+
+    OutputDebugStringA("NodeEditor: ");
+    OutputDebugStringA(buffer);
+    OutputDebugStringA("\n");
+}
+
+static void Log(const char* fmt, ...)
+{
+    va_list args;
+    va_start(args, fmt);
+    LogV(fmt, args);
+    va_end(args);
+}
+
+
 
 namespace ed = ax::NodeEditor;
 
@@ -8,18 +34,156 @@ Context* s_Editor = nullptr;
 } // namespace node_editor
 } // namespace ax
 
-bool ed::Icon(const char* id, const ImVec2& size, IconType type, bool filled, const ImVec4& color/* = ImVec4(1, 1, 1, 1)*/)
+ed::Context::Context():
+    Nodes(),
+    CurrentNode(nullptr),
+    CurrentNodeIsNew(false),
+    CurrentNodeStage(NodeStage::Invalid),
+    ActiveNode(nullptr),
+    DragOffset()
 {
-    if (!ImGui::IsRectVisible(size))
+}
+
+ed::Context::~Context()
+{
+    for (auto node : Nodes)
+        delete node;
+    Nodes.clear();
+}
+
+
+ed::Node* ed::Context::FindNode(int id)
+{
+    for (auto node : s_Editor->Nodes)
+        if (node->ID == id)
+            return node;
+
+    return nullptr;
+}
+
+ed::Node* ed::Context::CreateNode(int id)
+{
+    assert(nullptr == FindNode(id));
+    s_Editor->Nodes.push_back(new Node(id));
+    return s_Editor->Nodes.back();
+}
+
+void ed::Context::DestroyNode(Node* node)
+{
+    if (!node) return;
+    auto& nodes = s_Editor->Nodes;
+    auto nodeIt = std::find(nodes.begin(), nodes.end(), node);
+    assert(nodeIt != nodes.end());
+    nodes.erase(nodeIt);
+    delete node;
+}
+
+void ed::Context::SetCurrentNode(Node* node, bool isNew/* = false*/)
+{
+    CurrentNode      = node;
+    CurrentNodeIsNew = isNew;
+}
+
+void ed::Context::SetActiveNode(Node* node)
+{
+    ActiveNode = node;
+}
+
+bool ed::Context::SetNodeStage(NodeStage stage)
+{
+    if (stage == CurrentNodeStage)
         return false;
 
-    auto cursorPos = ImGui::GetCursorScreenPos();
-    auto iconRect  = rect(to_point(cursorPos), to_size(size));
+    auto oldStage = CurrentNodeStage;
+    CurrentNodeStage = stage;
 
-    auto drawList  = ImGui::GetWindowDrawList();
-    Draw::Icon(drawList, iconRect, type, filled, ImColor(color));
+    ImVec2 cursor;
+    switch (oldStage)
+    {
+        case NodeStage::Begin:
+            break;
 
-    return ImGui::InvisibleButton(id, size);
+        case NodeStage::Header:
+            ImGui::Dummy(ImVec2(0, 0));
+            cursor = ImGui::GetCursorScreenPos();
+            ImGui::EndGroup();
+            ImGui::GetWindowDrawList()->AddRect(
+                cursor + ImVec2(0, -ImGui::GetStyle().ItemSpacing.y - ImGui::GetItemRectSize().y),
+                cursor + ImVec2(ImGui::GetItemRectSize().x, -ImGui::GetStyle().ItemSpacing.y),
+                ImColor(255, 0, 255));
+            break;
+
+        case NodeStage::Input:
+            ImGui::Dummy(ImVec2(0, 0));
+            cursor = ImGui::GetCursorScreenPos();
+            ImGui::EndGroup();
+            ImGui::GetWindowDrawList()->AddRect(
+                cursor + ImVec2(0, -ImGui::GetStyle().ItemSpacing.y - ImGui::GetItemRectSize().y),
+                cursor + ImVec2(ImGui::GetItemRectSize().x, -ImGui::GetStyle().ItemSpacing.y),
+                ImColor(255, 0, 0));
+            break;
+
+        case NodeStage::Output:
+            ImGui::Dummy(ImVec2(0, 0));
+            cursor = ImGui::GetCursorScreenPos();
+            ImGui::EndGroup();
+            ImGui::GetWindowDrawList()->AddRect(
+                cursor + ImVec2(0, -ImGui::GetStyle().ItemSpacing.y - ImGui::GetItemRectSize().y),
+                cursor + ImVec2(ImGui::GetItemRectSize().x, -ImGui::GetStyle().ItemSpacing.y),
+                ImColor(0, 255, 0));
+            break;
+
+        case NodeStage::End:
+            break;
+    }
+
+    switch (stage)
+    {
+        case NodeStage::Begin:
+            ImGui::BeginGroup();
+            break;
+
+        case NodeStage::Header:
+            ImGui::BeginGroup();
+            break;
+
+        case NodeStage::Input:
+            ImGui::BeginGroup();
+            break;
+
+        case NodeStage::Output:
+            if (oldStage == NodeStage::Input)
+                ImGui::SameLine();
+
+            ImGui::BeginGroup();
+            break;
+
+        case NodeStage::End:
+            ImGui::Dummy(ImVec2(0, 0));
+            cursor = ImGui::GetCursorScreenPos();
+            ImGui::EndGroup();
+            ImGui::GetWindowDrawList()->AddRect(
+                cursor + ImVec2(0, -ImGui::GetStyle().ItemSpacing.y - ImGui::GetItemRectSize().y),
+                cursor + ImVec2(ImGui::GetItemRectSize().x, -ImGui::GetStyle().ItemSpacing.y),
+                ImColor(0, 255, 255));
+            break;
+    }
+
+    return true;
+}
+
+bool ed::Icon(const char* id, const ImVec2& size, IconType type, bool filled, const ImVec4& color/* = ImVec4(1, 1, 1, 1)*/)
+{
+    if (ImGui::IsRectVisible(size))
+    {
+        auto cursorPos = ImGui::GetCursorScreenPos();
+        auto iconRect = rect(to_point(cursorPos), to_size(size));
+
+        auto drawList = ImGui::GetWindowDrawList();
+        Draw::Icon(drawList, iconRect, type, filled, ImColor(color));
+    }
+
+    return ImGui::/*Invisible*/Button(id, size);
 }
 
 ax::NodeEditor::Context* ax::NodeEditor::CreateEditor()
@@ -45,20 +209,6 @@ ax::NodeEditor::Context* ax::NodeEditor::GetCurrentEditor()
     return s_Editor;
 }
 
-ed::Node* ed::FindNode(int id)
-{
-    return nullptr;
-}
-
-ed::Node* ed::CreateNode(int id)
-{
-    return nullptr;
-}
-
-void ed::DestroyNode(Node* node)
-{
-}
-
 void ax::NodeEditor::Begin(const char* id)
 {
     ImGui::BeginChild(id, ImVec2(0, 0), true, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoMove);
@@ -71,15 +221,89 @@ void ax::NodeEditor::End()
 
 void ax::NodeEditor::BeginNode(int id)
 {
+    assert(nullptr == s_Editor->CurrentNode);
+
+    auto isNewNode = false;
+
+    auto node = s_Editor->FindNode(id);
+    if (!node)
+    {
+        node = s_Editor->CreateNode(id);
+        s_Editor->CurrentNodeIsNew = true;
+
+        // Make new node and everything under it invisible
+        // for first time it is around to determine initial
+        // dimensions without showing a mess to user.
+        // Next iterations use cached layout.
+        ImGui::PushStyleVar(ImGuiStyleVar_Alpha, 0.0f);
+
+        isNewNode = true;
+    }
+
+    ImGui::PushID(id);
+
+    s_Editor->SetCurrentNode(node, isNewNode);
+
+    // New node capture current cursor position. Existing
+    // node position is already determined so it is set as current.
+    if (isNewNode)
+        node->Bounds.location = to_point(ImGui::GetCursorScreenPos());
+    else if (s_Editor->ActiveNode == node)
+        ImGui::SetCursorScreenPos(to_imvec(node->Bounds.location) + s_Editor->DragOffset); // drag, clean up
+    else
+        ImGui::SetCursorScreenPos(to_imvec(node->Bounds.location));
+
+    s_Editor->SetNodeStage(NodeStage::Begin);
 }
 
 void ax::NodeEditor::EndNode()
 {
-}
+    assert(nullptr != s_Editor->CurrentNode);
 
+    s_Editor->SetNodeStage(NodeStage::End);
+
+    auto nodeSize = ImGui::GetItemRectSize();
+    auto nodeRect = rect(s_Editor->CurrentNode->Bounds.location, to_size(nodeSize));
+
+    if (s_Editor->CurrentNode->Bounds != nodeRect)
+    {
+        s_Editor->CurrentNode->Bounds = nodeRect;
+        // TODO: update layout
+        //ImGui::Text((std::string("Changed: ") + std::to_string(s_Editor->CurrentNode->ID)).c_str());
+    }
+
+    ImGui::PopID();
+
+    if (s_Editor->CurrentNodeIsNew)
+        ImGui::PopStyleVar();
+
+    ImGui::SetCursorScreenPos(to_imvec(s_Editor->CurrentNode->Bounds.location));
+    ImGui::InvisibleButton(std::to_string(s_Editor->CurrentNode->ID).c_str(), nodeSize);
+
+    if (!s_Editor->CurrentNodeIsNew)
+    {
+        if (ImGui::IsItemActive())
+        {
+            s_Editor->SetActiveNode(s_Editor->CurrentNode);
+            s_Editor->DragOffset = ImGui::GetMouseDragDelta(0, 0.0f);
+        }
+        else if (s_Editor->ActiveNode == s_Editor->CurrentNode)
+        {
+            s_Editor->ActiveNode->Bounds.location += to_point(s_Editor->DragOffset);
+            s_Editor->SetActiveNode(nullptr);
+        }
+    }
+
+    s_Editor->SetCurrentNode(nullptr);
+
+    s_Editor->SetNodeStage(NodeStage::Invalid);
+}
 
 void ax::NodeEditor::BeginHeader()
 {
+    assert(nullptr != s_Editor->CurrentNode);
+
+    s_Editor->SetNodeStage(NodeStage::Header);
 }
 
 void ax::NodeEditor::EndHeader()
@@ -88,6 +312,9 @@ void ax::NodeEditor::EndHeader()
 
 void ax::NodeEditor::BeginInput(int id)
 {
+    assert(nullptr != s_Editor->CurrentNode);
+
+    s_Editor->SetNodeStage(NodeStage::Input);
 }
 
 void ax::NodeEditor::EndInput()
@@ -96,6 +323,9 @@ void ax::NodeEditor::EndInput()
 
 void ax::NodeEditor::BeginOutput(int id)
 {
+    assert(nullptr != s_Editor->CurrentNode);
+
+    s_Editor->SetNodeStage(NodeStage::Output);
 }
 
 void ax::NodeEditor::EndOutput()

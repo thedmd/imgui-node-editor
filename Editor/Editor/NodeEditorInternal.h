@@ -26,23 +26,44 @@ extern Context* s_Editor;
 struct Node
 {
     int     ID;
+    rect    Bounds;
 
     Node(int id):
-        ID(id)
+        ID(id),
+        Bounds(to_point(ImGui::GetCursorScreenPos()), size())
     {
     }
 };
 
+enum class NodeStage
+{
+    Invalid,
+    Begin,
+    Header,
+    Input,
+    Output,
+    End
+};
 
 struct Context
 {
-    std::vector<Node*> Nodes;
+    std::vector<Node*>  Nodes;
+    Node*               CurrentNode;
+    bool                CurrentNodeIsNew;
+    NodeStage           CurrentNodeStage;
+    Node*               ActiveNode;
+    ImVec2              DragOffset;
+
+    Context();
+    ~Context();
+
+    Node* FindNode(int id);
+    Node* CreateNode(int id);
+    void DestroyNode(Node* node);
+    void SetCurrentNode(Node* node, bool isNew = false);
+    void SetActiveNode(Node* node);
+    bool SetNodeStage(NodeStage stage);
 };
-
-Node* FindNode(int id);
-Node* CreateNode(int id);
-void DestroyNode(Node* node);
-
 
 namespace Draw {
 void Icon(ImDrawList* drawList, rect rect, IconType type, bool filled, ImU32 color);

@@ -111,6 +111,9 @@ struct basic_rect
     basic_rect& operator=(const basic_rect&) = default;
     basic_rect& operator=(basic_rect&&) = default;
 
+    friend inline bool operator == (const basic_rect& lhs, const basic_rect& rhs) { return lhs.location == rhs.location && lhs.size == rhs.size; }
+    friend inline bool operator != (const basic_rect& lhs, const basic_rect& rhs) { return !(lhs == rhs); }
+
     point_t top_left() const { return point_t(x, y); }
     point_t top_right() const { return point_t(x + w, y); }
     point_t bottom_left() const { return point_t(x, y + h); }
