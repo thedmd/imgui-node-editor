@@ -8,72 +8,87 @@
 
 static inline ImVec2 operator+(const ImVec2& lhs, const ImVec2& rhs) { return ImVec2(lhs.x+rhs.x, lhs.y+rhs.y); }
 static inline ImVec2 operator-(const ImVec2& lhs, const ImVec2& rhs) { return ImVec2(lhs.x-rhs.x, lhs.y-rhs.y); }
+static inline ImVec2 operator*(const ImVec2& lhs, float rhs)         { return ImVec2(lhs.x * rhs,   lhs.y * rhs); }
+static inline ImVec2 operator*(float lhs,         const ImVec2& rhs) { return ImVec2(lhs   * rhs.x, lhs   * rhs.y); }
 
-inline int roundi(float value) { return static_cast<int>(value); }
-inline Point to_point(const ImVec2& value) { return Point(roundi(value.x), roundi(value.y)); }
-inline Size  to_size (const ImVec2& value) { return Size (roundi(value.x), roundi(value.y)); }
-inline ImVec2 to_imvec(const Point& value) { return ImVec2(static_cast<float>(value.x), static_cast<float>(value.y)); }
-inline ImVec2 to_imvec(const Size& value)  { return ImVec2(static_cast<float>(value.w), static_cast<float>(value.h)); }
+inline int    roundi(float value)           { return static_cast<int>(value); }
+inline Point  to_point(const ImVec2& value) { return Point(roundi(value.x), roundi(value.y)); }
+inline Size   to_size (const ImVec2& value) { return Size (roundi(value.x), roundi(value.y)); }
+inline ImVec2 to_imvec(const Point& value)  { return ImVec2(static_cast<float>(value.x), static_cast<float>(value.y)); }
+inline ImVec2 to_imvec(const Size& value)   { return ImVec2(static_cast<float>(value.w), static_cast<float>(value.h)); }
 
 
 enum class IconType
 {
-    Flow, Circle, Square, Grid
+    Flow, Circle, Square, Grid, RoundSquare
 };
 
 void DrawIcon(ImDrawList* drawList, Rect rect, IconType type, bool filled, ImU32 color)
 {
     //drawList->AddRectFilled(to_imvec(rect.top_left()), to_imvec(rect.bottom_right()), ImColor(0, 0, 0));
 
+    const auto outline_scale  = rect.w / 24.0f;
+    const auto extra_segments = roundi(2 * outline_scale); // for full circle
+
     if (type == IconType::Flow)
     {
         const auto origin_scale = rect.w / 24.0f;
 
-        const auto offset_x = 1.0f * origin_scale;
-        const auto offset_y = 0.0f * origin_scale;
-        const auto margin = (filled ? 1.0f : 1.5f) * origin_scale;
-        const auto rounding = 1.0f * origin_scale;
-        const auto tip = 4.0f * origin_scale;
-        const auto canvas = ImRect(
+        const auto offset_x  = 1.0f * origin_scale;
+        const auto offset_y  = 0.0f * origin_scale;
+        const auto margin     = (filled ? 1.0f : 1.5f) * origin_scale;
+        const auto rounding   = 2.0f * origin_scale;
+        const auto tip_round  = 0.7f; // percentage of triangle edge (for tip)
+        const auto edge_round = 0.7f; // percentage of triangle edge (for corner)
+        const auto canvas = RectF(
             rect.x + margin + offset_x,
             rect.y + margin + offset_y,
-            rect.x + rect.w - margin + offset_x,
-            rect.y + rect.h - margin + offset_y);
-        const auto canvas_w = canvas.GetWidth();
-        const auto canvas_h = canvas.GetHeight();
+            rect.w - margin + offset_x,
+            rect.h - margin + offset_y);
 
-        const auto left = canvas.Min.x + canvas_w            * 0.5f * 0.2f;
-        const auto right = canvas.Min.x + canvas_w - canvas_w * 0.5f * 0.2f;
-        const auto top = canvas.Min.y + canvas_h            * 0.5f * 0.1f;
-        const auto bottom = canvas.Min.y + canvas_h - canvas_h * 0.5f * 0.1f;
+        const auto left   = canvas.x + canvas.w            * 0.5f * 0.2f;
+        const auto right  = canvas.x + canvas.w - canvas.w * 0.5f * 0.2f;
+        const auto top    = canvas.y + canvas.h            * 0.5f * 0.1f;
+        const auto bottom = canvas.y + canvas.h - canvas.h * 0.5f * 0.1f;
         const auto center_y = (top + bottom) * 0.5f;
         const auto angle = IM_PI * 0.5f * 0.5f * 0.5f;
 
+        const auto tip_top    = ImVec2(canvas.x + canvas.w * 0.5f, top);
+        const auto tip_right  = ImVec2(right, center_y);
+        const auto tip_bottom = ImVec2(canvas.x + canvas.w * 0.5f, bottom);
+
         drawList->PathLineTo(ImVec2(left, top) + ImVec2(0, rounding));
-        drawList->PathLineTo(ImVec2(left, top) + ImVec2(rounding, 0));
-        drawList->PathLineTo(ImVec2(canvas.Min.x + canvas_w * 0.5f, top));
-        drawList->PathLineTo(ImVec2(right - tip, center_y - tip));
-        drawList->PathArcTo(ImVec2(right - tip, center_y), tip / sqrtf(2), -angle, angle);
-        drawList->PathLineTo(ImVec2(right - tip, center_y + tip));
-        drawList->PathLineTo(ImVec2(canvas.Min.x + canvas_w * 0.5f, bottom));
+        drawList->PathBezierCurveTo(
+            ImVec2(left, top),
+            ImVec2(left, top),
+            ImVec2(left, top) + ImVec2(rounding, 0));
+        drawList->PathLineTo(tip_top);
+        drawList->PathLineTo(tip_top + (tip_right - tip_top) * tip_round);
+        drawList->PathBezierCurveTo(
+            tip_right,
+            tip_right,
+            tip_bottom + (tip_right - tip_bottom) * tip_round);
+        drawList->PathLineTo(tip_bottom);
         drawList->PathLineTo(ImVec2(left, bottom) + ImVec2(rounding, 0));
-        drawList->PathLineTo(ImVec2(left, bottom) - ImVec2(0, rounding));
+        drawList->PathBezierCurveTo(ImVec2(left, bottom), ImVec2(left, bottom), ImVec2(left, bottom) - ImVec2(0, rounding));
 
         if (filled)
             drawList->PathFill(color);
         else
-            drawList->PathStroke(color, true, 1.25f);
+            drawList->PathStroke(color, true, 1.25f * outline_scale);
     }
     else
     {
+        auto triangleStart = rect.center_x() + 0.32f * rect.w;
+
         rect.x -= roundi(rect.w * 0.25f * 0.25f);
 
         if (type == IconType::Circle)
         {
             if (filled)
-                drawList->AddCircleFilled(to_imvec(rect.center()), 0.5f * rect.w / 2.0f, color);
+                drawList->AddCircleFilled(to_imvec(rect.center()), 0.5f * rect.w / 2.0f, color, 12 + extra_segments);
             else
-                drawList->AddCircle(to_imvec(rect.center()), 0.5f * rect.w / 2.0f - 0.5f, color, 12, 2.0f);
+                drawList->AddCircle(to_imvec(rect.center()), 0.5f * rect.w / 2.0f - 0.5f, color, 12 + extra_segments, 2.0f * outline_scale);
         }
 
         if (type == IconType::Square)
@@ -85,7 +100,7 @@ void DrawIcon(ImDrawList* drawList, Rect rect, IconType type, bool filled, ImU32
                 drawList->AddRectFilled(
                     to_imvec(rect.center()) - ImVec2(r, r),
                     to_imvec(rect.center()) + ImVec2(r, r),
-                    color, 0, 15);
+                    color, 0, 15 + extra_segments);
             }
             else
             {
@@ -94,17 +109,17 @@ void DrawIcon(ImDrawList* drawList, Rect rect, IconType type, bool filled, ImU32
                 drawList->AddRect(
                     to_imvec(rect.center()) - ImVec2(r, r),
                     to_imvec(rect.center()) + ImVec2(r, r),
-                    color, 0, 15, 2.0f);
+                    color, 0, 15 + extra_segments, 2.0f * outline_scale);
             }
         }
 
         if (type == IconType::Grid)
         {
             const auto r = 0.5f * rect.w / 2.0f;
-            const auto w = r / 3.0f;
+            const auto w = ceilf(r / 3.0f);
 
-            const auto baseTl = ImVec2(rect.center_x() - w * 2.5f, rect.center_y() - w * 2.5f);
-            const auto baseBr = ImVec2(baseTl.x + w, baseTl.y + w);
+            const auto baseTl = ImVec2(floorf(rect.center_x() - w * 2.5f), floorf(rect.center_y() - w * 2.5f));
+            const auto baseBr = ImVec2(floorf(baseTl.x + w), floorf(baseTl.y + w));
 
             auto tl = baseTl;
             auto br = baseBr;
@@ -125,20 +140,53 @@ void DrawIcon(ImDrawList* drawList, Rect rect, IconType type, bool filled, ImU32
                 br.y += w * 2;
             }
 
-            //drawList->
+            triangleStart = br.x + w + 1.0f / 24.0f * rect.w;
         }
 
-        drawList->AddTriangleFilled(
-            ImVec2(rect.center_x() + 0.45f * rect.w, rect.center_y() * 1.0f),
-            ImVec2(rect.center_x() + 0.32f * rect.w, rect.center_y() - 0.15f * rect.h),
-            ImVec2(rect.center_x() + 0.32f * rect.w, rect.center_y() + 0.15f * rect.h),
-            color);
+        if (type == IconType::RoundSquare)
+        {
+            if (filled)
+            {
+                const auto r  = 0.5f * rect.w / 2.0f;
+                const auto cr = r * 0.5f;
+
+                drawList->AddRectFilled(
+                    to_imvec(rect.center()) - ImVec2(r, r),
+                    to_imvec(rect.center()) + ImVec2(r, r),
+                    color, cr, 15);
+            }
+            else
+            {
+                const auto r = 0.5f * rect.w / 2.0f - 0.5f;
+                const auto cr = r * 0.5f;
+
+                drawList->AddRect(
+                    to_imvec(rect.center()) - ImVec2(r, r),
+                    to_imvec(rect.center()) + ImVec2(r, r),
+                    color, cr, 15, 2.0f * outline_scale);
+            }
+        }
+        else
+        {
+            const auto triangleTip = triangleStart + rect.w * (0.45f - 0.32f);
+
+            drawList->AddTriangleFilled(
+                ImVec2(ceilf(triangleTip), rect.top() + rect.h * 0.5f),
+                ImVec2(triangleStart, rect.center_y() - 0.15f * rect.h),
+                ImVec2(triangleStart, rect.center_y() + 0.15f * rect.h),
+                color);
+        }
     }
-};
+}
+
+void DrawIcon(Rect rect, IconType type, bool filled, ImU32 color)
+{
+    DrawIcon(ImGui::GetWindowDrawList(), rect, type, filled, color);
+}
 
 
 
-const int PortIconSize = 24;
+const int   PortIconSize = 20;
 const float JoinBezierStrength = 50;
 
 enum class PortType
@@ -620,16 +668,21 @@ void NodeWindow::OnGui()
     //ImGui::SetCursorScreenPos(cursorTopLeft + ImVec2(400, 400));
     ImVec2 iconOrigin(500, 400);
 
-    auto iconSize = Size(PortIconSize, PortIconSize);
+    static float scale = 1.0f;
+    ImGui::DragFloat("Scale", &scale, 0.01f, 0.1f, 8.0f);
+    auto iconSize = Size(roundi(PortIconSize * scale), roundi(PortIconSize * scale));
+    ImGui::Text("Size: %d", iconSize.w);
 
-    DrawIcon(drawList, Rect(to_point(iconOrigin),                     iconSize), IconType::Flow,   false, ImColor(255, 255, 255));
-    DrawIcon(drawList, Rect(to_point(iconOrigin) + Point(    0,  32), iconSize), IconType::Flow,   true,  ImColor(255, 255, 255));
-    DrawIcon(drawList, Rect(to_point(iconOrigin) + Point(    32,  0), iconSize), IconType::Circle, false, ImColor(  0, 255, 255));
-    DrawIcon(drawList, Rect(to_point(iconOrigin) + Point(    32, 32), iconSize), IconType::Circle, true,  ImColor(  0, 255, 255));
-    DrawIcon(drawList, Rect(to_point(iconOrigin) + Point(2 * 32,  0), iconSize), IconType::Square, false, ImColor(128, 255, 128));
-    DrawIcon(drawList, Rect(to_point(iconOrigin) + Point(2 * 32, 32), iconSize), IconType::Square, true,  ImColor(128, 255, 128));
-    DrawIcon(drawList, Rect(to_point(iconOrigin) + Point(3 * 32,  0), iconSize), IconType::Grid,   false, ImColor(128, 255, 128));
-    DrawIcon(drawList, Rect(to_point(iconOrigin) + Point(3 * 32, 32), iconSize), IconType::Grid,   true,  ImColor(128, 255, 128));
+    DrawIcon(drawList, Rect(to_point(iconOrigin),                          iconSize), IconType::Flow,        false, ImColor(255, 255, 255));
+    DrawIcon(drawList, Rect(to_point(iconOrigin) + Point(roundi(     0 * scale), roundi(32 * scale)), iconSize), IconType::Flow,        true,  ImColor(255, 255, 255));
+    DrawIcon(drawList, Rect(to_point(iconOrigin) + Point(roundi(    32 * scale), roundi( 0 * scale)), iconSize), IconType::Circle,      false, ImColor(  0, 255, 255));
+    DrawIcon(drawList, Rect(to_point(iconOrigin) + Point(roundi(    32 * scale), roundi(32 * scale)), iconSize), IconType::Circle,      true,  ImColor(  0, 255, 255));
+    DrawIcon(drawList, Rect(to_point(iconOrigin) + Point(roundi(2 * 32 * scale), roundi( 0 * scale)), iconSize), IconType::Square,      false, ImColor(128, 255, 128));
+    DrawIcon(drawList, Rect(to_point(iconOrigin) + Point(roundi(2 * 32 * scale), roundi(32 * scale)), iconSize), IconType::Square,      true,  ImColor(128, 255, 128));
+    DrawIcon(drawList, Rect(to_point(iconOrigin) + Point(roundi(3 * 32 * scale), roundi( 0 * scale)), iconSize), IconType::Grid,        false, ImColor(128, 255, 128));
+    DrawIcon(drawList, Rect(to_point(iconOrigin) + Point(roundi(3 * 32 * scale), roundi(32 * scale)), iconSize), IconType::Grid,        true,  ImColor(128, 255, 128));
+    DrawIcon(drawList, Rect(to_point(iconOrigin) + Point(roundi(4 * 32 * scale), roundi( 0 * scale)), iconSize), IconType::RoundSquare, false, ImColor(255, 128, 128));
+    DrawIcon(drawList, Rect(to_point(iconOrigin) + Point(roundi(4 * 32 * scale), roundi(32 * scale)), iconSize), IconType::RoundSquare, true,  ImColor(255, 128, 128));
 
     ImGui::SetCursorScreenPos(cursorTopLeft);
     ImGui::Text("IsAnyItemActive: %d", ImGui::IsAnyItemActive() ? 1 : 0);

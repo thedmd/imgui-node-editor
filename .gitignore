@@ -3,3 +3,4 @@ bin
 *.VC.db
 *.VC.opendb
 *.user
+*.ini

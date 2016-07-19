@@ -38,9 +38,14 @@ struct Point
     inline Point CwiseMin(const Point& rhs) const { return Point(std::min(x, rhs.x), std::min(y, rhs.y)); }
     inline Point CwiseMax(const Point& rhs) const { return Point(std::max(x, rhs.x), std::max(y, rhs.y)); }
 
+    friend inline bool operator == (const Point& lhs, const Point& rhs) { return lhs.x == rhs.x && lhs.y == rhs.y; }
+    friend inline bool operator != (const Point& lhs, const Point& rhs) { return !(lhs == rhs); }
+
     friend inline Point operator + (const Point& lhs, const Point& rhs) { return Point(lhs.x + rhs.x, lhs.y + rhs.y); }
+    friend inline Point operator - (const Point& lhs, const Point& rhs) { return Point(lhs.x - rhs.x, lhs.y - rhs.y); }
 
     Point& operator += (const Point& rhs) { *this = *this + rhs; return *this; }
+    Point& operator -= (const Point& rhs) { *this = *this - rhs; return *this; }
 };
 
 struct PointF
@@ -52,6 +57,15 @@ struct PointF
 
     inline PointF CwiseMin(const PointF& rhs) const { return PointF(std::min(x, rhs.x), std::min(y, rhs.y)); }
     inline PointF CwiseMax(const PointF& rhs) const { return PointF(std::max(x, rhs.x), std::max(y, rhs.y)); }
+
+    friend inline bool operator == (const PointF& lhs, const PointF& rhs) { return lhs.x == rhs.x && lhs.y == rhs.y; }
+    friend inline bool operator != (const PointF& lhs, const PointF& rhs) { return !(lhs == rhs); }
+
+    friend inline PointF operator + (const PointF& lhs, const PointF& rhs) { return PointF(lhs.x + rhs.x, lhs.y + rhs.y); }
+    friend inline PointF operator - (const PointF& lhs, const PointF& rhs) { return PointF(lhs.x - rhs.x, lhs.y - rhs.y); }
+
+    PointF& operator += (const PointF& rhs) { *this = *this + rhs; return *this; }
+    PointF& operator -= (const PointF& rhs) { *this = *this - rhs; return *this; }
 };
 
 struct Point4F
@@ -68,6 +82,9 @@ struct Size
 
     Size() {}
     Size(int w, int h): w(w), h(h) {}
+
+    friend inline bool operator == (const Size& lhs, const Size& rhs) { return lhs.w == rhs.w && lhs.h == rhs.h; }
+    friend inline bool operator != (const Size& lhs, const Size& rhs) { return !(lhs == rhs); }
 };
 
 struct SizeF
@@ -76,6 +93,9 @@ struct SizeF
 
     SizeF() {}
     SizeF(float w, float h): w(w), h(h) {}
+
+    friend inline bool operator == (const SizeF& lhs, const SizeF& rhs) { return lhs.w == rhs.w && lhs.h == rhs.h; }
+    friend inline bool operator != (const SizeF& lhs, const SizeF& rhs) { return !(lhs == rhs); }
 };
 
 struct ScaleF
@@ -142,25 +162,32 @@ struct RectF
     RectF(const PointF& l, const SizeF& s): location(l), size(s) {}
     RectF(float x, float y, float w, float h): x(x), y(y), w(w), h(h) {}
 
-    PointF GetLocation() const { return PointF(x, y); }
-    SizeF GetSize() const { return SizeF(w, h); }
+    PointF top_left() const { return PointF(x, y); }
+    PointF top_right() const { return PointF(x + w, y); }
+    PointF bottom_left() const { return PointF(x, y + h); }
+    PointF bottom_right() const { return PointF(x + w, y + h); }
 
-    PointF GetTopLeft() const { return PointF(x, y); }
-    PointF GetTopRight() const { return PointF(x + w, y); }
-    PointF GetBottomLeft() const { return PointF(x, y + h); }
-    PointF GetBottomRight() const { return PointF(x + w, y + h); }
+    float left() const { return x; }
+    float right() const { return x + w; }
+    float top() const { return y; }
+    float bottom() const { return y + h; }
 
-    float GetLeft() const { return x; }
-    float GetRight() const { return x + w; }
-    float GetTop() const { return y; }
-    float GetBottom() const { return y + h; }
+    PointF center() const { return PointF(center_x(), center_y()); }
+    float center_x() const { return x + w / 2; }
+    float center_y() const { return y + h / 2; }
 
-    bool IsEmpty() const { return w <= 0 || h <= 0; }
+    bool is_empty() const { return w <= 0 || h <= 0; }
 
     static inline RectF Union(const RectF& lhs, const RectF& rhs)
     {
-        const auto tl = lhs.GetTopLeft().CwiseMin(rhs.GetTopLeft());
-        const auto br = lhs.GetBottomRight().CwiseMax(rhs.GetBottomRight());
+        if (lhs.is_empty())
+            return rhs;
+        else if (rhs.is_empty())
+            return lhs;
+
+        const auto tl = lhs.top_left().CwiseMin(rhs.top_left());
+        const auto br = lhs.bottom_right().CwiseMax(rhs.bottom_right());
+
         return RectF(tl, br);
     }
 };
