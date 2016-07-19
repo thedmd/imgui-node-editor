@@ -9,6 +9,8 @@
 #include "imgui/imgui.h"
 #include "imgui_impl_dx11.h"
 
+#include <cmath> // powf
+
 // DirectX
 #include <d3d11.h>
 #include <d3dcompiler.h>
@@ -286,6 +288,11 @@ static void ImGui_ImplDX11_CreateFontsTexture()
     unsigned char* pixels;
     int width, height;
     io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
+    for (int i = 0; i < width * height; ++i)
+    {
+        auto& a = pixels[i * 4 + 3];
+        a = static_cast<unsigned char>(powf(a / 255.0f, 1.0f / 2.2f) * 255.0f);
+    }
 
     // Upload texture to graphics system
     {

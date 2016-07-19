@@ -176,7 +176,8 @@
   <ItemGroup>
     <ClCompile Include="..\External\DXSDK\src\dxerr.cpp" />
     <ClCompile Include="Backend\imgui_impl_dx11.cpp" />
-    <ClCompile Include="Editor\node_editor.cpp" />
+    <ClCompile Include="Editor\NodeEditor.cpp" />
+    <ClCompile Include="Editor\NodeEditorDraw.cpp" />
     <ClCompile Include="ImGui\imgui.cpp" />
     <ClCompile Include="ImGui\imgui_demo.cpp" />
     <ClCompile Include="ImGui\imgui_draw.cpp" />
@@ -194,7 +195,8 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Backend\imgui_impl_dx11.h" />
-    <ClInclude Include="Editor\node_editor.h" />
+    <ClInclude Include="Editor\NodeEditor.h" />
+    <ClInclude Include="Editor\NodeEditorInternal.h" />
     <ClInclude Include="Editor\types.h" />
     <ClInclude Include="ImGui\imconfig.h" />
     <ClInclude Include="ImGui\imgui.h" />
