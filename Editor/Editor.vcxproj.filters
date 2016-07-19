@@ -66,6 +66,9 @@
     <ClCompile Include="..\External\DXSDK\src\dxerr.cpp">
       <Filter>External</Filter>
     </ClCompile>
+    <ClCompile Include="Editor\node_editor.cpp">
+      <Filter>Editor</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="ImGui\imconfig.h">
@@ -122,13 +125,16 @@
     <ClInclude Include="Editor\NodeWindow.h">
       <Filter>Editor</Filter>
     </ClInclude>
-    <ClInclude Include="Editor\Types.h">
+    <ClInclude Include="Editor\node_editor.h">
+      <Filter>Editor</Filter>
+    </ClInclude>
+    <ClInclude Include="Editor\types.h">
       <Filter>Editor</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="Configuration.props" />
-    <None Include="Editor\Types.inl">
+    <None Include="Editor\types.inl">
       <Filter>Editor</Filter>
     </None>
   </ItemGroup>

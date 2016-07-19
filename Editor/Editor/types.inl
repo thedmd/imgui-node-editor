@@ -1,9 +1,8 @@
 //------------------------------------------------------------------------------
-// Low level stuff responsible for talking with OS/Platform API and
-// discovering running configuration.
+// Math 2D
 //------------------------------------------------------------------------------
-# if !defined(__SPARK_CE_PROMO_TYPES_INL__)
-# define __SPARK_CE_PROMO_TYPES_INL__
+# if !defined(__AX_MATH_2D_INL__)
+# define __AX_MATH_2D_INL__
 
 
 //------------------------------------------------------------------------------
@@ -12,20 +11,21 @@
 
 //------------------------------------------------------------------------------
 # include <utility>
+# include <cmath>
 
 
 //------------------------------------------------------------------------------
-inline void Matrix::Zero()
+inline void ax::matrix::zero()
 {
-    *this = Matrix(0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f);
+    *this = matrix(0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f);
 }
 
-inline void Matrix::Reset()
+inline void ax::matrix::reset()
 {
-    *this = Matrix();
+    *this = matrix();
 }
 
-inline bool Matrix::Invert()
+inline bool ax::matrix::invert()
 {
     const float det = (m11 * m22 - m21 * m12);
     if (det == 0.0f)
@@ -33,7 +33,7 @@ inline bool Matrix::Invert()
 
     const float invDet = 1.0f / det;
 
-    *this = Matrix(
+    *this = matrix(
          m22 * invDet,
         -m12 * invDet,
         -m21 * invDet,
@@ -44,63 +44,63 @@ inline bool Matrix::Invert()
     return true;
 }
 
-inline void Matrix::Translate(float x, float y, MatrixOrder order/* = MatrixOrder_Prepend*/)
+inline void ax::matrix::translate(float x, float y, matrix_order order/* = matrix_order::prepend*/)
 {
-    Multiply(Matrix(1.0f, 0.0f, 0.0f, 1.0f, x, y), order);
+    combine(matrix(1.0f, 0.0f, 0.0f, 1.0f, x, y), order);
 }
 
-inline void Matrix::Rotate(float angle, MatrixOrder order/* = MatrixOrder_Prepend*/)
+inline void ax::matrix::rotate(float angle, matrix_order order/* = matrix_order::prepend*/)
 {
-    float angleRad = angle * SK_PI / 180.0f;
+    float angleRad = angle * AX_PI / 180.0f;
 
     const float c = cosf(angleRad);
     const float s = sinf(angleRad);
 
-    Multiply(Matrix(c, s, -s, c, 0.0f, 0.0f), order);
+    combine(matrix(c, s, -s, c, 0.0f, 0.0f), order);
 }
 
-inline void Matrix::RotateAt(float angle, float cx, float cy, MatrixOrder order/* = MatrixOrder_Prepend*/)
+inline void ax::matrix::rotate_at(float angle, float cx, float cy, matrix_order order/* = matrix_order::prepend*/)
 {
-    const float angleRad = angle * SK_PI / 180.0f;
+    const auto angleRad = angle * AX_PI / 180.0f;
 
-    const float c = cosf(angleRad);
-    const float s = sinf(angleRad);
+    const auto c = cosf(angleRad);
+    const auto s = sinf(angleRad);
 
-    Multiply(Matrix(c, s, -s, c,
+    combine(matrix(c, s, -s, c,
         -cx * c - cy * -s + cx,
         -cx * s - cy *  c + cy), order);
 }
 
-inline void Matrix::Scale(float x, float y, MatrixOrder order/* = MatrixOrder_Prepend*/)
+inline void ax::matrix::scale(float x, float y, matrix_order order/* = matrix_order::prepend*/)
 {
-    Multiply(Matrix(x, 0.0f, 0.0f, y, 0.0f, 0.0f), order);
+    combine(matrix(x, 0.0f, 0.0f, y, 0.0f, 0.0f), order);
 
 }
 
-inline void Matrix::Shear(float x, float y, MatrixOrder order/* = MatrixOrder_Prepend*/)
+inline void ax::matrix::shear(float x, float y, matrix_order order/* = matrix_order::prepend*/)
 {
-    Multiply(Matrix(1.0f, y, x, 1.0f, 0.0f, 0.0f), order);
+    combine(matrix(1.0f, y, x, 1.0f, 0.0f, 0.0f), order);
 }
 
-inline void Matrix::Multiply(const Matrix& matrix, MatrixOrder order/* = MatrixOrder_Prepend*/)
+inline void ax::matrix::combine(const matrix& matrix, matrix_order order/* = matrix_order::prepend*/)
 {
-    if (order == MatrixOrder_Set)
+    if (order == matrix_order::set)
     {
         if (this != &matrix)
             *this = matrix;
         return;
     }
 
-    const Matrix* am = this;
-    const Matrix* bm = &matrix;
+    const auto* am = this;
+    const auto* bm = &matrix;
 
-    if (order == MatrixOrder_Append)
+    if (order == matrix_order::append)
     {
         using std::swap;
         swap(am, bm);
     }
 
-    *this = Matrix(
+    *this = ax::matrix(
         am->m11 * bm->m11 + am->m21 * bm->m12,
         bm->m11 * am->m12 + bm->m12 * am->m22,
         bm->m21 * am->m11 + bm->m22 * am->m21,
@@ -109,80 +109,30 @@ inline void Matrix::Multiply(const Matrix& matrix, MatrixOrder order/* = MatrixO
         bm->m31 * am->m12 + bm->m32 * am->m22 + am->m32);
 }
 
-inline Matrix Matrix::Inverse() const
+inline ax::matrix ax::matrix::inverted() const
 {
-    Matrix inverted = *this;
-    inverted.Invert();
+    matrix inverted = *this;
+    inverted.invert();
     return inverted;
 }
 
 
 //------------------------------------------------------------------------------
-inline void Matrix::TransformPoints(Point* points, int count/* = 1*/) const
+inline void ax::matrix4::zero()
 {
-    for (int i = 0; i < count; ++i, ++points)
-    {
-        float x = m11 * points->x + m21 * points->y + m31;
-        float y = m12 * points->x + m22 * points->y + m32;
-
-        points->x = (int)x;
-        points->y = (int)y;
-    }
-}
-
-inline void Matrix::TransformPoints(PointF* points, int count/* = 1*/) const
-{
-    for (int i = 0; i < count; ++i, ++points)
-    {
-        float x = m11 * points->x + m21 * points->y + m31;
-        float y = m12 * points->x + m22 * points->y + m32;
-
-        points->x = x;
-        points->y = y;
-    }
-}
-
-inline void Matrix::TransformVectors(Point* points, int count/* = 1*/) const
-{
-    for (int i = 0; i < count; ++i, ++points)
-    {
-        float x = m11 * points->x + m21 * points->y;
-        float y = m12 * points->x + m22 * points->y;
-
-        points->x = (int)x;
-        points->y = (int)y;
-    }
-}
-
-inline void Matrix::TransformVectors(PointF* points, int count/* = 1*/) const
-{
-    for (int i = 0; i < count; ++i, ++points)
-    {
-        float x = m11 * points->x + m21 * points->y;
-        float y = m12 * points->x + m22 * points->y;
-
-        points->x = x;
-        points->y = y;
-    }
-}
-
-
-//------------------------------------------------------------------------------
-inline void Matrix4::Zero()
-{
-    *this = Matrix4(
+    *this = matrix4(
         0.0f, 0.0f, 0.0f, 0.0f,
         0.0f, 0.0f, 0.0f, 0.0f,
         0.0f, 0.0f, 0.0f, 0.0f,
         0.0f, 0.0f, 0.0f, 0.0f);
 }
 
-inline void Matrix4::Reset()
+inline void ax::matrix4::reset()
 {
-    *this = Matrix4();
+    *this = matrix4();
 }
 
-inline bool Matrix4::Invert()
+inline bool ax::matrix4::invert()
 {
 # if 0
     // wild magic 4 inverse - http://www.geometrictools.com/Documentation/LaplaceExpansionTheorem.pdf
@@ -209,7 +159,7 @@ inline bool Matrix4::Invert()
 
     if (det == 0.0f)
     {
-        Zero();
+        zero();
         return false;
     }
 
@@ -263,7 +213,7 @@ inline bool Matrix4::Invert()
 
     if (det == 0.0f)
     {
-        Zero();
+        zero();
         return false;
     }
 
@@ -278,7 +228,7 @@ inline bool Matrix4::Invert()
 # endif
 }
 
-inline void Matrix4::Transpose()
+inline void ax::matrix4::transpose()
 {
     using std::swap;
 
@@ -290,101 +240,101 @@ inline void Matrix4::Transpose()
     swap(m34, m43);
 }
 
-inline void Matrix4::Translate(float x, float y, float z, MatrixOrder order/* = MatrixOrder_Prepend*/)
+inline void ax::matrix4::translate(float x, float y, float z, matrix_order order/* = matrix_order::prepend*/)
 {
-    Multiply(Matrix4(
+    combine(matrix4(
         1.0f, 0.0f, 0.0f, 0.0f,
         0.0f, 1.0f, 0.0f, 0.0f,
         0.0f, 0.0f, 1.0f, 0.0f,
            x,    y,    z, 1.0f), order);
 }
 
-inline void Matrix4::RotateX(float angle, MatrixOrder order/* = MatrixOrder_Prepend*/)
+inline void ax::matrix4::rotate_x(float angle, matrix_order order/* = matrix_order::prepend*/)
 {
-    float angleRad = angle * SK_PI / 180.0f;
+    const auto angleRad = angle * AX_PI / 180.0f;
 
-    const float c = cosf(angleRad);
-    const float s = sinf(angleRad);
+    const auto c = cosf(angleRad);
+    const auto s = sinf(angleRad);
 
-    Multiply(Matrix4(
+    combine(matrix4(
         1.0f, 0.0f, 0.0f, 0.0f,
         0.0f,    c,   -s, 0.0f,
         0.0f,    s,    c, 0.0f,
         0.0f, 0.0f, 0.0f, 1.0f), order);
 }
 
-inline void Matrix4::RotateY(float angle, MatrixOrder order/* = MatrixOrder_Prepend*/)
+inline void ax::matrix4::rotate_y(float angle, matrix_order order/* = matrix_order::prepend*/)
 {
-    float angleRad = angle * SK_PI / 180.0f;
+    const auto angleRad = angle * AX_PI / 180.0f;
 
-    const float c = cosf(angleRad);
-    const float s = sinf(angleRad);
+    const auto c = cosf(angleRad);
+    const auto s = sinf(angleRad);
 
-    Multiply(Matrix4(
+    combine(matrix4(
            c, 0.0f,   -s, 0.0f,
         0.0f, 1.0f, 0.0f, 0.0f,
            s, 0.0f,    c, 0.0f,
         0.0f, 0.0f, 0.0f, 1.0f), order);
 }
 
-inline void Matrix4::RotateZ(float angle, MatrixOrder order/* = MatrixOrder_Prepend*/)
+inline void ax::matrix4::rotate_z(float angle, matrix_order order/* = matrix_order::prepend*/)
 {
-    float angleRad = angle * SK_PI / 180.0f;
+    const auto angleRad = angle * AX_PI / 180.0f;
 
-    const float c = cosf(angleRad);
-    const float s = sinf(angleRad);
+    const auto c = cosf(angleRad);
+    const auto s = sinf(angleRad);
 
-    Multiply(Matrix4(
+    combine(matrix4(
            c,   -s, 0.0f, 0.0f,
            s,    c, 0.0f, 0.0f,
         0.0f, 0.0f, 1.0f, 0.0f,
         0.0f, 0.0f, 0.0f, 1.0f), order);
 }
 
-inline void Matrix4::RotateAxis(float angle, float x, float y, float z, MatrixOrder order/* = MatrixOrder_Prepend*/)
+inline void ax::matrix4::rotate_axis(float angle, float x, float y, float z, matrix_order order/* = matrix_order::prepend*/)
 {
-    const float angleRad = angle * SK_PI / 180.0f;
+    const auto angleRad = angle * AX_PI / 180.0f;
 
-    const float c = cosf(angleRad);
-    const float s = sinf(angleRad);
+    const auto c = cosf(angleRad);
+    const auto s = sinf(angleRad);
 
-    const float rc = 1.0f - c;
+    const auto rc = 1.0f - c;
 
-    Multiply(Matrix4(
+    combine(matrix4(
         (rc * x * x) +       c, (rc * x * y) + (z * s), (rc * x * z) - (y * s), 0.0f,
         (rc * x * y) - (z * s), (rc * y * y) +       c, (rc * z * y) + (x * s), 0.0f,
         (rc * x * z) + (y * s), (rc * y * z) - (x * s), (rc * z * z) +       c, 0.0f,
                           0.0f,                   0.0f,                   0.0f, 1.0f), order);
 }
 
-inline void Matrix4::Scale(float x, float y, float z, MatrixOrder order/* = MatrixOrder_Prepend*/)
+inline void ax::matrix4::scale(float x, float y, float z, matrix_order order/* = matrix_order::prepend*/)
 {
-    Multiply(Matrix4(
+    combine(matrix4(
            x, 0.0f, 0.0f, 0.0f,
         0.0f,    y, 0.0f, 0.0f,
         0.0f, 0.0f,    z, 0.0f,
         0.0f, 0.0f, 0.0f, 1.0f), order);
 }
 
-inline void Matrix4::Multiply(const Matrix4& matrix, MatrixOrder order/* = MatrixOrder_Prepend*/)
+inline void ax::matrix4::combine(const matrix4& matrix, matrix_order order/* = matrix_order::prepend*/)
 {
-    if (order == MatrixOrder_Set)
+    if (order == matrix_order::set)
     {
         if (this != &matrix)
             *this = matrix;
         return;
     }
 
-    const Matrix4* am = this;
-    const Matrix4* bm = &matrix;
+    const auto* am = this;
+    const auto* bm = &matrix;
 
-    if (order == MatrixOrder_Append)
+    if (order == matrix_order::append)
     {
         using std::swap;
         swap(am, bm);
     }
 
-    *this = Matrix4(
+    *this = matrix4(
         am->m11 * bm->m11 + am->m21 * bm->m12 + am->m31 * bm->m13 + am->m41 * bm->m14,
         am->m12 * bm->m11 + am->m22 * bm->m12 + am->m32 * bm->m13 + am->m42 * bm->m14,
         am->m13 * bm->m11 + am->m23 * bm->m12 + am->m33 * bm->m13 + am->m43 * bm->m14,
@@ -406,116 +356,78 @@ inline void Matrix4::Multiply(const Matrix4& matrix, MatrixOrder order/* = Matri
         am->m14 * bm->m41 + am->m24 * bm->m42 + am->m34 * bm->m43 + am->m44 * bm->m44);
 }
 
-inline Matrix4 Matrix4::Inverse() const
+inline ax::matrix4 ax::matrix4::inverted() const
 {
-    Matrix4 inverted = *this;
-    inverted.Invert();
+    matrix4 inverted = *this;
+    inverted.invert();
     return inverted;
 }
 
-inline Matrix4 Matrix4::Transposed() const
+inline ax::matrix4 ax::matrix4::transposed() const
 {
-    Matrix4 transposed = *this;
-    transposed.Transpose();
+    matrix4 transposed = *this;
+    transposed.transpose();
     return transposed;
 }
 
-inline void Matrix4::TransformPoints(Point* points, int count/* = 1*/) const
+
+//------------------------------------------------------------------------------
+namespace ax {
+namespace detail {
+
+template <typename M, typename T>
+inline void transform_points(const M& m, basic_point<T>* points, size_t count)
 {
-    Point* p = points;
-    for (int i = 0; i < count; ++i, ++p)
+    static_assert(false, "This combination of matrix type and point type is not supported");
+}
+
+template <typename M, typename T>
+inline void transform_vectors(const M& m, basic_point<T>* points, size_t count)
+{
+    typedef basic_point<T> point_t;
+
+    for (size_t i = 0; i < count; ++i, ++points)
     {
-        float x = m11 * p->x + m21 * p->y + m41;
-        float y = m12 * p->x + m22 * p->y + m42;
-        //float w = m14 * p->x + m24 * p->y + m44;
+        auto x = m.m11 * points->x + m.m21 * points->y;
+        auto y = m.m12 * points->x + m.m22 * points->y;
 
-        //if (w != 0.0f && w != 1.0f)
-        //{
-        //    x /= w;
-        //    y /= w;
-        //}
-
-        p->x = (int)x;
-        p->y = (int)y;
+        points->x = static_cast<point_t::value_type>(x);
+        points->y = static_cast<point_t::value_type>(y);
     }
 }
 
-inline void Matrix4::TransformPoints(PointF* points, int count/* = 1*/) const
+template <typename T>
+inline void transform_points(const matrix& m, basic_point<T>* points, size_t count)
 {
-    PointF* p = points;
-    for (int i = 0; i < count; ++i, ++p)
+    typedef basic_point<T> point_t;
+
+    for (size_t i = 0; i < count; ++i, ++points)
     {
-        float x = m11 * p->x + m21 * p->y + m41;
-        float y = m12 * p->x + m22 * p->y + m42;
-        //float w = m14 * p->x + m24 * p->y + m44;
+        auto x = m.m11 * points->x + m.m21 * points->y + m.m31;
+        auto y = m.m12 * points->x + m.m22 * points->y + m.m32;
 
-        //if (w != 0.0f && w != 1.0f)
-        //{
-        //    x /= w;
-        //    y /= w;
-        //}
-
-        p->x = x;
-        p->y = y;
+        points->x = static_cast<point_t::value_type>(x);
+        points->y = static_cast<point_t::value_type>(y);
     }
 }
 
-inline void Matrix4::TransformPoints(Point4F* points, int count/* = 1*/) const
+template <typename T>
+inline void transform_points(const matrix4& m, basic_point<T>* points, size_t count)
 {
-    Point4F* p = points;
-    for (int i = 0; i < count; ++i, ++p)
-    {
-        const float x = m11 * p->x + m21 * p->y + m31 * p->z + m41 * p->w;
-        const float y = m12 * p->x + m22 * p->y + m32 * p->z + m42 * p->w;
-        const float z = m13 * p->x + m23 * p->y + m33 * p->z + m43 * p->w;
-        const float w = m14 * p->x + m24 * p->y + m34 * p->z + m44 * p->w;
+    typedef basic_point<T> point_t;
 
-        p->x = x;
-        p->y = y;
-        p->z = z;
-        p->w = w;
+    for (size_t i = 0; i < count; ++i, ++points)
+    {
+        auto x = m.m11 * points->x + m.m21 * points->y + m.m41;
+        auto y = m.m12 * points->x + m.m22 * points->y + m.m42;
+
+        points->x = static_cast<point_t::value_type>(x);
+        points->y = static_cast<point_t::value_type>(y);
     }
 }
 
-inline void Matrix4::TransformVectors(Point* points, int count/* = 1*/) const
-{
-    Point* p = points;
-    for (int i = 0; i < count; ++i, ++p)
-    {
-        float x = m11 * p->x + m21 * p->y;
-        float y = m12 * p->x + m22 * p->y;
-        //float w = m14 * p->x + m24 * p->y;
-
-        //if (w != 0.0f && w != 1.0f)
-        //{
-        //    x /= w;
-        //    y /= w;
-        //}
-
-        p->x = (int)x;
-        p->y = (int)y;
-    }
-}
-
-inline void Matrix4::TransformVectors(PointF* points, int count/* = 1*/) const
-{
-    PointF* p = points;
-    for (int i = 0; i < count; ++i, ++p)
-    {
-        float x = m11 * p->x + m21 * p->y;
-        float y = m12 * p->x + m22 * p->y;
-        //float w = m14 * p->x + m24 * p->y;
-
-        //if (w != 0.0f && w != 1.0f)
-        //{
-        //    x /= w;
-        //    y /= w;
-        //}
-
-        p->x = x;
-        p->y = y;
-    }
-}
+} // namespace detail
+} // namespace ax
 
 
 //------------------------------------------------------------------------------
@@ -523,4 +435,4 @@ inline void Matrix4::TransformVectors(PointF* points, int count/* = 1*/) const
 
 
 //------------------------------------------------------------------------------
-# endif // __SPARK_CE_PROMO_TYPES_INL__
+# endif // __AX_MATH_2D_INL__

@@ -6,24 +6,26 @@
 #include "Types.h"
 #include "Types.inl"
 
+using namespace ax;
+
 static inline ImVec2 operator+(const ImVec2& lhs, const ImVec2& rhs) { return ImVec2(lhs.x+rhs.x, lhs.y+rhs.y); }
 static inline ImVec2 operator-(const ImVec2& lhs, const ImVec2& rhs) { return ImVec2(lhs.x-rhs.x, lhs.y-rhs.y); }
 static inline ImVec2 operator*(const ImVec2& lhs, float rhs)         { return ImVec2(lhs.x * rhs,   lhs.y * rhs); }
 static inline ImVec2 operator*(float lhs,         const ImVec2& rhs) { return ImVec2(lhs   * rhs.x, lhs   * rhs.y); }
 
 inline int    roundi(float value)           { return static_cast<int>(value); }
-inline Point  to_point(const ImVec2& value) { return Point(roundi(value.x), roundi(value.y)); }
-inline Size   to_size (const ImVec2& value) { return Size (roundi(value.x), roundi(value.y)); }
-inline ImVec2 to_imvec(const Point& value)  { return ImVec2(static_cast<float>(value.x), static_cast<float>(value.y)); }
-inline ImVec2 to_imvec(const Size& value)   { return ImVec2(static_cast<float>(value.w), static_cast<float>(value.h)); }
-
+inline point  to_point(const ImVec2& value) { return point(roundi(value.x), roundi(value.y)); }
+inline size   to_size (const ImVec2& value) { return size (roundi(value.x), roundi(value.y)); }
+inline ImVec2 to_imvec(const point& value)  { return ImVec2(static_cast<float>(value.x), static_cast<float>(value.y)); }
+inline ImVec2 to_imvec(const pointf& value) { return ImVec2(value.x, value.y); }
+inline ImVec2 to_imvec(const size& value)   { return ImVec2(static_cast<float>(value.w), static_cast<float>(value.h)); }
 
 enum class IconType
 {
     Flow, Circle, Square, Grid, RoundSquare
 };
 
-void DrawIcon(ImDrawList* drawList, Rect rect, IconType type, bool filled, ImU32 color)
+void DrawIcon(ImDrawList* drawList, rect rect, IconType type, bool filled, ImU32 color)
 {
     //drawList->AddRectFilled(to_imvec(rect.top_left()), to_imvec(rect.bottom_right()), ImColor(0, 0, 0));
 
@@ -40,7 +42,7 @@ void DrawIcon(ImDrawList* drawList, Rect rect, IconType type, bool filled, ImU32
         const auto rounding   = 2.0f * origin_scale;
         const auto tip_round  = 0.7f; // percentage of triangle edge (for tip)
         const auto edge_round = 0.7f; // percentage of triangle edge (for corner)
-        const auto canvas = RectF(
+        const auto canvas = rectf(
             rect.x + margin + offset_x,
             rect.y + margin + offset_y,
             rect.w - margin + offset_x,
@@ -179,14 +181,14 @@ void DrawIcon(ImDrawList* drawList, Rect rect, IconType type, bool filled, ImU32
     }
 }
 
-void DrawIcon(Rect rect, IconType type, bool filled, ImU32 color)
+void DrawIcon(rect rect, IconType type, bool filled, ImU32 color)
 {
     DrawIcon(ImGui::GetWindowDrawList(), rect, type, filled, color);
 }
 
 
 
-const int   PortIconSize = 20;
+const int   PortIconsize = 16;
 const float JoinBezierStrength = 50;
 
 enum class PortType
@@ -211,9 +213,9 @@ struct Port
     std::string Name;
     PortType Type;
 
-    Rect FrameRect;
-    Rect IconRect;
-    Rect LabelRect;
+    rect FrameRect;
+    rect IconRect;
+    rect LabelRect;
 
     Port(int id, int nodeId, const char* name, PortType type):
         ID(id), NodeID(nodeId), Name(name), Type(type)
@@ -228,7 +230,7 @@ struct Port
         const auto innerSpacingX = roundi(style.ItemInnerSpacing.x);
 
         // Measure side of every component
-        IconRect.size      = Size(PortIconSize, PortIconSize);
+        IconRect.size      = size(PortIconsize, PortIconsize);
         LabelRect.size     = to_size(ImGui::CalcTextSize(Name.c_str()));
 
         // Align items to left or right
@@ -276,10 +278,10 @@ struct Port
         }
 
         // Calculate whole widget size
-        FrameRect = Rect::make_union(IconRect, LabelRect);
+        FrameRect = ax::rect::make_union(IconRect, LabelRect);
     }
 
-    void MoveLayout(const Point& offset)
+    void MoveLayout(const point& offset)
     {
         FrameRect.location += offset;
         IconRect.location  += offset;
@@ -291,18 +293,18 @@ struct Node
 {
     int ID;
     std::string Name;
-    Point Position;
+    point Position;
     std::vector<Port> Inputs;
     std::vector<Port> Outputs;
 
-    Rect FrameRect;
-    Rect HeaderRect;
-    Rect LabelRect;
-    Rect ClientRect;
-    Rect InputsRect;
-    Rect OutputsRect;
+    rect FrameRect;
+    rect HeaderRect;
+    rect LabelRect;
+    rect ClientRect;
+    rect InputsRect;
+    rect OutputsRect;
 
-    Node(int id, const char* name, const Point& position):
+    Node(int id, const char* name, const point& position):
         ID(id), Name(name), Position(position)
     {
     }
@@ -344,7 +346,7 @@ struct Node
         LabelRect.size = to_size(ImGui::CalcTextSize(Name.c_str()));
 
         // Measure header size with paddings
-        HeaderRect.location = Point(0, 0);
+        HeaderRect.location = point(0, 0);
         HeaderRect.w = std::max(LabelRect.w, portAreaWidth) + framePaddingX * 2;
         HeaderRect.h = LabelRect.h + framePaddingY * 2;
 
@@ -365,14 +367,14 @@ struct Node
         OutputsRect.y = HeaderRect.bottom() + innerSpacingY;
 
         // Client area contain inputs and outputs without padding
-        ClientRect = Rect::make_union(InputsRect, OutputsRect);
+        ClientRect = rect::make_union(InputsRect, OutputsRect);
 
         // Widget frame contain header and client area with padding
-        FrameRect  = Rect::make_union(HeaderRect, ClientRect);
+        FrameRect  = rect::make_union(HeaderRect, ClientRect);
         FrameRect.h += framePaddingY;
 
         // Move ports to positions inside node
-        Point cursor = InputsRect.location;
+        point cursor = InputsRect.location;
         for (auto& input : Inputs)
         {
             input.MoveLayout(cursor);
@@ -388,7 +390,7 @@ struct Node
         }
     }
 
-    void MoveLayout(const Point& offset)
+    void MoveLayout(const point& offset)
     {
         FrameRect.location += offset;
         HeaderRect.location += offset;
@@ -432,24 +434,24 @@ NodeWindow::NodeWindow(void)
     int nextId = 1;
     auto genId = [&nextId]() { return nextId++; };
 
-    s_Nodes.emplace_back(genId(), "InputAction Fire", Point(50, 200));
+    s_Nodes.emplace_back(genId(), "InputAction Fire", point(50, 200));
     s_Nodes.back().Outputs.emplace_back(genId(), s_Nodes.back().ID, "Pressed", PortType::Flow);
     s_Nodes.back().Outputs.emplace_back(genId(), s_Nodes.back().ID, "Released", PortType::Flow);
 
-    s_Nodes.emplace_back(genId(), "Branch", Point(300, 20));
+    s_Nodes.emplace_back(genId(), "Branch", point(300, 20));
     s_Nodes.back().Inputs.emplace_back(genId(), s_Nodes.back().ID, "", PortType::Flow);
     s_Nodes.back().Inputs.emplace_back(genId(), s_Nodes.back().ID, "Condition", PortType::Bool);
     s_Nodes.back().Outputs.emplace_back(genId(), s_Nodes.back().ID, "True", PortType::Flow);
     s_Nodes.back().Outputs.emplace_back(genId(), s_Nodes.back().ID, "False", PortType::Flow);
 
-    s_Nodes.emplace_back(genId(), "Do N", Point(600, 30));
+    s_Nodes.emplace_back(genId(), "Do N", point(600, 30));
     s_Nodes.back().Inputs.emplace_back(genId(), s_Nodes.back().ID, "Enter", PortType::Flow);
     s_Nodes.back().Inputs.emplace_back(genId(), s_Nodes.back().ID, "N", PortType::Int);
     s_Nodes.back().Inputs.emplace_back(genId(), s_Nodes.back().ID, "Reset", PortType::Flow);
     s_Nodes.back().Outputs.emplace_back(genId(), s_Nodes.back().ID, "Exit", PortType::Flow);
     s_Nodes.back().Outputs.emplace_back(genId(), s_Nodes.back().ID, "Counter", PortType::Int);
 
-    s_Nodes.emplace_back(genId(), "OutputAction", Point(1000, 200));
+    s_Nodes.emplace_back(genId(), "OutputAction", point(1000, 200));
     s_Nodes.back().Inputs.emplace_back(genId(), s_Nodes.back().ID, "Sample", PortType::Float);
 
     s_Joins.emplace_back(genId(), s_Nodes[0].Outputs[0].ID, s_Nodes[1].Inputs[0].ID);
@@ -462,7 +464,7 @@ NodeWindow::NodeWindow(void)
 void Dummy();
 
 static int s_ActiveNodeId = 0;
-static Point s_DragOffset;
+static point s_DragOffset;
 
 void NodeWindow::OnGui()
 {
@@ -545,7 +547,7 @@ void NodeWindow::OnGui()
         }
 
         drawList->ChannelsSetCurrent(1);
-        auto drawRect = [drawList, &nodeTopLeft](const Rect& rect, ImU32 color)
+        auto drawRect = [drawList, &nodeTopLeft](const rect& rect, ImU32 color)
         {
             if (rect.is_empty())
                 return;
@@ -556,7 +558,7 @@ void NodeWindow::OnGui()
             drawList->AddRect(tl, br, color);
         };
 
-        auto fillRect = [drawList, &nodeTopLeft](const Rect& rect, ImU32 color)
+        auto fillRect = [drawList, &nodeTopLeft](const rect& rect, ImU32 color)
         {
             if (rect.is_empty())
                 return;
@@ -567,7 +569,7 @@ void NodeWindow::OnGui()
             drawList->AddRectFilled(tl, br, color);
         };
 
-        auto drawText = [drawList, &nodeTopLeft](const Rect& rect, const std::string& text)
+        auto drawText = [drawList, &nodeTopLeft](const rect& rect, const std::string& text)
         {
             if (text.empty())
                 return;
@@ -575,7 +577,7 @@ void NodeWindow::OnGui()
             drawList->AddText(to_imvec(rect.location), ImColor(255, 255, 255), text.c_str());
         };
 
-        auto drawIcon = [&drawList, &drawRect](Rect rect, PortType type, bool connected)
+        auto drawIcon = [&drawList, &drawRect](rect rect, PortType type, bool connected)
         {
             if (type == PortType::Flow)
                 DrawIcon(drawList, rect, IconType::Flow, connected, ImColor(255, 255, 255));
@@ -653,12 +655,12 @@ void NodeWindow::OnGui()
         auto start = findPort(join.StartPortID);
         auto end   = findPort(join.EndPortID);
 
-        auto startPoint   = to_imvec(Point(start->IconRect.right(), start->IconRect.center_y()));
-        auto endPoint     = to_imvec(Point(end->IconRect.left(), end->IconRect.center_y()));
-        auto startControl = startPoint + ImVec2(JoinBezierStrength, 0);
-        auto endControl   = endPoint - ImVec2(JoinBezierStrength, 0);
+        auto startpoint   = to_imvec(point(start->IconRect.right(), start->IconRect.center_y()));
+        auto endpoint     = to_imvec(point(end->IconRect.left(), end->IconRect.center_y()));
+        auto startControl = startpoint + ImVec2(JoinBezierStrength, 0);
+        auto endControl   = endpoint - ImVec2(JoinBezierStrength, 0);
 
-        drawList->AddBezierCurve(startPoint, startControl, endControl, endPoint, ImColor(255, 255, 0), 2.0f);
+        drawList->AddBezierCurve(startpoint, startControl, endControl, endpoint, ImColor(255, 255, 0), 2.0f);
     }
 
     drawList->ChannelsSetCurrent(0);
@@ -670,19 +672,19 @@ void NodeWindow::OnGui()
 
     static float scale = 1.0f;
     ImGui::DragFloat("Scale", &scale, 0.01f, 0.1f, 8.0f);
-    auto iconSize = Size(roundi(PortIconSize * scale), roundi(PortIconSize * scale));
-    ImGui::Text("Size: %d", iconSize.w);
+    auto iconsize = size(roundi(PortIconsize * scale), roundi(PortIconsize * scale));
+    ImGui::Text("size: %d", iconsize.w);
 
-    DrawIcon(drawList, Rect(to_point(iconOrigin),                          iconSize), IconType::Flow,        false, ImColor(255, 255, 255));
-    DrawIcon(drawList, Rect(to_point(iconOrigin) + Point(roundi(     0 * scale), roundi(32 * scale)), iconSize), IconType::Flow,        true,  ImColor(255, 255, 255));
-    DrawIcon(drawList, Rect(to_point(iconOrigin) + Point(roundi(    32 * scale), roundi( 0 * scale)), iconSize), IconType::Circle,      false, ImColor(  0, 255, 255));
-    DrawIcon(drawList, Rect(to_point(iconOrigin) + Point(roundi(    32 * scale), roundi(32 * scale)), iconSize), IconType::Circle,      true,  ImColor(  0, 255, 255));
-    DrawIcon(drawList, Rect(to_point(iconOrigin) + Point(roundi(2 * 32 * scale), roundi( 0 * scale)), iconSize), IconType::Square,      false, ImColor(128, 255, 128));
-    DrawIcon(drawList, Rect(to_point(iconOrigin) + Point(roundi(2 * 32 * scale), roundi(32 * scale)), iconSize), IconType::Square,      true,  ImColor(128, 255, 128));
-    DrawIcon(drawList, Rect(to_point(iconOrigin) + Point(roundi(3 * 32 * scale), roundi( 0 * scale)), iconSize), IconType::Grid,        false, ImColor(128, 255, 128));
-    DrawIcon(drawList, Rect(to_point(iconOrigin) + Point(roundi(3 * 32 * scale), roundi(32 * scale)), iconSize), IconType::Grid,        true,  ImColor(128, 255, 128));
-    DrawIcon(drawList, Rect(to_point(iconOrigin) + Point(roundi(4 * 32 * scale), roundi( 0 * scale)), iconSize), IconType::RoundSquare, false, ImColor(255, 128, 128));
-    DrawIcon(drawList, Rect(to_point(iconOrigin) + Point(roundi(4 * 32 * scale), roundi(32 * scale)), iconSize), IconType::RoundSquare, true,  ImColor(255, 128, 128));
+    DrawIcon(drawList, rect(to_point(iconOrigin),                          iconsize), IconType::Flow,        false, ImColor(255, 255, 255));
+    DrawIcon(drawList, rect(to_point(iconOrigin) + point(roundi(     0 * scale), roundi(32 * scale)), iconsize), IconType::Flow,        true,  ImColor(255, 255, 255));
+    DrawIcon(drawList, rect(to_point(iconOrigin) + point(roundi(    32 * scale), roundi( 0 * scale)), iconsize), IconType::Circle,      false, ImColor(  0, 255, 255));
+    DrawIcon(drawList, rect(to_point(iconOrigin) + point(roundi(    32 * scale), roundi(32 * scale)), iconsize), IconType::Circle,      true,  ImColor(  0, 255, 255));
+    DrawIcon(drawList, rect(to_point(iconOrigin) + point(roundi(2 * 32 * scale), roundi( 0 * scale)), iconsize), IconType::Square,      false, ImColor(128, 255, 128));
+    DrawIcon(drawList, rect(to_point(iconOrigin) + point(roundi(2 * 32 * scale), roundi(32 * scale)), iconsize), IconType::Square,      true,  ImColor(128, 255, 128));
+    DrawIcon(drawList, rect(to_point(iconOrigin) + point(roundi(3 * 32 * scale), roundi( 0 * scale)), iconsize), IconType::Grid,        false, ImColor(128, 255, 128));
+    DrawIcon(drawList, rect(to_point(iconOrigin) + point(roundi(3 * 32 * scale), roundi(32 * scale)), iconsize), IconType::Grid,        true,  ImColor(128, 255, 128));
+    DrawIcon(drawList, rect(to_point(iconOrigin) + point(roundi(4 * 32 * scale), roundi( 0 * scale)), iconsize), IconType::RoundSquare, false, ImColor(255, 128, 128));
+    DrawIcon(drawList, rect(to_point(iconOrigin) + point(roundi(4 * 32 * scale), roundi(32 * scale)), iconsize), IconType::RoundSquare, true,  ImColor(255, 128, 128));
 
     ImGui::SetCursorScreenPos(cursorTopLeft);
     ImGui::Text("IsAnyItemActive: %d", ImGui::IsAnyItemActive() ? 1 : 0);
@@ -699,15 +701,15 @@ void Dummy()
     {
         int     ID;
         char    Name[32];
-        ImVec2  Pos, Size;
+        ImVec2  Pos, size;
         float   Value;
         ImVec4  Color;
         int     InputsCount, OutputsCount;
 
         Node(int id, const char* name, const ImVec2& pos, float value, const ImVec4& color, int inputs_count, int outputs_count) { ID = id; strncpy(Name, name, 31); Name[31] = 0; Pos = pos; Value = value; Color = color; InputsCount = inputs_count; OutputsCount = outputs_count; }
 
-        ImVec2 GetInputSlotPos(int slot_no) const   { return ImVec2(Pos.x, Pos.y + Size.y * ((float)slot_no+1) / ((float)InputsCount+1)); }
-        ImVec2 GetOutputSlotPos(int slot_no) const  { return ImVec2(Pos.x + Size.x, Pos.y + Size.y * ((float)slot_no+1) / ((float)OutputsCount+1)); }
+        ImVec2 GetInputSlotPos(int slot_no) const   { return ImVec2(Pos.x, Pos.y + size.y * ((float)slot_no+1) / ((float)InputsCount+1)); }
+        ImVec2 GetOutputSlotPos(int slot_no) const  { return ImVec2(Pos.x + size.x, Pos.y + size.y * ((float)slot_no+1) / ((float)OutputsCount+1)); }
     };
     struct NodeLink
     {
@@ -821,13 +823,13 @@ void Dummy()
 
         // Save the size of what we have emitted and whether any of the widgets are being used
         bool node_widgets_active = (!old_any_active && ImGui::IsAnyItemActive());
-        node->Size = ImGui::GetItemRectSize() + NODE_WINDOW_PADDING + NODE_WINDOW_PADDING;
-        ImVec2 node_rect_max = node_rect_min + node->Size;
+        node->size = ImGui::GetItemRectSize() + NODE_WINDOW_PADDING + NODE_WINDOW_PADDING;
+        ImVec2 node_rect_max = node_rect_min + node->size;
 
         // Display node box
         draw_list->ChannelsSetCurrent(0); // Background
         ImGui::SetCursorScreenPos(node_rect_min);
-        ImGui::InvisibleButton("node", node->Size);
+        ImGui::InvisibleButton("node", node->size);
         if (ImGui::IsItemHovered())
         {
             node_hovered_in_scene = node->ID;
