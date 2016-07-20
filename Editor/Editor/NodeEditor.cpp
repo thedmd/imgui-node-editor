@@ -122,33 +122,18 @@ bool ed::Context::SetNodeStage(NodeStage stage)
             break;
 
         case NodeStage::Header:
-            ImGui::Dummy(ImVec2(0, 0));
-            cursor = ImGui::GetCursorScreenPos();
             ImGui::EndGroup();
-            ImGui::GetWindowDrawList()->AddRect(
-                cursor + ImVec2(0, -ImGui::GetStyle().ItemSpacing.y - ImGui::GetItemRectSize().y),
-                cursor + ImVec2(ImGui::GetItemRectSize().x, -ImGui::GetStyle().ItemSpacing.y),
-                ImColor(255, 0, 255));
+            ImGui::GetWindowDrawList()->AddRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), ImColor(255, 0, 255));
             break;
 
         case NodeStage::Input:
-            ImGui::Dummy(ImVec2(0, 0));
-            cursor = ImGui::GetCursorScreenPos();
             ImGui::EndGroup();
-            ImGui::GetWindowDrawList()->AddRect(
-                cursor + ImVec2(0, -ImGui::GetStyle().ItemSpacing.y - ImGui::GetItemRectSize().y),
-                cursor + ImVec2(ImGui::GetItemRectSize().x, -ImGui::GetStyle().ItemSpacing.y),
-                ImColor(255, 0, 0));
+            ImGui::GetWindowDrawList()->AddRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), ImColor(255, 0, 0));
             break;
 
         case NodeStage::Output:
-            ImGui::Dummy(ImVec2(0, 0));
-            cursor = ImGui::GetCursorScreenPos();
             ImGui::EndGroup();
-            ImGui::GetWindowDrawList()->AddRect(
-                cursor + ImVec2(0, -ImGui::GetStyle().ItemSpacing.y - ImGui::GetItemRectSize().y),
-                cursor + ImVec2(ImGui::GetItemRectSize().x, -ImGui::GetStyle().ItemSpacing.y),
-                ImColor(0, 255, 0));
+            ImGui::GetWindowDrawList()->AddRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), ImColor(0, 255, 0));
             break;
 
         case NodeStage::End:
@@ -177,13 +162,8 @@ bool ed::Context::SetNodeStage(NodeStage stage)
             break;
 
         case NodeStage::End:
-            ImGui::Dummy(ImVec2(0, 0));
-            cursor = ImGui::GetCursorScreenPos();
             ImGui::EndGroup();
-            ImGui::GetWindowDrawList()->AddRect(
-                cursor + ImVec2(0, -ImGui::GetStyle().ItemSpacing.y - ImGui::GetItemRectSize().y),
-                cursor + ImVec2(ImGui::GetItemRectSize().x, -ImGui::GetStyle().ItemSpacing.y),
-                ImColor(0, 255, 255));
+            ImGui::GetWindowDrawList()->AddRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), ImColor(0, 255, 255));
             break;
     }
 
@@ -312,17 +292,20 @@ bool ed::Icon(const char* id, const ImVec2& size, IconType type, bool filled, co
     return ImGui::/*Invisible*/Button(id, size);
 }
 
-void ed::Spring()
+void ed::HorizontalSpring()
 {
 }
 
+void ed::VerticalSpring()
+{
+}
 
-ax::NodeEditor::Context* ax::NodeEditor::CreateEditor()
+ed::Context* ed::CreateEditor()
 {
     return new Context();
 }
 
-void ax::NodeEditor::DestroyEditor(Context* ctx)
+void ed::DestroyEditor(Context* ctx)
 {
     if (GetCurrentEditor() == ctx)
         SetCurrentEditor(nullptr);
@@ -330,17 +313,17 @@ void ax::NodeEditor::DestroyEditor(Context* ctx)
     delete ctx;
 }
 
-void ax::NodeEditor::SetCurrentEditor(Context* ctx)
+void ed::SetCurrentEditor(Context* ctx)
 {
     s_Editor = ctx;
 }
 
-ax::NodeEditor::Context* ax::NodeEditor::GetCurrentEditor()
+ed::Context* ed::GetCurrentEditor()
 {
     return s_Editor;
 }
 
-void ax::NodeEditor::Begin(const char* id)
+void ed::Begin(const char* id)
 {
     if (!s_Editor->IsInitialized)
     {
@@ -351,12 +334,18 @@ void ax::NodeEditor::Begin(const char* id)
     ImGui::BeginChild(id, ImVec2(0, 0), true, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoMove);
 }
 
-void ax::NodeEditor::End()
+void ed::End()
 {
     ImGui::EndChild();
+
+    if (s_Editor->Settings.Dirty)
+    {
+        s_Editor->Settings.Dirty = false;
+        s_Editor->SaveSettings();
+    }
 }
 
-void ax::NodeEditor::BeginNode(int id)
+void ed::BeginNode(int id)
 {
     assert(nullptr == s_Editor->CurrentNode);
 
@@ -383,14 +372,14 @@ void ax::NodeEditor::BeginNode(int id)
 
     // Position node on screen
     if (s_Editor->ActiveNode == node)
-        ImGui::SetCursorScreenPos(to_imvec(node->Bounds.location) + s_Editor->DragOffset); // drag, clean up
+        ImGui::SetCursorScreenPos(to_imvec(node->Bounds.location) + s_Editor->DragOffset); // drag, find a better way
     else
         ImGui::SetCursorScreenPos(to_imvec(node->Bounds.location));
 
     s_Editor->SetNodeStage(NodeStage::Begin);
 }
 
-void ax::NodeEditor::EndNode()
+void ed::EndNode()
 {
     assert(nullptr != s_Editor->CurrentNode);
 
@@ -402,6 +391,9 @@ void ax::NodeEditor::EndNode()
     if (s_Editor->CurrentNode->Bounds != nodeRect)
     {
         s_Editor->CurrentNode->Bounds = nodeRect;
+
+        s_Editor->MarkSettingsDirty();
+
         // TODO: update layout
         //ImGui::Text((std::string("Changed: ") + std::to_string(s_Editor->CurrentNode->ID)).c_str());
     }
@@ -433,7 +425,7 @@ void ax::NodeEditor::EndNode()
     s_Editor->SetNodeStage(NodeStage::Invalid);
 }
 
-void ax::NodeEditor::BeginHeader()
+void ed::BeginHeader()
 {
     assert(nullptr != s_Editor->CurrentNode);
 
@@ -442,18 +434,13 @@ void ax::NodeEditor::BeginHeader()
     ImGui::BeginGroup();
 }
 
-void ax::NodeEditor::EndHeader()
+void ed::EndHeader()
 {
-    ImGui::Dummy(ImVec2(0, 0));
-    auto cursor = ImGui::GetCursorScreenPos();
     ImGui::EndGroup();
-    ImGui::GetWindowDrawList()->AddRect(
-        cursor + ImVec2(0, -ImGui::GetStyle().ItemSpacing.y - ImGui::GetItemRectSize().y),
-        cursor + ImVec2(ImGui::GetItemRectSize().x, -ImGui::GetStyle().ItemSpacing.y),
-        ImColor(0, 255, 255));
+    ImGui::GetWindowDrawList()->AddRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), ImColor(0, 255, 255));
 }
 
-void ax::NodeEditor::BeginInput(int id)
+void ed::BeginInput(int id)
 {
     assert(nullptr != s_Editor->CurrentNode);
 
@@ -462,39 +449,32 @@ void ax::NodeEditor::BeginInput(int id)
     ImGui::BeginGroup();
 }
 
-void ax::NodeEditor::EndInput()
+void ed::EndInput()
 {
-    ImGui::Dummy(ImVec2(0, 0));
-    auto cursor = ImGui::GetCursorScreenPos();
     ImGui::EndGroup();
-    ImGui::GetWindowDrawList()->AddRect(
-        cursor + ImVec2(0, -ImGui::GetStyle().ItemSpacing.y - ImGui::GetItemRectSize().y),
-        cursor + ImVec2(ImGui::GetItemRectSize().x, -ImGui::GetStyle().ItemSpacing.y),
-        ImColor(0, 255, 255));
+    ImGui::GetWindowDrawList()->AddRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), ImColor(0, 255, 255));
 }
 
-void ax::NodeEditor::BeginOutput(int id)
+void ed::BeginOutput(int id)
 {
     assert(nullptr != s_Editor->CurrentNode);
 
     s_Editor->SetNodeStage(NodeStage::Output);
 
+    ed::HorizontalSpring();
+
     ImGui::BeginGroup();
-
-    Spring();
 }
 
-void ax::NodeEditor::EndOutput()
+void ed::EndOutput()
 {
-    ImGui::Dummy(ImVec2(0, 0));
-    auto cursor = ImGui::GetCursorScreenPos();
     ImGui::EndGroup();
-    ImGui::GetWindowDrawList()->AddRect(
-        cursor + ImVec2(0, -ImGui::GetStyle().ItemSpacing.y - ImGui::GetItemRectSize().y),
-        cursor + ImVec2(ImGui::GetItemRectSize().x, -ImGui::GetStyle().ItemSpacing.y),
-        ImColor(0, 255, 255));
+    ImGui::GetWindowDrawList()->AddRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), ImColor(0, 255, 255));
 }
 
+void ed::Link(int id, int startNodeId, int endNodeId, const ImVec4& color/* = ImVec4(1, 1, 1, 1)*/)
+{
+}
 
 
 
