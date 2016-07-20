@@ -4,10 +4,15 @@
 #include "imgui/imgui_internal.h"
 #include "types.h"
 #include "types.inl"
+#define PICOJSON_USE_LOCALE 0
+#include "picojson.h"
 #include <vector>
 
 namespace ax {
 namespace NodeEditor {
+
+using std::vector;
+using std::string;
 
 static inline ImVec2 operator+(const ImVec2& lhs, const ImVec2& rhs) { return ImVec2(lhs.x+rhs.x, lhs.y+rhs.y); }
 static inline ImVec2 operator-(const ImVec2& lhs, const ImVec2& rhs) { return ImVec2(lhs.x-rhs.x, lhs.y-rhs.y); }
@@ -45,14 +50,35 @@ enum class NodeStage
     End
 };
 
+struct NodeSettings
+{
+    int   ID;
+    point Location;
+
+    NodeSettings(int id): ID(id) {}
+};
+
+struct Settings
+{
+    string  Path;
+    bool    Dirty;
+
+    vector<NodeSettings> Nodes;
+
+    Settings(): Path("NodeEditor.json"), Dirty(false) {}
+};
+
 struct Context
 {
-    std::vector<Node*>  Nodes;
-    Node*               CurrentNode;
-    bool                CurrentNodeIsNew;
-    NodeStage           CurrentNodeStage;
-    Node*               ActiveNode;
-    ImVec2              DragOffset;
+    vector<Node*>   Nodes;
+    Node*           CurrentNode;
+    bool            CurrentNodeIsNew;
+    NodeStage       CurrentNodeStage;
+    Node*           ActiveNode;
+    ImVec2          DragOffset;
+
+    bool            IsInitialized;
+    Settings        Settings;
 
     Context();
     ~Context();
@@ -63,11 +89,18 @@ struct Context
     void SetCurrentNode(Node* node, bool isNew = false);
     void SetActiveNode(Node* node);
     bool SetNodeStage(NodeStage stage);
+
+    NodeSettings* FindNodeSettings(int id);
+    NodeSettings* AddNodeSettings(int id);
+    void          LoadSettings();
+    void          SaveSettings();
+    void          MarkSettingsDirty();
 };
 
 namespace Draw {
 void Icon(ImDrawList* drawList, rect rect, IconType type, bool filled, ImU32 color);
 } // namespace Draw
+
 
 
 

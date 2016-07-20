@@ -1,5 +1,6 @@
 #include "NodeEditorInternal.h"
 #include <string>
+#include <fstream>
 
 extern "C" __declspec(dllimport) void __stdcall OutputDebugStringA(const char* string);
 
@@ -40,14 +41,20 @@ ed::Context::Context():
     CurrentNodeIsNew(false),
     CurrentNodeStage(NodeStage::Invalid),
     ActiveNode(nullptr),
-    DragOffset()
+    DragOffset(),
+    IsInitialized(false),
+    Settings()
 {
 }
 
 ed::Context::~Context()
 {
+    if (IsInitialized)
+        SaveSettings();
+
     for (auto node : Nodes)
         delete node;
+
     Nodes.clear();
 }
 
@@ -65,7 +72,18 @@ ed::Node* ed::Context::CreateNode(int id)
 {
     assert(nullptr == FindNode(id));
     s_Editor->Nodes.push_back(new Node(id));
-    return s_Editor->Nodes.back();
+    auto node = s_Editor->Nodes.back();
+
+    auto settings = FindNodeSettings(id);
+    if (!settings)
+    {
+        settings = AddNodeSettings(id);
+        node->Bounds.location = to_point(ImGui::GetCursorScreenPos());
+    }
+    else
+        node->Bounds.location = settings->Location;
+
+    return node;
 }
 
 void ed::Context::DestroyNode(Node* node)
@@ -172,6 +190,114 @@ bool ed::Context::SetNodeStage(NodeStage stage)
     return true;
 }
 
+ed::NodeSettings* ed::Context::FindNodeSettings(int id)
+{
+    for (auto& nodeSettings : Settings.Nodes)
+        if (nodeSettings.ID == id)
+            return &nodeSettings;
+
+    return nullptr;
+}
+
+ed::NodeSettings* ed::Context::AddNodeSettings(int id)
+{
+    Settings.Nodes.push_back(NodeSettings(id));
+    return &Settings.Nodes.back();
+}
+
+void ed::Context::LoadSettings()
+{
+    namespace json = picojson;
+
+    if (Settings.Path.empty())
+        return;
+
+    std::ifstream settingsFile(Settings.Path);
+    if (!settingsFile)
+        return;
+
+    json::value settingsValue;
+    auto error = json::parse(settingsValue, settingsFile);
+    if (!error.empty() || settingsValue.is<json::null>())
+        return;
+
+    if (!settingsValue.is<json::object>())
+        return;
+
+    auto& settingsObject = settingsValue.get<json::object>();
+    auto& nodesValue     = settingsValue.get("nodes");
+
+    if (nodesValue.is<json::object>())
+    {
+        for (auto& node : nodesValue.get<json::object>())
+        {
+            auto id       = static_cast<int>(strtoll(node.first.c_str(), nullptr, 10));
+            auto settings = FindNodeSettings(id);
+            if (!settings)
+                settings = AddNodeSettings(id);
+
+            auto& nodeData = node.second;
+
+            auto locationValue = nodeData.get("location");
+            if (locationValue.is<json::object>())
+            {
+                auto xValue = locationValue.get("x");
+                auto yValue = locationValue.get("y");
+
+                if (xValue.is<double>() && yValue.is<double>())
+                {
+                    settings->Location.x = static_cast<int>(xValue.get<double>());
+                    settings->Location.y = static_cast<int>(yValue.get<double>());
+                }
+            }
+        }
+    }
+}
+
+void ed::Context::SaveSettings()
+{
+    namespace json = picojson;
+
+    if (Settings.Path.empty())
+        return;
+
+    std::ofstream settingsFile(Settings.Path);
+    if (!settingsFile)
+        return;
+
+    // update settings data
+    for (auto& node : Nodes)
+    {
+        auto settings = FindNodeSettings(node->ID);
+        settings->Location = node->Bounds.location;
+    }
+
+    json::object nodes;
+    for (auto& node : Settings.Nodes)
+    {
+        json::object locationData;
+        locationData["x"] = json::value(static_cast<double>(node.Location.x));
+        locationData["y"] = json::value(static_cast<double>(node.Location.y));
+
+        json::object nodeData;
+        nodeData["location"] = json::value(std::move(locationData));
+
+        nodes[std::to_string(node.ID)] = json::value(std::move(nodeData));
+    }
+
+    json::object settings;
+    settings["nodes"] = json::value(std::move(nodes));
+
+    json::value settingsValue(std::move(settings));
+
+    settingsFile << settingsValue.serialize(true);
+}
+
+void ed::Context::MarkSettingsDirty()
+{
+    Settings.Dirty = true;
+}
+
 bool ed::Icon(const char* id, const ImVec2& size, IconType type, bool filled, const ImVec4& color/* = ImVec4(1, 1, 1, 1)*/)
 {
     if (ImGui::IsRectVisible(size))
@@ -185,6 +311,11 @@ bool ed::Icon(const char* id, const ImVec2& size, IconType type, bool filled, co
 
     return ImGui::/*Invisible*/Button(id, size);
 }
+
+void ed::Spring()
+{
+}
+
 
 ax::NodeEditor::Context* ax::NodeEditor::CreateEditor()
 {
@@ -211,6 +342,12 @@ ax::NodeEditor::Context* ax::NodeEditor::GetCurrentEditor()
 
 void ax::NodeEditor::Begin(const char* id)
 {
+    if (!s_Editor->IsInitialized)
+    {
+        s_Editor->LoadSettings();
+        s_Editor->IsInitialized = true;
+    }
+
     ImGui::BeginChild(id, ImVec2(0, 0), true, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoMove);
 }
 
@@ -244,11 +381,8 @@ void ax::NodeEditor::BeginNode(int id)
 
     s_Editor->SetCurrentNode(node, isNewNode);
 
-    // New node capture current cursor position. Existing
-    // node position is already determined so it is set as current.
-    if (isNewNode)
-        node->Bounds.location = to_point(ImGui::GetCursorScreenPos());
-    else if (s_Editor->ActiveNode == node)
+    // Position node on screen
+    if (s_Editor->ActiveNode == node)
         ImGui::SetCursorScreenPos(to_imvec(node->Bounds.location) + s_Editor->DragOffset); // drag, clean up
     else
         ImGui::SetCursorScreenPos(to_imvec(node->Bounds.location));
@@ -304,10 +438,19 @@ void ax::NodeEditor::BeginHeader()
     assert(nullptr != s_Editor->CurrentNode);
 
     s_Editor->SetNodeStage(NodeStage::Header);
+
+    ImGui::BeginGroup();
 }
 
 void ax::NodeEditor::EndHeader()
 {
+    ImGui::Dummy(ImVec2(0, 0));
+    auto cursor = ImGui::GetCursorScreenPos();
+    ImGui::EndGroup();
+    ImGui::GetWindowDrawList()->AddRect(
+        cursor + ImVec2(0, -ImGui::GetStyle().ItemSpacing.y - ImGui::GetItemRectSize().y),
+        cursor + ImVec2(ImGui::GetItemRectSize().x, -ImGui::GetStyle().ItemSpacing.y),
+        ImColor(0, 255, 255));
 }
 
 void ax::NodeEditor::BeginInput(int id)
@@ -315,10 +458,19 @@ void ax::NodeEditor::BeginInput(int id)
     assert(nullptr != s_Editor->CurrentNode);
 
     s_Editor->SetNodeStage(NodeStage::Input);
+
+    ImGui::BeginGroup();
 }
 
 void ax::NodeEditor::EndInput()
 {
+    ImGui::Dummy(ImVec2(0, 0));
+    auto cursor = ImGui::GetCursorScreenPos();
+    ImGui::EndGroup();
+    ImGui::GetWindowDrawList()->AddRect(
+        cursor + ImVec2(0, -ImGui::GetStyle().ItemSpacing.y - ImGui::GetItemRectSize().y),
+        cursor + ImVec2(ImGui::GetItemRectSize().x, -ImGui::GetStyle().ItemSpacing.y),
+        ImColor(0, 255, 255));
 }
 
 void ax::NodeEditor::BeginOutput(int id)
@@ -326,10 +478,21 @@ void ax::NodeEditor::BeginOutput(int id)
     assert(nullptr != s_Editor->CurrentNode);
 
     s_Editor->SetNodeStage(NodeStage::Output);
+
+    ImGui::BeginGroup();
+
+    Spring();
 }
 
 void ax::NodeEditor::EndOutput()
 {
+    ImGui::Dummy(ImVec2(0, 0));
+    auto cursor = ImGui::GetCursorScreenPos();
+    ImGui::EndGroup();
+    ImGui::GetWindowDrawList()->AddRect(
+        cursor + ImVec2(0, -ImGui::GetStyle().ItemSpacing.y - ImGui::GetItemRectSize().y),
+        cursor + ImVec2(ImGui::GetItemRectSize().x, -ImGui::GetStyle().ItemSpacing.y),
+        ImColor(0, 255, 255));
 }
 
 

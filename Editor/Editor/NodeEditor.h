@@ -10,6 +10,7 @@ struct Context;
 enum class IconType { Flow, Circle, Square, Grid, RoundSquare };
 
 bool Icon(const char* id, const ImVec2& size, IconType type, bool filled, const ImVec4& color = ImVec4(1, 1, 1, 1));
+void Spring();
 
 void SetCurrentEditor(Context* ctx);
 Context* GetCurrentEditor();
