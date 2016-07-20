@@ -286,15 +286,15 @@ NodeWindow::NodeWindow(void):
     int nextId = 1;
     auto genId = [&nextId]() { return nextId++; };
 
-    s_Nodes.emplace_back(genId(), "InputAction Fire", point(50, 200));
-    s_Nodes.back().Outputs.emplace_back(genId(), s_Nodes.back().ID, "Pressed", PortType::Flow);
-    s_Nodes.back().Outputs.emplace_back(genId(), s_Nodes.back().ID, "Released", PortType::Flow);
-
-    s_Nodes.emplace_back(genId(), "Branch", point(300, 20));
-    s_Nodes.back().Inputs.emplace_back(genId(), s_Nodes.back().ID, "", PortType::Flow);
-    s_Nodes.back().Inputs.emplace_back(genId(), s_Nodes.back().ID, "Condition", PortType::Bool);
-    s_Nodes.back().Outputs.emplace_back(genId(), s_Nodes.back().ID, "True", PortType::Flow);
-    s_Nodes.back().Outputs.emplace_back(genId(), s_Nodes.back().ID, "False", PortType::Flow);
+//     s_Nodes.emplace_back(genId(), "InputAction Fire", point(50, 200));
+//     s_Nodes.back().Outputs.emplace_back(genId(), s_Nodes.back().ID, "Pressed", PortType::Flow);
+//     s_Nodes.back().Outputs.emplace_back(genId(), s_Nodes.back().ID, "Released", PortType::Flow);
+//
+//     s_Nodes.emplace_back(genId(), "Branch", point(300, 20));
+//     s_Nodes.back().Inputs.emplace_back(genId(), s_Nodes.back().ID, "", PortType::Flow);
+//     s_Nodes.back().Inputs.emplace_back(genId(), s_Nodes.back().ID, "Condition", PortType::Bool);
+//     s_Nodes.back().Outputs.emplace_back(genId(), s_Nodes.back().ID, "True", PortType::Flow);
+//     s_Nodes.back().Outputs.emplace_back(genId(), s_Nodes.back().ID, "False", PortType::Flow);
 
     s_Nodes.emplace_back(genId(), "Do N", point(600, 30));
     s_Nodes.back().Inputs.emplace_back(genId(), s_Nodes.back().ID, "Enter", PortType::Flow);
@@ -303,13 +303,13 @@ NodeWindow::NodeWindow(void):
     s_Nodes.back().Outputs.emplace_back(genId(), s_Nodes.back().ID, "Exit", PortType::Flow);
     s_Nodes.back().Outputs.emplace_back(genId(), s_Nodes.back().ID, "Counter", PortType::Int);
 
-    s_Nodes.emplace_back(genId(), "OutputAction", point(1000, 200));
-    s_Nodes.back().Inputs.emplace_back(genId(), s_Nodes.back().ID, "Sample", PortType::Float);
-
-    s_Joins.emplace_back(genId(), s_Nodes[0].Outputs[0].ID, s_Nodes[1].Inputs[0].ID);
-    s_Joins.emplace_back(genId(), s_Nodes[1].Outputs[0].ID, s_Nodes[2].Inputs[0].ID);
-    s_Joins.emplace_back(genId(), s_Nodes[1].Outputs[1].ID, s_Nodes[2].Inputs[2].ID);
-    s_Joins.emplace_back(genId(), s_Nodes[2].Outputs[1].ID, s_Nodes[3].Inputs[0].ID);
+//     s_Nodes.emplace_back(genId(), "OutputAction", point(1000, 200));
+//     s_Nodes.back().Inputs.emplace_back(genId(), s_Nodes.back().ID, "Sample", PortType::Float);
+//
+//     s_Joins.emplace_back(genId(), s_Nodes[0].Outputs[0].ID, s_Nodes[1].Inputs[0].ID);
+//     s_Joins.emplace_back(genId(), s_Nodes[1].Outputs[0].ID, s_Nodes[2].Inputs[0].ID);
+//     s_Joins.emplace_back(genId(), s_Nodes[1].Outputs[1].ID, s_Nodes[2].Inputs[2].ID);
+//     s_Joins.emplace_back(genId(), s_Nodes[2].Outputs[1].ID, s_Nodes[3].Inputs[0].ID);
 }
 
 NodeWindow::~NodeWindow()
@@ -340,6 +340,9 @@ void NodeWindow::OnGui()
 
         return false;
     };
+
+    static float scale = 3.0f;
+
 
     auto& style = ImGui::GetStyle();
 
@@ -388,9 +391,26 @@ void NodeWindow::OnGui()
 
         ed::BeginHeader();
         ImGui::Text(node.Name.c_str());
-        ed::HorizontalSpring();
+
         ImGui::SameLine();
-        ImGui::Button("Button \\o/");
+        ed::Spring();
+
+        ImGui::SameLine();
+        ImGui::BeginGroup();
+        ImGui::Text("Button \\o/");
+        ImGui::EndGroup();
+
+        ImGui::SameLine();
+        ed::Spring(0.0f);
+
+        ImGui::SameLine();
+        ImGui::BeginGroup();
+        ImGui::Text("Button \\o/");
+        ImGui::Text("Button \\o/");
+        ImGui::EndGroup();
+
+        ImGui::SameLine();
+        ed::Spring(0.0f);
         ed::EndHeader();
 
         for (auto& input : node.Inputs)
@@ -414,6 +434,8 @@ void NodeWindow::OnGui()
 
             //ed::Icon("##icon", iconSizeIm, IconType::Flow, false);
         }
+
+        //ImGui::Button("X", ImVec2(100 * scale, 40));
 
         ed::EndNode();
 
@@ -595,7 +617,6 @@ void NodeWindow::OnGui()
 
     //ImGui::SetCursorScreenPos(cursorTopLeft + ImVec2(400, 400));
 
-    static float scale = 3.0f;
     ImGui::DragFloat("Scale", &scale, 0.01f, 0.1f, 8.0f);
     auto iconSize = size(roundi(PortIconSize * scale), roundi(PortIconSize * scale));
     ImGui::Text("size: %d", iconSize.w);
@@ -613,6 +634,63 @@ void NodeWindow::OnGui()
     //DrawIcon(drawList, rect(to_point(iconOrigin) + point(roundi(3 * 32 * scale), roundi(32 * scale)), iconSize), IconType::Grid,        true,  ImColor(128, 255, 128));
     //DrawIcon(drawList, rect(to_point(iconOrigin) + point(roundi(4 * 32 * scale), roundi( 0 * scale)), iconSize), IconType::RoundSquare, false, ImColor(255, 128, 128));
     //DrawIcon(drawList, rect(to_point(iconOrigin) + point(roundi(4 * 32 * scale), roundi(32 * scale)), iconSize), IconType::RoundSquare, true,  ImColor(255, 128, 128));
+
+
+    ImGui::Separator();
+
+    static bool groups = false;
+    ImGui::Checkbox("Groups", &groups);
+
+    ImGui::BeginGroup();
+    ImGui::Text("Do N");
+    ImGui::SameLine();
+    //ed::Spring();
+    //ImGui::SameLine();
+    ImGui::Button("Button \\o/");
+    ImGui::EndGroup();
+
+    ImGui::GetWindowDrawList()->AddRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), ImColor(255, 0, 0));
+
+    //ImGui::BeginGroup();
+    //ImGui::BeginGroup();
+    //ImGui::BeginGroup();
+    //ImGui::Text("Long Long Long");
+    //ImGui::SameLine();
+    //ImGui::BeginGroup();
+    //ImGui::Dummy(ImVec2(0,0));
+    //ImGui::EndGroup();
+    //ImGui::SameLine();
+    //ImGui::BeginGroup();
+    //ImGui::Text("In Same Line");
+    //ImGui::EndGroup();
+    //if (groups) ImGui::GetWindowDrawList()->AddRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), ImColor(0, 255, 0));
+    //else        ImGui::GetWindowDrawList()->AddRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), ImColor(255, 0, 0));
+    //ImGui::EndGroup();
+    //if (groups) ImGui::GetWindowDrawList()->AddRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), ImColor(0, 255, 0));
+    //else        ImGui::GetWindowDrawList()->AddRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), ImColor(255, 0, 0));
+    //ImGui::EndGroup();
+    //if (groups) ImGui::GetWindowDrawList()->AddRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), ImColor(0, 255, 0));
+    //else        ImGui::GetWindowDrawList()->AddRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), ImColor(255, 0, 0));
+
+    ////ImGui::SameLine();
+
+    //ImGui::BeginGroup();
+    //ImGui::Button("I'm in the next line");
+    //ImGui::EndGroup();
+    //if (groups) ImGui::GetWindowDrawList()->AddRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), ImColor(0, 255, 0));
+    //else        ImGui::GetWindowDrawList()->AddRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), ImColor(255, 0, 0));
+    //ImGui::EndGroup();
+    //if (groups) ImGui::GetWindowDrawList()->AddRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), ImColor(0, 255, 0));
+    //else        ImGui::GetWindowDrawList()->AddRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), ImColor(255, 0, 0));
+
+//     ImGui::SameLine();
+//
+//     ImGui::BeginGroup();
+//     ImGui::Button("Z");
+//     ImGui::EndGroup();
+//     if (groups) ImGui::GetWindowDrawList()->AddRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), ImColor(0, 255, 0));
+//     else        ImGui::GetWindowDrawList()->AddRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), ImColor(255, 0, 0));
+
 
     ed::End();
 

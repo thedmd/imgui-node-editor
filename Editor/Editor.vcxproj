@@ -178,6 +178,9 @@
     <ClCompile Include="Backend\imgui_impl_dx11.cpp" />
     <ClCompile Include="Editor\NodeEditor.cpp" />
     <ClCompile Include="Editor\NodeEditorDraw.cpp" />
+    <ClCompile Include="Editor\NodeEditorLayout.cpp" />
+    <ClCompile Include="Editor\NodeEditorNode.cpp" />
+    <ClCompile Include="Editor\NodeEditorWidgets.cpp" />
     <ClCompile Include="ImGui\imgui.cpp" />
     <ClCompile Include="ImGui\imgui_demo.cpp" />
     <ClCompile Include="ImGui\imgui_draw.cpp" />
