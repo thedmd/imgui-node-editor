@@ -42,10 +42,12 @@ struct ImGuiMouseCursorData;
 struct ImGuiPopupRef;
 struct ImGuiWindow;
 
-typedef int ImGuiLayoutType;      // enum ImGuiLayoutType_
-typedef int ImGuiButtonFlags;     // enum ImGuiButtonFlags_
-typedef int ImGuiTreeNodeFlags;   // enum ImGuiTreeNodeFlags_
-typedef int ImGuiSliderFlags;     // enum ImGuiSliderFlags_
+typedef int ImGuiLayoutType;        // enum ImGuiLayoutType_
+typedef int ImGuiLayoutItemType;    // enum ImGuiLayoutItemType_
+typedef int ImGuiLayoutDirtyFlags;  // enum ImGuiLayoutDirtyFlags_
+typedef int ImGuiButtonFlags;       // enum ImGuiButtonFlags_
+typedef int ImGuiTreeNodeFlags;     // enum ImGuiTreeNodeFlags_
+typedef int ImGuiSliderFlags;       // enum ImGuiSliderFlags_
 
 //-------------------------------------------------------------------------
 // STB libraries
@@ -99,6 +101,11 @@ IMGUI_API const ImWchar*ImStrbolW(const ImWchar* buf_mid_line, const ImWchar* bu
 IMGUI_API const char*   ImStristr(const char* haystack, const char* haystack_end, const char* needle, const char* needle_end);
 IMGUI_API int           ImFormatString(char* buf, int buf_size, const char* fmt, ...) IM_PRINTFARGS(3);
 IMGUI_API int           ImFormatStringV(char* buf, int buf_size, const char* fmt, va_list args);
+
+// Helpers: Global state
+#ifdef IMGUI_ENABLE_SHARED_STYLE
+IMGUI_API ImGuiStyle*   ImGetGlobalStyle();
+#endif
 
 // Helpers: Math
 // We are keeping those not leaking to the user by default, in the case the user has implicit cast operators between ImVec2 and its own types (when IM_VEC2_CLASS_EXTRA is defined)
@@ -167,6 +174,21 @@ enum ImGuiSliderFlags_
     ImGuiSliderFlags_Vertical               = 1 << 0
 };
 
+enum ImGuiLayoutDirtyFlags_
+{
+    ImGuiLayoutDirtyFlags_None              = 0,
+    ImGuiLayoutDirtyFlags_Uninitialized     = 1 << 0,
+    ImGuiLayoutDirtyFlags_LayoutSize        = 1 << 1,
+    ImGuiLayoutDirtyFlags_ItemAdded         = 1 << 2,
+    ImGuiLayoutDirtyFlags_ItemRemoved       = 1 << 3,
+    ImGuiLayoutDirtyFlags_ItemReplaced      = 1 << 4,
+    ImGuiLayoutDirtyFlags_ItemSize          = 1 << 5,
+    ImGuiLayoutDirtyFlags_SpringWeight      = 1 << 6,
+    ImGuiLayoutDirtyFlags_SpringSpacing     = 1 << 7,
+    ImGuiLayoutDirtyFlags_Bounds            = 1 << 8,
+    ImGuiLayoutDirtyFlags_ChildDirty        = 1 << 9
+};
+
 enum ImGuiSelectableFlagsPrivate_
 {
     // NB: need to be in sync with last value of ImGuiSelectableFlags_
@@ -181,6 +203,12 @@ enum ImGuiLayoutType_
 {
     ImGuiLayoutType_Vertical,
     ImGuiLayoutType_Horizontal
+};
+
+enum ImGuiLayoutItemType_
+{
+    ImGuiLayoutItemType_Item,
+    ImGuiLayoutItemType_Spring
 };
 
 enum ImGuiPlotType
@@ -256,8 +284,8 @@ struct ImGuiGroupData
 {
     ImVec2      BackupCursorPos;
     ImVec2      BackupCursorMaxPos;
-    float       BackupIndentX;
-    float       BackupCurrentLineHeight;
+    ImVec2      BackupIndent;
+    ImVec2      BackupCurrentLineSize;
     float       BackupCurrentLineTextBaseOffset;
     float       BackupLogLinePosY;
     bool        AdvanceCursor;
@@ -340,11 +368,45 @@ struct ImGuiPopupRef
     ImGuiPopupRef(ImGuiID id, ImGuiWindow* parent_window, ImGuiID parent_menu_set, const ImVec2& mouse_pos) { PopupId = id; Window = NULL; ParentWindow = parent_window; ParentMenuSet = parent_menu_set; MousePosOnOpen = mouse_pos; }
 };
 
+struct ImGuiLayoutItem
+{
+    ImGuiLayoutItemType         Type;           // Type of an item
+    ImVec2                      Size;           // Last size of an item
+    float                       SpringWeight;   // Weight of a spring
+    float                       SpringSpacing;  // Spring spacing
+    float                       SpringSize;     // Calculated spring size
+
+    ImGuiLayoutItem(ImGuiLayoutItemType type): Type(type), Size(0, 0), SpringWeight(1.0f), SpringSpacing(-1.0f), SpringSize(0.0f) {}
+};
+
+struct ImGuiLayout
+{
+    ImGuiID                     Id;
+    ImGuiLayoutType             Type;
+    ImVec2                      Size;           // Size from user
+    ImVec2                      Bounds;         // Actual bounds determined by BeginGroup/EndGroup
+    ImVec2                      AvailableSize;  // Bounds when taking into account parent layout
+    ImVector<ImGuiLayoutItem>   Items;
+    int                         NextItemIndex;
+    ImGuiLayoutDirtyFlags       Dirty;
+    ImGuiLayout*                Parent;
+    ImGuiLayout*                FirstChild;
+    ImGuiLayout*                NextSibling;
+
+    ImVec2                      StartPos;
+    float                       MaxExtent;
+
+    ImGuiLayout(ImGuiID id, ImGuiLayoutType type): Id(id), Type(type), Size(0, 0), Items(), NextItemIndex(0), Dirty(0), Parent(NULL), FirstChild(NULL), NextSibling(NULL) {}
+};
+
 // Main state for ImGui
 struct ImGuiContext
 {
     bool                    Initialized;
     ImGuiIO                 IO;
+#ifndef IMGUI_ENABLE_SHARED_STYLE
+    ImGuiStyle              LocalStyle;
+#endif
     ImGuiStyle*             Style;
     ImFont*                 Font;                               // (Shortcut) == FontStack.empty() ? IO.Font : FontStack.back()
     float                   FontSize;                           // (Shortcut) == FontBaseSize * g.CurrentWindow->FontWindowScale == window->FontSize()
@@ -381,6 +443,9 @@ struct ImGuiContext
     ImVector<ImFont*>       FontStack;                          // Stack for PushFont()/PopFont()
     ImVector<ImGuiPopupRef> OpenPopupStack;                     // Which popups are open (persistent)
     ImVector<ImGuiPopupRef> CurrentPopupStack;                  // Which level of BeginPopup() we are in (reset every frame)
+    ImGuiLayout*            CurrentLayout;
+    ImVector<ImGuiLayout*>  LayoutStack;
+    ImVector<ImGuiLayout*>  Layouts;
 
     // Storage for SetNexWindow** and SetNextTreeNode*** functions
     ImVec2                  SetNextWindowPosVal;
@@ -437,11 +502,14 @@ struct ImGuiContext
     int                     CaptureKeyboardNextFrame;
     char                    TempBuffer[1024*3+1];               // temporary text buffer
 
-    ImGuiContext()
+    ImGuiContext():
+#ifdef IMGUI_ENABLE_SHARED_STYLE
+        Style(ImGetGlobalStyle())
+#else
+        Style(&LocalStyle)
+#endif
     {
-
         Initialized = false;
-        Style = nullptr;
         Font = NULL;
         FontSize = FontBaseSize = 0.0f;
         FontTexUvWhitePixel = ImVec2(0.0f, 0.0f);
@@ -466,6 +534,7 @@ struct ImGuiContext
         MovedWindow = NULL;
         MovedWindowMoveId = 0;
         SettingsDirtyTimer = 0.0f;
+        CurrentLayout = NULL;
 
         SetNextWindowPosVal = ImVec2(0.0f, 0.0f);
         SetNextWindowSizeVal = ImVec2(0.0f, 0.0f);
@@ -516,11 +585,12 @@ struct IMGUI_API ImGuiDrawContext
 {
     ImVec2                  CursorPos;
     ImVec2                  CursorPosPrevLine;
-    ImVec2                  CursorStartPos;
+    ImVec2                  CursorClientStartPos;   // Initial position of client area without any indents
+    ImVec2                  CursorStartPos;         // Initial position in client area with padding
     ImVec2                  CursorMaxPos;           // Implicitly calculate the size of our contents, always extending. Saved into window->SizeContents at the end of the frame
-    float                   CurrentLineHeight;
+    ImVec2                  CurrentLineSize;
     float                   CurrentLineTextBaseOffset;
-    float                   PrevLineHeight;
+    ImVec2                  PrevLineSize;
     float                   PrevLineTextBaseOffset;
     float                   LogLinePosY;
     int                     TreeDepth;
@@ -545,10 +615,11 @@ struct IMGUI_API ImGuiDrawContext
     ImVector<bool>          ButtonRepeatStack;
     ImVector<ImGuiGroupData>GroupStack;
     ImGuiColorEditMode      ColorEditMode;
-    int                     StackSizesBackup[6];    // Store size of various stacks for asserting
+    int                     StackSizesBackup[7];    // Store size of various stacks for asserting
 
-    float                   IndentX;                // Indentation / start position from left of window (increased by TreePush/TreePop, etc.)
-    float                   ColumnsOffsetX;         // Offset to the current column (if ColumnsCurrent > 0). FIXME: This and the above should be a stack to allow use cases like Tree->Column->Tree. Need revamp columns API.
+    ImVec2                  Indent;                 // Indentation / start position from left of window (increased by TreePush/TreePop, etc.)
+    ImVec2                  GroupOffset;
+    ImVec2                  ColumnsOffset;          // Offset to the current column (if ColumnsCurrent > 0). FIXME: This and the above should be a stack to allow use cases like Tree->Column->Tree. Need revamp columns API.
     int                     ColumnsCurrent;
     int                     ColumnsCount;
     float                   ColumnsMinX;
@@ -563,7 +634,7 @@ struct IMGUI_API ImGuiDrawContext
     ImGuiDrawContext()
     {
         CursorPos = CursorPosPrevLine = CursorStartPos = CursorMaxPos = ImVec2(0.0f, 0.0f);
-        CurrentLineHeight = PrevLineHeight = 0.0f;
+        CurrentLineSize = PrevLineSize = ImVec2(0.0f,0.0f);
         CurrentLineTextBaseOffset = PrevLineTextBaseOffset = 0.0f;
         LogLinePosY = -1.0f;
         TreeDepth = 0;
@@ -581,8 +652,8 @@ struct IMGUI_API ImGuiDrawContext
         ColorEditMode = ImGuiColorEditMode_RGB;
         memset(StackSizesBackup, 0, sizeof(StackSizesBackup));
 
-        IndentX = 0.0f;
-        ColumnsOffsetX = 0.0f;
+        Indent = ImVec2(0.0f,0.0f);
+        ColumnsOffset = ImVec2(0.0f, 0.0f);
         ColumnsCurrent = 0;
         ColumnsCount = 1;
         ColumnsMinX = ColumnsMaxX = 0.0f;

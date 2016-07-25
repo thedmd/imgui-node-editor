@@ -26,14 +26,15 @@
 //---- Don't define obsolete functions names
 #define IMGUI_DISABLE_OBSOLETE_FUNCTIONS
 
-//---- Implement STB libraries in a namespace to avoid conflicts
-//#define IMGUI_STB_NAMESPACE     ImGuiStb
+//---- All context use same style
+#define IMGUI_ENABLE_SHARED_STYLE
 
-//---- Do not create global state and relay on user to create and manage context
+//---- Do not create global state, relay on user to create and manage context
+//---- Note: You must keep your own instance of ImFontAtlas and initialize context Fonts field with it
 #define IMGUI_DISABLE_GLOBAL_STATE
 
-//---- Allow to drag items around even outside of window area
-#define IMGUI_ENABLE_BOUNDLESS_MOUSE_INPUT
+//---- Implement STB libraries in a namespace to avoid conflicts
+//#define IMGUI_STB_NAMESPACE     ImGuiStb
 
 //---- Define constructor and implicit cast operators to convert back<>forth from your math types and ImVec2/ImVec4.
 /*
