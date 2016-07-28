@@ -16,6 +16,9 @@
     <Filter Include="External">
       <UniqueIdentifier>{a82fb34f-37e9-4de5-a432-0641a6b2c1ba}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Support">
+      <UniqueIdentifier>{37b3206d-4f96-4a8f-b0f2-07c0f11b584a}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="ImGui\imgui.cpp">
@@ -143,6 +146,9 @@
     <ClInclude Include="Editor\NodeEditorInternal.h">
       <Filter>Editor</Filter>
     </ClInclude>
+    <ClInclude Include="Support\stb_image.h">
+      <Filter>Support</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="Configuration.props" />
@@ -152,5 +158,8 @@
   </ItemGroup>
   <ItemGroup>
     <Natvis Include="ImGui.natvis" />
+  </ItemGroup>
+  <ItemGroup>
+    <FxCompile Include="PixelShader.hlsl" />
   </ItemGroup>
 </Project>

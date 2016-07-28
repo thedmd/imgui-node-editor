@@ -74,7 +74,6 @@ inline void ax::matrix::rotate_at(float angle, float cx, float cy, matrix_order 
 inline void ax::matrix::scale(float x, float y, matrix_order order/* = matrix_order::prepend*/)
 {
     combine(matrix(x, 0.0f, 0.0f, y, 0.0f, 0.0f), order);
-
 }
 
 inline void ax::matrix::shear(float x, float y, matrix_order order/* = matrix_order::prepend*/)

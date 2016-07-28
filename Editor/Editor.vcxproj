@@ -217,6 +217,7 @@
     <ClInclude Include="ImWindow\ImwToolBar.h" />
     <ClInclude Include="ImWindow\ImwWindow.h" />
     <ClInclude Include="ImWindow\ImwWindowManager.h" />
+    <ClInclude Include="Support\stb_image.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="Configuration.props">
@@ -226,6 +227,14 @@
   </ItemGroup>
   <ItemGroup>
     <Natvis Include="ImGui.natvis" />
+  </ItemGroup>
+  <ItemGroup>
+    <FxCompile Include="PixelShader.hlsl">
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Pixel</ShaderType>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Pixel</ShaderType>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Pixel</ShaderType>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Pixel</ShaderType>
+    </FxCompile>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

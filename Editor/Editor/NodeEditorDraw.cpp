@@ -1,6 +1,6 @@
 #include "NodeEditorInternal.h"
 
-void ax::NodeEditor::Draw::Icon(ImDrawList* drawList, rect rect, IconType type, bool filled, ImU32 color)
+void ax::NodeEditor::Draw::Icon(ImDrawList* drawList, rect rect, IconType type, bool filled, ImU32 color, ImU32 innerColor)
 {
     //drawList->AddRectFilled(to_imvec(rect.top_left()), to_imvec(rect.bottom_right()), ImColor(0, 0, 0));
 
@@ -49,10 +49,15 @@ void ax::NodeEditor::Draw::Icon(ImDrawList* drawList, rect rect, IconType type, 
         drawList->PathLineTo(ImVec2(left, bottom) + ImVec2(rounding, 0));
         drawList->PathBezierCurveTo(ImVec2(left, bottom), ImVec2(left, bottom), ImVec2(left, bottom) - ImVec2(0, rounding));
 
-        if (filled)
-            drawList->PathFill(color);
-        else
+        if (!filled)
+        {
+            if (innerColor & 0xFF000000)
+                drawList->AddConvexPolyFilled(drawList->_Path.Data, drawList->_Path.Size, innerColor, true);
+
             drawList->PathStroke(color, true, 1.25f * outline_scale);
+        }
+        else
+            drawList->PathFill(color);
     }
     else
     {
@@ -62,31 +67,40 @@ void ax::NodeEditor::Draw::Icon(ImDrawList* drawList, rect rect, IconType type, 
 
         if (type == IconType::Circle)
         {
-            if (filled)
-                drawList->AddCircleFilled(to_imvec(rect.center()), 0.5f * rect.w / 2.0f, color, 12 + extra_segments);
+            const auto c = to_imvec(rect.center());
+
+            if (!filled)
+            {
+                const auto r = 0.5f * rect.w / 2.0f - 0.5f;
+
+                if (innerColor & 0xFF000000)
+                    drawList->AddCircleFilled(c, r, innerColor, 12 + extra_segments);
+                drawList->AddCircle(c, r, color, 12 + extra_segments, 2.0f * outline_scale);
+            }
             else
-                drawList->AddCircle(to_imvec(rect.center()), 0.5f * rect.w / 2.0f - 0.5f, color, 12 + extra_segments, 2.0f * outline_scale);
+                drawList->AddCircleFilled(c, 0.5f * rect.w / 2.0f, color, 12 + extra_segments);
         }
 
         if (type == IconType::Square)
         {
             if (filled)
             {
-                const auto r = 0.5f * rect.w / 2.0f;
+                const auto r  = 0.5f * rect.w / 2.0f;
+                const auto p0 = to_imvec(rect.center()) - ImVec2(r, r);
+                const auto p1 = to_imvec(rect.center()) + ImVec2(r, r);
 
-                drawList->AddRectFilled(
-                    to_imvec(rect.center()) - ImVec2(r, r),
-                    to_imvec(rect.center()) + ImVec2(r, r),
-                    color, 0, 15 + extra_segments);
+                drawList->AddRectFilled(p0, p1, color, 0, 15 + extra_segments);
             }
             else
             {
                 const auto r = 0.5f * rect.w / 2.0f - 0.5f;
+                const auto p0 = to_imvec(rect.center()) - ImVec2(r, r);
+                const auto p1 = to_imvec(rect.center()) + ImVec2(r, r);
 
-                drawList->AddRect(
-                    to_imvec(rect.center()) - ImVec2(r, r),
-                    to_imvec(rect.center()) + ImVec2(r, r),
-                    color, 0, 15 + extra_segments, 2.0f * outline_scale);
+                if (innerColor & 0xFF000000)
+                    drawList->AddRectFilled(p0, p1, innerColor, 0, 15 + extra_segments);
+
+                drawList->AddRect(p0, p1, color, 0, 15 + extra_segments, 2.0f * outline_scale);
             }
         }
 
@@ -126,21 +140,51 @@ void ax::NodeEditor::Draw::Icon(ImDrawList* drawList, rect rect, IconType type, 
             {
                 const auto r  = 0.5f * rect.w / 2.0f;
                 const auto cr = r * 0.5f;
+                const auto p0 = to_imvec(rect.center()) - ImVec2(r, r);
+                const auto p1 = to_imvec(rect.center()) + ImVec2(r, r);
 
-                drawList->AddRectFilled(
-                    to_imvec(rect.center()) - ImVec2(r, r),
-                    to_imvec(rect.center()) + ImVec2(r, r),
-                    color, cr, 15);
+                drawList->AddRectFilled(p0, p1, color, cr, 15);
             }
             else
             {
                 const auto r = 0.5f * rect.w / 2.0f - 0.5f;
                 const auto cr = r * 0.5f;
+                const auto p0 = to_imvec(rect.center()) - ImVec2(r, r);
+                const auto p1 = to_imvec(rect.center()) + ImVec2(r, r);
 
-                drawList->AddRect(
-                    to_imvec(rect.center()) - ImVec2(r, r),
-                    to_imvec(rect.center()) + ImVec2(r, r),
-                    color, cr, 15, 2.0f * outline_scale);
+                if (innerColor & 0xFF000000)
+                    drawList->AddRectFilled(p0, p1, innerColor, cr, 15);
+
+                drawList->AddRect(p0, p1, color, cr, 15, 2.0f * outline_scale);
+            }
+        }
+        else if (type == IconType::Diamond)
+        {
+            if (filled)
+            {
+                const auto r = 0.607f * rect.w / 2.0f;
+                const auto c = rect.center();
+
+                drawList->PathLineTo(to_imvec(c) + ImVec2( 0, -r));
+                drawList->PathLineTo(to_imvec(c) + ImVec2( r,  0));
+                drawList->PathLineTo(to_imvec(c) + ImVec2( 0,  r));
+                drawList->PathLineTo(to_imvec(c) + ImVec2(-r,  0));
+                drawList->PathFill(color);
+            }
+            else
+            {
+                const auto r = 0.607f * rect.w / 2.0f - 0.5f;
+                const auto c = rect.center();
+
+                drawList->PathLineTo(to_imvec(c) + ImVec2( 0, -r));
+                drawList->PathLineTo(to_imvec(c) + ImVec2( r,  0));
+                drawList->PathLineTo(to_imvec(c) + ImVec2( 0,  r));
+                drawList->PathLineTo(to_imvec(c) + ImVec2(-r,  0));
+
+                if (innerColor & 0xFF000000)
+                    drawList->AddConvexPolyFilled(drawList->_Path.Data, drawList->_Path.Size, innerColor, true);
+
+                drawList->PathStroke(color, true, 2.0f * outline_scale);
             }
         }
         else

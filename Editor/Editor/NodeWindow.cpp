@@ -5,6 +5,7 @@
 #include <utility>
 #include "Types.h"
 #include "Types.inl"
+#include "Backend/imgui_impl_dx11.h"
 #include "NodeEditorInternal.h"
 
 namespace ed = ax::NodeEditor;
@@ -24,14 +25,14 @@ using ed::operator-;
 
 using ax::NodeEditor::IconType;
 
-void DrawIcon(ImDrawList* drawList, rect rect, IconType type, bool filled, ImU32 color)
+void DrawIcon(ImDrawList* drawList, rect rect, IconType type, bool filled, ImU32 color, ImU32 innerColor = 0)
 {
-    ax::NodeEditor::Draw::Icon(drawList, rect, type, filled, color);
+    ax::NodeEditor::Draw::Icon(drawList, rect, type, filled, color, innerColor);
 }
 
-void DrawIcon(rect rect, IconType type, bool filled, ImU32 color)
+void DrawIcon(rect rect, IconType type, bool filled, ImU32 color, ImU32 innerColor = 0)
 {
-    DrawIcon(ImGui::GetWindowDrawList(), rect, type, filled, color);
+    DrawIcon(ImGui::GetWindowDrawList(), rect, type, filled, color, innerColor);
 }
 
 
@@ -272,11 +273,14 @@ struct NodeJoin
 static std::vector<Node>        s_Nodes;
 static std::vector<NodeJoin>    s_Joins;
 
+static ImTextureID s_Background = nullptr;
 
 NodeWindow::NodeWindow(void):
     m_Editor(nullptr)
 {
     SetTitle("Node editor");
+
+    s_Background = ImGui_LoadTexture("../Data/BlueprintBackground.png");
 
     m_Editor = ed::CreateEditor();
 
@@ -331,6 +335,12 @@ NodeWindow::~NodeWindow()
     {
         ed::DestroyEditor(m_Editor);
         m_Editor = nullptr;
+    }
+
+    if (s_Background)
+    {
+        ImGui_DestroyTexture(s_Background);
+        s_Background = nullptr;
     }
 }
 
@@ -448,26 +458,31 @@ void NodeWindow::OnGui()
         ImGui::Dummy(to_imvec(s));
     };
 
+    ImVec2 lastNodePos;
+
     drawList->ChannelsSetCurrent(2);
     for (auto& node : s_Nodes)
     {
         ed::BeginNode(node.ID);
+
+        lastNodePos = ImGui::GetCursorScreenPos();
 
         ed::BeginHeader();
             ImGui::Spring(0);
             ImGui::Text(node.Name.c_str());
             ImGui::Spring(1);
 
-            ImGui::SuspendLayout();
-            ImGui::BeginGroup();
-            ImGui::Button("Button");
-            ImGui::TextUnformatted("Label!");
-            ImGui::EndGroup();
-            ImGui::ResumeLayout();
+//             ImGui::SuspendLayout();
+//             ImGui::BeginGroup();
+//             ImGui::Button("Button");
+//             ImGui::TextUnformatted("Label!");
+//             ImGui::EndGroup();
+//             ImGui::ResumeLayout();
 
             ImGui::Spring(0);
             ImGui::Button("X", ImVec2(24, 24));
             ImGui::Spring(0);
+            ImGui::Dummy(ImVec2(0, 36));
         ed::EndHeader();
 
         for (auto& input : node.Inputs)
@@ -699,17 +714,54 @@ void NodeWindow::OnGui()
     //ImGui::SetCursorScreenPos(cursorTopLeft + ImVec2(400, 400));
 
 
-//    //ImVec2 iconOrigin(300, 200);
-//    //DrawIcon(drawList, rect(to_point(iconOrigin),                          iconSize), IconType::Flow,        false, ImColor(255, 255, 255));
-//    //DrawIcon(drawList, rect(to_point(iconOrigin) + point(roundi(     0 * scale), roundi(32 * scale)), iconSize), IconType::Flow,        true,  ImColor(255, 255, 255));
-//    //DrawIcon(drawList, rect(to_point(iconOrigin) + point(roundi(    32 * scale), roundi( 0 * scale)), iconSize), IconType::Circle,      false, ImColor(  0, 255, 255));
-//    //DrawIcon(drawList, rect(to_point(iconOrigin) + point(roundi(    32 * scale), roundi(32 * scale)), iconSize), IconType::Circle,      true,  ImColor(  0, 255, 255));
-//    //DrawIcon(drawList, rect(to_point(iconOrigin) + point(roundi(2 * 32 * scale), roundi( 0 * scale)), iconSize), IconType::Square,      false, ImColor(128, 255, 128));
-//    //DrawIcon(drawList, rect(to_point(iconOrigin) + point(roundi(2 * 32 * scale), roundi(32 * scale)), iconSize), IconType::Square,      true,  ImColor(128, 255, 128));
-//    //DrawIcon(drawList, rect(to_point(iconOrigin) + point(roundi(3 * 32 * scale), roundi( 0 * scale)), iconSize), IconType::Grid,        false, ImColor(128, 255, 128));
-//    //DrawIcon(drawList, rect(to_point(iconOrigin) + point(roundi(3 * 32 * scale), roundi(32 * scale)), iconSize), IconType::Grid,        true,  ImColor(128, 255, 128));
-//    //DrawIcon(drawList, rect(to_point(iconOrigin) + point(roundi(4 * 32 * scale), roundi( 0 * scale)), iconSize), IconType::RoundSquare, false, ImColor(255, 128, 128));
-//    //DrawIcon(drawList, rect(to_point(iconOrigin) + point(roundi(4 * 32 * scale), roundi(32 * scale)), iconSize), IconType::RoundSquare, true,  ImColor(255, 128, 128));
+    ImVec2 iconOrigin(300, 200);
+    DrawIcon(ax::rect(to_point(iconOrigin),                                                     iconSize2), IconType::Flow,        false, ImColor(255, 255, 255), ImColor(255, 0, 0));
+    DrawIcon(ax::rect(to_point(iconOrigin) + point(roundi(     0 * scale), roundi(28 * scale)), iconSize2), IconType::Flow,        true,  ImColor(255, 255, 255), ImColor(255, 0, 0));
+    DrawIcon(ax::rect(to_point(iconOrigin) + point(roundi(    28 * scale), roundi( 0 * scale)), iconSize2), IconType::Circle,      false, ImColor(  0, 255, 255), ImColor(255, 0, 0));
+    DrawIcon(ax::rect(to_point(iconOrigin) + point(roundi(    28 * scale), roundi(28 * scale)), iconSize2), IconType::Circle,      true,  ImColor(  0, 255, 255), ImColor(255, 0, 0));
+    DrawIcon(ax::rect(to_point(iconOrigin) + point(roundi(2 * 28 * scale), roundi( 0 * scale)), iconSize2), IconType::Square,      false, ImColor(128, 255, 128), ImColor(255, 0, 0));
+    DrawIcon(ax::rect(to_point(iconOrigin) + point(roundi(2 * 28 * scale), roundi(28 * scale)), iconSize2), IconType::Square,      true,  ImColor(128, 255, 128), ImColor(255, 0, 0));
+    DrawIcon(ax::rect(to_point(iconOrigin) + point(roundi(3 * 28 * scale), roundi( 0 * scale)), iconSize2), IconType::Grid,        false, ImColor(128, 255, 128), ImColor(255, 0, 0));
+    DrawIcon(ax::rect(to_point(iconOrigin) + point(roundi(3 * 28 * scale), roundi(28 * scale)), iconSize2), IconType::Grid,        true,  ImColor(128, 255, 128), ImColor(255, 0, 0));
+    DrawIcon(ax::rect(to_point(iconOrigin) + point(roundi(4 * 28 * scale), roundi( 0 * scale)), iconSize2), IconType::RoundSquare, false, ImColor(255, 128, 128), ImColor(255, 0, 0));
+    DrawIcon(ax::rect(to_point(iconOrigin) + point(roundi(4 * 28 * scale), roundi(28 * scale)), iconSize2), IconType::RoundSquare, true,  ImColor(255, 128, 128), ImColor(255, 0, 0));
+    DrawIcon(ax::rect(to_point(iconOrigin) + point(roundi(5 * 28 * scale), roundi( 0 * scale)), iconSize2), IconType::Diamond,     false, ImColor(255, 255, 128), ImColor(255, 0, 0));
+    DrawIcon(ax::rect(to_point(iconOrigin) + point(roundi(5 * 28 * scale), roundi(28 * scale)), iconSize2), IconType::Diamond,     true,  ImColor(255, 255, 128), ImColor(255, 0, 0));
+
+    int tw = ImGui_GetTextureWidth(s_Background);
+    int th = ImGui_GetTextureHeight(s_Background);
+    ImGui::Image(s_Background, ImVec2((float)tw, (float)th));
+
+    auto drawHeader = [&](ImVec2 size)
+    {
+        auto origin = ImGui::GetCursorScreenPos();
+
+        drawList->AddDrawCmd();
+        drawList->PathRect(origin, origin + size, 12.0f, 1 | 2);
+        drawList->PathFill(ImColor(255, 0, 255));
+
+        float zoom = 4.0f;
+        ax::matrix transform;
+        transform.scale(1.0f / zoom, 1.0f / zoom);
+        transform.scale(size.x / tw, size.y / th);
+        transform.scale(1.0f / (size.x - 1.0f), 1.0f / (size.y - 1.0f));
+        transform.translate(-origin.x - 0.5f, -origin.y - 0.5f);
+
+        ImGui_PushGizmo(drawList, s_Background, (float*)&transform);
+        drawList->AddDrawCmd();
+
+        drawList->PathRect(origin, origin + size, 12.0f, 1 | 2);
+        drawList->PathStroke(ImColor(255, 0, 255), true, 2.0f);
+    };
+
+    ImGui::SetCursorScreenPos(ImVec2(400, 300));
+    drawHeader(ImVec2(250, 30));
+    ImGui::SetCursorScreenPos(lastNodePos - ImVec2(0, 105));//to_imvec(s_Nodes.back().Position));
+    drawHeader(ImVec2(250, 100));
+    //drawHeader(ImVec2(512, 256));
+
+    ImGui::SetCursorScreenPos(ImVec2(900, 500));
+    drawHeader(ImVec2(250, 30));
 //
 //
 //    ImGui::Separator();

@@ -105,7 +105,7 @@ struct Context
 };
 
 namespace Draw {
-void Icon(ImDrawList* drawList, rect rect, IconType type, bool filled, ImU32 color);
+void Icon(ImDrawList* drawList, rect rect, IconType type, bool filled, ImU32 color, ImU32 innerColor = 0);
 } // namespace Draw
 
 

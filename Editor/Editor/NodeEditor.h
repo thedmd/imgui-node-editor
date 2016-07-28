@@ -7,7 +7,7 @@ namespace NodeEditor {
 
 struct Context;
 
-enum class IconType { Flow, Circle, Square, Grid, RoundSquare };
+enum class IconType { Flow, Circle, Square, Grid, RoundSquare, Diamond };
 
 bool Icon(const char* id, const ImVec2& size, IconType type, bool filled, const ImVec4& color = ImVec4(1, 1, 1, 1));
 
