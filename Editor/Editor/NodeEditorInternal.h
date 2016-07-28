@@ -31,62 +31,6 @@ static inline rect   get_item_bounds()             { return rect(to_point(ImGui:
 
 extern Context* s_Editor;
 
-//------------------------------------------------------------------------------
-// Layouts with springs
-enum class LayoutType
-{
-    Horizontal,
-    Vertical
-};
-
-enum class LayoutItemType
-{
-    Widget, Spring
-};
-
-struct LayoutItem
-{
-    LayoutItemType  Type;
-    size            Size;
-    float           SpringWeight;
-    int             SpringSize;
-
-    LayoutItem(LayoutItemType type);
-};
-
-struct Layout
-{
-    const LayoutType    Type;
-    vector<LayoutItem>  Items;
-    size                Size;
-
-    int                 CurrentItem;
-    bool                Editing;
-    bool                Modified;
-
-    Layout(LayoutType type);
-
-    void Begin();
-    void AddSeparator(float weight = 1.0f);
-    void End();
-
-    bool Build(const size& size);
-
-    int ItemCount() const;
-    void MakeDirty();
-
-private:
-    void BeginWidget();
-    void EndWidget();
-    //void PushWidget(const size& size);
-    void PushSpring(float weight);
-
-    void BeginGroup();
-    void EndGroup();
-
-    void CenterWidget();
-};
-
 
 //------------------------------------------------------------------------------
 struct Node
@@ -94,12 +38,12 @@ struct Node
     int     ID;
     rect    Bounds;
 
-    rect    ContentBounds;
-    Layout  HeaderLayout;
+    Node(int id):
+        ID(id),
+        Bounds(to_point(ImGui::GetCursorScreenPos()), size())
+    {
+    }
 
-    Node(int id);
-
-    void Layout(const rect& bounds);
 };
 
 enum class NodeStage
@@ -140,8 +84,6 @@ struct Context
     Node*           ActiveNode;
     ImVec2          DragOffset;
 
-    Layout*         CurrentLayout;
-
     bool            IsInitialized;
     Settings        Settings;
 
@@ -154,7 +96,6 @@ struct Context
     void SetCurrentNode(Node* node, bool isNew = false);
     void SetActiveNode(Node* node);
     bool SetNodeStage(NodeStage stage);
-    void SetCurrentLayout(Layout* layout);
 
     NodeSettings* FindNodeSettings(int id);
     NodeSettings* AddNodeSettings(int id);

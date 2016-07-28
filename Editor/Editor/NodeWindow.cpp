@@ -286,15 +286,15 @@ NodeWindow::NodeWindow(void):
     int nextId = 1;
     auto genId = [&nextId]() { return nextId++; };
 
-//     s_Nodes.emplace_back(genId(), "InputAction Fire", point(50, 200));
-//     s_Nodes.back().Outputs.emplace_back(genId(), s_Nodes.back().ID, "Pressed", PortType::Flow);
-//     s_Nodes.back().Outputs.emplace_back(genId(), s_Nodes.back().ID, "Released", PortType::Flow);
-//
-//     s_Nodes.emplace_back(genId(), "Branch", point(300, 20));
-//     s_Nodes.back().Inputs.emplace_back(genId(), s_Nodes.back().ID, "", PortType::Flow);
-//     s_Nodes.back().Inputs.emplace_back(genId(), s_Nodes.back().ID, "Condition", PortType::Bool);
-//     s_Nodes.back().Outputs.emplace_back(genId(), s_Nodes.back().ID, "True", PortType::Flow);
-//     s_Nodes.back().Outputs.emplace_back(genId(), s_Nodes.back().ID, "False", PortType::Flow);
+    s_Nodes.emplace_back(genId(), "InputAction Fire", point(50, 200));
+    s_Nodes.back().Outputs.emplace_back(genId(), s_Nodes.back().ID, "Pressed", PortType::Flow);
+    s_Nodes.back().Outputs.emplace_back(genId(), s_Nodes.back().ID, "Released", PortType::Flow);
+
+    s_Nodes.emplace_back(genId(), "Branch", point(300, 20));
+    s_Nodes.back().Inputs.emplace_back(genId(), s_Nodes.back().ID, "", PortType::Flow);
+    s_Nodes.back().Inputs.emplace_back(genId(), s_Nodes.back().ID, "Condition", PortType::Bool);
+    s_Nodes.back().Outputs.emplace_back(genId(), s_Nodes.back().ID, "True", PortType::Flow);
+    s_Nodes.back().Outputs.emplace_back(genId(), s_Nodes.back().ID, "False", PortType::Flow);
 
     s_Nodes.emplace_back(genId(), "Do N", point(600, 30));
     s_Nodes.back().Inputs.emplace_back(genId(), s_Nodes.back().ID, "Enter", PortType::Flow);
@@ -303,13 +303,26 @@ NodeWindow::NodeWindow(void):
     s_Nodes.back().Outputs.emplace_back(genId(), s_Nodes.back().ID, "Exit", PortType::Flow);
     s_Nodes.back().Outputs.emplace_back(genId(), s_Nodes.back().ID, "Counter", PortType::Int);
 
-//     s_Nodes.emplace_back(genId(), "OutputAction", point(1000, 200));
-//     s_Nodes.back().Inputs.emplace_back(genId(), s_Nodes.back().ID, "Sample", PortType::Float);
-//
-//     s_Joins.emplace_back(genId(), s_Nodes[0].Outputs[0].ID, s_Nodes[1].Inputs[0].ID);
-//     s_Joins.emplace_back(genId(), s_Nodes[1].Outputs[0].ID, s_Nodes[2].Inputs[0].ID);
-//     s_Joins.emplace_back(genId(), s_Nodes[1].Outputs[1].ID, s_Nodes[2].Inputs[2].ID);
-//     s_Joins.emplace_back(genId(), s_Nodes[2].Outputs[1].ID, s_Nodes[3].Inputs[0].ID);
+    s_Nodes.emplace_back(genId(), "OutputAction", point(1000, 200));
+    s_Nodes.back().Inputs.emplace_back(genId(), s_Nodes.back().ID, "Sample", PortType::Float);
+
+    s_Nodes.emplace_back(genId(), "Single Line Trace by Channel", point(600, 30));
+    s_Nodes.back().Inputs.emplace_back(genId(), s_Nodes.back().ID, "", PortType::Flow);
+    s_Nodes.back().Inputs.emplace_back(genId(), s_Nodes.back().ID, "Start", PortType::Flow);
+    s_Nodes.back().Inputs.emplace_back(genId(), s_Nodes.back().ID, "End", PortType::Int);
+    s_Nodes.back().Inputs.emplace_back(genId(), s_Nodes.back().ID, "Trace Channel", PortType::Float);
+    s_Nodes.back().Inputs.emplace_back(genId(), s_Nodes.back().ID, "Trace Complex", PortType::Bool);
+    s_Nodes.back().Inputs.emplace_back(genId(), s_Nodes.back().ID, "Actors to Ignore", PortType::Int);
+    s_Nodes.back().Inputs.emplace_back(genId(), s_Nodes.back().ID, "Draw Debug Type", PortType::Bool);
+    s_Nodes.back().Inputs.emplace_back(genId(), s_Nodes.back().ID, "Ignore Self", PortType::Bool);
+    s_Nodes.back().Outputs.emplace_back(genId(), s_Nodes.back().ID, "", PortType::Flow);
+    s_Nodes.back().Outputs.emplace_back(genId(), s_Nodes.back().ID, "Out Hit", PortType::Float);
+    s_Nodes.back().Outputs.emplace_back(genId(), s_Nodes.back().ID, "Return Value", PortType::Bool);
+
+    s_Joins.emplace_back(genId(), s_Nodes[0].Outputs[0].ID, s_Nodes[1].Inputs[0].ID);
+    s_Joins.emplace_back(genId(), s_Nodes[1].Outputs[0].ID, s_Nodes[2].Inputs[0].ID);
+    s_Joins.emplace_back(genId(), s_Nodes[1].Outputs[1].ID, s_Nodes[2].Inputs[2].ID);
+    s_Joins.emplace_back(genId(), s_Nodes[2].Outputs[1].ID, s_Nodes[3].Inputs[0].ID);
 }
 
 NodeWindow::~NodeWindow()
@@ -323,52 +336,85 @@ NodeWindow::~NodeWindow()
 
 void Dummy();
 
-static int s_ActiveNodeId = 0;
-static point s_DragOffset;
+static void DrawItemRect(ImColor color, float expand = 0.0f)
+{
+    ImGui::GetWindowDrawList()->AddRect(
+        ImGui::GetItemRectMin() - ImVec2(expand, expand),
+        ImGui::GetItemRectMax() + ImVec2(expand, expand),
+        color);
+};
+
+static void FillItemRect(ImColor color, float expand = 0.0f)
+{
+    ImGui::GetWindowDrawList()->AddRectFilled(
+        ImGui::GetItemRectMin() - ImVec2(expand, expand),
+        ImGui::GetItemRectMax() + ImVec2(expand, expand),
+        color);
+};
 
 void NodeWindow::OnGui()
 {
+    auto& io = ImGui::GetIO();
+
+    ImGui::Text("FPS: %.2f", io.Framerate);
+    ImGui::Separator();
+
+    static float iconWidth = 24;
+    //ImGui::DragFloat("Icon Size", &iconWidth, 1.0f, 1.0f, 128.0f);
+
+    //ImGui::SetCursorPos(ImGui::GetCursorPos() + ImVec2(100, 100));
+
+    auto iconSize = ImVec2(iconWidth, iconWidth);
+    //ImGui::BeginVertical("node");
+    //    ImGui::BeginHorizontal("header");
+    //        ImGui::Spring(0.0f);
+    //        ImGui::TextUnformatted("Do N");
+    //        ImGui::Spring(1.0f);
+    //        ImGui::Button("X", ImVec2(24, 24));
+    //        ImGui::Spring(0.0f);
+    //    ImGui::EndHorizontal();
+    //    ImGui::BeginHorizontal("content");
+    //        //ImGui::BeginVertical("input");
+    //            ImGui::Button("X", iconSize);
+    //        //    ImGui::Spring(0.0f);
+    //        //    ImGui::TextUnformatted("Input");
+    //        //ImGui::EndVertical();
+    //        //FillItemRect(ImColor(0, 255, 0, 64));
+    //        ImGui::Spring(1.0f);
+    //        //ImGui::BeginVertical("output");
+    //        //    ImGui::TextUnformatted("Output");
+    //        //    ImGui::Spring(0.0f, 80.0f);
+    //            ImGui::Button("X", iconSize);
+    //            ImGui::BeginVertical("content2");
+    //            ImGui::TextUnformatted("Output");
+    //            ImGui::TextUnformatted("Output");
+    //            ImGui::TextUnformatted("Output");
+    //            ImGui::EndVertical();
+    //        //ImGui::EndVertical();
+    //        //FillItemRect(ImColor(0, 255, 0, 64));
+    //    ImGui::EndHorizontal();
+    //ImGui::EndVertical();
+    //DrawItemRect(ImColor(255, 220, 255), 2);
+
+    static float scale = 1.77f;
+    static int s_ActiveNodeId = -1;
+
+    ImGui::DragFloat("Scale", &scale, 0.01f, 0.1f, 8.0f);
+    auto iconSize2 = size(roundi(PortIconSize * scale), roundi(PortIconSize * scale));
+    ImGui::Text("size: %d", iconSize2.w);
+
+    static auto portIconSize = PortIconSize;
+    portIconSize = iconSize2.w;
+
+
     ed::SetCurrentEditor(m_Editor);
-
-    //Dummy();
-
-    auto isPortConnected = [](int id)
-    {
-        for (auto& join : s_Joins)
-            if (join.StartPortID == id || join.EndPortID == id)
-                return true;
-
-        return false;
-    };
-
-    static float scale = 3.0f;
 
 
     auto& style = ImGui::GetStyle();
 
-
     ed::Begin("Node editor");
     //ImGui::BeginChild("scrolling_region", ImVec2(0, 0), true, /*ImGuiWindowFlags_NoScrollbar | */ImGuiWindowFlags_NoMove);
-
     ImDrawList* drawList = ImGui::GetWindowDrawList();
-
-    //ImGui::Columns(2);
-    //static float r, g, b, a;
-    //ImGui::SliderFloat("Spaceship red", &r, 0.0f, 1.0f);
-    //ImGui::SliderFloat("Spaceship green", &g, 0.0f, 1.0f);
-    //ImGui::SliderFloat("Spaceship blue", &b, 0.0f, 1.0f);
-    //ImGui::SliderFloat("Spaceship alpha", &a, 0.0f, 1.0f);
-    //ImGui::SameLine();
-    //ImGui::Text("Hellovdfkds;f kdslkf s;dk");
-
-    //ImGui::NextColumn();
-
-    //ImGui::Text("Spaceship red");
-    //ImGui::Text("Spaceship green");
-    //ImGui::Text("Spaceship blue");
-    //ImGui::Text("Spaceship alpha");
-    //ImGui::Columns(1);
-
     drawList->ChannelsSplit(3);
 
     auto cursorTopLeft = ImGui::GetCursorScreenPos();
@@ -381,8 +427,26 @@ void NodeWindow::OnGui()
             return false;
     });
 
-    static auto portIconSize = PortIconSize;
     auto iconSizeIm = ImVec2(static_cast<float>(portIconSize), static_cast<float>(portIconSize));
+
+    auto drawIcon = [&drawList](size s, PortType type, bool connected)
+    {
+        auto rect = ax::rect(to_point(ImGui::GetCursorScreenPos()), s);
+        if (type == PortType::Flow)
+            DrawIcon(drawList, rect, IconType::Flow, connected, ImColor(255, 255, 255));
+        else if (type == PortType::Bool)
+            DrawIcon(drawList, rect, IconType::Circle, connected, ImColor(180, 0, 0));
+        else if (type == PortType::Int)
+            DrawIcon(drawList, rect, IconType::Circle, connected, ImColor(70, 225, 172));
+        else if (type == PortType::Float)
+            DrawIcon(drawList, rect, IconType::Circle, connected, ImColor(160, 245, 85));
+        else
+        {
+            ImGui::Button("X", to_imvec(s));
+            return;
+        }
+        ImGui::Dummy(to_imvec(s));
+    };
 
     drawList->ChannelsSetCurrent(2);
     for (auto& node : s_Nodes)
@@ -390,46 +454,63 @@ void NodeWindow::OnGui()
         ed::BeginNode(node.ID);
 
         ed::BeginHeader();
-        ImGui::Text(node.Name.c_str());
+            ImGui::Spring(0);
+            ImGui::Text(node.Name.c_str());
+            ImGui::Spring(1);
 
-        ImGui::SameLine();
-        ed::Spring();
+            ImGui::SuspendLayout();
+            ImGui::BeginGroup();
+            ImGui::Button("Button");
+            ImGui::TextUnformatted("Label!");
+            ImGui::EndGroup();
+            ImGui::ResumeLayout();
 
-        ImGui::SameLine();
-        ImGui::BeginGroup();
-        ImGui::Text("Button \\o/");
-        ImGui::EndGroup();
-
-        ImGui::SameLine();
-        ed::Spring(0.0f);
-
-        ImGui::SameLine();
-        ImGui::BeginGroup();
-        ImGui::Text("Button \\o/");
-        ImGui::Text("Button \\o/");
-        ImGui::EndGroup();
-
-        ImGui::SameLine();
-        ed::Spring(0.0f);
+            ImGui::Spring(0);
+            ImGui::Button("X", ImVec2(24, 24));
+            ImGui::Spring(0);
         ed::EndHeader();
 
         for (auto& input : node.Inputs)
         {
             ed::BeginInput(input.ID);
-            ImGui::Button("X", iconSizeIm);
-            ImGui::SameLine();
+            ImGui::PushStyleVar(ImGuiStyleVar_LayoutAlign, 0.5f);
+            ImGui::BeginHorizontal(input.ID);
+            ImGui::Spring(0,2);
+            drawIcon(to_size(iconSizeIm), input.Type, false);
+            ImGui::Spring(0);
             ImGui::Text(input.Name.c_str());
+            if (input.Type == PortType::Bool)
+            {
+                static bool xxx = false;
+                ImGui::Spring(0);
+                ImGui::Checkbox("", &xxx);
+            }
+            else if (input.Type == PortType::Float)
+            {
+                static int xxx = 0;
+                ImGui::Spring(0);
+                ImGui::PushItemWidth(100.0f);
+                ImGui::SuspendLayout();
+                ImGui::Combo("", &xxx, "Visibility" "\0" "Position" "\0" "Scale");
+                ImGui::ResumeLayout();
+                ImGui::PopItemWidth();
+            }
+            ImGui::EndHorizontal();
+            ImGui::PopStyleVar();
             ed::EndInput();
         }
 
         for (auto& output : node.Outputs)
         {
             ed::BeginOutput(output.ID);
-
+            ImGui::PushStyleVar(ImGuiStyleVar_LayoutAlign, 0.5f);
+            ImGui::BeginHorizontal(output.ID);
             ImGui::Text(output.Name.c_str());
-            ImGui::SameLine();
-            ImGui::Button("X", iconSizeIm);
-
+            ImGui::Spring(0);
+            drawIcon(to_size(iconSizeIm), output.Type, false);
+            ImGui::Spring(0, 2);
+            ImGui::EndHorizontal();
+            ImGui::PopStyleVar();
             ed::EndOutput();
 
             //ed::Icon("##icon", iconSizeIm, IconType::Flow, false);
@@ -438,7 +519,7 @@ void NodeWindow::OnGui()
         //ImGui::Button("X", ImVec2(100 * scale, 40));
 
         ed::EndNode();
-
+    }
 
 
         //node.Layout();
@@ -467,234 +548,232 @@ void NodeWindow::OnGui()
         //}
 
         //drawList->ChannelsSetCurrent(2);
-        //for (auto& input : node.Inputs)
-        //{
-        //    ImGui::PushID(input.ID);
-        //    ImGui::SetCursorScreenPos(to_imvec(input.IconRect.location));
-        //    ImGui::SetItemAllowOverlap();
-        //    ImGui::InvisibleButton("X", to_imvec(input.IconRect.size));
-        //    ImGui::PopID();
-        //}
-
-        //for (auto& output : node.Outputs)
-        //{
-        //    ImGui::PushID(output.ID);
-        //    ImGui::SetCursorScreenPos(to_imvec(output.IconRect.location));
-        //    ImGui::SetItemAllowOverlap();
-        //    ImGui::InvisibleButton("X", to_imvec(output.IconRect.size));
-        //    ImGui::PopID();
-        //}
-
-        /*
-        drawList->ChannelsSetCurrent(1);
-        auto drawRect = [drawList, &nodeTopLeft](const rect& rect, ImU32 color)
-        {
-            if (rect.is_empty())
-                return;
-
-            auto tl = to_imvec(rect.top_left());
-            auto br = to_imvec(rect.bottom_right());
-
-            drawList->AddRect(tl, br, color);
-        };
-
-        auto fillRect = [drawList, &nodeTopLeft](const rect& rect, ImU32 color)
-        {
-            if (rect.is_empty())
-                return;
-
-            auto tl = to_imvec(rect.top_left());
-            auto br = to_imvec(rect.bottom_right());
-
-            drawList->AddRectFilled(tl, br, color);
-        };
-
-        auto drawText = [drawList, &nodeTopLeft](const rect& rect, const std::string& text)
-        {
-            if (text.empty())
-                return;
-
-            drawList->AddText(to_imvec(rect.location), ImColor(255, 255, 255), text.c_str());
-        };
-
-        auto drawIcon = [&drawList, &drawRect](rect rect, PortType type, bool connected)
-        {
-            if (type == PortType::Flow)
-                DrawIcon(drawList, rect, IconType::Flow, connected, ImColor(255, 255, 255));
-            else if (type == PortType::Bool)
-                DrawIcon(drawList, rect, IconType::Circle, connected, ImColor(180, 0, 0));
-            else if (type == PortType::Int)
-                DrawIcon(drawList, rect, IconType::Circle, connected, ImColor(70, 225, 172));
-            else if (type == PortType::Float)
-                DrawIcon(drawList, rect, IconType::Circle, connected, ImColor(160, 245, 85));
-            else
-                drawRect(rect, ImColor(0, 255, 255));
-        };
-
-        fillRect(node.FrameRect, ImColor(0, 32, 64));
-        fillRect(node.HeaderRect, ImColor(0, 32, 0));
-        drawRect(node.FrameRect, ImColor(255, 0, 255));
-        drawRect(node.HeaderRect, ImColor(255, 0, 0));
-        /////drawRect(node.LabelRect, ImColor(255, 255, 0));
-        /////drawRect(node.InputsRect, ImColor(0, 0, 255));
-        /////drawRect(node.OutputsRect, ImColor(0, 0, 255));
-        drawText(node.LabelRect, node.Name);
-
-
-
-        for (auto& input : node.Inputs)
-        {
-            /////drawRect(input.FrameRect, ImColor(255, 0, 0));
-            /////drawRect(input.LabelRect, ImColor(255, 255, 0));
-            drawIcon(input.IconRect, input.Type, isPortConnected(input.ID));
-            drawText(input.LabelRect, input.Name);
-        }
-
-        for (auto& output : node.Outputs)
-        {
-            /////drawRect(output.FrameRect, ImColor(255, 0, 0));
-            /////drawRect(output.LabelRect, ImColor(255, 255, 0));
-            drawIcon(output.IconRect, output.Type, isPortConnected(output.ID));
-            drawText(output.LabelRect, output.Name);
-        }
-
-        //    const float rounding = 6;
-
-        //    auto cursor = ImGui::GetCursorScreenPos();
-        //    ImRect headerRect(cursor, cursor + ImVec2(headerWidth, ImGui::GetTextLineHeightWithSpacing()));
-
-        //    drawList->PathLineTo(headerRect.GetBL());
-        //    drawList->PathLineTo(headerRect.GetTL() + ImVec2(0, rounding));
-        //    drawList->PathArcTo(headerRect.GetTL() + ImVec2(rounding, rounding), rounding, IM_PI, IM_PI + IM_PI / 2);
-        //    drawList->PathLineTo(headerRect.GetTR() - ImVec2(rounding, 0));
-        //    drawList->PathArcTo(headerRect.GetTR() + ImVec2(-rounding, rounding), rounding, IM_PI + IM_PI / 2, 2 * IM_PI);
-        //    drawList->PathLineTo(headerRect.GetBR());
-        //    drawList->PathFill(ImColor(255, 0, 255));
-        //}
-        */
-    }
-
-    for (auto& join : s_Joins)
-        ed::Link(join.ID, join.StartPortID, join.EndPortID, ImColor(255, 255, 0));
-
-    /*
-    drawList->ChannelsSetCurrent(0);
-    for (auto& join : s_Joins)
-    {
-        auto findPort = [](int id) -> const Port*
-        {
-            for (auto& node : s_Nodes)
-            {
-                for (auto& input : node.Inputs)
-                    if (input.ID == id)
-                        return &input;
-
-                for (auto& output : node.Outputs)
-                    if (output.ID == id)
-                        return &output;
-            }
-
-            return nullptr;
-        };
-
-        auto start = findPort(join.StartPortID);
-        auto end   = findPort(join.EndPortID);
-
-        auto startpoint   = to_imvec(point(start->IconRect.right(), start->IconRect.center_y()));
-        auto endpoint     = to_imvec(point(end->IconRect.left(), end->IconRect.center_y()));
-        auto startControl = startpoint + ImVec2(JoinBezierStrength, 0);
-        auto endControl   = endpoint - ImVec2(JoinBezierStrength, 0);
-
-        drawList->AddBezierCurve(startpoint, startControl, endControl, endpoint, ImColor(255, 255, 0), 2.0f);
-    }
-    */
+//        //for (auto& input : node.Inputs)
+//        //{
+//        //    ImGui::PushID(input.ID);
+//        //    ImGui::SetCursorScreenPos(to_imvec(input.IconRect.location));
+//        //    ImGui::SetItemAllowOverlap();
+//        //    ImGui::InvisibleButton("X", to_imvec(input.IconRect.size));
+//        //    ImGui::PopID();
+//        //}
+//
+//        //for (auto& output : node.Outputs)
+//        //{
+//        //    ImGui::PushID(output.ID);
+//        //    ImGui::SetCursorScreenPos(to_imvec(output.IconRect.location));
+//        //    ImGui::SetItemAllowOverlap();
+//        //    ImGui::InvisibleButton("X", to_imvec(output.IconRect.size));
+//        //    ImGui::PopID();
+//        //}
+//
+//        /*
+//        drawList->ChannelsSetCurrent(1);
+//        auto drawRect = [drawList, &nodeTopLeft](const rect& rect, ImU32 color)
+//        {
+//            if (rect.is_empty())
+//                return;
+//
+//            auto tl = to_imvec(rect.top_left());
+//            auto br = to_imvec(rect.bottom_right());
+//
+//            drawList->AddRect(tl, br, color);
+//        };
+//
+//        auto fillRect = [drawList, &nodeTopLeft](const rect& rect, ImU32 color)
+//        {
+//            if (rect.is_empty())
+//                return;
+//
+//            auto tl = to_imvec(rect.top_left());
+//            auto br = to_imvec(rect.bottom_right());
+//
+//            drawList->AddRectFilled(tl, br, color);
+//        };
+//
+//        auto drawText = [drawList, &nodeTopLeft](const rect& rect, const std::string& text)
+//        {
+//            if (text.empty())
+//                return;
+//
+//            drawList->AddText(to_imvec(rect.location), ImColor(255, 255, 255), text.c_str());
+//        };
+//
+//        auto drawIcon = [&drawList, &drawRect](rect rect, PortType type, bool connected)
+//        {
+//            if (type == PortType::Flow)
+//                DrawIcon(drawList, rect, IconType::Flow, connected, ImColor(255, 255, 255));
+//            else if (type == PortType::Bool)
+//                DrawIcon(drawList, rect, IconType::Circle, connected, ImColor(180, 0, 0));
+//            else if (type == PortType::Int)
+//                DrawIcon(drawList, rect, IconType::Circle, connected, ImColor(70, 225, 172));
+//            else if (type == PortType::Float)
+//                DrawIcon(drawList, rect, IconType::Circle, connected, ImColor(160, 245, 85));
+//            else
+//                drawRect(rect, ImColor(0, 255, 255));
+//        };
+//
+//        fillRect(node.FrameRect, ImColor(0, 32, 64));
+//        fillRect(node.HeaderRect, ImColor(0, 32, 0));
+//        drawRect(node.FrameRect, ImColor(255, 0, 255));
+//        drawRect(node.HeaderRect, ImColor(255, 0, 0));
+//        /////drawRect(node.LabelRect, ImColor(255, 255, 0));
+//        /////drawRect(node.InputsRect, ImColor(0, 0, 255));
+//        /////drawRect(node.OutputsRect, ImColor(0, 0, 255));
+//        drawText(node.LabelRect, node.Name);
+//
+//
+//
+//        for (auto& input : node.Inputs)
+//        {
+//            /////drawRect(input.FrameRect, ImColor(255, 0, 0));
+//            /////drawRect(input.LabelRect, ImColor(255, 255, 0));
+//            drawIcon(input.IconRect, input.Type, isPortConnected(input.ID));
+//            drawText(input.LabelRect, input.Name);
+//        }
+//
+//        for (auto& output : node.Outputs)
+//        {
+//            /////drawRect(output.FrameRect, ImColor(255, 0, 0));
+//            /////drawRect(output.LabelRect, ImColor(255, 255, 0));
+//            drawIcon(output.IconRect, output.Type, isPortConnected(output.ID));
+//            drawText(output.LabelRect, output.Name);
+//        }
+//
+//        //    const float rounding = 6;
+//
+//        //    auto cursor = ImGui::GetCursorScreenPos();
+//        //    ImRect headerRect(cursor, cursor + ImVec2(headerWidth, ImGui::GetTextLineHeightWithSpacing()));
+//
+//        //    drawList->PathLineTo(headerRect.GetBL());
+//        //    drawList->PathLineTo(headerRect.GetTL() + ImVec2(0, rounding));
+//        //    drawList->PathArcTo(headerRect.GetTL() + ImVec2(rounding, rounding), rounding, IM_PI, IM_PI + IM_PI / 2);
+//        //    drawList->PathLineTo(headerRect.GetTR() - ImVec2(rounding, 0));
+//        //    drawList->PathArcTo(headerRect.GetTR() + ImVec2(-rounding, rounding), rounding, IM_PI + IM_PI / 2, 2 * IM_PI);
+//        //    drawList->PathLineTo(headerRect.GetBR());
+//        //    drawList->PathFill(ImColor(255, 0, 255));
+//        //}
+//        */
+//    }
+//
+//    for (auto& join : s_Joins)
+//        ed::Link(join.ID, join.StartPortID, join.EndPortID, ImColor(255, 255, 0));
+//
+//    /*
+//    drawList->ChannelsSetCurrent(0);
+//    for (auto& join : s_Joins)
+//    {
+//        auto findPort = [](int id) -> const Port*
+//        {
+//            for (auto& node : s_Nodes)
+//            {
+//                for (auto& input : node.Inputs)
+//                    if (input.ID == id)
+//                        return &input;
+//
+//                for (auto& output : node.Outputs)
+//                    if (output.ID == id)
+//                        return &output;
+//            }
+//
+//            return nullptr;
+//        };
+//
+//        auto start = findPort(join.StartPortID);
+//        auto end   = findPort(join.EndPortID);
+//
+//        auto startpoint   = to_imvec(point(start->IconRect.right(), start->IconRect.center_y()));
+//        auto endpoint     = to_imvec(point(end->IconRect.left(), end->IconRect.center_y()));
+//        auto startControl = startpoint + ImVec2(JoinBezierStrength, 0);
+//        auto endControl   = endpoint - ImVec2(JoinBezierStrength, 0);
+//
+//        drawList->AddBezierCurve(startpoint, startControl, endControl, endpoint, ImColor(255, 255, 0), 2.0f);
+//    }
+//    */
 
     drawList->ChannelsSetCurrent(0);
     drawList->ChannelsMerge();
 
     ImGui::SetCursorScreenPos(cursorTopLeft);
-    ImGui::Text("IsAnyItemActive: %d", ImGui::IsAnyItemActive() ? 1 : 0);
+    //ImGui::Text("IsAnyItemActive: %d", ImGui::IsAnyItemActive() ? 1 : 0);
 
     //ImGui::SetCursorScreenPos(cursorTopLeft + ImVec2(400, 400));
 
-    ImGui::DragFloat("Scale", &scale, 0.01f, 0.1f, 8.0f);
-    auto iconSize = size(roundi(PortIconSize * scale), roundi(PortIconSize * scale));
-    ImGui::Text("size: %d", iconSize.w);
 
-    portIconSize = iconSize.w;
-
-    //ImVec2 iconOrigin(300, 200);
-    //DrawIcon(drawList, rect(to_point(iconOrigin),                          iconSize), IconType::Flow,        false, ImColor(255, 255, 255));
-    //DrawIcon(drawList, rect(to_point(iconOrigin) + point(roundi(     0 * scale), roundi(32 * scale)), iconSize), IconType::Flow,        true,  ImColor(255, 255, 255));
-    //DrawIcon(drawList, rect(to_point(iconOrigin) + point(roundi(    32 * scale), roundi( 0 * scale)), iconSize), IconType::Circle,      false, ImColor(  0, 255, 255));
-    //DrawIcon(drawList, rect(to_point(iconOrigin) + point(roundi(    32 * scale), roundi(32 * scale)), iconSize), IconType::Circle,      true,  ImColor(  0, 255, 255));
-    //DrawIcon(drawList, rect(to_point(iconOrigin) + point(roundi(2 * 32 * scale), roundi( 0 * scale)), iconSize), IconType::Square,      false, ImColor(128, 255, 128));
-    //DrawIcon(drawList, rect(to_point(iconOrigin) + point(roundi(2 * 32 * scale), roundi(32 * scale)), iconSize), IconType::Square,      true,  ImColor(128, 255, 128));
-    //DrawIcon(drawList, rect(to_point(iconOrigin) + point(roundi(3 * 32 * scale), roundi( 0 * scale)), iconSize), IconType::Grid,        false, ImColor(128, 255, 128));
-    //DrawIcon(drawList, rect(to_point(iconOrigin) + point(roundi(3 * 32 * scale), roundi(32 * scale)), iconSize), IconType::Grid,        true,  ImColor(128, 255, 128));
-    //DrawIcon(drawList, rect(to_point(iconOrigin) + point(roundi(4 * 32 * scale), roundi( 0 * scale)), iconSize), IconType::RoundSquare, false, ImColor(255, 128, 128));
-    //DrawIcon(drawList, rect(to_point(iconOrigin) + point(roundi(4 * 32 * scale), roundi(32 * scale)), iconSize), IconType::RoundSquare, true,  ImColor(255, 128, 128));
-
-
-    ImGui::Separator();
-
-    static bool groups = false;
-    ImGui::Checkbox("Groups", &groups);
-
-    ImGui::BeginGroup();
-    ImGui::Text("Do N");
-    ImGui::SameLine();
-    //ed::Spring();
-    //ImGui::SameLine();
-    ImGui::Button("Button \\o/");
-    ImGui::EndGroup();
-
-    ImGui::GetWindowDrawList()->AddRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), ImColor(255, 0, 0));
-
-    //ImGui::BeginGroup();
-    //ImGui::BeginGroup();
-    //ImGui::BeginGroup();
-    //ImGui::Text("Long Long Long");
-    //ImGui::SameLine();
-    //ImGui::BeginGroup();
-    //ImGui::Dummy(ImVec2(0,0));
-    //ImGui::EndGroup();
-    //ImGui::SameLine();
-    //ImGui::BeginGroup();
-    //ImGui::Text("In Same Line");
-    //ImGui::EndGroup();
-    //if (groups) ImGui::GetWindowDrawList()->AddRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), ImColor(0, 255, 0));
-    //else        ImGui::GetWindowDrawList()->AddRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), ImColor(255, 0, 0));
-    //ImGui::EndGroup();
-    //if (groups) ImGui::GetWindowDrawList()->AddRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), ImColor(0, 255, 0));
-    //else        ImGui::GetWindowDrawList()->AddRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), ImColor(255, 0, 0));
-    //ImGui::EndGroup();
-    //if (groups) ImGui::GetWindowDrawList()->AddRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), ImColor(0, 255, 0));
-    //else        ImGui::GetWindowDrawList()->AddRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), ImColor(255, 0, 0));
-
-    ////ImGui::SameLine();
-
-    //ImGui::BeginGroup();
-    //ImGui::Button("I'm in the next line");
-    //ImGui::EndGroup();
-    //if (groups) ImGui::GetWindowDrawList()->AddRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), ImColor(0, 255, 0));
-    //else        ImGui::GetWindowDrawList()->AddRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), ImColor(255, 0, 0));
-    //ImGui::EndGroup();
-    //if (groups) ImGui::GetWindowDrawList()->AddRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), ImColor(0, 255, 0));
-    //else        ImGui::GetWindowDrawList()->AddRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), ImColor(255, 0, 0));
-
-//     ImGui::SameLine();
+//    //ImVec2 iconOrigin(300, 200);
+//    //DrawIcon(drawList, rect(to_point(iconOrigin),                          iconSize), IconType::Flow,        false, ImColor(255, 255, 255));
+//    //DrawIcon(drawList, rect(to_point(iconOrigin) + point(roundi(     0 * scale), roundi(32 * scale)), iconSize), IconType::Flow,        true,  ImColor(255, 255, 255));
+//    //DrawIcon(drawList, rect(to_point(iconOrigin) + point(roundi(    32 * scale), roundi( 0 * scale)), iconSize), IconType::Circle,      false, ImColor(  0, 255, 255));
+//    //DrawIcon(drawList, rect(to_point(iconOrigin) + point(roundi(    32 * scale), roundi(32 * scale)), iconSize), IconType::Circle,      true,  ImColor(  0, 255, 255));
+//    //DrawIcon(drawList, rect(to_point(iconOrigin) + point(roundi(2 * 32 * scale), roundi( 0 * scale)), iconSize), IconType::Square,      false, ImColor(128, 255, 128));
+//    //DrawIcon(drawList, rect(to_point(iconOrigin) + point(roundi(2 * 32 * scale), roundi(32 * scale)), iconSize), IconType::Square,      true,  ImColor(128, 255, 128));
+//    //DrawIcon(drawList, rect(to_point(iconOrigin) + point(roundi(3 * 32 * scale), roundi( 0 * scale)), iconSize), IconType::Grid,        false, ImColor(128, 255, 128));
+//    //DrawIcon(drawList, rect(to_point(iconOrigin) + point(roundi(3 * 32 * scale), roundi(32 * scale)), iconSize), IconType::Grid,        true,  ImColor(128, 255, 128));
+//    //DrawIcon(drawList, rect(to_point(iconOrigin) + point(roundi(4 * 32 * scale), roundi( 0 * scale)), iconSize), IconType::RoundSquare, false, ImColor(255, 128, 128));
+//    //DrawIcon(drawList, rect(to_point(iconOrigin) + point(roundi(4 * 32 * scale), roundi(32 * scale)), iconSize), IconType::RoundSquare, true,  ImColor(255, 128, 128));
 //
-//     ImGui::BeginGroup();
-//     ImGui::Button("Z");
-//     ImGui::EndGroup();
-//     if (groups) ImGui::GetWindowDrawList()->AddRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), ImColor(0, 255, 0));
-//     else        ImGui::GetWindowDrawList()->AddRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), ImColor(255, 0, 0));
-
-
+//
+//    ImGui::Separator();
+//
+//    static bool groups = false;
+//    ImGui::Checkbox("Groups", &groups);
+//
+//    ImGui::BeginGroup();
+//    ImGui::Text("Do N");
+//    ImGui::SameLine();
+//    //ed::Spring();
+//    //ImGui::SameLine();
+//    ImGui::Button("Button \\o/");
+//    ImGui::EndGroup();
+//
+//    ImGui::GetWindowDrawList()->AddRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), ImColor(255, 0, 0));
+//
+//    //ImGui::BeginGroup();
+//    //ImGui::BeginGroup();
+//    //ImGui::BeginGroup();
+//    //ImGui::Text("Long Long Long");
+//    //ImGui::SameLine();
+//    //ImGui::BeginGroup();
+//    //ImGui::Dummy(ImVec2(0,0));
+//    //ImGui::EndGroup();
+//    //ImGui::SameLine();
+//    //ImGui::BeginGroup();
+//    //ImGui::Text("In Same Line");
+//    //ImGui::EndGroup();
+//    //if (groups) ImGui::GetWindowDrawList()->AddRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), ImColor(0, 255, 0));
+//    //else        ImGui::GetWindowDrawList()->AddRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), ImColor(255, 0, 0));
+//    //ImGui::EndGroup();
+//    //if (groups) ImGui::GetWindowDrawList()->AddRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), ImColor(0, 255, 0));
+//    //else        ImGui::GetWindowDrawList()->AddRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), ImColor(255, 0, 0));
+//    //ImGui::EndGroup();
+//    //if (groups) ImGui::GetWindowDrawList()->AddRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), ImColor(0, 255, 0));
+//    //else        ImGui::GetWindowDrawList()->AddRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), ImColor(255, 0, 0));
+//
+//    ////ImGui::SameLine();
+//
+//    //ImGui::BeginGroup();
+//    //ImGui::Button("I'm in the next line");
+//    //ImGui::EndGroup();
+//    //if (groups) ImGui::GetWindowDrawList()->AddRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), ImColor(0, 255, 0));
+//    //else        ImGui::GetWindowDrawList()->AddRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), ImColor(255, 0, 0));
+//    //ImGui::EndGroup();
+//    //if (groups) ImGui::GetWindowDrawList()->AddRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), ImColor(0, 255, 0));
+//    //else        ImGui::GetWindowDrawList()->AddRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), ImColor(255, 0, 0));
+//
+////     ImGui::SameLine();
+////
+////     ImGui::BeginGroup();
+////     ImGui::Button("Z");
+////     ImGui::EndGroup();
+////     if (groups) ImGui::GetWindowDrawList()->AddRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), ImColor(0, 255, 0));
+////     else        ImGui::GetWindowDrawList()->AddRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), ImColor(255, 0, 0));
+//
+//
     ed::End();
-
-    //ImGui::ShowMetricsWindow();
+//
+//    //ImGui::ShowMetricsWindow();
+//
+//    //static bool show = true;
+//    //ImGui::ShowTestWindow(&show);
 }
 
 void Dummy()

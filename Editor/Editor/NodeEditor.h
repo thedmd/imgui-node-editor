@@ -11,8 +11,6 @@ enum class IconType { Flow, Circle, Square, Grid, RoundSquare };
 
 bool Icon(const char* id, const ImVec2& size, IconType type, bool filled, const ImVec4& color = ImVec4(1, 1, 1, 1));
 
-void Spring(float weight = 1.0f);
-
 void SetCurrentEditor(Context* ctx);
 Context* GetCurrentEditor();
 Context* CreateEditor();

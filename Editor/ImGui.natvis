@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?> 
+<AutoVisualizer xmlns="http://schemas.microsoft.com/vstudio/debugger/natvis/2010">
+
+    <Type Name="ImRect">
+        <DisplayString>{{ x={Min.x,g} y={Min.y,g} r={Max.x,g} b={Max.y,g} w={Max.x-Min.x,g} h={Max.y-Min.y,g} }}</DisplayString>
+    </Type>
+
+    <Type Name="ImVec2">
+        <DisplayString ExcludeView="size">{{ x={x,g} y={y,g} }}</DisplayString>
+        <DisplayString IncludeView="size">{{ w={x,g} h={y,g} }}</DisplayString>
+    </Type>
+
+    <Type Name="ImGuiLayout">
+        <DisplayString Condition="Type==0">{{ Vertical {{ w={Bounds.x,g} h={Bounds.y,g} }} }}</DisplayString>
+        <DisplayString Condition="Type==1">{{ Horizontal {{ w={Bounds.x,g} h={Bounds.y,g} }} }}</DisplayString>
+    </Type>
+</AutoVisualizer>

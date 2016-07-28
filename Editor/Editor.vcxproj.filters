@@ -72,9 +72,6 @@
     <ClCompile Include="Editor\NodeEditorDraw.cpp">
       <Filter>Editor</Filter>
     </ClCompile>
-    <ClCompile Include="Editor\NodeEditorLayout.cpp">
-      <Filter>Editor</Filter>
-    </ClCompile>
     <ClCompile Include="Editor\NodeEditorWidgets.cpp">
       <Filter>Editor</Filter>
     </ClCompile>
@@ -152,5 +149,8 @@
     <None Include="Editor\types.inl">
       <Filter>Editor</Filter>
     </None>
+  </ItemGroup>
+  <ItemGroup>
+    <Natvis Include="ImGui.natvis" />
   </ItemGroup>
 </Project>

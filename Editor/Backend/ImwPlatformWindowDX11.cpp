@@ -264,14 +264,10 @@ void ImwPlatformWindowDX11::SetTitle(const char* pTtile)
 void ImwPlatformWindowDX11::PreUpdate()
 {
     MSG msg;
-    int iCount = 0;
-    while (PeekMessage(&msg, m_hWnd, 0, 0, PM_REMOVE) && iCount < 10) // Max 10 messages
+    while (PeekMessage(&msg, m_hWnd, 0, 0, PM_REMOVE))
     {
         TranslateMessage(&msg);
         DispatchMessage(&msg);
-        //OnMessage(msg.)
-        //OnMessage(msg.message, msg.wParam, msg.lParam);
-        ++iCount;
     }
 }
 
@@ -302,9 +298,9 @@ void ImwPlatformWindowDX11::Paint()
 
         SetState();
 
-        ImGui::GetIO().DisplaySize = ImVec2(m_oSize.x, m_oSize.y);
+        ImGui_ImplDX11_NewFrame();
 
-        ImGui::NewFrame();
+        ImGui::GetIO().DisplaySize = ImVec2(m_oSize.x, m_oSize.y);
 
         ImwPlatformWindow::Paint();
 

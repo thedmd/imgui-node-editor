@@ -3,10 +3,12 @@
 
 namespace ed = ax::NodeEditor;
 
+
 ed::LayoutItem::LayoutItem(LayoutItemType type):
     Type(type),
     SpringWeight(1.0f),
-    SpringSize(0)
+    SpringSize(0),
+    CenterOffset(0)
 {
 }
 
@@ -21,7 +23,7 @@ void ed::Layout::Begin()
     Editing = true;
 
     // Whole layout group
-    BeginGroup();
+    BeginGroup("layout");
 
     CurrentItem = 0;
 
@@ -38,6 +40,8 @@ void ed::Layout::AddSeparator(float weight/* = 1.0f*/)
 
     PushSpring(std::max(0.0f, weight));
 
+    Log("layout: %-18s (weight: %g, span: %d)", "  spring", weight, Items[CurrentItem - 1].SpringSize);
+
     // Start next item
     if (Type == LayoutType::Horizontal)
         ImGui::SameLine();
@@ -52,7 +56,7 @@ void ed::Layout::End()
     EndWidget();
 
     // Finish layout group
-    EndGroup();
+    EndGroup("layout");
     ImGui::GetWindowDrawList()->AddRectFilled(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), ImColor(0, 255, 0, 64));
 
     auto measuredBounds = get_item_bounds();
@@ -77,7 +81,7 @@ void ed::Layout::MakeDirty()
 
 void ed::Layout::BeginWidget()
 {
-    BeginGroup();
+    BeginGroup("  item");
 
     if (CurrentItem < ItemCount() && Items[CurrentItem].Type == LayoutItemType::Widget)
     {
@@ -88,7 +92,11 @@ void ed::Layout::BeginWidget()
         const auto freeSpace = isHorizontal ? (Size.h - item.Size.h) : (Size.w - item.Size.w);
         if (freeSpace != 0)
         {
-            const auto align = freeSpace / 2;
+            const auto align = isHorizontal ? (freeSpace / 2) : freeSpace;
+
+            item.CenterOffset = align;
+
+            Log("layout: %-18s (offset: %d)", "  center", align);
 
             ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0, 0));
             if (isHorizontal)
@@ -98,38 +106,36 @@ void ed::Layout::BeginWidget()
                     ImGui::GetCursorScreenPos() + ImVec2(0, static_cast<float>(align)) + to_imvec(item.Size),
                     ImColor(255, 255, 0, 128));
 
-//                 auto cursor = ImGui::GetCursorScreenPos();
-//                 cursor.y += align;
-//                 ImGui::SetCursorScreenPos(cursor);
-
-                //ImGui::NewLine();
-                //ImGui::Spacing();
-                //ImGui::SameLine();
-
-                //ImGui::SameLine();
-                //ImGui::Dummy(ImVec2(0, static_cast<float>(align)));
+                ImGui::Dummy(ImVec2(0, static_cast<float>(align)));
             }
             else
             {
-                //ImGui::SameLine();
+                ImGui::GetWindowDrawList()->AddRectFilled(
+                    ImGui::GetCursorScreenPos() + ImVec2(static_cast<float>(align), 0),
+                    ImGui::GetCursorScreenPos() + ImVec2(static_cast<float>(align), 0) + to_imvec(item.Size),
+                    ImColor(255, 255, 0, 128));
+
+                ImGui::SameLine();
                 //ImGui::Dummy(ImVec2(static_cast<float>(align), 0));
             }
             ImGui::PopStyleVar();
         }
+        else
+            item.CenterOffset = 0;
     }
 
-    BeginGroup();
+    BeginGroup("    item container");
 }
 
 void ed::Layout::EndWidget()
 {
-    EndGroup();
+    EndGroup("    item container");
 
     //ImGui::GetWindowDrawList()->AddRectFilled(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), ImColor(255, 255, 0, 128));
 
     auto size = to_size(ImGui::GetItemRectSize());
 
-    EndGroup();
+    EndGroup("  item");
 
     if (CurrentItem == ItemCount())
     {
@@ -196,27 +202,18 @@ void ed::Layout::CenterWidget()
 {
 }
 
-void ed::Layout::BeginGroup()
+void ed::Layout::BeginGroup(const char* tag/* = nullptr*/)
 {
-    //if (Type == LayoutType::Horizontal)
-    //    ImGui::SameLine();
-    //ImGui::Dummy(ImVec2(0, 0));
-    //if (Type == LayoutType::Horizontal)
-    //    ImGui::SameLine();
-
+    Log("layout: %-18s (x: %3.0f, y: %3.0f)", tag ? tag : "", ImGui::GetCursorScreenPos().x, ImGui::GetCursorScreenPos().y);
     ImGui::BeginGroup();
-    //ImGui::Dummy(ImVec2(0, 0));
-    //if (Type == LayoutType::Horizontal)
-    //    ImGui::SameLine();
 }
 
-void ed::Layout::EndGroup()
+void ed::Layout::EndGroup(const char* tag/* = nullptr*/)
 {
-    //if (Type == LayoutType::Horizontal)
-    //    ImGui::SameLine();
-    //ImGui::Dummy(ImVec2(0, 0));
-    //ImGui::GetCurrentWindow()->DC.GroupStack.back().AdvanceCursor = false;
     ImGui::EndGroup();
+    auto bounds = get_item_bounds();
+    Log("layout: %-18s (x: %3d, y: %3d) (x: %3d, y: %3d) (w: %3d, h: %3d)", tag ? tag : "",
+        bounds.x, bounds.y, bounds.right(), bounds.bottom(), bounds.w, bounds.h);
 }
 
 bool ed::Layout::Build(const ax::size& size)

@@ -178,7 +178,6 @@
     <ClCompile Include="Backend\imgui_impl_dx11.cpp" />
     <ClCompile Include="Editor\NodeEditor.cpp" />
     <ClCompile Include="Editor\NodeEditorDraw.cpp" />
-    <ClCompile Include="Editor\NodeEditorLayout.cpp" />
     <ClCompile Include="Editor\NodeEditorNode.cpp" />
     <ClCompile Include="Editor\NodeEditorWidgets.cpp" />
     <ClCompile Include="ImGui\imgui.cpp" />
@@ -224,6 +223,9 @@
       <SubType>Designer</SubType>
     </None>
     <None Include="Editor\types.inl" />
+  </ItemGroup>
+  <ItemGroup>
+    <Natvis Include="ImGui.natvis" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

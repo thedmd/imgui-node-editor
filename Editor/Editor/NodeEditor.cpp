@@ -15,6 +15,8 @@ static void LogV(const char* fmt, va_list args)
     int w = vsnprintf(buffer, buffer_size - 1, fmt, args);
     buffer[buffer_size - 1] = 0;
 
+    ImGui::LogText("\nNode Editor: %s", buffer);
+
     OutputDebugStringA("NodeEditor: ");
     OutputDebugStringA(buffer);
     OutputDebugStringA("\n");
@@ -42,7 +44,6 @@ ed::Context::Context():
     CurrentNodeStage(NodeStage::Invalid),
     ActiveNode(nullptr),
     DragOffset(),
-    CurrentLayout(nullptr),
     IsInitialized(false),
     Settings()
 {
@@ -123,23 +124,30 @@ bool ed::Context::SetNodeStage(NodeStage stage)
             break;
 
         case NodeStage::Header:
-            CurrentNode->HeaderLayout.End();
-            SetCurrentLayout(nullptr);
-            //ImGui::GetWindowDrawList()->AddRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), ImColor(255, 0, 255));
-            //ImGui::GetWindowDrawList()->AddRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), ImColor(255, 0, 255));
+            ImGui::EndHorizontal();
+            ImGui::GetWindowDrawList()->AddRectFilled(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), ImColor(255, 0, 0, 32));
+
+            ImGui::GetWindowDrawList()->AddLine(
+                ImVec2(ImGui::GetItemRectMin().x, ImGui::GetItemRectMax().y + 2),
+                ImVec2(ImGui::GetItemRectMax().x, ImGui::GetItemRectMax().y + 2), ImColor(255, 255, 255));
+
+            ImGui::Spring(0, 8);
+
             break;
 
         case NodeStage::Content:
             break;
 
         case NodeStage::Input:
-            ImGui::EndGroup();
-            ImGui::GetWindowDrawList()->AddRectFilled(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), ImColor(255, 0, 0, 64));
+            ImGui::Spring(1, 0);
+            ImGui::EndVertical();
+            //ImGui::GetWindowDrawList()->AddRectFilled(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), ImColor(0, 255, 0, 32));
             break;
 
         case NodeStage::Output:
-            ImGui::EndGroup();
-            ImGui::GetWindowDrawList()->AddRectFilled(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), ImColor(0, 0, 255, 64));
+            ImGui::Spring(1,0);
+            ImGui::EndVertical();
+            //ImGui::GetWindowDrawList()->AddRectFilled(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), ImColor(0, 255, 0, 32));
             break;
 
         case NodeStage::End:
@@ -149,54 +157,40 @@ bool ed::Context::SetNodeStage(NodeStage stage)
     switch (stage)
     {
         case NodeStage::Begin:
-            ImGui::BeginGroup();
+            ImGui::BeginVertical(CurrentNode->ID);
             break;
 
         case NodeStage::Header:
-            SetCurrentLayout(&CurrentNode->HeaderLayout);
-            CurrentNode->HeaderLayout.Begin();
+            ImGui::BeginHorizontal("header");
             break;
 
         case NodeStage::Content:
-            ImGui::BeginGroup();
+            ImGui::BeginHorizontal("content");
             break;
 
         case NodeStage::Input:
-            ImGui::BeginGroup();
+            ImGui::BeginVertical("input", ImVec2(0,0), 0.0f);
             break;
 
         case NodeStage::Output:
             if (oldStage == NodeStage::Input)
-                ImGui::SameLine();
-
-            ImGui::BeginGroup();
+                ImGui::Spring(1);
+            else
+                ImGui::Spring(1,0);
+            ImGui::BeginVertical("output", ImVec2(0, 0), 1.0f);
             break;
 
         case NodeStage::End:
-            // End content
-            ImGui::EndGroup();
+            ImGui::EndHorizontal();
+            //ImGui::GetWindowDrawList()->AddRectFilled(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), ImColor(0, 0, 255, 32));
+            //ImGui::GetWindowDrawList()->AddRectFilled(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), ImColor(0, 0, 255, 64));
 
-            {
-                auto contentBounds = get_item_bounds();
-                if (contentBounds.size != CurrentNode->ContentBounds.size)
-                {
-                    CurrentNode->HeaderLayout.MakeDirty();
-                    CurrentNode->ContentBounds = contentBounds;
-                }
-            }
-
-            // End node
-            ImGui::EndGroup();
-            ImGui::GetWindowDrawList()->AddRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), ImColor(0, 255, 255));
+            ImGui::EndVertical();
+            ImGui::GetWindowDrawList()->AddRect(ImGui::GetItemRectMin() - ImVec2(2,2), ImGui::GetItemRectMax() + ImVec2(2, 2), ImColor(255, 255, 255));
             break;
     }
 
     return true;
-}
-
-void ed::Context::SetCurrentLayout(Layout* layout)
-{
-    CurrentLayout = layout;
 }
 
 ed::NodeSettings* ed::Context::FindNodeSettings(int id)
@@ -307,11 +301,6 @@ void ed::Context::MarkSettingsDirty()
     Settings.Dirty = true;
 }
 
-void ed::Spring(float weight/* = 1.0f*/)
-{
-    s_Editor->CurrentLayout->AddSeparator(weight);
-}
-
 ed::Context* ed::CreateEditor()
 {
     return new Context();
@@ -343,6 +332,9 @@ void ed::Begin(const char* id)
         s_Editor->IsInitialized = true;
     }
 
+    //ImGui::LogToClipboard();
+    //Log("---- begin ----");
+
     ImGui::BeginChild(id, ImVec2(0, 0), true, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoMove);
 }
 
@@ -355,6 +347,9 @@ void ed::End()
         s_Editor->Settings.Dirty = false;
         s_Editor->SaveSettings();
     }
+
+    //Log("---- end ----");
+    //ImGui::LogFinish();
 }
 
 void ed::BeginNode(int id)
@@ -401,8 +396,6 @@ void ed::EndNode()
 
     if (s_Editor->CurrentNode->Bounds != nodeRect)
     {
-        s_Editor->CurrentNode->Layout(nodeRect);
-
         s_Editor->MarkSettingsDirty();
 
         // TODO: update layout
@@ -459,13 +452,11 @@ void ed::BeginInput(int id)
 
     s_Editor->SetNodeStage(NodeStage::Input);
 
-    ImGui::BeginGroup();
 }
 
 void ed::EndInput()
 {
-    ImGui::EndGroup();
-    ImGui::GetWindowDrawList()->AddRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), ImColor(0, 255, 0));
+    ImGui::Spring(0);
 }
 
 void ed::BeginOutput(int id)
@@ -483,14 +474,11 @@ void ed::BeginOutput(int id)
     //ImGui::SameLine();
 
     s_Editor->SetNodeStage(NodeStage::Output);
-
-    ImGui::BeginGroup();
 }
 
 void ed::EndOutput()
 {
-    ImGui::EndGroup();
-    ImGui::GetWindowDrawList()->AddRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), ImColor(0, 255, 0));
+    ImGui::Spring(0);
 }
 
 void ed::Link(int id, int startNodeId, int endNodeId, const ImVec4& color/* = ImVec4(1, 1, 1, 1)*/)

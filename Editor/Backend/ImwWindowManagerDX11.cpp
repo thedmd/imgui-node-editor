@@ -18,14 +18,14 @@ ImwWindowManagerDX11::~ImwWindowManagerDX11()
 
 void ImwWindowManagerDX11::InternalRun()
 {
-	PreUpdate();
+	//PreUpdate();
 	/*MSG msg;
 	if (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
 	{
 		TranslateMessage(&msg);
 		DispatchMessage(&msg);
 	}*/
-	Sleep(16);
+	//Sleep(16);
 }
 
 ImwPlatformWindow* ImwWindowManagerDX11::CreatePlatformWindow(bool bMain, ImwPlatformWindow* pParent, bool bDragWindow)
