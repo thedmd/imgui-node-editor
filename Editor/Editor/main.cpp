@@ -7,7 +7,7 @@
 #include "Backend/ImwWindowManagerDX11.h"
 #include "ImGui/imgui.h"
 
-#include "NodeWindow.h"
+#include "Window.h"
 
 //#define CONSOLE
 

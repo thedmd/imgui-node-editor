@@ -1,9 +1,14 @@
-#include "NodeEditorInternal.h"
+#include "Drawing.h"
+#include "Types.h"
+#include "ImGuiInterop.h"
+#include "Backend/imgui_impl_dx11.h"
+#include <cmath>
 
-void ax::NodeEditor::Draw::Icon(ImDrawList* drawList, rect rect, IconType type, bool filled, ImU32 color, ImU32 innerColor)
+void ax::Drawing::DrawIcon(ImDrawList* drawList, const ImVec2& a, const ImVec2& b, IconType type, bool filled, ImU32 color, ImU32 innerColor)
 {
-    //drawList->AddRectFilled(to_imvec(rect.top_left()), to_imvec(rect.bottom_right()), ImColor(0, 0, 0));
+    using namespace ImGuiInterop;
 
+          auto rect           = ax::rect(to_point(a), to_point(b));
     const auto outline_scale  = rect.w / 24.0f;
     const auto extra_segments = roundi(2 * outline_scale); // for full circle
 
@@ -13,20 +18,20 @@ void ax::NodeEditor::Draw::Icon(ImDrawList* drawList, rect rect, IconType type, 
 
         const auto offset_x  = 1.0f * origin_scale;
         const auto offset_y  = 0.0f * origin_scale;
-        const auto margin     = (filled ? 1.0f : 1.5f) * origin_scale;
+        const auto margin     = (filled ? 2.0f : 2.0f) * origin_scale;
         const auto rounding   = 2.0f * origin_scale;
         const auto tip_round  = 0.7f; // percentage of triangle edge (for tip)
         const auto edge_round = 0.7f; // percentage of triangle edge (for corner)
         const auto canvas = rectf(
             rect.x + margin + offset_x,
             rect.y + margin + offset_y,
-            rect.w - margin + offset_x,
-            rect.h - margin + offset_y);
+            rect.w - margin * 2.0f,
+            rect.h - margin * 2.0f);
 
-        const auto left   = canvas.x + canvas.w            * 0.5f * 0.2f;
-        const auto right  = canvas.x + canvas.w - canvas.w * 0.5f * 0.2f;
-        const auto top    = canvas.y + canvas.h            * 0.5f * 0.1f;
-        const auto bottom = canvas.y + canvas.h - canvas.h * 0.5f * 0.1f;
+        const auto left   = canvas.x + canvas.w            * 0.5f * 0.3f;
+        const auto right  = canvas.x + canvas.w - canvas.w * 0.5f * 0.3f;
+        const auto top    = canvas.y + canvas.h            * 0.5f * 0.2f;
+        const auto bottom = canvas.y + canvas.h - canvas.h * 0.5f * 0.2f;
         const auto center_y = (top + bottom) * 0.5f;
         const auto angle = AX_PI * 0.5f * 0.5f * 0.5f;
 
@@ -54,7 +59,7 @@ void ax::NodeEditor::Draw::Icon(ImDrawList* drawList, rect rect, IconType type, 
             if (innerColor & 0xFF000000)
                 drawList->AddConvexPolyFilled(drawList->_Path.Data, drawList->_Path.Size, innerColor, true);
 
-            drawList->PathStroke(color, true, 1.25f * outline_scale);
+            drawList->PathStroke(color, true, 2.0f * outline_scale);
         }
         else
             drawList->PathFill(color);
@@ -197,5 +202,35 @@ void ax::NodeEditor::Draw::Icon(ImDrawList* drawList, rect rect, IconType type, 
                 ImVec2(triangleStart, rect.center_y() + 0.15f * rect.h),
                 color);
         }
+    }
+}
+
+void ax::Drawing::DrawHeader(ImDrawList* drawList, ImTextureID textureId, const ImVec2& a, const ImVec2& b, ImU32 color, float rounding, float zoom/* = 1.0f*/)
+{
+    using namespace ImGuiInterop;
+
+    const auto size = b - a;
+    if (size.x == 0 || size.y == 0)
+        return;
+
+    if (textureId)
+        drawList->AddDrawCmd();
+
+    drawList->PathRect(a, b, rounding, 1 | 2);
+    drawList->PathFill(ImColor(color));
+
+    if (textureId)
+    {
+        auto textureWidth  = ImGui_GetTextureWidth(textureId);
+        auto textureHeight = ImGui_GetTextureHeight(textureId);
+
+        ax::matrix transform;
+        transform.scale(1.0f / zoom, 1.0f / zoom);
+        transform.scale(size.x / textureWidth, size.y / textureHeight);
+        transform.scale(1.0f / (size.x - 1.0f), 1.0f / (size.y - 1.0f));
+        transform.translate(-a.x - 0.5f, -a.y - 0.5f);
+
+        ImGui_PushGizmo(drawList, textureId, (float*)&transform);
+        drawList->AddDrawCmd();
     }
 }

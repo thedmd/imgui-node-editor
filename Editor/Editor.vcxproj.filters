@@ -63,22 +63,22 @@
     <ClCompile Include="Editor\main.cpp">
       <Filter>Editor</Filter>
     </ClCompile>
-    <ClCompile Include="Editor\NodeWindow.cpp">
-      <Filter>Editor</Filter>
-    </ClCompile>
     <ClCompile Include="..\External\DXSDK\src\dxerr.cpp">
       <Filter>External</Filter>
     </ClCompile>
-    <ClCompile Include="Editor\NodeEditor.cpp">
+    <ClCompile Include="Editor\Drawing.cpp">
       <Filter>Editor</Filter>
     </ClCompile>
-    <ClCompile Include="Editor\NodeEditorDraw.cpp">
+    <ClCompile Include="Editor\Widgets.cpp">
       <Filter>Editor</Filter>
     </ClCompile>
-    <ClCompile Include="Editor\NodeEditorWidgets.cpp">
+    <ClCompile Include="Editor\Window.cpp">
       <Filter>Editor</Filter>
     </ClCompile>
-    <ClCompile Include="Editor\NodeEditorNode.cpp">
+    <ClCompile Include="Editor\Editor.cpp">
+      <Filter>Editor</Filter>
+    </ClCompile>
+    <ClCompile Include="Editor\EditorApi.cpp">
       <Filter>Editor</Filter>
     </ClCompile>
   </ItemGroup>
@@ -134,25 +134,31 @@
     <ClInclude Include="Backend\ImwPlatformWindowDX11.h">
       <Filter>Backend</Filter>
     </ClInclude>
-    <ClInclude Include="Editor\NodeWindow.h">
-      <Filter>Editor</Filter>
-    </ClInclude>
-    <ClInclude Include="Editor\types.h">
-      <Filter>Editor</Filter>
-    </ClInclude>
-    <ClInclude Include="Editor\NodeEditor.h">
-      <Filter>Editor</Filter>
-    </ClInclude>
-    <ClInclude Include="Editor\NodeEditorInternal.h">
-      <Filter>Editor</Filter>
-    </ClInclude>
     <ClInclude Include="Support\stb_image.h">
       <Filter>Support</Filter>
+    </ClInclude>
+    <ClInclude Include="Editor\Drawing.h">
+      <Filter>Editor</Filter>
+    </ClInclude>
+    <ClInclude Include="Editor\Types.h">
+      <Filter>Editor</Filter>
+    </ClInclude>
+    <ClInclude Include="Editor\Widgets.h">
+      <Filter>Editor</Filter>
+    </ClInclude>
+    <ClInclude Include="Editor\Window.h">
+      <Filter>Editor</Filter>
+    </ClInclude>
+    <ClInclude Include="Editor\EditorApi.h">
+      <Filter>Editor</Filter>
+    </ClInclude>
+    <ClInclude Include="Editor\Editor.h">
+      <Filter>Editor</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="Configuration.props" />
-    <None Include="Editor\types.inl">
+    <None Include="Editor\Types.inl">
       <Filter>Editor</Filter>
     </None>
   </ItemGroup>

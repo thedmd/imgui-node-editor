@@ -176,17 +176,17 @@
   <ItemGroup>
     <ClCompile Include="..\External\DXSDK\src\dxerr.cpp" />
     <ClCompile Include="Backend\imgui_impl_dx11.cpp" />
-    <ClCompile Include="Editor\NodeEditor.cpp" />
-    <ClCompile Include="Editor\NodeEditorDraw.cpp" />
-    <ClCompile Include="Editor\NodeEditorNode.cpp" />
-    <ClCompile Include="Editor\NodeEditorWidgets.cpp" />
+    <ClCompile Include="Editor\Editor.cpp" />
+    <ClCompile Include="Editor\Drawing.cpp" />
+    <ClCompile Include="Editor\EditorApi.cpp" />
+    <ClCompile Include="Editor\Widgets.cpp" />
     <ClCompile Include="ImGui\imgui.cpp" />
     <ClCompile Include="ImGui\imgui_demo.cpp" />
     <ClCompile Include="ImGui\imgui_draw.cpp" />
     <ClCompile Include="Backend\ImwPlatformWindowDX11.cpp" />
     <ClCompile Include="Backend\ImwWindowManagerDX11.cpp" />
     <ClCompile Include="Editor\main.cpp" />
-    <ClCompile Include="Editor\NodeWindow.cpp" />
+    <ClCompile Include="Editor\Window.cpp" />
     <ClCompile Include="ImWindow\ImwContainer.cpp" />
     <ClCompile Include="ImWindow\ImwMenu.cpp" />
     <ClCompile Include="ImWindow\ImwPlatformWindow.cpp" />
@@ -197,9 +197,11 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Backend\imgui_impl_dx11.h" />
-    <ClInclude Include="Editor\NodeEditor.h" />
-    <ClInclude Include="Editor\NodeEditorInternal.h" />
-    <ClInclude Include="Editor\types.h" />
+    <ClInclude Include="Editor\Drawing.h" />
+    <ClInclude Include="Editor\EditorApi.h" />
+    <ClInclude Include="Editor\Editor.h" />
+    <ClInclude Include="Editor\Types.h" />
+    <ClInclude Include="Editor\Widgets.h" />
     <ClInclude Include="ImGui\imconfig.h" />
     <ClInclude Include="ImGui\imgui.h" />
     <ClInclude Include="ImGui\imgui_internal.h" />
@@ -208,7 +210,7 @@
     <ClInclude Include="ImGui\stb_truetype.h" />
     <ClInclude Include="Backend\ImwPlatformWindowDX11.h" />
     <ClInclude Include="Backend\ImwWindowManagerDX11.h" />
-    <ClInclude Include="Editor\NodeWindow.h" />
+    <ClInclude Include="Editor\Window.h" />
     <ClInclude Include="ImWindow\ImwConfig.h" />
     <ClInclude Include="ImWindow\ImwContainer.h" />
     <ClInclude Include="ImWindow\ImwMenu.h" />
@@ -223,7 +225,7 @@
     <None Include="Configuration.props">
       <SubType>Designer</SubType>
     </None>
-    <None Include="Editor\types.inl" />
+    <None Include="Editor\Types.inl" />
   </ItemGroup>
   <ItemGroup>
     <Natvis Include="ImGui.natvis" />

@@ -1,16 +1,16 @@
 #pragma once
-
 #include "imgui/imgui.h"
 
+//------------------------------------------------------------------------------
 namespace ax {
-namespace NodeEditor {
+namespace Editor {
 
+
+//------------------------------------------------------------------------------
 struct Context;
 
-enum class IconType { Flow, Circle, Square, Grid, RoundSquare, Diamond };
 
-bool Icon(const char* id, const ImVec2& size, IconType type, bool filled, const ImVec4& color = ImVec4(1, 1, 1, 1));
-
+//------------------------------------------------------------------------------
 void SetCurrentEditor(Context* ctx);
 Context* GetCurrentEditor();
 Context* CreateEditor();
@@ -33,5 +33,7 @@ void EndOutput();
 
 void Link(int id, int startNodeId, int endNodeId, const ImVec4& color = ImVec4(1, 1, 1, 1));
 
-} // namespace node_editor
+
+//------------------------------------------------------------------------------
+} // namespace Editor
 } // namespace ax

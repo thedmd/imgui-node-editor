@@ -1,10 +1,15 @@
-#include "NodeEditorInternal.h"
+#include "Editor.h"
+#include "Backend/imgui_impl_dx11.h"
+#include "Drawing.h"
 #include <string>
 #include <fstream>
 
-namespace ed = ax::NodeEditor;
+
+//------------------------------------------------------------------------------
+namespace ed = ax::Editor;
 
 
+//------------------------------------------------------------------------------
 extern "C" __declspec(dllimport) void __stdcall OutputDebugStringA(const char* string);
 
 static void LogV(const char* fmt, va_list args)
@@ -31,20 +36,15 @@ void ed::Log(const char* fmt, ...)
 }
 
 
-namespace ax {
-namespace NodeEditor {
-Context* s_Editor = nullptr;
-} // namespace node_editor
-} // namespace ax
-
+//------------------------------------------------------------------------------
 ed::Context::Context():
     Nodes(),
     CurrentNode(nullptr),
-    CurrentNodeIsNew(false),
     CurrentNodeStage(NodeStage::Invalid),
     ActiveNode(nullptr),
     DragOffset(),
     IsInitialized(false),
+    HeaderTextureID(nullptr),
     Settings()
 {
 }
@@ -52,7 +52,15 @@ ed::Context::Context():
 ed::Context::~Context()
 {
     if (IsInitialized)
+    {
+        if (HeaderTextureID)
+        {
+            ImGui_DestroyTexture(HeaderTextureID);
+            HeaderTextureID = nullptr;
+        }
+
         SaveSettings();
+    }
 
     for (auto node : Nodes)
         delete node;
@@ -60,10 +68,197 @@ ed::Context::~Context()
     Nodes.clear();
 }
 
+void ed::Context::Begin(const char* id)
+{
+    if (!IsInitialized)
+    {
+        LoadSettings();
+
+        HeaderTextureID = ImGui_LoadTexture("../Data/BlueprintBackground.png");
+
+        IsInitialized = true;
+    }
+
+    //ImGui::LogToClipboard();
+    //Log("---- begin ----");
+
+    ImGui::BeginChild(id, ImVec2(0, 0), true, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoMove);
+}
+
+void ed::Context::End()
+{
+    ImGui::EndChild();
+
+    if (Settings.Dirty)
+    {
+        Settings.Dirty = false;
+        SaveSettings();
+    }
+}
+
+void ed::Context::BeginNode(int id)
+{
+    assert(nullptr == CurrentNode);
+
+    auto node = FindNode(id);
+    if (!node)
+        node = CreateNode(id);
+
+    ImGui::PushID(id);
+
+    SetCurrentNode(node);
+
+    // Position node on screen
+    if (ActiveNode == node)
+        ImGui::SetCursorScreenPos(to_imvec(node->Bounds.location) + DragOffset); // drag, find a better way
+    else
+        ImGui::SetCursorScreenPos(to_imvec(node->Bounds.location));
+
+    auto drawList = ImGui::GetWindowDrawList();
+    drawList->ChannelsSplit(2);
+    drawList->ChannelsSetCurrent(1);
+
+    SetNodeStage(NodeStage::Begin);
+}
+
+void ed::Context::EndNode()
+{
+    assert(nullptr != CurrentNode);
+
+    SetNodeStage(NodeStage::End);
+
+    if (CurrentNode->Bounds != NodeRect)
+    {
+        MarkSettingsDirty();
+
+        // TODO: update layout
+        //ImGui::Text((std::string("Changax::Editor: ") + std::to_string(CurrentNode->ID)).c_str());
+    }
+
+    ImGui::PopID();
+
+    auto drawList = ImGui::GetWindowDrawList();
+    drawList->ChannelsSetCurrent(0);
+
+    const float nodeRounding = 12.0f;
+
+    ax::Drawing::DrawHeader(drawList, HeaderTextureID,
+        to_imvec(HeaderRect.top_left()),
+        to_imvec(HeaderRect.bottom_right()),
+        ImColor(255, 255, 255, 128), nodeRounding, 4.0f);
+
+    auto headerSeparatorRect      = ax::rect(HeaderRect.bottom_left(),  ContentRect.top_right());
+    auto footerSeparatorRect      = ax::rect(ContentRect.bottom_left(), NodeRect.bottom_right());
+    auto contentWithSeparatorRect = ax::rect::make_union(headerSeparatorRect, footerSeparatorRect);
+
+    drawList->AddRectFilled(
+        to_imvec(contentWithSeparatorRect.top_left()),
+        to_imvec(contentWithSeparatorRect.bottom_right()),
+        ImColor(32, 32, 32, 200), 12.0f, 4 | 8);
+
+    drawList->AddLine(
+        to_imvec(headerSeparatorRect.top_left() + point(1, -1)),
+        to_imvec(headerSeparatorRect.top_right() + point(-1, -1)),
+        ImColor(255, 255, 255, 96 / 3), 1.0f);
+
+    drawList->AddRect(
+        to_imvec(NodeRect.top_left()),
+        to_imvec(NodeRect.bottom_right()),
+        ImColor(255, 255, 255, 96), 12.0f, 15, 1.5f);
+
+//     if (!SelectedRect.is_empty())
+//     {
+//         drawList->AddRectFilled(
+//             to_imvec(selectedRect.top_left()),
+//             to_imvec(selectedRect.bottom_right()),
+//             ImColor(60, 180, 255, 100), 4.0f);
+// 
+//         drawList->AddCircleFilled(
+//             ImVec2(selectedRect.right() + selectedRect.h * 0.25f, (float)selectedRect.center_y()),
+//             selectedRect.h * 0.25f, ImColor(255, 255, 255, 200));
+//     }
+
+    drawList->ChannelsMerge();
+
+
+    ImGui::SetCursorScreenPos(to_imvec(NodeRect.location));
+    ImGui::InvisibleButton(std::to_string(CurrentNode->ID).c_str(), to_imvec(NodeRect.size));
+
+    //if (!CurrentNodeIsNew)
+    {
+        if (ImGui::IsItemActive())
+        {
+            SetActiveNode(CurrentNode);
+            DragOffset = ImGui::GetMouseDragDelta(0, 0.0f);
+        }
+        else if (ActiveNode == CurrentNode)
+        {
+            ActiveNode->Bounds.location += to_point(DragOffset);
+            SetActiveNode(nullptr);
+        }
+    }
+
+    SetCurrentNode(nullptr);
+
+    SetNodeStage(NodeStage::Invalid);
+}
+
+void ed::Context::BeginHeader()
+{
+    assert(nullptr != CurrentNode);
+
+    SetNodeStage(NodeStage::Header);
+}
+
+void ed::Context::EndHeader()
+{
+    assert(nullptr != CurrentNode);
+
+    SetNodeStage(NodeStage::Content);
+}
+
+void ed::Context::BeginInput(int id)
+{
+    assert(nullptr != CurrentNode);
+
+    if (CurrentNodeStage == NodeStage::Begin)
+        SetNodeStage(NodeStage::Content);
+
+    SetNodeStage(NodeStage::Input);
+
+    ImGui::BeginHorizontal(id);
+}
+
+void ed::Context::EndInput()
+{
+    ImGui::EndHorizontal();
+    ImGui::Spring(0);
+}
+
+void ed::Context::BeginOutput(int id)
+{
+    assert(nullptr != CurrentNode);
+
+    if (CurrentNodeStage == NodeStage::Begin)
+        SetNodeStage(NodeStage::Content);
+
+    if (CurrentNodeStage == NodeStage::Begin)
+        SetNodeStage(NodeStage::Input);
+
+    SetNodeStage(NodeStage::Output);
+
+    ImGui::BeginHorizontal(id);
+}
+
+void ed::Context::EndOutput()
+{
+    ImGui::EndHorizontal();
+    ImGui::Spring(0);
+}
 
 ed::Node* ed::Context::FindNode(int id)
 {
-    for (auto node : s_Editor->Nodes)
+    for (auto node : Nodes)
         if (node->ID == id)
             return node;
 
@@ -73,8 +268,8 @@ ed::Node* ed::Context::FindNode(int id)
 ed::Node* ed::Context::CreateNode(int id)
 {
     assert(nullptr == FindNode(id));
-    s_Editor->Nodes.push_back(new Node(id));
-    auto node = s_Editor->Nodes.back();
+    Nodes.push_back(new Node(id));
+    auto node = Nodes.back();
 
     auto settings = FindNodeSettings(id);
     if (!settings)
@@ -91,7 +286,7 @@ ed::Node* ed::Context::CreateNode(int id)
 void ed::Context::DestroyNode(Node* node)
 {
     if (!node) return;
-    auto& nodes = s_Editor->Nodes;
+    auto& nodes = Nodes;
     auto nodeIt = std::find(nodes.begin(), nodes.end(), node);
     assert(nodeIt != nodes.end());
     nodes.erase(nodeIt);
@@ -100,8 +295,7 @@ void ed::Context::DestroyNode(Node* node)
 
 void ed::Context::SetCurrentNode(Node* node, bool isNew/* = false*/)
 {
-    CurrentNode      = node;
-    CurrentNodeIsNew = isNew;
+    CurrentNode = node;
 }
 
 void ed::Context::SetActiveNode(Node* node)
@@ -125,13 +319,10 @@ bool ed::Context::SetNodeStage(NodeStage stage)
 
         case NodeStage::Header:
             ImGui::EndHorizontal();
-            ImGui::GetWindowDrawList()->AddRectFilled(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), ImColor(255, 0, 0, 32));
+            HeaderRect = get_item_bounds();
 
-            ImGui::GetWindowDrawList()->AddLine(
-                ImVec2(ImGui::GetItemRectMin().x, ImGui::GetItemRectMax().y + 2),
-                ImVec2(ImGui::GetItemRectMax().x, ImGui::GetItemRectMax().y + 2), ImColor(255, 255, 255));
-
-            ImGui::Spring(0, 8);
+            // spacing between header and content
+            ImGui::Spring(0);
 
             break;
 
@@ -139,13 +330,15 @@ bool ed::Context::SetNodeStage(NodeStage stage)
             break;
 
         case NodeStage::Input:
-            ImGui::Spring(1, 0);
+            //ImGui::Spring(0);
+            ImGui::Spring(1);
             ImGui::EndVertical();
             //ImGui::GetWindowDrawList()->AddRectFilled(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), ImColor(0, 255, 0, 32));
             break;
 
         case NodeStage::Output:
-            ImGui::Spring(1,0);
+            //ImGui::Spring(0);
+            ImGui::Spring(1);
             ImGui::EndVertical();
             //ImGui::GetWindowDrawList()->AddRectFilled(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), ImColor(0, 255, 0, 32));
             break;
@@ -166,27 +359,32 @@ bool ed::Context::SetNodeStage(NodeStage stage)
 
         case NodeStage::Content:
             ImGui::BeginHorizontal("content");
+            ImGui::Spring(0);
             break;
 
         case NodeStage::Input:
-            ImGui::BeginVertical("input", ImVec2(0,0), 0.0f);
+            ImGui::BeginVertical("inputs", ImVec2(0,0), 0.0f);
             break;
 
         case NodeStage::Output:
-            if (oldStage == NodeStage::Input)
-                ImGui::Spring(1);
-            else
-                ImGui::Spring(1,0);
-            ImGui::BeginVertical("output", ImVec2(0, 0), 1.0f);
+            ImGui::Spring(1);
+            ImGui::BeginVertical("outputs", ImVec2(0, 0), 1.0f);
             break;
 
         case NodeStage::End:
+            if (oldStage == NodeStage::Input)
+                ImGui::Spring(1);
+            ImGui::Spring(0);
             ImGui::EndHorizontal();
+            ContentRect = get_item_bounds();
+
             //ImGui::GetWindowDrawList()->AddRectFilled(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), ImColor(0, 0, 255, 32));
             //ImGui::GetWindowDrawList()->AddRectFilled(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), ImColor(0, 0, 255, 64));
 
+            ImGui::Spring(0);
             ImGui::EndVertical();
-            ImGui::GetWindowDrawList()->AddRect(ImGui::GetItemRectMin() - ImVec2(2,2), ImGui::GetItemRectMax() + ImVec2(2, 2), ImColor(255, 255, 255));
+            NodeRect = get_item_bounds();
+            //ImGui::GetWindowDrawList()->AddRect(ImGui::GetItemRectMin() - ImVec2(2,2), ImGui::GetItemRectMax() + ImVec2(2, 2), ImColor(255, 255, 255));
             break;
     }
 
@@ -300,191 +498,4 @@ void ed::Context::MarkSettingsDirty()
 {
     Settings.Dirty = true;
 }
-
-ed::Context* ed::CreateEditor()
-{
-    return new Context();
-}
-
-void ed::DestroyEditor(Context* ctx)
-{
-    if (GetCurrentEditor() == ctx)
-        SetCurrentEditor(nullptr);
-
-    delete ctx;
-}
-
-void ed::SetCurrentEditor(Context* ctx)
-{
-    s_Editor = ctx;
-}
-
-ed::Context* ed::GetCurrentEditor()
-{
-    return s_Editor;
-}
-
-void ed::Begin(const char* id)
-{
-    if (!s_Editor->IsInitialized)
-    {
-        s_Editor->LoadSettings();
-        s_Editor->IsInitialized = true;
-    }
-
-    //ImGui::LogToClipboard();
-    //Log("---- begin ----");
-
-    ImGui::BeginChild(id, ImVec2(0, 0), true, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoMove);
-}
-
-void ed::End()
-{
-    ImGui::EndChild();
-
-    if (s_Editor->Settings.Dirty)
-    {
-        s_Editor->Settings.Dirty = false;
-        s_Editor->SaveSettings();
-    }
-
-    //Log("---- end ----");
-    //ImGui::LogFinish();
-}
-
-void ed::BeginNode(int id)
-{
-    assert(nullptr == s_Editor->CurrentNode);
-
-    auto isNewNode = false;
-
-    auto node = s_Editor->FindNode(id);
-    if (!node)
-    {
-        node = s_Editor->CreateNode(id);
-        s_Editor->CurrentNodeIsNew = true;
-
-        // Make new node and everything under it invisible
-        // for first time it is around to determine initial
-        // dimensions without showing a mess to user.
-        // Next iterations use cached layout.
-        ImGui::PushStyleVar(ImGuiStyleVar_Alpha, 0.0f);
-
-        isNewNode = true;
-    }
-
-    ImGui::PushID(id);
-
-    s_Editor->SetCurrentNode(node, isNewNode);
-
-    // Position node on screen
-    if (s_Editor->ActiveNode == node)
-        ImGui::SetCursorScreenPos(to_imvec(node->Bounds.location) + s_Editor->DragOffset); // drag, find a better way
-    else
-        ImGui::SetCursorScreenPos(to_imvec(node->Bounds.location));
-
-    s_Editor->SetNodeStage(NodeStage::Begin);
-}
-
-void ed::EndNode()
-{
-    assert(nullptr != s_Editor->CurrentNode);
-
-    s_Editor->SetNodeStage(NodeStage::End);
-
-    auto nodeRect = get_item_bounds();
-
-    if (s_Editor->CurrentNode->Bounds != nodeRect)
-    {
-        s_Editor->MarkSettingsDirty();
-
-        // TODO: update layout
-        //ImGui::Text((std::string("Changed: ") + std::to_string(s_Editor->CurrentNode->ID)).c_str());
-    }
-
-    ImGui::PopID();
-
-    if (s_Editor->CurrentNodeIsNew)
-        ImGui::PopStyleVar();
-
-    ImGui::SetCursorScreenPos(to_imvec(nodeRect.location));
-    ImGui::InvisibleButton(std::to_string(s_Editor->CurrentNode->ID).c_str(), to_imvec(nodeRect.size));
-
-    if (!s_Editor->CurrentNodeIsNew)
-    {
-        if (ImGui::IsItemActive())
-        {
-            s_Editor->SetActiveNode(s_Editor->CurrentNode);
-            s_Editor->DragOffset = ImGui::GetMouseDragDelta(0, 0.0f);
-        }
-        else if (s_Editor->ActiveNode == s_Editor->CurrentNode)
-        {
-            s_Editor->ActiveNode->Bounds.location += to_point(s_Editor->DragOffset);
-            s_Editor->SetActiveNode(nullptr);
-        }
-    }
-
-    s_Editor->SetCurrentNode(nullptr);
-
-    s_Editor->SetNodeStage(NodeStage::Invalid);
-}
-
-void ed::BeginHeader()
-{
-    assert(nullptr != s_Editor->CurrentNode);
-
-    s_Editor->SetNodeStage(NodeStage::Header);
-}
-
-void ed::EndHeader()
-{
-    assert(nullptr != s_Editor->CurrentNode);
-
-    s_Editor->SetNodeStage(NodeStage::Content);
-}
-
-void ed::BeginInput(int id)
-{
-    assert(nullptr != s_Editor->CurrentNode);
-
-    if (s_Editor->CurrentNodeStage == NodeStage::Begin)
-        s_Editor->SetNodeStage(NodeStage::Content);
-
-    s_Editor->SetNodeStage(NodeStage::Input);
-
-}
-
-void ed::EndInput()
-{
-    ImGui::Spring(0);
-}
-
-void ed::BeginOutput(int id)
-{
-    assert(nullptr != s_Editor->CurrentNode);
-
-    if (s_Editor->CurrentNodeStage == NodeStage::Begin)
-        s_Editor->SetNodeStage(NodeStage::Content);
-
-    if (s_Editor->CurrentNodeStage == NodeStage::Begin)
-        s_Editor->SetNodeStage(NodeStage::Input);
-
-    //ImGui::SameLine();
-    //ed::Spring();
-    //ImGui::SameLine();
-
-    s_Editor->SetNodeStage(NodeStage::Output);
-}
-
-void ed::EndOutput()
-{
-    ImGui::Spring(0);
-}
-
-void ed::Link(int id, int startNodeId, int endNodeId, const ImVec4& color/* = ImVec4(1, 1, 1, 1)*/)
-{
-}
-
-
-
 

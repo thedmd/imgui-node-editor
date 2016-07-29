@@ -1,8 +1,7 @@
-
 #pragma once
 
 #include "ImWindow/ImwWindow.h"
-#include "NodeEditor.h"
+#include "Editor.h"
 
 class NodeWindow:
     public ImWindow::ImwWindow
@@ -15,5 +14,5 @@ public:
 
 
 private:
-    ax::NodeEditor::Context* m_Editor;
+    ax::Editor::Context* m_Editor;
 };
