@@ -71,7 +71,7 @@ struct Context
     void BeginNode(int id);
     void EndNode();
 
-    void BeginHeader();
+    void BeginHeader(const ImColor& color);
     void EndHeader();
 
     void BeginInput(int id);
@@ -86,6 +86,7 @@ private:
     void DestroyNode(Node* node);
     void SetCurrentNode(Node* node, bool isNew = false);
     void SetActiveNode(Node* node);
+    void SetSelectedNode(Node* node);
     bool SetNodeStage(NodeStage stage);
 
     NodeSettings* FindNodeSettings(int id);
@@ -98,11 +99,14 @@ private:
     Node*           CurrentNode;
     NodeStage       CurrentNodeStage;
     Node*           ActiveNode;
+    Node*           SelectedNode;
     ImVec2          DragOffset;
 
+    ImColor         HeaderColor;
     rect            NodeRect;
     rect            HeaderRect;
     rect            ContentRect;
+    rect            PinRect;
 
     bool            IsInitialized;
     ImTextureID     HeaderTextureID;

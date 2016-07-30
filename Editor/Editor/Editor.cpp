@@ -42,6 +42,7 @@ ed::Context::Context():
     CurrentNode(nullptr),
     CurrentNodeStage(NodeStage::Invalid),
     ActiveNode(nullptr),
+    SelectedNode(nullptr),
     DragOffset(),
     IsInitialized(false),
     HeaderTextureID(nullptr),
@@ -89,6 +90,9 @@ void ed::Context::End()
 {
     ImGui::EndChild();
 
+    if (ImGui::IsItemClicked())
+        SetSelectedNode(nullptr);
+
     if (Settings.Dirty)
     {
         Settings.Dirty = false;
@@ -118,6 +122,8 @@ void ed::Context::BeginNode(int id)
     drawList->ChannelsSplit(2);
     drawList->ChannelsSetCurrent(1);
 
+    PinRect.w = PinRect.h = 0;
+
     SetNodeStage(NodeStage::Begin);
 }
 
@@ -137,15 +143,46 @@ void ed::Context::EndNode()
 
     ImGui::PopID();
 
+    ImGui::SetCursorScreenPos(to_imvec(NodeRect.location));
+    ImGui::InvisibleButton(std::to_string(CurrentNode->ID).c_str(), to_imvec(NodeRect.size));
+
+    if (ImGui::IsItemActive())
+    {
+        SetSelectedNode(CurrentNode);
+        SetActiveNode(CurrentNode);
+        DragOffset = ImGui::GetMouseDragDelta(0, 0.0f);
+    }
+    else if (ActiveNode == CurrentNode)
+    {
+        ActiveNode->Bounds.location += to_point(DragOffset);
+        SetActiveNode(nullptr);
+    }
+
     auto drawList = ImGui::GetWindowDrawList();
     drawList->ChannelsSetCurrent(0);
 
     const float nodeRounding = 12.0f;
 
+    if (SelectedNode == CurrentNode)
+    {
+        drawList->AddRect(
+            to_imvec(NodeRect.top_left()),
+            to_imvec(NodeRect.bottom_right()),
+            ImColor(255, 176, 50, 255), 12.0f, 15, 3.5f);
+    }
+    else if (ImGui::IsItemHovered())
+    {
+        drawList->AddRect(
+            to_imvec(NodeRect.top_left()),
+            to_imvec(NodeRect.bottom_right()),
+            ImColor(50, 176, 255, 255), 12.0f, 15, 3.5f);
+    }
+
+    HeaderColor.Value.w = 0.75f;
     ax::Drawing::DrawHeader(drawList, HeaderTextureID,
         to_imvec(HeaderRect.top_left()),
         to_imvec(HeaderRect.bottom_right()),
-        ImColor(255, 255, 255, 128), nodeRounding, 4.0f);
+        HeaderColor, nodeRounding, 4.0f);
 
     auto headerSeparatorRect      = ax::rect(HeaderRect.bottom_left(),  ContentRect.top_right());
     auto footerSeparatorRect      = ax::rect(ContentRect.bottom_left(), NodeRect.bottom_right());
@@ -166,47 +203,30 @@ void ed::Context::EndNode()
         to_imvec(NodeRect.bottom_right()),
         ImColor(255, 255, 255, 96), 12.0f, 15, 1.5f);
 
-//     if (!SelectedRect.is_empty())
-//     {
-//         drawList->AddRectFilled(
-//             to_imvec(selectedRect.top_left()),
-//             to_imvec(selectedRect.bottom_right()),
-//             ImColor(60, 180, 255, 100), 4.0f);
-// 
-//         drawList->AddCircleFilled(
-//             ImVec2(selectedRect.right() + selectedRect.h * 0.25f, (float)selectedRect.center_y()),
-//             selectedRect.h * 0.25f, ImColor(255, 255, 255, 200));
-//     }
+     if (!PinRect.is_empty())
+     {
+         drawList->AddRectFilled(
+             to_imvec(PinRect.top_left()),
+             to_imvec(PinRect.bottom_right()),
+             ImColor(60, 180, 255, 100), 4.0f);
+
+         //drawList->AddCircleFilled(
+         //    ImVec2(PinRect.right() + PinRect.h * 0.25f, (float)PinRect.center_y()),
+         //    PinRect.h * 0.25f, ImColor(255, 255, 255, 200));
+     }
 
     drawList->ChannelsMerge();
-
-
-    ImGui::SetCursorScreenPos(to_imvec(NodeRect.location));
-    ImGui::InvisibleButton(std::to_string(CurrentNode->ID).c_str(), to_imvec(NodeRect.size));
-
-    //if (!CurrentNodeIsNew)
-    {
-        if (ImGui::IsItemActive())
-        {
-            SetActiveNode(CurrentNode);
-            DragOffset = ImGui::GetMouseDragDelta(0, 0.0f);
-        }
-        else if (ActiveNode == CurrentNode)
-        {
-            ActiveNode->Bounds.location += to_point(DragOffset);
-            SetActiveNode(nullptr);
-        }
-    }
 
     SetCurrentNode(nullptr);
 
     SetNodeStage(NodeStage::Invalid);
 }
 
-void ed::Context::BeginHeader()
+void ed::Context::BeginHeader(const ImColor& color)
 {
     assert(nullptr != CurrentNode);
 
+    HeaderColor = color;
     SetNodeStage(NodeStage::Header);
 }
 
@@ -226,13 +246,18 @@ void ed::Context::BeginInput(int id)
 
     SetNodeStage(NodeStage::Input);
 
+    ImGui::Spring(0);
     ImGui::BeginHorizontal(id);
 }
 
 void ed::Context::EndInput()
 {
     ImGui::EndHorizontal();
-    ImGui::Spring(0);
+
+    if (ImGui::IsItemHoveredRect())
+        PinRect = get_item_bounds();
+
+    ImGui::Spring(0, 0);
 }
 
 void ed::Context::BeginOutput(int id)
@@ -247,13 +272,18 @@ void ed::Context::BeginOutput(int id)
 
     SetNodeStage(NodeStage::Output);
 
+    ImGui::Spring(0);
     ImGui::BeginHorizontal(id);
 }
 
 void ed::Context::EndOutput()
 {
     ImGui::EndHorizontal();
-    ImGui::Spring(0);
+
+    if (ImGui::IsItemHoveredRect())
+        PinRect = get_item_bounds();
+
+    ImGui::Spring(0, 0);
 }
 
 ed::Node* ed::Context::FindNode(int id)
@@ -301,6 +331,11 @@ void ed::Context::SetCurrentNode(Node* node, bool isNew/* = false*/)
 void ed::Context::SetActiveNode(Node* node)
 {
     ActiveNode = node;
+}
+
+void ed::Context::SetSelectedNode(Node* node)
+{
+    SelectedNode = node;
 }
 
 bool ed::Context::SetNodeStage(NodeStage stage)

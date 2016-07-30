@@ -22,7 +22,7 @@ void End();
 void BeginNode(int id);
 void EndNode();
 
-void BeginHeader();
+void BeginHeader(const ImColor& color = ImColor(255, 255, 255));
 void EndHeader();
 
 void BeginInput(int id);

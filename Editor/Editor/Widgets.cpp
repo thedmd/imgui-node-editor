@@ -1,7 +1,7 @@
 #include "Widgets.h"
 #include "ImGuiInterop.h"
 
-bool ax::Widgets::Icon(const char* id, const ImVec2& size, IconType type, bool filled, const ImVec4& color/* = ImVec4(1, 1, 1, 1)*/, const ImVec4& innerColor/* = ImVec4(0, 0, 0, 0)*/)
+void ax::Widgets::Icon(const ImVec2& size, IconType type, bool filled, const ImVec4& color/* = ImVec4(1, 1, 1, 1)*/, const ImVec4& innerColor/* = ImVec4(0, 0, 0, 0)*/)
 {
     using namespace ImGuiInterop;
 
@@ -12,6 +12,6 @@ bool ax::Widgets::Icon(const char* id, const ImVec2& size, IconType type, bool f
         ax::Drawing::DrawIcon(drawList, cursorPos, cursorPos + size, type, filled, ImColor(color), ImColor(innerColor));
     }
 
-    return ImGui::InvisibleButton(id, size);
+    ImGui::Dummy(size);
 }
 

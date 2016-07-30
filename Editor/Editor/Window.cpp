@@ -26,7 +26,9 @@ enum class PinType
     Flow,
     Bool,
     Int,
-    Float
+    Float,
+    Object,
+    Function,
 };
 
 enum class PinLayout
@@ -56,9 +58,10 @@ struct Node
     std::string Name;
     std::vector<Pin> Inputs;
     std::vector<Pin> Outputs;
+    ImColor Color;
 
-    Node(int id, const char* name):
-        ID(id), Name(name)
+    Node(int id, const char* name, ImColor color = ImColor(255, 255, 255)):
+        ID(id), Name(name), Color(color)
     {
     }
 };
@@ -93,7 +96,7 @@ NodeWindow::NodeWindow(void):
     int nextId = 1;
     auto genId = [&nextId]() { return nextId++; };
 
-    s_Nodes.emplace_back(genId(), "InputAction Fire");
+    s_Nodes.emplace_back(genId(), "InputAction Fire", ImColor(255, 128, 128));
     s_Nodes.back().Outputs.emplace_back(genId(), "Pressed", PinType::Flow);
     s_Nodes.back().Outputs.emplace_back(genId(), "Released", PinType::Flow);
 
@@ -112,6 +115,15 @@ NodeWindow::NodeWindow(void):
 
     s_Nodes.emplace_back(genId(), "OutputAction");
     s_Nodes.back().Inputs.emplace_back(genId(), "Sample", PinType::Float);
+
+    s_Nodes.emplace_back(genId(), "Set Timer", ImColor(128, 195, 248));
+    s_Nodes.back().Inputs.emplace_back(genId(), "", PinType::Flow);
+    s_Nodes.back().Inputs.emplace_back(genId(), "Object", PinType::Object);
+    s_Nodes.back().Inputs.emplace_back(genId(), "Function Name", PinType::Function);
+    s_Nodes.back().Inputs.emplace_back(genId(), "Time", PinType::Float);
+    s_Nodes.back().Inputs.emplace_back(genId(), "Looping", PinType::Bool);
+    s_Nodes.back().Outputs.emplace_back(genId(), "", PinType::Flow);
+
 
 //     s_Nodes.emplace_back(genId(), "Single Line Trace by Channel", point(600, 30));
 //     s_Nodes.back().Inputs.emplace_back(genId(), "", PinType::Flow);
@@ -201,6 +213,26 @@ void NodeWindow::OnGui()
 
     auto& style = ImGui::GetStyle();
 
+    auto drawPinIcon = [iconSize2](const Pin& pin)
+    {
+        IconType iconType;
+        ImColor  color;
+        switch (pin.Type)
+        {
+            case PinType::Flow:     iconType = IconType::Flow;   color = ImColor(255, 255, 255); break;
+            case PinType::Bool:     iconType = IconType::Circle; color = ImColor(139,   0,   0); break;
+            case PinType::Int:      iconType = IconType::Circle; color = ImColor( 68, 201, 156); break;
+            case PinType::Float:    iconType = IconType::Circle; color = ImColor(147, 226,  74); break;
+            case PinType::Object:   iconType = IconType::Circle; color = ImColor( 51, 150, 215); break;
+            case PinType::Function: iconType = IconType::Circle; color = ImColor(218,   0, 183); break;
+            default:
+                return;
+        }
+
+        ax::Widgets::Icon(to_imvec(iconSize2), iconType, false, color, ImColor(32, 32, 32));
+    };
+
+
     ed::Begin("Node editor");
     {
         auto cursorTopLeft = ImGui::GetCursorScreenPos();
@@ -213,31 +245,10 @@ void NodeWindow::OnGui()
         //        return false;
         //});
 
-        //auto iconSizeIm = ImVec2(static_cast<float>(portIconSize), static_cast<float>(portIconSize));
-
-        //auto drawIcon = [&drawList](size s, PinType type, bool connected)
-        //{
-        //    auto rect = ax::rect(to_point(ImGui::GetCursorScreenPos()), s);
-        //    if (type == PinType::Flow)
-        //        DrawIcon(drawList, rect, IconType::Flow, connected, ImColor(255, 255, 255));
-        //    else if (type == PinType::Bool)
-        //        DrawIcon(drawList, rect, IconType::Circle, connected, ImColor(180, 0, 0));
-        //    else if (type == PinType::Int)
-        //        DrawIcon(drawList, rect, IconType::Circle, connected, ImColor(70, 225, 172));
-        //    else if (type == PinType::Float)
-        //        DrawIcon(drawList, rect, IconType::Circle, connected, ImColor(160, 245, 85));
-        //    else
-        //    {
-        //        ImGui::Button("X", to_imvec(s));
-        //        return;
-        //    }
-        //    ImGui::Dummy(to_imvec(s));
-        //};
-
         for (auto& node : s_Nodes)
         {
             ed::BeginNode(node.ID);
-                ed::BeginHeader();
+                ed::BeginHeader(node.Color);
                     ImGui::Spring(0);
                     ImGui::TextUnformatted(node.Name.c_str());
                     ImGui::Spring(1);
@@ -248,8 +259,7 @@ void NodeWindow::OnGui()
                 for (auto& input : node.Inputs)
                 {
                     ed::BeginInput(input.ID);
-                    //DrawIcon(to_size(iconSizeIm), ax::Editor::IconType::Flow, true, ImColor(255, 255, 255));
-                    ImGui::Button("X", ImVec2(24, 24));
+                    drawPinIcon(input);
                     ImGui::Spring(0);
                     if (!input.Name.empty())
                     {
@@ -268,7 +278,7 @@ void NodeWindow::OnGui()
                         ImGui::TextUnformatted(output.Name.c_str());
                     }
                     ImGui::Spring(0);
-                    ImGui::Button("X", ImVec2(24, 24));
+                    drawPinIcon(output);
                     ed::EndOutput();
 
                     //ed::Icon("##icon", iconSizeIm, IconType::Flow, false);
