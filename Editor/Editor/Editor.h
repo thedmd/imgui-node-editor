@@ -18,17 +18,9 @@ void Log(const char* fmt, ...);
 
 
 //------------------------------------------------------------------------------
-struct Node
+enum class ObjectType
 {
-    int     ID;
-    rect    Bounds;
-
-    Node(int id):
-        ID(id),
-        Bounds(to_point(ImGui::GetCursorScreenPos()), size())
-    {
-    }
-
+    Node, Pin
 };
 
 enum class NodeStage
@@ -40,6 +32,58 @@ enum class NodeStage
     Input,
     Output,
     End
+};
+
+enum class PinType
+{
+    Input, Output
+};
+
+struct Node;
+struct Pin;
+
+struct Object
+{
+    int     ID;
+    bool    IsLive;
+
+    Object(int id): ID(id), IsLive(true) {}
+    virtual ~Object() = default;
+
+    virtual Node* AsNode() { return nullptr; }
+    virtual Pin*  AsPin()  { return nullptr; }
+};
+
+struct Pin final: Object
+{
+    PinType Type;
+    Node*   Node;
+    rect    Bounds;
+    Pin*    PreviousPin;
+
+    Pin(int id, PinType type):
+        Object(id), Type(type), Node(nullptr), Bounds(), PreviousPin(nullptr)
+    {
+    }
+
+    virtual Pin* AsPin() override final { return this; }
+};
+
+struct Node final: Object
+{
+    rect    Bounds;
+    int     Channel;
+    Pin*    LastPin;
+
+    Node(int id):
+        Object(id),
+        Bounds(to_point(ImGui::GetCursorScreenPos()), size()),
+        Channel(0),
+        LastPin(nullptr)
+    {
+    }
+
+    virtual Node* AsNode() override final { return this; }
 };
 
 struct NodeSettings
@@ -81,13 +125,26 @@ struct Context
     void EndOutput();
 
 private:
-    Node* FindNode(int id);
+    Pin* CreatePin(int id, PinType type);
     Node* CreateNode(int id);
-    void DestroyNode(Node* node);
-    void SetCurrentNode(Node* node, bool isNew = false);
-    void SetActiveNode(Node* node);
-    void SetSelectedNode(Node* node);
+    void DestroyObject(Node* node);
+    Object* FindObject(int id);
+
+    Node* FindNode(int id);
+    Pin* FindPin(int id);
+
+    void SetHotObject(Object* object);
+    void SetActiveObject(Object* object);
+    void SetSelectedObject(Object* object);
+
+    void SetCurrentNode(Node* node);
+    void SetCurrentPin(Pin* pin);
+
     bool SetNodeStage(NodeStage stage);
+
+    Pin* GetPin(int id, PinType type);
+    void BeginPin(int id, PinType type);
+    void EndPin();
 
     NodeSettings* FindNodeSettings(int id);
     NodeSettings* AddNodeSettings(int id);
@@ -95,18 +152,25 @@ private:
     void          SaveSettings();
     void          MarkSettingsDirty();
 
+    //vector<Object*> Objects;
     vector<Node*>   Nodes;
-    Node*           CurrentNode;
-    NodeStage       CurrentNodeStage;
-    Node*           ActiveNode;
-    Node*           SelectedNode;
-    ImVec2          DragOffset;
+    vector<Pin*>    Pins;
 
+    Object*         HotObject;
+    Object*         ActiveObject;
+    Object*         SelectedObject;
+
+    Pin*            CurrentPin;
+    Node*           CurrentNode;
+
+    ImVec2          DragOffset;
+    vector<int>     ChannelOrder;
+
+    NodeStage       NodeBuildStage;
     ImColor         HeaderColor;
     rect            NodeRect;
     rect            HeaderRect;
     rect            ContentRect;
-    rect            PinRect;
 
     bool            IsInitialized;
     ImTextureID     HeaderTextureID;

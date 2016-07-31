@@ -245,13 +245,18 @@ void NodeWindow::OnGui()
         //        return false;
         //});
 
+        int orderIndex = 0;
         for (auto& node : s_Nodes)
         {
+            ++orderIndex;
+
             ed::BeginNode(node.ID);
                 ed::BeginHeader(node.Color);
                     ImGui::Spring(0);
                     ImGui::TextUnformatted(node.Name.c_str());
                     ImGui::Spring(1);
+                    ImGui::Text("%d", orderIndex);
+                    ImGui::Spring(0,0);
                     ImGui::Dummy(ImVec2(0, 28));
                     ImGui::Spring(0);
                 ed::EndHeader();
@@ -451,10 +456,10 @@ void NodeWindow::OnGui()
     }
     ed::End();
 
-    //    //ImGui::ShowMetricsWindow();
-//
-//    //static bool show = true;
-//    //ImGui::ShowTestWindow(&show);
+    //ImGui::ShowMetricsWindow();
+
+    //static bool show = true;
+    //ImGui::ShowTestWindow(&show);
 }
 
 void Dummy()

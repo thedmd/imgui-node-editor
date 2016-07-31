@@ -1,5 +1,6 @@
 #include "Editor.h"
 #include "Backend/imgui_impl_dx11.h"
+#include "imgui/imgui_internal.h"
 #include "Drawing.h"
 #include <string>
 #include <fstream>
@@ -7,6 +8,13 @@
 
 //------------------------------------------------------------------------------
 namespace ed = ax::Editor;
+
+
+//------------------------------------------------------------------------------
+static const int c_ChannelsPerNode       = 3;
+static const int c_NodeBaseChannel       = 0;
+static const int c_NodeBackgroundChannel = 1;
+static const int c_NodeContentChannel    = 2;
 
 
 //------------------------------------------------------------------------------
@@ -37,12 +45,71 @@ void ed::Log(const char* fmt, ...)
 
 
 //------------------------------------------------------------------------------
+static void ImDrawList_ChannelsGrow(ImDrawList* draw_list, int channels_count)
+{
+    IM_ASSERT(draw_list->_ChannelsCount <= channels_count);
+    int old_channels_count = draw_list->_Channels.Size;
+    if (old_channels_count < channels_count)
+        draw_list->_Channels.resize(channels_count);
+    int old_used_channels_count = draw_list->_ChannelsCount;
+    draw_list->_ChannelsCount = channels_count;
+
+    if (old_channels_count == 0)
+        memset(&draw_list->_Channels[0], 0, sizeof(ImDrawChannel));
+    for (int i = old_used_channels_count; i < channels_count; i++)
+    {
+        if (i >= old_channels_count)
+        {
+            new (&draw_list->_Channels[i]) ImDrawChannel();
+        }
+        else
+        {
+            draw_list->_Channels[i].CmdBuffer.resize(0);
+            draw_list->_Channels[i].IdxBuffer.resize(0);
+        }
+        if (draw_list->_Channels[i].CmdBuffer.Size == 0)
+        {
+            ImDrawCmd draw_cmd;
+            draw_cmd.ClipRect  = draw_list->_ClipRectStack.back();
+            draw_cmd.TextureId = draw_list->_TextureIdStack.back();
+            draw_list->_Channels[i].CmdBuffer.push_back(draw_cmd);
+        }
+    }
+}
+
+static void ImDrawList_SwapChannels(ImDrawList* drawList, int left, int right)
+{
+    IM_ASSERT(left < drawList->_ChannelsCount && right < drawList->_ChannelsCount);
+    if (left == right)
+        return;
+
+    auto currentChannel = drawList->_ChannelsCurrent;
+
+    auto* leftCmdBuffer  = &drawList->_Channels[left].CmdBuffer;
+    auto* leftIdxBuffer  = &drawList->_Channels[left].IdxBuffer;
+    auto* rightCmdBuffer = &drawList->_Channels[right].CmdBuffer;
+    auto* rightIdxBuffer = &drawList->_Channels[right].IdxBuffer;
+
+    leftCmdBuffer->swap(*rightCmdBuffer);
+    leftIdxBuffer->swap(*rightIdxBuffer);
+
+    if (currentChannel == left)
+        drawList->_ChannelsCurrent = right;
+    else if (currentChannel == right)
+        drawList->_ChannelsCurrent = left;
+}
+
+
+//------------------------------------------------------------------------------
 ed::Context::Context():
     Nodes(),
+    Pins(),
+    HotObject(nullptr),
+    ActiveObject(nullptr),
+    SelectedObject(nullptr),
+    CurrentPin(nullptr),
     CurrentNode(nullptr),
-    CurrentNodeStage(NodeStage::Invalid),
-    ActiveNode(nullptr),
-    SelectedNode(nullptr),
+    NodeBuildStage(NodeStage::Invalid),
     DragOffset(),
     IsInitialized(false),
     HeaderTextureID(nullptr),
@@ -63,10 +130,11 @@ ed::Context::~Context()
         SaveSettings();
     }
 
+    for (auto pin : Pins)
+        delete pin;
+
     for (auto node : Nodes)
         delete node;
-
-    Nodes.clear();
 }
 
 void ed::Context::Begin(const char* id)
@@ -83,15 +151,145 @@ void ed::Context::Begin(const char* id)
     //ImGui::LogToClipboard();
     //Log("---- begin ----");
 
+    SetHotObject(nullptr);
+
+    for (auto node : Nodes)
+        node->IsLive = false;
+
+    for (auto pin : Pins)
+        pin->IsLive = false;
+
     ImGui::BeginChild(id, ImVec2(0, 0), true, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoMove);
 }
 
 void ed::Context::End()
 {
-    ImGui::EndChild();
+    auto drawList = ImGui::GetWindowDrawList();
 
-    if (ImGui::IsItemClicked())
-        SetSelectedNode(nullptr);
+    drawList->ChannelsSetCurrent(0);
+
+    Node* hotNode = nullptr;
+    Node* activeNode = nullptr;
+    Node* clickedNode = nullptr;
+    for (auto nodeIt = Nodes.rbegin(), nodeItEnd = Nodes.rend(); nodeIt != nodeItEnd; ++nodeIt)
+    {
+        auto& node = *nodeIt;
+
+        auto nodeId = "node_area_" + std::to_string(node->ID);
+        ImGui::SetCursorScreenPos(to_imvec(node->Bounds.location));
+        if (ImGui::InvisibleButton(nodeId.c_str(), to_imvec(node->Bounds.size)))
+            clickedNode = node;
+
+        if (!hotNode && ImGui::IsItemHoveredRect())
+            hotNode = node;
+
+        if (ImGui::IsItemActive())
+            activeNode = node;
+    }
+
+    SetHotObject(hotNode);
+
+    SetActiveObject(activeNode);
+
+    if (clickedNode)
+        SetSelectedObject(clickedNode);
+
+    auto selectedNode = SelectedObject ? SelectedObject->AsNode() : nullptr;
+
+
+    std::stable_sort(Nodes.begin(), Nodes.end(), [activeNode](Node* lhs, Node* rhs)
+    {
+        return (rhs == activeNode);
+    });
+
+    // Every node has few channels assigned. Grow channel list
+    // to hold twice as much of channels and place them in
+    // node drawing order.
+    {
+        // Reserve two additional channels for sorted list of channels
+        auto nodeChannelCount = drawList->_ChannelsCount;
+        ImDrawList_ChannelsGrow(drawList, (drawList->_ChannelsCount - 1) * c_ChannelsPerNode + 1);
+
+        int targetChannel = nodeChannelCount;
+        for (auto node : Nodes)
+        {
+            for (int i = 0; i < c_ChannelsPerNode; ++i)
+                ImDrawList_SwapChannels(drawList, node->Channel + i, targetChannel + i);
+            node->Channel = targetChannel;
+            targetChannel += c_ChannelsPerNode;
+        }
+    }
+
+    ImGui::SetCursorScreenPos(ImVec2(500, 200));
+    ImGui::BeginGroup();
+    ImGui::Text("ActiveObject:   %p", ActiveObject);
+    ImGui::Text("HotObject:      %p", HotObject);
+    ImGui::Text("SelectedObject: %p", SelectedObject);
+    ImGui::Text("CurrentPin:     %p", CurrentPin);
+    ImGui::Text("CurrentNode:    %p", CurrentNode);
+
+    for (auto node : Nodes)
+        ImGui::Text("   Node:    %d  %d  %p  ", node->ID, node->Channel, node);
+
+    ImGui::EndGroup();
+
+    //if (clickedNode == ActiveObject)
+    //{
+    //    DragOffset = ImGui::GetMouseDragDelta(0, 0.0f);
+    //}
+    //else if (ActiveObject == SelectedObject)
+    //    SelectedObject->AsNode()->Bounds.location += to_point(DragOffset);
+
+    //if (SelectedObject == CurrentNode)
+    //{
+    //    drawList->AddRect(
+    //        to_imvec(NodeRect.top_left()),
+    //        to_imvec(NodeRect.bottom_right()),
+    //        ImColor(255, 176, 50, 255), 12.0f, 15, 3.5f);
+    //}
+    if (selectedNode)
+    {
+        drawList->ChannelsSetCurrent(selectedNode->Channel + c_NodeBaseChannel);
+
+        drawList->AddRect(
+            to_imvec(selectedNode->Bounds.top_left()),
+            to_imvec(selectedNode->Bounds.bottom_right()),
+            ImColor(255, 176, 50, 255), 12.0f, 15, 3.5f);
+    }
+
+    if (hotNode && hotNode != selectedNode)
+    {
+        drawList->ChannelsSetCurrent(hotNode->Channel + c_NodeBaseChannel);
+
+        drawList->AddRect(
+            to_imvec(hotNode->Bounds.top_left()),
+            to_imvec(hotNode->Bounds.bottom_right()),
+            ImColor(50, 176, 255, 255), 12.0f, 15, 3.5f);
+    }
+
+    //if (!PinRect.is_empty())
+    //{
+    //    drawList->AddRectFilled(
+    //        to_imvec(PinRect.top_left()),
+    //        to_imvec(PinRect.bottom_right()),
+    //        ImColor(60, 180, 255, 100), 4.0f);
+
+    //    //drawList->AddCircleFilled(
+    //    //    ImVec2(PinRect.right() + PinRect.h * 0.25f, (float)PinRect.center_y()),
+    //    //    PinRect.h * 0.25f, ImColor(255, 255, 255, 200));
+    //}
+
+
+
+
+
+
+
+
+
+    drawList->ChannelsMerge();
+
+    ImGui::EndChild();
 
     if (Settings.Dirty)
     {
@@ -108,21 +306,21 @@ void ed::Context::BeginNode(int id)
     if (!node)
         node = CreateNode(id);
 
-    ImGui::PushID(id);
-
     SetCurrentNode(node);
 
     // Position node on screen
-    if (ActiveNode == node)
+    if (ActiveObject == node)
         ImGui::SetCursorScreenPos(to_imvec(node->Bounds.location) + DragOffset); // drag, find a better way
     else
         ImGui::SetCursorScreenPos(to_imvec(node->Bounds.location));
 
-    auto drawList = ImGui::GetWindowDrawList();
-    drawList->ChannelsSplit(2);
-    drawList->ChannelsSetCurrent(1);
+    node->IsLive = true;
+    node->LastPin = nullptr;
 
-    PinRect.w = PinRect.h = 0;
+    auto drawList = ImGui::GetWindowDrawList();
+    node->Channel = drawList->_ChannelsCount;
+    ImDrawList_ChannelsGrow(drawList, drawList->_ChannelsCount + c_ChannelsPerNode);
+    drawList->ChannelsSetCurrent(node->Channel + c_NodeContentChannel);
 
     SetNodeStage(NodeStage::Begin);
 }
@@ -137,46 +335,23 @@ void ed::Context::EndNode()
     {
         MarkSettingsDirty();
 
-        // TODO: update layout
-        //ImGui::Text((std::string("Changax::Editor: ") + std::to_string(CurrentNode->ID)).c_str());
+        CurrentNode->Bounds = NodeRect;
     }
 
-    ImGui::PopID();
-
-    ImGui::SetCursorScreenPos(to_imvec(NodeRect.location));
-    ImGui::InvisibleButton(std::to_string(CurrentNode->ID).c_str(), to_imvec(NodeRect.size));
-
-    if (ImGui::IsItemActive())
+    if (ImGui::IsItemHoveredRect())
     {
-        SetSelectedNode(CurrentNode);
-        SetActiveNode(CurrentNode);
-        DragOffset = ImGui::GetMouseDragDelta(0, 0.0f);
-    }
-    else if (ActiveNode == CurrentNode)
-    {
-        ActiveNode->Bounds.location += to_point(DragOffset);
-        SetActiveNode(nullptr);
+        auto hotPin = HotObject ? HotObject->AsPin() : nullptr;
+        if (!hotPin || (hotPin && (hotPin->Node != CurrentNode)))
+            SetHotObject(CurrentNode);
     }
 
     auto drawList = ImGui::GetWindowDrawList();
-    drawList->ChannelsSetCurrent(0);
+
+    auto drawListForegroundEnd = drawList->CmdBuffer.size();
+
+    drawList->ChannelsSetCurrent(CurrentNode->Channel + c_NodeBackgroundChannel);
 
     const float nodeRounding = 12.0f;
-
-    if (SelectedNode == CurrentNode)
-    {
-        drawList->AddRect(
-            to_imvec(NodeRect.top_left()),
-            to_imvec(NodeRect.bottom_right()),
-            ImColor(255, 176, 50, 255), 12.0f, 15, 3.5f);
-    }
-    else if (ImGui::IsItemHovered())
-    {
-        drawList->AddRect(
-            to_imvec(NodeRect.top_left()),
-            to_imvec(NodeRect.bottom_right()),
-            ImColor(50, 176, 255, 255), 12.0f, 15, 3.5f);
-    }
 
     HeaderColor.Value.w = 0.75f;
     ax::Drawing::DrawHeader(drawList, HeaderTextureID,
@@ -203,20 +378,6 @@ void ed::Context::EndNode()
         to_imvec(NodeRect.bottom_right()),
         ImColor(255, 255, 255, 96), 12.0f, 15, 1.5f);
 
-     if (!PinRect.is_empty())
-     {
-         drawList->AddRectFilled(
-             to_imvec(PinRect.top_left()),
-             to_imvec(PinRect.bottom_right()),
-             ImColor(60, 180, 255, 100), 4.0f);
-
-         //drawList->AddCircleFilled(
-         //    ImVec2(PinRect.right() + PinRect.h * 0.25f, (float)PinRect.center_y()),
-         //    PinRect.h * 0.25f, ImColor(255, 255, 255, 200));
-     }
-
-    drawList->ChannelsMerge();
-
     SetCurrentNode(nullptr);
 
     SetNodeStage(NodeStage::Invalid);
@@ -241,10 +402,12 @@ void ed::Context::BeginInput(int id)
 {
     assert(nullptr != CurrentNode);
 
-    if (CurrentNodeStage == NodeStage::Begin)
+    if (NodeBuildStage == NodeStage::Begin)
         SetNodeStage(NodeStage::Content);
 
     SetNodeStage(NodeStage::Input);
+
+    BeginPin(id, PinType::Input);
 
     ImGui::Spring(0);
     ImGui::BeginHorizontal(id);
@@ -254,8 +417,7 @@ void ed::Context::EndInput()
 {
     ImGui::EndHorizontal();
 
-    if (ImGui::IsItemHoveredRect())
-        PinRect = get_item_bounds();
+    EndPin();
 
     ImGui::Spring(0, 0);
 }
@@ -264,13 +426,15 @@ void ed::Context::BeginOutput(int id)
 {
     assert(nullptr != CurrentNode);
 
-    if (CurrentNodeStage == NodeStage::Begin)
+    if (NodeBuildStage == NodeStage::Begin)
         SetNodeStage(NodeStage::Content);
 
-    if (CurrentNodeStage == NodeStage::Begin)
+    if (NodeBuildStage == NodeStage::Begin)
         SetNodeStage(NodeStage::Input);
 
     SetNodeStage(NodeStage::Output);
+
+    BeginPin(id, PinType::Output);
 
     ImGui::Spring(0);
     ImGui::BeginHorizontal(id);
@@ -280,26 +444,24 @@ void ed::Context::EndOutput()
 {
     ImGui::EndHorizontal();
 
-    if (ImGui::IsItemHoveredRect())
-        PinRect = get_item_bounds();
+    EndPin();
 
     ImGui::Spring(0, 0);
 }
 
-ed::Node* ed::Context::FindNode(int id)
+ed::Pin* ed::Context::CreatePin(int id, PinType type)
 {
-    for (auto node : Nodes)
-        if (node->ID == id)
-            return node;
-
-    return nullptr;
+    assert(nullptr == FindObject(id));
+    auto pin = new Pin(id, type);
+    Pins.push_back(pin);
+    return pin;
 }
 
 ed::Node* ed::Context::CreateNode(int id)
 {
-    assert(nullptr == FindNode(id));
-    Nodes.push_back(new Node(id));
-    auto node = Nodes.back();
+    assert(nullptr == FindObject(id));
+    auto node = new Node(id);
+    Nodes.push_back(node);
 
     auto settings = FindNodeSettings(id);
     if (!settings)
@@ -313,38 +475,72 @@ ed::Node* ed::Context::CreateNode(int id)
     return node;
 }
 
-void ed::Context::DestroyNode(Node* node)
+void ed::Context::DestroyObject(Node* node)
 {
-    if (!node) return;
-    auto& nodes = Nodes;
-    auto nodeIt = std::find(nodes.begin(), nodes.end(), node);
-    assert(nodeIt != nodes.end());
-    nodes.erase(nodeIt);
-    delete node;
 }
 
-void ed::Context::SetCurrentNode(Node* node, bool isNew/* = false*/)
+ed::Object* ed::Context::FindObject(int id)
+{
+    if (auto object = FindNode(id))
+        return object;
+    if (auto object = FindPin(id))
+        return object;
+    return nullptr;
+}
+
+ed::Node* ed::Context::FindNode(int id)
+{
+    for (auto node : Nodes)
+        if (node->ID == id)
+            return node;
+
+    return nullptr;
+}
+
+ed::Pin* ed::Context::FindPin(int id)
+{
+    for (auto pin : Pins)
+        if (pin->ID == id)
+            return pin;
+
+    return nullptr;
+}
+
+void ed::Context::SetHotObject(Object* object)
+{
+    HotObject = object;
+}
+
+void ed::Context::SetActiveObject(Object* object)
+{
+    ActiveObject = object;
+}
+
+void ed::Context::SetSelectedObject(Object* object)
+{
+    SelectedObject = object;
+}
+
+void ed::Context::SetCurrentNode(Node* node)
 {
     CurrentNode = node;
 }
 
-void ed::Context::SetActiveNode(Node* node)
+void ed::Context::SetCurrentPin(Pin* pin)
 {
-    ActiveNode = node;
-}
+    CurrentPin = pin;
 
-void ed::Context::SetSelectedNode(Node* node)
-{
-    SelectedNode = node;
+    if (pin)
+        SetCurrentNode(pin->Node);
 }
 
 bool ed::Context::SetNodeStage(NodeStage stage)
 {
-    if (stage == CurrentNodeStage)
+    if (stage == NodeBuildStage)
         return false;
 
-    auto oldStage = CurrentNodeStage;
-    CurrentNodeStage = stage;
+    auto oldStage = NodeBuildStage;
+    NodeBuildStage = stage;
 
     ImVec2 cursor;
     switch (oldStage)
@@ -424,6 +620,40 @@ bool ed::Context::SetNodeStage(NodeStage stage)
     }
 
     return true;
+}
+
+ed::Pin* ed::Context::GetPin(int id, PinType type)
+{
+    if (auto pin = FindPin(id))
+    {
+        pin->Type = type;
+        return pin;
+    }
+    else
+        return CreatePin(id, type);
+}
+
+void ed::Context::BeginPin(int id, PinType type)
+{
+    auto pin = GetPin(id, PinType::Input);
+    pin->Node = CurrentNode;
+    SetCurrentPin(pin);
+
+    pin->PreviousPin     = CurrentNode->LastPin;
+    CurrentNode->LastPin = pin;
+    pin->IsLive = true;
+}
+
+void ed::Context::EndPin()
+{
+    auto pinRect = get_item_bounds();
+
+    if (ImGui::IsItemHoveredRect())
+        SetHotObject(CurrentPin);
+
+    CurrentPin->Bounds = pinRect;
+
+    SetCurrentPin(nullptr);
 }
 
 ed::NodeSettings* ed::Context::FindNodeSettings(int id)
