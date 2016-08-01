@@ -39,7 +39,7 @@ enum class PinType
     Input, Output
 };
 
-enum class LinkStage
+enum class LinkCreateStage
 {
     None,
     Possible,
@@ -158,6 +158,9 @@ struct Context
     void RejectLink(ImU32 color, float thickness);
     bool AcceptLink(ImU32 color, float thickness);
 
+    bool DestroyLink();
+    int GetDestroyedLinkId();
+
     bool DoLink(int id, int startPinId, int endPinId, ImU32 color, float thickness);
 
 private:
@@ -179,6 +182,8 @@ private:
     void RemoveSelectedObject(Object* object);
     void SetSelectedObject(Object* object);
     bool IsSelected(Object* object);
+    bool IsAnyNodeSelected();
+    bool IsAnyLinkSelected();
 
     void SetCurrentNode(Node* node);
     void SetCurrentPin(Pin* pin);
@@ -206,6 +211,8 @@ private:
     Object*         SelectedObject;
     vector<Object*> SelectedObjects;
 
+    Link*           ActiveLink;
+
     Pin*            CurrentPin;
     Node*           CurrentNode;
 
@@ -221,11 +228,14 @@ private:
     rect            ContentRect;
 
     // Link creating
-    LinkStage       LinkStage;
+    LinkCreateStage LinkCreateStage;
     ImU32           LinkColor;
     float           LinkThickness;
     Pin*            LinkStart;
     Pin*            LinkEnd;
+
+    // Link deleting
+    vector<Link*>   DeletedLinks;
 
     bool            IsInitialized;
     ImTextureID     HeaderTextureID;

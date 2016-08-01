@@ -235,12 +235,27 @@ void ax::Drawing::DrawHeader(ImDrawList* drawList, ImTextureID textureId, const 
     }
 }
 
-void ax::Drawing::DrawLink(ImDrawList* drawList, const ImVec2& a, const ImVec2& b, ImU32 color, float thickness/* = 1.0f*/)
+void ax::Drawing::DrawLink(ImDrawList* drawList, const ImVec2& a, const ImVec2& b, ImU32 color, float thickness/* = 1.0f*/, float strength/* = 1.0f*/)
 {
-    auto strength = std::min(100.0f, fabsf(a.x - b.x) * 0.5f);
+    strength = std::min(strength, fabsf(a.x - b.x) * 0.5f);
 
     ImVec2 cp0 = ImVec2(a.x + strength, a.y);
     ImVec2 cp1 = ImVec2(b.x - strength, b.y);
 
     drawList->AddBezierCurve(a, cp0, cp1, b, color, thickness);
+}
+
+float ax::Drawing::LinkDistance(const ImVec2& p, const ImVec2& a, const ImVec2& b, float strength/* = 1.0f*/)
+{
+    using namespace ImGuiInterop;
+
+    strength = std::min(strength, fabsf(a.x - b.x) * 0.5f);
+
+    ImVec2 cp0 = ImVec2(a.x + strength, a.y);
+    ImVec2 cp1 = ImVec2(b.x - strength, b.y);
+
+    auto result = bezier_project_point(to_pointf(p),
+        to_pointf(a), to_pointf(cp0), to_pointf(cp1), to_pointf(b), 50);
+
+    return result.distance;
 }

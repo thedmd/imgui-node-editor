@@ -3164,8 +3164,7 @@ bool ImGui::IsKeyPressed(int key_index, bool repeat)
         return true;
 
     if (repeat && t > g.IO.KeyRepeatDelay)
-    {
-        float delay = g.IO.KeyRepeatDelay, rate = g.IO.KeyRepeatRate;
+    {        float delay = g.IO.KeyRepeatDelay, rate = g.IO.KeyRepeatRate;
         if ((fmodf(t - delay, rate) > rate*0.5f) != (fmodf(t - delay - g.IO.DeltaTime, rate) > rate*0.5f))
             return true;
     }

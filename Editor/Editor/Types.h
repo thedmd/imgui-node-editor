@@ -48,6 +48,8 @@ struct basic_point
     basic_point& operator=(const basic_point&) = default;
     basic_point& operator=(basic_point&&) = default;
 
+    friend inline value_type dot(const basic_point& lhs, const basic_point& rhs) { return lhs.x * rhs.x + lhs.y * rhs.y; }
+
     inline basic_point cwise_min(const basic_point& rhs) const { return basic_point(std::min(x, rhs.x), std::min(y, rhs.y)); }
     inline basic_point cwise_max(const basic_point& rhs) const { return basic_point(std::max(x, rhs.x), std::max(y, rhs.y)); }
 
@@ -56,6 +58,9 @@ struct basic_point
 
     friend inline basic_point operator + (const basic_point& lhs, const basic_point& rhs) { return basic_point(lhs.x + rhs.x, lhs.y + rhs.y); }
     friend inline basic_point operator - (const basic_point& lhs, const basic_point& rhs) { return basic_point(lhs.x - rhs.x, lhs.y - rhs.y); }
+
+    friend inline basic_point operator * (T lhs, const basic_point& rhs) { return basic_point(lhs * rhs.x, lhs * rhs.y); }
+    friend inline basic_point operator * (const basic_point& lhs, T rhs) { return basic_point(lhs.x * rhs, lhs.y * rhs); }
 
     basic_point& operator += (const basic_point& rhs) { *this = *this + rhs; return *this; }
     basic_point& operator -= (const basic_point& rhs) { *this = *this - rhs; return *this; }
@@ -313,6 +318,84 @@ template <typename M, typename T>
 inline void transform_v(basic_point<T>* point, size_t n, const M& matrix)
 {
     detail::transform_vectors(matrix, point, n);
+}
+
+
+//------------------------------------------------------------------------------
+inline pointf bezier(const pointf& p0, const pointf& p1, const pointf& p2, const pointf& p3, float t)
+{
+    const auto a = 1 - t;
+    const auto b = a * a * a;
+    const auto c = t * t * t;
+
+    return b * p0 + 3 * t * a * a * p1 + 3 * t * t * a * p2 + c * p3;
+}
+
+inline pointf bezier_dt(const pointf& p0, const pointf& p1, const pointf& p2, const pointf& p3, float t)
+{
+    const auto a = 1 - t;
+    const auto b = a * a;
+    const auto c = t * t;
+    const auto d = 2 * t * a;
+
+    return -3 * p0 * b + 3 * p1 * (b - d) + 3 * p2 * (d - c) + 3 * p3 * c;
+}
+
+
+//------------------------------------------------------------------------------
+struct bezier_project_result
+{
+    float position;
+    float distance;
+};
+
+static bezier_project_result bezier_project_point(const pointf& f, const pointf& p0, const pointf& p1, const pointf& p2, const pointf& p3, const int subdivisions = 100)
+{
+    // http://pomax.github.io/bezierinfo/#projections
+
+    const float epsilon = 1e-6f;
+    const float fixed_step = 1.0f / static_cast<float>(subdivisions - 1);
+
+    float distance = std::numeric_limits<float>::max();
+    float position = 0.0f;
+
+    // Step 1: Coarse check
+    for (int i = 0; i < subdivisions; ++i)
+    {
+        auto t = i * fixed_step;
+        auto p = bezier(p0, p1, p2, p3, t);
+        auto s = f - p;
+        auto d = dot(s, s);
+
+        if (d < distance)
+        {
+            distance = d;
+            position = t;
+        }
+    }
+
+    if (position == 0.0f || fabsf(position - 1.0f) <= epsilon)
+        return bezier_project_result{position, sqrtf(distance)};
+
+    // Step 2: Fine check
+    auto left = position - fixed_step;
+    auto right = position + fixed_step;
+    auto step = fixed_step * 0.1f;
+
+    for (auto t = left; t < right + step; t += step)
+    {
+        auto p = bezier(p0, p1, p2, p3, t);
+        auto s = f - p;
+        auto d = dot(s, s);
+
+        if (d < distance)
+        {
+            distance = d;
+            position = t;
+        }
+    }
+
+    return bezier_project_result{ position, sqrtf(distance) };
 }
 
 

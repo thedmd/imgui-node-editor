@@ -11,10 +11,21 @@ namespace ed = ax::Editor;
 
 
 //------------------------------------------------------------------------------
-static const int c_ChannelsPerNode       = 3;
-static const int c_NodeBaseChannel       = 0;
-static const int c_NodeBackgroundChannel = 1;
-static const int c_NodeContentChannel    = 2;
+static const int c_BackgroundChannelCount = 1;
+static const int c_LinkChannelCount       = 2;
+
+static const int c_BackgroundChannelStart = 0;
+static const int c_LinkStartChannel       = c_BackgroundChannelStart + c_BackgroundChannelCount;
+static const int c_NodeStartChannel       = c_LinkStartChannel       + c_LinkChannelCount;
+
+static const int c_ChannelsPerNode        = 3;
+static const int c_NodeBaseChannel        = 0;
+static const int c_NodeBackgroundChannel  = 1;
+static const int c_NodeContentChannel     = 2;
+
+static const float c_NodeFrameRounding    = 12.0f;
+static const float c_LinkStrength         = 100.0f;
+static const float c_LinkSelectThickness  = 5.0f;
 
 
 //------------------------------------------------------------------------------
@@ -108,13 +119,14 @@ ed::Context::Context():
     HotObject(nullptr),
     ActiveObject(nullptr),
     SelectedObject(nullptr),
+    ActiveLink(nullptr),
     CurrentPin(nullptr),
     CurrentNode(nullptr),
     DragOffset(),
     DraggedNode(nullptr),
     DraggedPin(nullptr),
     NodeBuildStage(NodeStage::Invalid),
-    LinkStage(LinkStage::None),
+    LinkCreateStage(LinkCreateStage::None),
     IsInitialized(false),
     HeaderTextureID(nullptr),
     Settings()
@@ -134,14 +146,9 @@ ed::Context::~Context()
         SaveSettings();
     }
 
-    for (auto link : Links)
-        delete link;
-
-    for (auto pin : Pins)
-        delete pin;
-
-    for (auto node : Nodes)
-        delete node;
+    for (auto link : Links) delete link;
+    for (auto pin  : Pins)  delete pin;
+    for (auto node : Nodes) delete node;
 }
 
 void ed::Context::Begin(const char* id)
@@ -160,20 +167,21 @@ void ed::Context::Begin(const char* id)
 
     SetHotObject(nullptr);
 
-    for (auto node : Nodes)
-        node->IsLive = false;
-
-    for (auto pin : Pins)
-        pin->IsLive = false;
-
-    for (auto link : Links)
-        link->IsLive = false;
+    for (auto node : Nodes) node->IsLive = false;
+    for (auto pin  : Pins)   pin->IsLive = false;
+    for (auto link : Links) link->IsLive = false;
 
     ImGui::BeginChild(id, ImVec2(0, 0), true, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoMove);
+
+    // Reserve channels for background and links
+    auto drawList = ImGui::GetWindowDrawList();
+    ImDrawList_ChannelsGrow(drawList, c_NodeStartChannel);
 }
 
 void ed::Context::End()
 {
+    const auto mousePos = ImGui::GetMousePos();
+
     auto& io = ImGui::GetIO();
 
     auto drawList = ImGui::GetWindowDrawList();
@@ -184,7 +192,7 @@ void ed::Context::End()
     Object* activeObject  = nullptr;
     Object* clickedObject = nullptr;
 
-    // Draw all interactive elements using invisible buttons
+    // Draw all elements using invisible buttons and check for interactions
     for (auto nodeIt = Nodes.rbegin(), nodeItEnd = Nodes.rend(); nodeIt != nodeItEnd; ++nodeIt)
     {
         auto& node = *nodeIt;
@@ -216,9 +224,68 @@ void ed::Context::End()
             activeObject = node;
     }
 
-    ImGui::SetCursorScreenPos(ImGui::GetWindowPos());
-    auto clickedBackground = ImGui::InvisibleButton("background", ImGui::GetWindowSize());
+    // Check for interaction with links
+    for (auto& link : Links)
+    {
+        if (!link->IsLive) continue;
 
+        auto startPoint = link->StartPin->DragPoint;
+        auto endPoint   = link->EndPin->DragPoint;
+
+        // If links goes from right to left we take advantage
+        // of them always have horizontal tangents. In this case
+        // curve will be slightly overshooting.
+        if (startPoint.x > endPoint.x)
+        {
+            std::swap(startPoint.x, endPoint.x);
+            startPoint.x = roundi(startPoint.x - c_LinkStrength * 0.25f);
+            endPoint.x   = roundi(endPoint.x   + c_LinkStrength * 0.25f);
+        }
+
+        if (startPoint.y > endPoint.y)
+            std::swap(startPoint.y, endPoint.y);
+
+        auto thickness = roundi(link->Thickness + c_LinkSelectThickness);
+        startPoint = startPoint - point(thickness, thickness);
+        endPoint   = endPoint   + point(thickness, thickness);
+
+        auto linkRect = rect(startPoint, endPoint);
+        if (linkRect.contains(to_point(mousePos)))
+        {
+            auto distance = Drawing::LinkDistance(mousePos,
+                to_imvec(link->StartPin->DragPoint),
+                to_imvec(link->EndPin->DragPoint),
+                c_LinkStrength);
+
+            if (!hotObject && distance < thickness)
+                hotObject = link;
+        }
+    }
+
+    // Finally check for interaction with background
+    ImGui::SetCursorScreenPos(ImGui::GetWindowPos());
+    auto clickedBackground  = ImGui::InvisibleButton("background", ImGui::GetWindowSize());
+    auto isBackgroundActive = ImGui::IsItemActive();
+
+    Link* hotLink = hotObject ? hotObject->AsLink() : nullptr;
+
+    // Links are "emulated" widgets drawn on background and
+    // can steal click from it.
+    if (hotLink && clickedBackground)
+    {
+        clickedObject     = hotLink;
+        clickedBackground = false;
+    }
+
+    if (!ActiveLink && hotLink && isBackgroundActive)
+        ActiveLink = hotLink;
+    if (ActiveLink && isBackgroundActive)
+        activeObject = ActiveLink;
+    else if (ActiveLink && !isBackgroundActive)
+        ActiveLink = nullptr;
+
+    Link* clickedLink = clickedObject ? clickedObject->AsLink() : nullptr;
+    Link* activeLink  = activeObject  ? activeObject->AsLink()  : nullptr;
     Pin*  hotPin      = hotObject     ? hotObject->AsPin()      : nullptr;
     Pin*  activePin   = activeObject  ? activeObject->AsPin()   : nullptr;
     Pin*  clickedPin  = clickedObject ? clickedObject->AsPin()  : nullptr;
@@ -229,12 +296,12 @@ void ed::Context::End()
     if (hotPin && !hotNode)
         hotNode = hotPin->Node;
 
-    auto lastActiveObject = ActiveObject;
-
     SetHotObject(hotObject);
 
     if (activeNode)
         SetActiveObject(activeNode);
+    else if (activeLink)
+        SetActiveObject(activeLink);
     else if (!activeObject)
         SetActiveObject(nullptr);
 
@@ -244,6 +311,9 @@ void ed::Context::End()
     }
     else if (clickedNode && (clickedNode != DraggedNode))
     {
+        if (IsAnyLinkSelected())
+            ClearSelection();
+
         if (io.KeyCtrl)
         {
             if (IsSelected(clickedNode))
@@ -253,6 +323,21 @@ void ed::Context::End()
         }
         else
             SetSelectedObject(clickedNode);
+    }
+    else if (clickedLink)
+    {
+        if (IsAnyNodeSelected())
+            ClearSelection();
+
+        if (io.KeyCtrl)
+        {
+            if (IsSelected(clickedLink))
+                RemoveSelectedObject(clickedLink);
+            else
+                AddSelectedObject(clickedLink);
+        }
+        else
+            SetSelectedObject(clickedLink);
     }
 
     auto selectedNode = SelectedObject ? SelectedObject->AsNode() : nullptr;
@@ -267,7 +352,16 @@ void ed::Context::End()
             drawList->AddRect(
                 to_imvec(selectedNode->Bounds.top_left()),
                 to_imvec(selectedNode->Bounds.bottom_right()),
-                ImColor(255, 176, 50, 255), 12.0f, 15, 3.5f);
+                ImColor(255, 176, 50, 255), c_NodeFrameRounding, 15, 3.5f);
+        }
+        else if (auto selectedLink = selectedObject->AsLink())
+        {
+            drawList->ChannelsSetCurrent(c_LinkStartChannel + 0);
+
+            ax::Drawing::DrawLink(drawList,
+                to_imvec(selectedLink->StartPin->DragPoint),
+                to_imvec(selectedLink->EndPin->DragPoint),
+                ImColor(255, 176, 50, 255), selectedLink->Thickness + 4.5f, c_LinkStrength);
         }
     }
 
@@ -279,7 +373,7 @@ void ed::Context::End()
         drawList->AddRect(
             to_imvec(hotNode->Bounds.top_left()),
             to_imvec(hotNode->Bounds.bottom_right()),
-            ImColor(50, 176, 255, 255), 12.0f, 15, 3.5f);
+            ImColor(50, 176, 255, 255), c_NodeFrameRounding, 15, 3.5f);
     }
 
     // Highlight hovered pin
@@ -294,16 +388,29 @@ void ed::Context::End()
     }
 
     // Draw links
-    drawList->ChannelsSetCurrent(0);
+    drawList->ChannelsSetCurrent(c_LinkStartChannel + 1);
     for (auto link : Links)
     {
         if (!link->IsLive)
             continue;
 
+        float extraThickness = !IsSelected(link) && (hotLink == link || activeLink == link) ? 2.0f : 0.0f;
+
         ax::Drawing::DrawLink(drawList,
             to_imvec(link->StartPin->DragPoint),
             to_imvec(link->EndPin->DragPoint),
-            link->Color, link->Thickness);
+            link->Color, link->Thickness + extraThickness, c_LinkStrength);
+    }
+
+    // Highlight hovered link
+    if (hotLink && !IsSelected(hotLink))
+    {
+        drawList->ChannelsSetCurrent(c_LinkStartChannel + 0);
+
+        ax::Drawing::DrawLink(drawList,
+            to_imvec(hotLink->StartPin->DragPoint),
+            to_imvec(hotLink->EndPin->DragPoint),
+            ImColor(50, 176, 255, 255), hotLink->Thickness + 4.5f, c_LinkStrength);
     }
 
     // Handle node dragging, does not steal selection
@@ -345,19 +452,21 @@ void ed::Context::End()
     if (!DraggedPin && activePin && ImGui::IsMouseDragging(0))
     {
         DraggedPin = activePin;
-        LinkStage  = LinkStage::Possible;
+        LinkCreateStage  = LinkCreateStage::Possible;
         LinkStart  = DraggedPin->Type == PinType::Output ? DraggedPin : nullptr;
         LinkEnd    = DraggedPin->Type == PinType::Input  ? DraggedPin : nullptr;
+
+        ClearSelection();
     }
 
-    if (DraggedPin && activePin == DraggedPin && (LinkStage == LinkStage::Edit || LinkStage == LinkStage::Accept || LinkStage == LinkStage::Reject))
+    if (DraggedPin && activePin == DraggedPin && (LinkCreateStage == LinkCreateStage::Edit || LinkCreateStage == LinkCreateStage::Accept || LinkCreateStage == LinkCreateStage::Reject))
     {
         auto& startPin = DraggedPin->Type == PinType::Output ? LinkStart : LinkEnd;
         auto& endPin   = DraggedPin->Type == PinType::Output ? LinkEnd   : LinkStart;
 
         ImVec2 startPoint = to_imvec(DraggedPin->DragPoint);
-        ImVec2 endPoint   = ImGui::GetMousePos();
-        if (LinkStage == LinkStage::Accept)
+        ImVec2 endPoint   = mousePos;
+        if (LinkCreateStage == LinkCreateStage::Accept)
             endPoint = to_imvec(endPin->DragPoint);
 
         if (DraggedPin->Type == PinType::Input)
@@ -374,11 +483,27 @@ void ed::Context::End()
     {
         DraggedPin = nullptr;
 
-        if (LinkStage == LinkStage::Accept)
-            LinkStage = LinkStage::Created;
+        if (LinkCreateStage == LinkCreateStage::Accept)
+            LinkCreateStage = LinkCreateStage::Created;
         else
-            LinkStage = LinkStage::None;
+            LinkCreateStage = LinkCreateStage::None;
     }
+
+    // Link deletion
+    const bool isDeletePressed = ImGui::IsKeyPressed(ImGui::GetKeyIndex(ImGuiKey_Delete));
+    if ((IsAnyLinkSelected() && isDeletePressed) || (clickedLink && io.KeyAlt))
+    {
+        if (IsAnyLinkSelected())
+        {
+            for (auto selectedObject : SelectedObjects)
+                DeletedLinks.push_back(selectedObject->AsLink());
+        }
+
+        if (clickedObject && !IsSelected(clickedObject))
+            DeletedLinks.push_back(clickedLink);
+    }
+    else
+        DeletedLinks.clear();
 
     // Bring active node to front
     std::stable_sort(Nodes.begin(), Nodes.end(), [activeNode](Node* lhs, Node* rhs)
@@ -407,12 +532,19 @@ void ed::Context::End()
     drawList->ChannelsMerge();
 
     ImGui::SetCursorScreenPos(ImGui::GetWindowPos());
-    ImGui::Text("Hot Object: %s (%d)",
-        HotObject ? (HotObject->AsNode() ? "Node" : (HotObject->AsPin() ? "Pin" : "")) : "",
-        HotObject ? HotObject->ID : 0);
-    ImGui::Text("Active Object: %s (%d)",
-        ActiveObject ? (ActiveObject->AsNode() ? "Node" : (ActiveObject->AsPin() ? "Pin" : "")) : "",
-        ActiveObject ? ActiveObject->ID : 0);
+    auto getObjectName = [](Object* object)
+    {
+        if (!object) return "";
+        else if (object->AsNode()) return "Node";
+        else if (object->AsPin()) return "Pin";
+        else if (object->AsLink()) return "Link";
+        else return "";
+    };
+
+    ImGui::Text("Hot Object: %s (%d)", getObjectName(HotObject), HotObject ? HotObject->ID : 0);
+    ImGui::Text("Active Object: %s (%d)", getObjectName(ActiveObject), ActiveObject ? ActiveObject->ID : 0);
+    ImGui::Text("Active Link: %p", ActiveLink);
+    ImGui::Text("Is Active Link: %s", isBackgroundActive ? "true" : "false");
 
     ImGui::EndChild();
 
@@ -467,13 +599,11 @@ void ed::Context::EndNode()
 
     drawList->ChannelsSetCurrent(CurrentNode->Channel + c_NodeBackgroundChannel);
 
-    const float nodeRounding = 12.0f;
-
     auto headerColor = 0xC0000000 | (HeaderColor & 0x00FFFFFF);
     ax::Drawing::DrawHeader(drawList, HeaderTextureID,
         to_imvec(HeaderRect.top_left()),
         to_imvec(HeaderRect.bottom_right()),
-        headerColor, nodeRounding, 4.0f);
+        headerColor, c_NodeFrameRounding, 4.0f);
 
     auto headerSeparatorRect      = ax::rect(HeaderRect.bottom_left(),  ContentRect.top_right());
     auto footerSeparatorRect      = ax::rect(ContentRect.bottom_left(), NodeRect.bottom_right());
@@ -482,7 +612,7 @@ void ed::Context::EndNode()
     drawList->AddRectFilled(
         to_imvec(contentWithSeparatorRect.top_left()),
         to_imvec(contentWithSeparatorRect.bottom_right()),
-        ImColor(32, 32, 32, 200), 12.0f, 4 | 8);
+        ImColor(32, 32, 32, 200), c_NodeFrameRounding, 4 | 8);
 
     drawList->AddLine(
         to_imvec(headerSeparatorRect.top_left() + point(1, -1)),
@@ -492,7 +622,7 @@ void ed::Context::EndNode()
     drawList->AddRect(
         to_imvec(NodeRect.top_left()),
         to_imvec(NodeRect.bottom_right()),
-        ImColor(255, 255, 255, 96), 12.0f, 15, 1.5f);
+        ImColor(255, 255, 255, 96), c_NodeFrameRounding, 15, 1.5f);
 
     SetCurrentNode(nullptr);
 
@@ -567,15 +697,15 @@ void ed::Context::EndOutput()
 
 bool ed::Context::CreateLink(int* startId, int* endId, ImU32 color, float thickness)
 {
-    if (LinkStage == LinkStage::None)
+    if (LinkCreateStage == LinkCreateStage::None)
         return false;
 
     *startId = LinkStart ? LinkStart->ID : 0;
     *endId   = LinkEnd   ? LinkEnd->ID   : 0;
 
-    if (LinkStage != LinkStage::Created)
+    if (LinkCreateStage != LinkCreateStage::Created)
     {
-        LinkStage     = LinkStage::Edit;
+        LinkCreateStage     = LinkCreateStage::Edit;
         LinkColor     = color;
         LinkThickness = thickness;
     }
@@ -585,28 +715,48 @@ bool ed::Context::CreateLink(int* startId, int* endId, ImU32 color, float thickn
 
 void ed::Context::RejectLink(ImU32 color, float thickness)
 {
-    assert(LinkStage == LinkStage::Edit || LinkStage == LinkStage::Accept || LinkStage == LinkStage::Reject);
-    LinkStage     = LinkStage::Reject;
+    assert(LinkCreateStage == LinkCreateStage::Edit || LinkCreateStage == LinkCreateStage::Accept || LinkCreateStage == LinkCreateStage::Reject);
+    LinkCreateStage     = LinkCreateStage::Reject;
     LinkColor     = color;
     LinkThickness = thickness;
 }
 
 bool ed::Context::AcceptLink(ImU32 color, float thickness)
 {
-    assert(LinkStage == LinkStage::Edit || LinkStage == LinkStage::Accept || LinkStage == LinkStage::Reject || LinkStage == LinkStage::Created);
+    assert(LinkCreateStage == LinkCreateStage::Edit || LinkCreateStage == LinkCreateStage::Accept || LinkCreateStage == LinkCreateStage::Reject || LinkCreateStage == LinkCreateStage::Created);
     assert(LinkEnd);
 
     LinkColor     = color;
     LinkThickness = thickness;
-    if (LinkStage == LinkStage::Created)
+    if (LinkCreateStage == LinkCreateStage::Created)
     {
-        LinkStage = LinkStage::None;
+        LinkCreateStage = LinkCreateStage::None;
         return true;
     }
 
-    LinkStage = LinkStage::Accept;
+    LinkCreateStage = LinkCreateStage::Accept;
 
     return false;
+}
+
+bool ed::Context::DestroyLink()
+{
+    return !DeletedLinks.empty();
+}
+
+int ed::Context::GetDestroyedLinkId()
+{
+    if (DeletedLinks.empty())
+        return 0;
+
+    auto link = DeletedLinks.back();
+    DeletedLinks.pop_back();
+
+    RemoveSelectedObject(link);
+    if (link == ActiveLink)
+        ActiveLink = nullptr;
+
+    return link->ID;
 }
 
 bool ed::Context::DoLink(int id, int startPinId, int endPinId, ImU32 color, float thickness)
@@ -747,6 +897,24 @@ void ed::Context::SetSelectedObject(Object* object)
 bool ed::Context::IsSelected(Object* object)
 {
     return std::find(SelectedObjects.begin(), SelectedObjects.end(), object) != SelectedObjects.end();
+}
+
+bool ed::Context::IsAnyNodeSelected()
+{
+    for (auto object : SelectedObjects)
+        if (object->AsNode())
+            return true;
+
+    return false;
+}
+
+bool ed::Context::IsAnyLinkSelected()
+{
+    for (auto object : SelectedObjects)
+        if (object->AsLink())
+            return true;
+
+    return false;
 }
 
 void ed::Context::SetCurrentNode(Node* node)

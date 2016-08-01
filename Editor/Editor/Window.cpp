@@ -369,17 +369,60 @@ void NodeWindow::OnGui()
             }
         }
 
-        int linkId = 0;
-        if (ed::DestroyLink(&linkId))
+        if (ed::DestroyLink())
         {
-            auto id = std::find_if(s_Links.begin(), s_Links.end(), [linkId](auto& link) { return link.ID == linkId; });
-            if (id != s_Links.end())
-                s_Links.erase(id);
+            while (int linkId = ed::GetDestroyedLinkId())
+            {
+                auto id = std::find_if(s_Links.begin(), s_Links.end(), [linkId](auto& link) { return link.ID == linkId; });
+                if (id != s_Links.end())
+                    s_Links.erase(id);
+            }
         }
 
         ImGui::SetCursorScreenPos(cursorTopLeft);
 
 
+        //auto drawList = ImGui::GetWindowDrawList();
+
+        //static float time = 0.0f;
+
+        //time += io.DeltaTime;
+
+        //auto p0 = pointf(300, 300);
+        //auto p1 = pointf(400, 200);
+        //auto p2 = pointf(300 + 400 * (0.5f + 0.5f * cosf(time)), 600);
+        //auto p3 = pointf(900, 400);
+
+        //drawList->AddLine(to_imvec(p0), to_imvec(p1), IM_COL32(255, 0, 0, 255));
+        //drawList->AddLine(to_imvec(p1), to_imvec(p2), IM_COL32(255, 0, 0, 255));
+        //drawList->AddLine(to_imvec(p2), to_imvec(p3), IM_COL32(255, 0, 0, 255));
+
+        //drawList->AddBezierCurve(to_imvec(p0), to_imvec(p1), to_imvec(p2), to_imvec(p3), IM_COL32(255, 255, 255, 255), 2.0f);
+
+        //for (int i = 0; i < 5000; ++i)
+        //{
+        //    float x = rand() / (float)RAND_MAX;
+        //    float y = rand() / (float)RAND_MAX;
+
+        //    x = x * 800 + 200;
+        //    y = y * 500 + 150;
+
+        //    ImU32 color = IM_COL32(255, 255, 0, 255);
+
+        //    auto s = pointf(x, y);
+
+        //    auto t = bezier_project_point(s, p0, p1, p2, p3, 50);
+
+        //    //auto p = bezier(p0, p1, p2, p3, t);
+
+        //    auto distance = t.distance;
+        //    if (distance < 50.0f)
+        //        color = IM_COL32(255, 0, 255, 255);
+
+        //    //s = p;
+
+        //    drawList->AddRect(ImVec2(s.x - 2.0f, s.y - 2.0f), ImVec2(s.x + 2.0f, s.y + 2.0f), color);
+        //}
     }
     ed::End();
 
