@@ -543,11 +543,11 @@ LRESULT ImwPlatformWindowDX11::OnMessage(UINT message, WPARAM wParam, LPARAM lPa
             s_pLastHoveredWindow = this;
             return 1;
         case WM_KEYDOWN:
-            if (wParam < 256)
+            if (wParam < 512)
                 io.KeysDown[wParam] = 1;
             return 1;
         case WM_KEYUP:
-            if (wParam < 256)
+            if (wParam < 512)
                 io.KeysDown[wParam] = 0;
             return 1;
         case WM_CHAR:
