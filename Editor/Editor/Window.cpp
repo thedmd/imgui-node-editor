@@ -74,8 +74,10 @@ struct Link
     int StartPinID;
     int EndPinID;
 
+    ImColor Color;
+
     Link(int id, int startPinId, int endPinId):
-        ID(id), StartPinID(startPinId), EndPinID(endPinId)
+        ID(id), StartPinID(startPinId), EndPinID(endPinId), Color(255, 255, 255)
     {
     }
 };
@@ -108,6 +110,18 @@ static Pin* FindPin(int id)
     return nullptr;
 }
 
+static bool IsPinLinked(int id)
+{
+    if (id <= 0)
+        return false;
+
+    for (auto& link : s_Links)
+        if (link.StartPinID == id || link.EndPinID == id)
+            return true;
+
+    return false;
+}
+
 
 NodeWindow::NodeWindow(void):
     m_Editor(nullptr)
@@ -135,6 +149,7 @@ NodeWindow::NodeWindow(void):
 
     s_Nodes.emplace_back(GetNextId(), "OutputAction");
     s_Nodes.back().Inputs.emplace_back(GetNextId(), "Sample", PinType::Float);
+    s_Nodes.back().Outputs.emplace_back(GetNextId(), "Condition", PinType::Bool);
 
     s_Nodes.emplace_back(GetNextId(), "Set Timer", ImColor(128, 195, 248));
     s_Nodes.back().Inputs.emplace_back(GetNextId(), "", PinType::Flow);
@@ -233,23 +248,37 @@ void NodeWindow::OnGui()
 
     auto& style = ImGui::GetStyle();
 
-    auto drawPinIcon = [iconSize2](const Pin& pin)
+    auto getIconColor = [](PinType type)
+    {
+        switch (type)
+        {
+            default:
+            case PinType::Flow:     return ImColor(255, 255, 255);
+            case PinType::Bool:     return ImColor(139,   0,   0);
+            case PinType::Int:      return ImColor( 68, 201, 156);
+            case PinType::Float:    return ImColor(147, 226,  74);
+            case PinType::Object:   return ImColor( 51, 150, 215);
+            case PinType::Function: return ImColor(218,   0, 183);
+        }
+    };
+
+    auto drawPinIcon = [iconSize2, &getIconColor](const Pin& pin, bool connected)
     {
         IconType iconType;
-        ImColor  color;
+        ImColor  color = getIconColor(pin.Type);
         switch (pin.Type)
         {
-            case PinType::Flow:     iconType = IconType::Flow;   color = ImColor(255, 255, 255); break;
-            case PinType::Bool:     iconType = IconType::Circle; color = ImColor(139,   0,   0); break;
-            case PinType::Int:      iconType = IconType::Circle; color = ImColor( 68, 201, 156); break;
-            case PinType::Float:    iconType = IconType::Circle; color = ImColor(147, 226,  74); break;
-            case PinType::Object:   iconType = IconType::Circle; color = ImColor( 51, 150, 215); break;
-            case PinType::Function: iconType = IconType::Circle; color = ImColor(218,   0, 183); break;
+            case PinType::Flow:     iconType = IconType::Flow;   break;
+            case PinType::Bool:     iconType = IconType::Circle; break;
+            case PinType::Int:      iconType = IconType::Circle; break;
+            case PinType::Float:    iconType = IconType::Circle; break;
+            case PinType::Object:   iconType = IconType::Circle; break;
+            case PinType::Function: iconType = IconType::Circle; break;
             default:
                 return;
         }
 
-        ax::Widgets::Icon(to_imvec(iconSize2), iconType, false, color, ImColor(32, 32, 32));
+        ax::Widgets::Icon(to_imvec(iconSize2), iconType, connected, color, ImColor(32, 32, 32));
     };
 
 
@@ -284,7 +313,7 @@ void NodeWindow::OnGui()
                 for (auto& input : node.Inputs)
                 {
                     ed::BeginInput(input.ID);
-                    drawPinIcon(input);
+                    drawPinIcon(input, IsPinLinked(input.ID));
                     ImGui::Spring(0);
                     if (!input.Name.empty())
                     {
@@ -308,7 +337,7 @@ void NodeWindow::OnGui()
                         ImGui::TextUnformatted(output.Name.c_str());
                     }
                     ImGui::Spring(0);
-                    drawPinIcon(output);
+                    drawPinIcon(output, IsPinLinked(output.ID));
                     ed::EndOutput();
 
                     //ed::Icon("##icon", iconSizeIm, IconType::Flow, false);
@@ -317,13 +346,16 @@ void NodeWindow::OnGui()
             ed::EndNode();
         }
 
+        for (auto& link : s_Links)
+            ed::Link(link.ID, link.StartPinID, link.EndPinID, link.Color, 2.0f);
+
         int startPinId = 0, endPinId = 0;
         if (ed::CreateLink(&startPinId, &endPinId, ImColor(255, 255, 255), 2.0f))
         {
             auto startPin = FindPin(startPinId);
             auto endPin   = FindPin(endPinId);
 
-            if (endPin)
+            if (startPin && endPin)
             {
                 if (endPin->Kind == startPin->Kind)
                     ed::RejectLink(ImColor(255, 0, 0), 2.0f);
@@ -334,6 +366,7 @@ void NodeWindow::OnGui()
                 else if (ed::AcceptLink(ImColor(128, 255, 128), 4.0f))
                 {
                     s_Links.emplace_back(Link(GetNextId(), startPinId, endPinId));
+                    s_Links.back().Color = getIconColor(startPin->Type);
                 }
             }
         }

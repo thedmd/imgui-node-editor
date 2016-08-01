@@ -51,6 +51,7 @@ enum class LinkStage
 
 struct Node;
 struct Pin;
+struct Link;
 
 struct Object
 {
@@ -62,6 +63,7 @@ struct Object
 
     virtual Node* AsNode() { return nullptr; }
     virtual Pin*  AsPin()  { return nullptr; }
+    virtual Link* AsLink() { return nullptr; }
 };
 
 struct Pin final: Object
@@ -97,6 +99,21 @@ struct Node final: Object
     }
 
     virtual Node* AsNode() override final { return this; }
+};
+
+struct Link final: Object
+{
+    Pin*  StartPin;
+    Pin*  EndPin;
+    ImU32 Color;
+    float Thickness;
+
+    Link(int id):
+        Object(id), StartPin(nullptr), EndPin(nullptr), Color(IM_COL32_WHITE), Thickness(1.0f)
+    {
+    }
+
+    virtual Link* AsLink() override final { return this; }
 };
 
 struct NodeSettings
@@ -141,16 +158,18 @@ struct Context
     void RejectLink(ImU32 color, float thickness);
     bool AcceptLink(ImU32 color, float thickness);
 
-    void Link(int id, int startNodeId, int endNodeId, ImU32 color, float thickness);
+    bool DoLink(int id, int startPinId, int endPinId, ImU32 color, float thickness);
 
 private:
     Pin* CreatePin(int id, PinType type);
     Node* CreateNode(int id);
+    Link* CreateLink(int id);
     void DestroyObject(Node* node);
     Object* FindObject(int id);
 
     Node* FindNode(int id);
     Pin* FindPin(int id);
+    Link* FindLink(int id);
 
     void SetHotObject(Object* object);
     void SetActiveObject(Object* object);
@@ -170,6 +189,8 @@ private:
     void BeginPin(int id, PinType type);
     void EndPin();
 
+    Link* GetLink(int id);
+
     NodeSettings* FindNodeSettings(int id);
     NodeSettings* AddNodeSettings(int id);
     void          LoadSettings();
@@ -178,6 +199,7 @@ private:
 
     vector<Node*>   Nodes;
     vector<Pin*>    Pins;
+    vector<Link*>   Links;
 
     Object*         HotObject;
     Object*         ActiveObject;
