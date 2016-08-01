@@ -135,6 +135,28 @@ struct basic_rect
 
     bool is_empty() const { return size.is_empty(); }
 
+    template <typename P>
+    bool contains(const basic_point<P>& p) const
+    {
+        return p.x >= x && p.y >= y && p.x < right() && p.y < bottom();
+    }
+
+    template <typename P>
+    bool contains(const basic_rect<P>& r) const
+    {
+        return r.x >= x && r.y >= y && r.right() <= right() && r.bottom() <= bottom();
+    }
+
+    point_t get_closest_point(const point_t& p, bool on_edge) const
+    {
+        if (!on_edge && contains(p))
+            return p;
+
+        return point_t(
+            (p.x > right())  ? right()  : (p.x < left() ? left() : p.x),
+            (p.y > bottom()) ? bottom() : (p.y < top()  ? top()  : p.y));
+    }
+
     static inline basic_rect make_union(const basic_rect& lhs, const basic_rect& rhs)
     {
         if (lhs.is_empty())

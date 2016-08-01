@@ -31,10 +31,10 @@ enum class PinType
     Function,
 };
 
-enum class PinLayout
+enum class PinKind
 {
-    Left,
-    Right
+    Input,
+    Output
 };
 
 struct Node;
@@ -45,9 +45,10 @@ struct Pin
     Node*       Node;
     std::string Name;
     PinType     Type;
+    PinKind     Kind;
 
     Pin(int id, const char* name, PinType type):
-        ID(id), Node(nullptr), Name(name), Type(type)
+        ID(id), Node(nullptr), Name(name), Type(type), Kind(PinKind::Input)
     {
     }
 };
@@ -82,75 +83,100 @@ struct Link
 static std::vector<Node>    s_Nodes;
 static std::vector<Link>    s_Links;
 
-static ImTextureID s_Background = nullptr;
+static int s_NextId = 1;
+static int GetNextId()
+{
+    return s_NextId++;
+}
+
+static Pin* FindPin(int id)
+{
+    if (id <= 0)
+        return nullptr;
+
+    for (auto& node : s_Nodes)
+    {
+        for (auto& pin : node.Inputs)
+            if (pin.ID == id)
+                return &pin;
+
+        for (auto& pin : node.Outputs)
+            if (pin.ID == id)
+                return &pin;
+    }
+
+    return nullptr;
+}
+
 
 NodeWindow::NodeWindow(void):
     m_Editor(nullptr)
 {
     SetTitle("Node editor");
 
-    s_Background = ImGui_LoadTexture("../Data/BlueprintBackground.png");
-
     m_Editor = ed::CreateEditor();
 
-    int nextId = 1;
-    auto genId = [&nextId]() { return nextId++; };
+    s_Nodes.emplace_back(GetNextId(), "InputAction Fire", ImColor(255, 128, 128));
+    s_Nodes.back().Outputs.emplace_back(GetNextId(), "Pressed", PinType::Flow);
+    s_Nodes.back().Outputs.emplace_back(GetNextId(), "Released", PinType::Flow);
 
-    s_Nodes.emplace_back(genId(), "InputAction Fire", ImColor(255, 128, 128));
-    s_Nodes.back().Outputs.emplace_back(genId(), "Pressed", PinType::Flow);
-    s_Nodes.back().Outputs.emplace_back(genId(), "Released", PinType::Flow);
+    s_Nodes.emplace_back(GetNextId(), "Branch");
+    s_Nodes.back().Inputs.emplace_back(GetNextId(), "", PinType::Flow);
+    s_Nodes.back().Inputs.emplace_back(GetNextId(), "Condition", PinType::Bool);
+    s_Nodes.back().Outputs.emplace_back(GetNextId(), "True", PinType::Flow);
+    s_Nodes.back().Outputs.emplace_back(GetNextId(), "False", PinType::Flow);
 
-    s_Nodes.emplace_back(genId(), "Branch");
-    s_Nodes.back().Inputs.emplace_back(genId(), "", PinType::Flow);
-    s_Nodes.back().Inputs.emplace_back(genId(), "Condition", PinType::Bool);
-    s_Nodes.back().Outputs.emplace_back(genId(), "True", PinType::Flow);
-    s_Nodes.back().Outputs.emplace_back(genId(), "False", PinType::Flow);
+    s_Nodes.emplace_back(GetNextId(), "Do N");
+    s_Nodes.back().Inputs.emplace_back(GetNextId(), "Enter", PinType::Flow);
+    s_Nodes.back().Inputs.emplace_back(GetNextId(), "N", PinType::Int);
+    s_Nodes.back().Inputs.emplace_back(GetNextId(), "Reset", PinType::Flow);
+    s_Nodes.back().Outputs.emplace_back(GetNextId(), "Exit", PinType::Flow);
+    s_Nodes.back().Outputs.emplace_back(GetNextId(), "Counter", PinType::Int);
 
-    s_Nodes.emplace_back(genId(), "Do N");
-    s_Nodes.back().Inputs.emplace_back(genId(), "Enter", PinType::Flow);
-    s_Nodes.back().Inputs.emplace_back(genId(), "N", PinType::Int);
-    s_Nodes.back().Inputs.emplace_back(genId(), "Reset", PinType::Flow);
-    s_Nodes.back().Outputs.emplace_back(genId(), "Exit", PinType::Flow);
-    s_Nodes.back().Outputs.emplace_back(genId(), "Counter", PinType::Int);
+    s_Nodes.emplace_back(GetNextId(), "OutputAction");
+    s_Nodes.back().Inputs.emplace_back(GetNextId(), "Sample", PinType::Float);
 
-    s_Nodes.emplace_back(genId(), "OutputAction");
-    s_Nodes.back().Inputs.emplace_back(genId(), "Sample", PinType::Float);
-
-    s_Nodes.emplace_back(genId(), "Set Timer", ImColor(128, 195, 248));
-    s_Nodes.back().Inputs.emplace_back(genId(), "", PinType::Flow);
-    s_Nodes.back().Inputs.emplace_back(genId(), "Object", PinType::Object);
-    s_Nodes.back().Inputs.emplace_back(genId(), "Function Name", PinType::Function);
-    s_Nodes.back().Inputs.emplace_back(genId(), "Time", PinType::Float);
-    s_Nodes.back().Inputs.emplace_back(genId(), "Looping", PinType::Bool);
-    s_Nodes.back().Outputs.emplace_back(genId(), "", PinType::Flow);
+    s_Nodes.emplace_back(GetNextId(), "Set Timer", ImColor(128, 195, 248));
+    s_Nodes.back().Inputs.emplace_back(GetNextId(), "", PinType::Flow);
+    s_Nodes.back().Inputs.emplace_back(GetNextId(), "Object", PinType::Object);
+    s_Nodes.back().Inputs.emplace_back(GetNextId(), "Function Name", PinType::Function);
+    s_Nodes.back().Inputs.emplace_back(GetNextId(), "Time", PinType::Float);
+    s_Nodes.back().Inputs.emplace_back(GetNextId(), "Looping", PinType::Bool);
+    s_Nodes.back().Outputs.emplace_back(GetNextId(), "", PinType::Flow);
 
 
-//     s_Nodes.emplace_back(genId(), "Single Line Trace by Channel", point(600, 30));
-//     s_Nodes.back().Inputs.emplace_back(genId(), "", PinType::Flow);
-//     s_Nodes.back().Inputs.emplace_back(genId(), "Start", PinType::Flow);
-//     s_Nodes.back().Inputs.emplace_back(genId(), "End", PinType::Int);
-//     s_Nodes.back().Inputs.emplace_back(genId(), "Trace Channel", PinType::Float);
-//     s_Nodes.back().Inputs.emplace_back(genId(), "Trace Complex", PinType::Bool);
-//     s_Nodes.back().Inputs.emplace_back(genId(), "Actors to Ignore", PinType::Int);
-//     s_Nodes.back().Inputs.emplace_back(genId(), "Draw Debug Type", PinType::Bool);
-//     s_Nodes.back().Inputs.emplace_back(genId(), "Ignore Self", PinType::Bool);
-//     s_Nodes.back().Outputs.emplace_back(genId(), "", PinType::Flow);
-//     s_Nodes.back().Outputs.emplace_back(genId(), "Out Hit", PinType::Float);
-//     s_Nodes.back().Outputs.emplace_back(genId(), "Return Value", PinType::Bool);
+//     s_Nodes.emplace_back(GetNextId(), "Single Line Trace by Channel", point(600, 30));
+//     s_Nodes.back().Inputs.emplace_back(GetNextId(), "", PinType::Flow);
+//     s_Nodes.back().Inputs.emplace_back(GetNextId(), "Start", PinType::Flow);
+//     s_Nodes.back().Inputs.emplace_back(GetNextId(), "End", PinType::Int);
+//     s_Nodes.back().Inputs.emplace_back(GetNextId(), "Trace Channel", PinType::Float);
+//     s_Nodes.back().Inputs.emplace_back(GetNextId(), "Trace Complex", PinType::Bool);
+//     s_Nodes.back().Inputs.emplace_back(GetNextId(), "Actors to Ignore", PinType::Int);
+//     s_Nodes.back().Inputs.emplace_back(GetNextId(), "Draw Debug Type", PinType::Bool);
+//     s_Nodes.back().Inputs.emplace_back(GetNextId(), "Ignore Self", PinType::Bool);
+//     s_Nodes.back().Outputs.emplace_back(GetNextId(), "", PinType::Flow);
+//     s_Nodes.back().Outputs.emplace_back(GetNextId(), "Out Hit", PinType::Float);
+//     s_Nodes.back().Outputs.emplace_back(GetNextId(), "Return Value", PinType::Bool);
 
     for (auto& node : s_Nodes)
     {
         for (auto& input : node.Inputs)
+        {
             input.Node = &node;
+            input.Kind = PinKind::Input;
+        }
 
         for (auto& output : node.Outputs)
+        {
             output.Node = &node;
+            output.Kind = PinKind::Output;
+        }
     }
 
-//     s_Links.emplace_back(genId(), s_Nodes[0].Outputs[0].ID, s_Nodes[1].Inputs[0].ID);
-//     s_Links.emplace_back(genId(), s_Nodes[1].Outputs[0].ID, s_Nodes[2].Inputs[0].ID);
-//     s_Links.emplace_back(genId(), s_Nodes[1].Outputs[1].ID, s_Nodes[2].Inputs[2].ID);
-//     s_Links.emplace_back(genId(), s_Nodes[2].Outputs[1].ID, s_Nodes[3].Inputs[0].ID);
+//     s_Links.emplace_back(GetNextId(), s_Nodes[0].Outputs[0].ID, s_Nodes[1].Inputs[0].ID);
+//     s_Links.emplace_back(GetNextId(), s_Nodes[1].Outputs[0].ID, s_Nodes[2].Inputs[0].ID);
+//     s_Links.emplace_back(GetNextId(), s_Nodes[1].Outputs[1].ID, s_Nodes[2].Inputs[2].ID);
+//     s_Links.emplace_back(GetNextId(), s_Nodes[2].Outputs[1].ID, s_Nodes[3].Inputs[0].ID);
 }
 
 NodeWindow::~NodeWindow()
@@ -159,12 +185,6 @@ NodeWindow::~NodeWindow()
     {
         ed::DestroyEditor(m_Editor);
         m_Editor = nullptr;
-    }
-
-    if (s_Background)
-    {
-        ImGui_DestroyTexture(s_Background);
-        s_Background = nullptr;
     }
 }
 
@@ -271,6 +291,11 @@ void NodeWindow::OnGui()
                         ImGui::TextUnformatted(input.Name.c_str());
                         ImGui::Spring(0);
                     }
+                    if (input.Type == PinType::Bool)
+                    {
+                        ImGui::Button("Hello");
+                        ImGui::Spring(0);
+                    }
                     ed::EndInput();
                 }
 
@@ -292,167 +317,30 @@ void NodeWindow::OnGui()
             ed::EndNode();
         }
 
-        ImGui::SetCursorScreenPos(cursorTopLeft);
-        //ImGui::Text("IsAnyItemActive: %d", ImGui::IsAnyItemActive() ? 1 : 0);
-
-        //ImGui::SetCursorScreenPos(cursorTopLeft + ImVec2(400, 400));
-
-
-        //ImVec2 iconOrigin(300, 200);
-        //DrawIcon(ax::rect(to_point(iconOrigin),                                                     iconSize2), IconType::Flow,        false, ImColor(255, 255, 255), ImColor(255, 0, 0));
-        //DrawIcon(ax::rect(to_point(iconOrigin) + point(roundi(     0 * scale), roundi(28 * scale)), iconSize2), IconType::Flow,        true,  ImColor(255, 255, 255), ImColor(255, 0, 0));
-        //DrawIcon(ax::rect(to_point(iconOrigin) + point(roundi(    28 * scale), roundi( 0 * scale)), iconSize2), IconType::Circle,      false, ImColor(  0, 255, 255), ImColor(255, 0, 0));
-        //DrawIcon(ax::rect(to_point(iconOrigin) + point(roundi(    28 * scale), roundi(28 * scale)), iconSize2), IconType::Circle,      true,  ImColor(  0, 255, 255), ImColor(255, 0, 0));
-        //DrawIcon(ax::rect(to_point(iconOrigin) + point(roundi(2 * 28 * scale), roundi( 0 * scale)), iconSize2), IconType::Square,      false, ImColor(128, 255, 128), ImColor(255, 0, 0));
-        //DrawIcon(ax::rect(to_point(iconOrigin) + point(roundi(2 * 28 * scale), roundi(28 * scale)), iconSize2), IconType::Square,      true,  ImColor(128, 255, 128), ImColor(255, 0, 0));
-        //DrawIcon(ax::rect(to_point(iconOrigin) + point(roundi(3 * 28 * scale), roundi( 0 * scale)), iconSize2), IconType::Grid,        false, ImColor(128, 255, 128), ImColor(255, 0, 0));
-        //DrawIcon(ax::rect(to_point(iconOrigin) + point(roundi(3 * 28 * scale), roundi(28 * scale)), iconSize2), IconType::Grid,        true,  ImColor(128, 255, 128), ImColor(255, 0, 0));
-        //DrawIcon(ax::rect(to_point(iconOrigin) + point(roundi(4 * 28 * scale), roundi( 0 * scale)), iconSize2), IconType::RoundSquare, false, ImColor(255, 128, 128), ImColor(255, 0, 0));
-        //DrawIcon(ax::rect(to_point(iconOrigin) + point(roundi(4 * 28 * scale), roundi(28 * scale)), iconSize2), IconType::RoundSquare, true,  ImColor(255, 128, 128), ImColor(255, 0, 0));
-        //DrawIcon(ax::rect(to_point(iconOrigin) + point(roundi(5 * 28 * scale), roundi( 0 * scale)), iconSize2), IconType::Diamond,     false, ImColor(255, 255, 128), ImColor(255, 0, 0));
-        //DrawIcon(ax::rect(to_point(iconOrigin) + point(roundi(5 * 28 * scale), roundi(28 * scale)), iconSize2), IconType::Diamond,     true,  ImColor(255, 255, 128), ImColor(255, 0, 0));
-
-        //int tw = ImGui_GetTextureWidth(s_Background);
-        //int th = ImGui_GetTextureHeight(s_Background);
-        //ImGui::Image(s_Background, ImVec2((float)tw, (float)th));
-
-        auto drawHeader = [&](ImVec2 topLeft, ImVec2 rightBottom, ImColor color = ImColor(1,1,1))
+        int startPinId = 0, endPinId = 0;
+        if (ed::CreateLink(&startPinId, &endPinId, ImColor(255, 255, 255), 2.0f))
         {
-//             drawList->AddDrawCmd();
-//             drawList->PathRect(topLeft, rightBottom, 12.0f, 1 | 2);
-//             drawList->PathFill(ImColor(color));
-// 
-//             auto size = rightBottom - topLeft;
-// 
-//             float zoom = 4.0f;
-//             ax::matrix transform;
-//             transform.scale(1.0f / zoom, 1.0f / zoom);
-//             transform.scale(size.x / tw, size.y / th);
-//             transform.scale(1.0f / (size.x - 1.0f), 1.0f / (size.y - 1.0f));
-//             transform.translate(-topLeft.x - 0.5f, -topLeft.y - 0.5f);
-// 
-//             ImGui_PushGizmo(drawList, s_Background, (float*)&transform);
-//             drawList->AddDrawCmd();
-// 
-            //drawList->PathRect(topLeft, rightBottom, 12.0f, 1 | 2);
-            //drawList->PathStroke(ImColor(128, 128, 128), true, 1.5f);
-        };
+            auto startPin = FindPin(startPinId);
+            auto endPin   = FindPin(endPinId);
 
-        auto get_item_bounds = [] { return rect(to_point(ImGui::GetItemRectMin()), to_point(ImGui::GetItemRectMax())); };
-
-        ax::rect selectedRect = ax::rect();
-        auto checkFocus = [&selectedRect, &get_item_bounds]() { if (ImGui::IsItemHoveredRect()) selectedRect = get_item_bounds(); };
-
-        ImGui::SetCursorScreenPos(ImVec2(400, 300));
-
-        /*
-        auto nodeTopLeft = ImGui::GetCursorScreenPos();
-
-        drawList->ChannelsSplit(2);
-
-        drawList->ChannelsSetCurrent(1);
-        ImGui::BeginVertical("SampleNode");
-            ImGui::BeginHorizontal("header");
-                ImGui::Spring(0);
-                ImGui::Text("Do Once");
-                ImGui::Spring(1);
-                ImGui::Dummy(ImVec2(0, 28));
-            ImGui::EndHorizontal();
-            auto headerRect = get_item_bounds();
-
-            ImGui::Spring(0);
-            drawList->ChannelsSetCurrent(1);
-            ImGui::BeginHorizontal("content");
-                ImGui::Spring(1);
-                ImGui::BeginVertical("inputs", ImVec2(0,0), 0.0f);
-                    ImGui::BeginHorizontal(0);
-                        DrawIcon(to_size(iconSizeIm), ax::Editor::IconType::Flow, true, ImColor(255, 255, 255));
-                    ImGui::EndHorizontal();
-                    checkFocus();
-                    ImGui::Spring(0, 0);
-                    ImGui::BeginHorizontal(1);
-                        DrawIcon(to_size(iconSizeIm), ax::Editor::IconType::Flow, true, ImColor(255, 255, 255));
-                        ImGui::Spring(0);
-                        ImGui::TextUnformatted("Reset");
-                        ImGui::Spring(0);
-                    ImGui::EndHorizontal();
-                    checkFocus();
-                    ImGui::Spring(0, 0);
-                    ImGui::BeginHorizontal(2);
-                        DrawIcon(to_size(iconSizeIm), ax::Editor::IconType::Circle, false, ImColor(128, 0, 0));
-                        ImGui::Spring(0);
-                        ImGui::TextUnformatted("Start Closed");
-                        ImGui::Spring(0);
-                        ImGui::Spring(0);
-                        static bool x = false;
-                        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(0,0));
-                        ImGui::PushStyleVar(ImGuiStyleVar_ItemInnerSpacing, ImVec2(0, 0));
-                        ImGui::Checkbox("", &x);
-                        ImGui::PopStyleVar(2);
-                        ImGui::Spring(0);
-                    ImGui::EndHorizontal();
-                    checkFocus();
-                    ImGui::Spring(1, 0);
-                ImGui::EndVertical();
-                ImGui::Spring(1);
-                ImGui::BeginVertical("outputs", ImVec2(0, 0), 1.0f);
-                    ImGui::BeginHorizontal(0);
-                        ImGui::Spring(0);
-                        ImGui::TextUnformatted("Completed");
-                        ImGui::Spring(0);
-                        DrawIcon(to_size(iconSizeIm), ax::Editor::IconType::Flow, false, ImColor(255, 255, 255), ImColor(0, 0, 0));
-                    ImGui::EndHorizontal();
-                    checkFocus();
-                    ImGui::Spring(1,0);
-                ImGui::EndVertical();
-                ImGui::Spring(1);
-            ImGui::EndHorizontal();
-            auto contentRect = get_item_bounds();
-
-            ImGui::Spring(0);
-
-        ImGui::EndVertical();
-        auto nodeRect = get_item_bounds();
-
-        drawList->ChannelsSetCurrent(0);
-        drawHeader(
-            to_imvec(headerRect.top_left()),
-            to_imvec(headerRect.bottom_right()),
-            ImColor(255, 255, 255, 128));
-
-        auto headerSeparatorRect      = ax::rect(headerRect.bottom_left(),  contentRect.top_right());
-        auto footerSeparatorRect      = ax::rect(contentRect.bottom_left(), nodeRect.bottom_right());
-        auto contentWithSeparatorRect = ax::rect::make_union(headerSeparatorRect, footerSeparatorRect);
-
-        drawList->AddRectFilled(
-            to_imvec(contentWithSeparatorRect.top_left()),
-            to_imvec(contentWithSeparatorRect.bottom_right()),
-            ImColor(32, 32, 32, 200), 12.0f, 4 | 8);
-
-        drawList->AddLine(
-            to_imvec(headerSeparatorRect.top_left()  + point( 1, -1)),
-            to_imvec(headerSeparatorRect.top_right() + point(-1, -1)),
-            ImColor(255, 255, 255, 96 / 3), 1.0f);
-
-        drawList->AddRect(
-            to_imvec(nodeRect.top_left()),
-            to_imvec(nodeRect.bottom_right()),
-            ImColor(255, 255, 255, 96), 12.0f, 15, 1.5f);
-
-        if (!selectedRect.is_empty())
-        {
-            drawList->AddRectFilled(
-                to_imvec(selectedRect.top_left()),
-                to_imvec(selectedRect.bottom_right()),
-                ImColor(60, 180, 255, 100), 4.0f);
-
-            drawList->AddCircleFilled(
-                ImVec2(selectedRect.right() + selectedRect.h * 0.25f, (float)selectedRect.center_y()),
-                selectedRect.h * 0.25f, ImColor(255, 255, 255, 200));
+            if (endPin)
+            {
+                if (endPin->Kind == startPin->Kind)
+                    ed::RejectLink(ImColor(255, 0, 0), 2.0f);
+                else if (endPin->Node == startPin->Node)
+                    ed::RejectLink(ImColor(255, 0, 0), 1.0f);
+                else if (endPin->Type != startPin->Type)
+                    ed::RejectLink(ImColor(255, 128, 128), 1.0f);
+                else if (ed::AcceptLink(ImColor(128, 255, 128), 4.0f))
+                {
+                    s_Links.emplace_back(Link(GetNextId(), startPinId, endPinId));
+                }
+            }
         }
 
-        drawList->ChannelsMerge();
-        */
+        ImGui::SetCursorScreenPos(cursorTopLeft);
+
+
     }
     ed::End();
 

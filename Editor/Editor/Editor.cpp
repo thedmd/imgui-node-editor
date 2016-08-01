@@ -109,8 +109,11 @@ ed::Context::Context():
     SelectedObject(nullptr),
     CurrentPin(nullptr),
     CurrentNode(nullptr),
-    NodeBuildStage(NodeStage::Invalid),
     DragOffset(),
+    DraggedNode(nullptr),
+    DraggedPin(nullptr),
+    NodeBuildStage(NodeStage::Invalid),
+    LinkStage(LinkStage::None),
     IsInitialized(false),
     HeaderTextureID(nullptr),
     Settings()
@@ -164,39 +167,195 @@ void ed::Context::Begin(const char* id)
 
 void ed::Context::End()
 {
-    auto drawList = ImGui::GetWindowDrawList();
+    auto& io = ImGui::GetIO();
 
+    auto drawList = ImGui::GetWindowDrawList();
     drawList->ChannelsSetCurrent(0);
 
-    Node* hotNode = nullptr;
-    Node* activeNode = nullptr;
-    Node* clickedNode = nullptr;
+    // UI objects
+    Object* hotObject     = nullptr;
+    Object* activeObject  = nullptr;
+    Object* clickedObject = nullptr;
+
+    // Draw all interactive elements using invisible buttons
     for (auto nodeIt = Nodes.rbegin(), nodeItEnd = Nodes.rend(); nodeIt != nodeItEnd; ++nodeIt)
     {
         auto& node = *nodeIt;
 
+        for (auto pin = node->LastPin; pin; pin = pin->PreviousPin)
+        {
+            auto pinId = "pin_area_" + std::to_string(pin->ID);
+            ImGui::SetCursorScreenPos(to_imvec(pin->Bounds.location));
+            if (ImGui::InvisibleButton(pinId.c_str(), to_imvec(pin->Bounds.size)))
+                clickedObject = pin;
+
+            if (!hotObject && ImGui::IsItemHoveredRect())
+                hotObject = pin;
+
+            if (ImGui::IsItemActive())
+                activeObject = pin;
+        }
+
         auto nodeId = "node_area_" + std::to_string(node->ID);
         ImGui::SetCursorScreenPos(to_imvec(node->Bounds.location));
-        if (ImGui::InvisibleButton(nodeId.c_str(), to_imvec(node->Bounds.size)))
-            clickedNode = node;
 
-        if (!hotNode && ImGui::IsItemHoveredRect())
-            hotNode = node;
+        if (ImGui::InvisibleButton(nodeId.c_str(), to_imvec(node->Bounds.size)))
+            clickedObject = node;
+
+        if (!hotObject && ImGui::IsItemHoveredRect())
+            hotObject = node;
 
         if (ImGui::IsItemActive())
-            activeNode = node;
+            activeObject = node;
     }
 
-    SetHotObject(hotNode);
+    ImGui::SetCursorScreenPos(ImGui::GetWindowPos());
+    auto clickedBackground = ImGui::InvisibleButton("background", ImGui::GetWindowSize());
 
-    SetActiveObject(activeNode);
+    Pin*  hotPin      = hotObject     ? hotObject->AsPin()      : nullptr;
+    Pin*  activePin   = activeObject  ? activeObject->AsPin()   : nullptr;
+    Pin*  clickedPin  = clickedObject ? clickedObject->AsPin()  : nullptr;
+    Node* hotNode     = hotObject     ? hotObject->AsNode()     : nullptr;
+    Node* activeNode  = activeObject  ? activeObject->AsNode()  : nullptr;
+    Node* clickedNode = clickedObject ? clickedObject->AsNode() : nullptr;
 
-    if (clickedNode)
-        SetSelectedObject(clickedNode);
+    if (hotPin && !hotNode)
+        hotNode = hotPin->Node;
+
+    auto lastActiveObject = ActiveObject;
+
+    SetHotObject(hotObject);
+
+    if (activeNode)
+        SetActiveObject(activeNode);
+    else if (!activeObject)
+        SetActiveObject(nullptr);
+
+    if (clickedBackground)
+    {
+        ClearSelection();
+    }
+    else if (clickedNode && (clickedNode != DraggedNode))
+    {
+        if (io.KeyCtrl)
+        {
+            if (IsSelected(clickedNode))
+                RemoveSelectedObject(clickedNode);
+            else
+                AddSelectedObject(clickedNode);
+        }
+        else
+            SetSelectedObject(clickedNode);
+    }
 
     auto selectedNode = SelectedObject ? SelectedObject->AsNode() : nullptr;
 
+    // Highlight hovered node
+    for (auto selectedObject : SelectedObjects)
+    {
+        if (auto selectedNode = selectedObject->AsNode())
+        {
+            drawList->ChannelsSetCurrent(selectedNode->Channel + c_NodeBaseChannel);
 
+            drawList->AddRect(
+                to_imvec(selectedNode->Bounds.top_left()),
+                to_imvec(selectedNode->Bounds.bottom_right()),
+                ImColor(255, 176, 50, 255), 12.0f, 15, 3.5f);
+        }
+    }
+
+    // Highlight selected node
+    if (hotNode && !IsSelected(hotNode))
+    {
+        drawList->ChannelsSetCurrent(hotNode->Channel + c_NodeBaseChannel);
+
+        drawList->AddRect(
+            to_imvec(hotNode->Bounds.top_left()),
+            to_imvec(hotNode->Bounds.bottom_right()),
+            ImColor(50, 176, 255, 255), 12.0f, 15, 3.5f);
+    }
+
+    // Highlight hovered pin
+    if (hotPin)
+    {
+        drawList->ChannelsSetCurrent(hotPin->Node->Channel + c_NodeBackgroundChannel);
+
+        drawList->AddRectFilled(
+            to_imvec(hotPin->Bounds.top_left()),
+            to_imvec(hotPin->Bounds.bottom_right()),
+            ImColor(60, 180, 255, 100), 4.0f);
+    }
+
+    // Handle node dragging, does not steal selection
+    if (!DraggedNode && activeNode && ImGui::IsMouseDragging(0))
+    {
+        DraggedNode = activeNode;
+        activeNode->DragStart = activeNode->Bounds.location;
+
+        if (IsSelected(activeNode))
+        {
+            for (auto selectedObject : SelectedObjects)
+                if (auto selectedNode = selectedObject->AsNode())
+                    selectedNode->DragStart = selectedNode->Bounds.location;
+        }
+        else
+            activeNode->DragStart = activeNode->Bounds.location;
+    }
+
+    if (DraggedNode && activeNode == DraggedNode)
+    {
+        DragOffset = ImGui::GetMouseDragDelta(0, 0.0f);
+
+        if (IsSelected(activeNode))
+        {
+            for (auto selectedObject : SelectedObjects)
+                if (auto selectedNode = selectedObject->AsNode())
+                    selectedNode->Bounds.location = selectedNode->DragStart + to_point(DragOffset);
+        }
+        else
+            activeNode->Bounds.location = activeNode->DragStart + to_point(DragOffset);
+    }
+    else if (DraggedNode && !activeNode)
+    {
+        DraggedNode = nullptr;
+    }
+
+
+    // Link creation
+    if (!DraggedPin && activePin && ImGui::IsMouseDragging(0))
+    {
+        DraggedPin = activePin;
+        LinkStage  = LinkStage::Possible;
+        LinkStart  = DraggedPin;
+        LinkEnd    = nullptr;
+    }
+
+    if (DraggedPin && activePin == DraggedPin && (LinkStage == LinkStage::Edit || LinkStage == LinkStage::Accept || LinkStage == LinkStage::Reject))
+    {
+
+        ImVec2 startPoint = to_imvec(DraggedPin->DragPoint);
+        ImVec2 endPoint   = ImGui::GetMousePos();
+        if (LinkStage == LinkStage::Accept)
+            endPoint = to_imvec(LinkEnd->DragPoint);
+
+        ax::Drawing::DrawLink(drawList, startPoint, endPoint, LinkColor, LinkThickness);
+
+        if (hotPin && hotPin != DraggedPin)
+            LinkEnd = hotPin;
+        else
+            LinkEnd = nullptr;
+    }
+    else if (DraggedPin && !activePin)
+    {
+        DraggedPin = nullptr;
+
+        if (LinkStage == LinkStage::Accept)
+            LinkStage = LinkStage::Created;
+        else
+            LinkStage = LinkStage::None;
+    }
+
+    // Bring active node to front
     std::stable_sort(Nodes.begin(), Nodes.end(), [activeNode](Node* lhs, Node* rhs)
     {
         return (rhs == activeNode);
@@ -220,74 +379,15 @@ void ed::Context::End()
         }
     }
 
-    ImGui::SetCursorScreenPos(ImVec2(500, 200));
-    ImGui::BeginGroup();
-    ImGui::Text("ActiveObject:   %p", ActiveObject);
-    ImGui::Text("HotObject:      %p", HotObject);
-    ImGui::Text("SelectedObject: %p", SelectedObject);
-    ImGui::Text("CurrentPin:     %p", CurrentPin);
-    ImGui::Text("CurrentNode:    %p", CurrentNode);
-
-    for (auto node : Nodes)
-        ImGui::Text("   Node:    %d  %d  %p  ", node->ID, node->Channel, node);
-
-    ImGui::EndGroup();
-
-    //if (clickedNode == ActiveObject)
-    //{
-    //    DragOffset = ImGui::GetMouseDragDelta(0, 0.0f);
-    //}
-    //else if (ActiveObject == SelectedObject)
-    //    SelectedObject->AsNode()->Bounds.location += to_point(DragOffset);
-
-    //if (SelectedObject == CurrentNode)
-    //{
-    //    drawList->AddRect(
-    //        to_imvec(NodeRect.top_left()),
-    //        to_imvec(NodeRect.bottom_right()),
-    //        ImColor(255, 176, 50, 255), 12.0f, 15, 3.5f);
-    //}
-    if (selectedNode)
-    {
-        drawList->ChannelsSetCurrent(selectedNode->Channel + c_NodeBaseChannel);
-
-        drawList->AddRect(
-            to_imvec(selectedNode->Bounds.top_left()),
-            to_imvec(selectedNode->Bounds.bottom_right()),
-            ImColor(255, 176, 50, 255), 12.0f, 15, 3.5f);
-    }
-
-    if (hotNode && hotNode != selectedNode)
-    {
-        drawList->ChannelsSetCurrent(hotNode->Channel + c_NodeBaseChannel);
-
-        drawList->AddRect(
-            to_imvec(hotNode->Bounds.top_left()),
-            to_imvec(hotNode->Bounds.bottom_right()),
-            ImColor(50, 176, 255, 255), 12.0f, 15, 3.5f);
-    }
-
-    //if (!PinRect.is_empty())
-    //{
-    //    drawList->AddRectFilled(
-    //        to_imvec(PinRect.top_left()),
-    //        to_imvec(PinRect.bottom_right()),
-    //        ImColor(60, 180, 255, 100), 4.0f);
-
-    //    //drawList->AddCircleFilled(
-    //    //    ImVec2(PinRect.right() + PinRect.h * 0.25f, (float)PinRect.center_y()),
-    //    //    PinRect.h * 0.25f, ImColor(255, 255, 255, 200));
-    //}
-
-
-
-
-
-
-
-
-
     drawList->ChannelsMerge();
+
+    ImGui::SetCursorScreenPos(ImGui::GetWindowPos());
+    ImGui::Text("Hot Object: %s (%d)",
+        HotObject ? (HotObject->AsNode() ? "Node" : (HotObject->AsPin() ? "Pin" : "")) : "",
+        HotObject ? HotObject->ID : 0);
+    ImGui::Text("Active Object: %s (%d)",
+        ActiveObject ? (ActiveObject->AsNode() ? "Node" : (ActiveObject->AsPin() ? "Pin" : "")) : "",
+        ActiveObject ? ActiveObject->ID : 0);
 
     ImGui::EndChild();
 
@@ -309,10 +409,7 @@ void ed::Context::BeginNode(int id)
     SetCurrentNode(node);
 
     // Position node on screen
-    if (ActiveObject == node)
-        ImGui::SetCursorScreenPos(to_imvec(node->Bounds.location) + DragOffset); // drag, find a better way
-    else
-        ImGui::SetCursorScreenPos(to_imvec(node->Bounds.location));
+    ImGui::SetCursorScreenPos(to_imvec(node->Bounds.location));
 
     node->IsLive = true;
     node->LastPin = nullptr;
@@ -331,20 +428,14 @@ void ed::Context::EndNode()
 
     SetNodeStage(NodeStage::End);
 
-    if (CurrentNode->Bounds != NodeRect)
+    if (CurrentNode->Bounds.size != NodeRect.size)
     {
         MarkSettingsDirty();
 
-        CurrentNode->Bounds = NodeRect;
+        CurrentNode->Bounds.size = NodeRect.size;
     }
 
-    if (ImGui::IsItemHoveredRect())
-    {
-        auto hotPin = HotObject ? HotObject->AsPin() : nullptr;
-        if (!hotPin || (hotPin && (hotPin->Node != CurrentNode)))
-            SetHotObject(CurrentNode);
-    }
-
+    // Draw background
     auto drawList = ImGui::GetWindowDrawList();
 
     auto drawListForegroundEnd = drawList->CmdBuffer.size();
@@ -353,11 +444,11 @@ void ed::Context::EndNode()
 
     const float nodeRounding = 12.0f;
 
-    HeaderColor.Value.w = 0.75f;
+    auto headerColor = 0xC0000000 | (HeaderColor & 0x00FFFFFF);
     ax::Drawing::DrawHeader(drawList, HeaderTextureID,
         to_imvec(HeaderRect.top_left()),
         to_imvec(HeaderRect.bottom_right()),
-        HeaderColor, nodeRounding, 4.0f);
+        headerColor, nodeRounding, 4.0f);
 
     auto headerSeparatorRect      = ax::rect(HeaderRect.bottom_left(),  ContentRect.top_right());
     auto footerSeparatorRect      = ax::rect(ContentRect.bottom_left(), NodeRect.bottom_right());
@@ -383,7 +474,7 @@ void ed::Context::EndNode()
     SetNodeStage(NodeStage::Invalid);
 }
 
-void ed::Context::BeginHeader(const ImColor& color)
+void ed::Context::BeginHeader(ImU32 color)
 {
     assert(nullptr != CurrentNode);
 
@@ -447,6 +538,51 @@ void ed::Context::EndOutput()
     EndPin();
 
     ImGui::Spring(0, 0);
+}
+
+bool ed::Context::CreateLink(int* startId, int* endId, ImU32 color, float thickness)
+{
+    if (LinkStage == LinkStage::None)
+        return false;
+
+    *startId = LinkStart->ID;
+    *endId   = LinkEnd ? LinkEnd->ID : 0;
+
+    LinkStage     = LinkStage::Edit;
+    LinkColor     = color;
+    LinkThickness = thickness;
+
+    return true;
+}
+
+void ed::Context::RejectLink(ImU32 color, float thickness)
+{
+    assert(LinkStage == LinkStage::Edit || LinkStage == LinkStage::Accept || LinkStage == LinkStage::Reject);
+    LinkStage     = LinkStage::Reject;
+    LinkColor     = color;
+    LinkThickness = thickness;
+}
+
+bool ed::Context::AcceptLink(ImU32 color, float thickness)
+{
+    assert(LinkStage == LinkStage::Edit || LinkStage == LinkStage::Accept || LinkStage == LinkStage::Reject || LinkStage == LinkStage::Created);
+    assert(LinkEnd);
+
+    LinkColor     = color;
+    LinkThickness = thickness;
+    if (LinkStage == LinkStage::Created)
+    {
+        LinkStage = LinkStage::None;
+        return true;
+    }
+
+    LinkStage = LinkStage::Accept;
+
+    return false;
+}
+
+void ed::Context::Link(int id, int startNodeId, int endNodeId, ImU32 color, float thickness)
+{
 }
 
 ed::Pin* ed::Context::CreatePin(int id, PinType type)
@@ -516,9 +652,38 @@ void ed::Context::SetActiveObject(Object* object)
     ActiveObject = object;
 }
 
+void ed::Context::ClearSelection()
+{
+    SelectedObjects.clear();
+    SelectedObject = nullptr;
+}
+
+void ed::Context::AddSelectedObject(Object* object)
+{
+    SelectedObjects.push_back(object);
+    SelectedObject = SelectedObjects.front();
+}
+
+void ed::Context::RemoveSelectedObject(Object* object)
+{
+    auto objectIt = std::find(SelectedObjects.begin(), SelectedObjects.end(), object);
+    if (objectIt != SelectedObjects.end())
+    {
+        SelectedObjects.erase(objectIt);
+        if (!SelectedObjects.empty())
+            SelectedObject = SelectedObjects.front();
+    }
+}
+
 void ed::Context::SetSelectedObject(Object* object)
 {
-    SelectedObject = object;
+    ClearSelection();
+    AddSelectedObject(object);
+}
+
+bool ed::Context::IsSelected(Object* object)
+{
+    return std::find(SelectedObjects.begin(), SelectedObjects.end(), object) != SelectedObjects.end();
 }
 
 void ed::Context::SetCurrentNode(Node* node)
@@ -635,7 +800,7 @@ ed::Pin* ed::Context::GetPin(int id, PinType type)
 
 void ed::Context::BeginPin(int id, PinType type)
 {
-    auto pin = GetPin(id, PinType::Input);
+    auto pin = GetPin(id, type);
     pin->Node = CurrentNode;
     SetCurrentPin(pin);
 
@@ -648,10 +813,15 @@ void ed::Context::EndPin()
 {
     auto pinRect = get_item_bounds();
 
-    if (ImGui::IsItemHoveredRect())
-        SetHotObject(CurrentPin);
+//     if (ImGui::IsItemHoveredRect())
+//         SetHotObject(CurrentPin);
 
     CurrentPin->Bounds = pinRect;
+
+    if (CurrentPin->Type == PinType::Input)
+        CurrentPin->DragPoint = point(pinRect.left(), pinRect.center_y());
+    else
+        CurrentPin->DragPoint = point(pinRect.right(), pinRect.center_y());
 
     SetCurrentPin(nullptr);
 }

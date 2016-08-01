@@ -234,3 +234,13 @@ void ax::Drawing::DrawHeader(ImDrawList* drawList, ImTextureID textureId, const 
         drawList->AddDrawCmd();
     }
 }
+
+void ax::Drawing::DrawLink(ImDrawList* drawList, const ImVec2& a, const ImVec2& b, ImU32 color, float thickness/* = 1.0f*/)
+{
+    auto strength = std::min(100.0f, fabsf(a.x - b.x) * 0.5f);
+
+    ImVec2 cp0 = ImVec2(a.x + strength, a.y);
+    ImVec2 cp1 = ImVec2(b.x - strength, b.y);
+
+    drawList->AddBezierCurve(a, cp0, cp1, b, color, thickness);
+}

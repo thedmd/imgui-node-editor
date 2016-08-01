@@ -30,19 +30,35 @@ ax::Editor::Context* ax::Editor::GetCurrentEditor()
     return s_Editor;
 }
 
-void ax::Editor::Begin(const char* id)              { s_Editor->Begin(id);          }
-void ax::Editor::End()                              { s_Editor->End();              }
-void ax::Editor::BeginNode(int id)                  { s_Editor->BeginNode(id);      }
-void ax::Editor::EndNode()                          { s_Editor->EndNode();          }
-void ax::Editor::BeginHeader(const ImColor& color)  { s_Editor->BeginHeader(color); }
-void ax::Editor::EndHeader()                        { s_Editor->EndHeader();        }
-void ax::Editor::BeginInput(int id)                 { s_Editor->BeginInput(id);     }
-void ax::Editor::EndInput()                         { s_Editor->EndInput();         }
-void ax::Editor::BeginOutput(int id)                { s_Editor->BeginOutput(id);    }
-void ax::Editor::EndOutput()                        { s_Editor->EndOutput();        }
+void ax::Editor::Begin(const char* id)              { s_Editor->Begin(id);                   }
+void ax::Editor::End()                              { s_Editor->End();                       }
+void ax::Editor::BeginNode(int id)                  { s_Editor->BeginNode(id);               }
+void ax::Editor::EndNode()                          { s_Editor->EndNode();                   }
+void ax::Editor::BeginHeader(const ImVec4& color)   { s_Editor->BeginHeader(ImColor(color)); }
+void ax::Editor::EndHeader()                        { s_Editor->EndHeader();                 }
+void ax::Editor::BeginInput(int id)                 { s_Editor->BeginInput(id);              }
+void ax::Editor::EndInput()                         { s_Editor->EndInput();                  }
+void ax::Editor::BeginOutput(int id)                { s_Editor->BeginOutput(id);             }
+void ax::Editor::EndOutput()                        { s_Editor->EndOutput();                 }
 
-void ax::Editor::Link(int id, int startNodeId, int endNodeId, const ImVec4& color/* = ImVec4(1, 1, 1, 1)*/)
+bool ax::Editor::CreateLink(int* startId, int* endId, const ImColor& color, float thickness)
 {
+    return s_Editor->CreateLink(startId, endId, color, thickness);
+}
+
+void ax::Editor::RejectLink(const ImVec4& color, float thickness)
+{
+    s_Editor->RejectLink(ImColor(color), thickness);
+}
+
+bool ax::Editor::AcceptLink(const ImVec4& color, float thickness)
+{
+    return s_Editor->AcceptLink(ImColor(color), thickness);
+}
+
+void ax::Editor::Link(int id, int startNodeId, int endNodeId, const ImVec4& color/* = ImVec4(1, 1, 1, 1)*/, float thickness/* = 1.0f*/)
+{
+    s_Editor->Link(id, startNodeId, endNodeId, ImColor(color), thickness);
 }
 
 

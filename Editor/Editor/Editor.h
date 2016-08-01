@@ -39,6 +39,16 @@ enum class PinType
     Input, Output
 };
 
+enum class LinkStage
+{
+    None,
+    Possible,
+    Edit,
+    Reject,
+    Accept,
+    Created
+};
+
 struct Node;
 struct Pin;
 
@@ -59,6 +69,7 @@ struct Pin final: Object
     PinType Type;
     Node*   Node;
     rect    Bounds;
+    point   DragPoint;
     Pin*    PreviousPin;
 
     Pin(int id, PinType type):
@@ -74,12 +85,14 @@ struct Node final: Object
     rect    Bounds;
     int     Channel;
     Pin*    LastPin;
+    point   DragStart;
 
     Node(int id):
         Object(id),
         Bounds(to_point(ImGui::GetCursorScreenPos()), size()),
         Channel(0),
-        LastPin(nullptr)
+        LastPin(nullptr),
+        DragStart()
     {
     }
 
@@ -115,7 +128,7 @@ struct Context
     void BeginNode(int id);
     void EndNode();
 
-    void BeginHeader(const ImColor& color);
+    void BeginHeader(ImU32 color);
     void EndHeader();
 
     void BeginInput(int id);
@@ -123,6 +136,12 @@ struct Context
 
     void BeginOutput(int id);
     void EndOutput();
+
+    bool CreateLink(int* startId, int* endId, ImU32 color, float thickness);
+    void RejectLink(ImU32 color, float thickness);
+    bool AcceptLink(ImU32 color, float thickness);
+
+    void Link(int id, int startNodeId, int endNodeId, ImU32 color, float thickness);
 
 private:
     Pin* CreatePin(int id, PinType type);
@@ -135,7 +154,12 @@ private:
 
     void SetHotObject(Object* object);
     void SetActiveObject(Object* object);
+
+    void ClearSelection();
+    void AddSelectedObject(Object* object);
+    void RemoveSelectedObject(Object* object);
     void SetSelectedObject(Object* object);
+    bool IsSelected(Object* object);
 
     void SetCurrentNode(Node* node);
     void SetCurrentPin(Pin* pin);
@@ -152,25 +176,34 @@ private:
     void          SaveSettings();
     void          MarkSettingsDirty();
 
-    //vector<Object*> Objects;
     vector<Node*>   Nodes;
     vector<Pin*>    Pins;
 
     Object*         HotObject;
     Object*         ActiveObject;
     Object*         SelectedObject;
+    vector<Object*> SelectedObjects;
 
     Pin*            CurrentPin;
     Node*           CurrentNode;
 
     ImVec2          DragOffset;
-    vector<int>     ChannelOrder;
+    Node*           DraggedNode;
+    Pin*            DraggedPin;
 
+    // Node building
     NodeStage       NodeBuildStage;
-    ImColor         HeaderColor;
+    ImU32           HeaderColor;
     rect            NodeRect;
     rect            HeaderRect;
     rect            ContentRect;
+
+    // Link creating
+    LinkStage       LinkStage;
+    ImU32           LinkColor;
+    float           LinkThickness;
+    Pin*            LinkStart;
+    Pin*            LinkEnd;
 
     bool            IsInitialized;
     ImTextureID     HeaderTextureID;

@@ -165,7 +165,4 @@
   <ItemGroup>
     <Natvis Include="ImGui.natvis" />
   </ItemGroup>
-  <ItemGroup>
-    <FxCompile Include="PixelShader.hlsl" />
-  </ItemGroup>
 </Project>

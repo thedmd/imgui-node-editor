@@ -22,7 +22,7 @@ void End();
 void BeginNode(int id);
 void EndNode();
 
-void BeginHeader(const ImColor& color = ImColor(255, 255, 255));
+void BeginHeader(const ImVec4& color = ImVec4(1, 1, 1, 1));
 void EndHeader();
 
 void BeginInput(int id);
@@ -31,7 +31,11 @@ void EndInput();
 void BeginOutput(int id);
 void EndOutput();
 
-void Link(int id, int startNodeId, int endNodeId, const ImVec4& color = ImVec4(1, 1, 1, 1));
+bool CreateLink(int* startId, int* endId, const ImColor& color = ImColor(255, 255, 255), float thickness = 1.0f);
+void RejectLink(const ImVec4& color = ImVec4(1, 1, 1, 1), float thickness = 1.0f);
+bool AcceptLink(const ImVec4& color = ImVec4(1, 1, 1, 1), float thickness = 1.0f);
+
+void Link(int id, int startNodeId, int endNodeId, const ImVec4& color = ImVec4(1, 1, 1, 1), float thickness = 1.0f);
 
 
 //------------------------------------------------------------------------------
