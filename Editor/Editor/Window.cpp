@@ -339,8 +339,6 @@ void NodeWindow::OnGui()
                     ImGui::Spring(0);
                     drawPinIcon(output, IsPinLinked(output.ID));
                     ed::EndOutput();
-
-                    //ed::Icon("##icon", iconSizeIm, IconType::Flow, false);
                 }
 
             ed::EndNode();
@@ -369,6 +367,14 @@ void NodeWindow::OnGui()
                     s_Links.back().Color = getIconColor(startPin->Type);
                 }
             }
+        }
+
+        int linkId = 0;
+        if (ed::DestroyLink(&linkId))
+        {
+            auto id = std::find_if(s_Links.begin(), s_Links.end(), [linkId](auto& link) { return link.ID == linkId; });
+            if (id != s_Links.end())
+                s_Links.erase(id);
         }
 
         ImGui::SetCursorScreenPos(cursorTopLeft);

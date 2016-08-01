@@ -35,6 +35,8 @@ bool CreateLink(int* startId, int* endId, const ImColor& color = ImColor(255, 25
 void RejectLink(const ImVec4& color = ImVec4(1, 1, 1, 1), float thickness = 1.0f);
 bool AcceptLink(const ImVec4& color = ImVec4(1, 1, 1, 1), float thickness = 1.0f);
 
+bool DestroyLink(int* linkId);
+
 bool Link(int id, int startPinId, int endPinId, const ImVec4& color = ImVec4(1, 1, 1, 1), float thickness = 1.0f);
 
 

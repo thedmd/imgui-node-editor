@@ -56,6 +56,11 @@ bool ax::Editor::AcceptLink(const ImVec4& color, float thickness)
     return s_Editor->AcceptLink(ImColor(color), thickness);
 }
 
+bool ax::Editor::DestroyLink(int* linkId)
+{
+    return false;
+}
+
 bool ax::Editor::Link(int id, int startPinId, int endPinId, const ImVec4& color/* = ImVec4(1, 1, 1, 1)*/, float thickness/* = 1.0f*/)
 {
     return s_Editor->DoLink(id, startPinId, endPinId, ImColor(color), thickness);
