@@ -3,13 +3,13 @@
 
 
 //------------------------------------------------------------------------------
-static ax::Editor::Context* s_Editor = nullptr;
+static ax::Editor::Detail::Context* s_Editor = nullptr;
 
 
 //------------------------------------------------------------------------------
 ax::Editor::Context* ax::Editor::CreateEditor()
 {
-    return new Context();
+    return reinterpret_cast<ax::Editor::Context*>(new ax::Editor::Detail::Context());
 }
 
 void ax::Editor::DestroyEditor(Context* ctx)
@@ -17,17 +17,19 @@ void ax::Editor::DestroyEditor(Context* ctx)
     if (GetCurrentEditor() == ctx)
         SetCurrentEditor(nullptr);
 
-    delete ctx;
+    auto editor = reinterpret_cast<ax::Editor::Detail::Context*>(ctx);
+
+    delete editor;
 }
 
 void ax::Editor::SetCurrentEditor(Context* ctx)
 {
-    s_Editor = ctx;
+    s_Editor = reinterpret_cast<ax::Editor::Detail::Context*>(ctx);
 }
 
 ax::Editor::Context* ax::Editor::GetCurrentEditor()
 {
-    return s_Editor;
+    return reinterpret_cast<ax::Editor::Context*>(s_Editor);
 }
 
 void ax::Editor::Begin(const char* id)              { s_Editor->Begin(id);                   }

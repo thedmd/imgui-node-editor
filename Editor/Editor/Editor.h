@@ -7,6 +7,7 @@
 
 namespace ax {
 namespace Editor {
+namespace Detail {
 
 using namespace ImGuiInterop;
 using std::vector;
@@ -134,6 +135,63 @@ struct Settings
     Settings(): Path("NodeEditor.json"), Dirty(false) {}
 };
 
+struct Control
+{
+    Object* HotObject;
+    Object* ActiveObject;
+    Object* ClickedObject;
+    Node*   HotNode;
+    Node*   ActiveNode;
+    Node*   ClickedNode;
+    Pin*    HotPin;
+    Pin*    ActivePin;
+    Pin*    ClickedPin;
+    Link*   HotLink;
+    Link*   ActiveLink;
+    Link*   ClickedLink;
+    bool    WasBackgroundClicked;
+
+    Control(Object* hotObject, Object* activeObject, Object* clickedObject, bool wasBackgroundClicked):
+        HotObject(hotObject),
+        ActiveObject(activeObject),
+        ClickedObject(clickedObject),
+        HotNode(nullptr),
+        ActiveNode(nullptr),
+        ClickedNode(nullptr),
+        HotPin(nullptr),
+        ActivePin(nullptr),
+        ClickedPin(nullptr),
+        HotLink(nullptr),
+        ActiveLink(nullptr),
+        ClickedLink(nullptr),
+        WasBackgroundClicked(wasBackgroundClicked)
+    {
+        if (hotObject)
+        {
+            HotNode = hotObject->AsNode();
+            HotPin  = hotObject->AsPin();
+            HotLink = hotObject->AsLink();
+
+            if (HotPin)
+                HotNode = HotPin->Node;
+        }
+
+        if (activeObject)
+        {
+            ActiveNode = activeObject->AsNode();
+            ActivePin  = activeObject->AsPin();
+            ActiveLink = activeObject->AsLink();
+        }
+
+        if (clickedObject)
+        {
+            ClickedNode = clickedObject->AsNode();
+            ClickedPin  = clickedObject->AsPin();
+            ClickedLink = clickedObject->AsLink();
+        }
+    }
+};
+
 struct Context
 {
     Context();
@@ -174,8 +232,8 @@ private:
     Pin* FindPin(int id);
     Link* FindLink(int id);
 
-    void SetHotObject(Object* object);
-    void SetActiveObject(Object* object);
+    //void SetHotObject(Object* object);
+    //void SetActiveObject(Object* object);
 
     void ClearSelection();
     void AddSelectedObject(Object* object);
@@ -202,16 +260,19 @@ private:
     void          SaveSettings();
     void          MarkSettingsDirty();
 
+    Link* FindLinkAt(const point& p);
+    Control ComputeControl();
+
     vector<Node*>   Nodes;
     vector<Pin*>    Pins;
     vector<Link*>   Links;
 
-    Object*         HotObject;
-    Object*         ActiveObject;
+    //Object*         HotObject;
+    //Object*         ActiveObject;
     Object*         SelectedObject;
     vector<Object*> SelectedObjects;
 
-    Link*           ActiveLink;
+    Link*           LastActiveLink;
 
     Pin*            CurrentPin;
     Node*           CurrentNode;
@@ -242,5 +303,6 @@ private:
     Settings        Settings;
 };
 
-} // namespace node_editor
+} // namespace Detail
+} // namespace Editor
 } // namespace ax

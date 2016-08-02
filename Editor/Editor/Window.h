@@ -1,7 +1,7 @@
 #pragma once
 
 #include "ImWindow/ImwWindow.h"
-#include "Editor.h"
+#include "EditorApi.h"
 
 class NodeWindow:
     public ImWindow::ImwWindow

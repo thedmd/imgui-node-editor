@@ -2,12 +2,13 @@
 #include "Backend/imgui_impl_dx11.h"
 #include "imgui/imgui_internal.h"
 #include "Drawing.h"
+#include <cstdlib> // _itoa
 #include <string>
 #include <fstream>
 
 
 //------------------------------------------------------------------------------
-namespace ed = ax::Editor;
+namespace ed = ax::Editor::Detail;
 
 
 //------------------------------------------------------------------------------
@@ -116,10 +117,10 @@ ed::Context::Context():
     Nodes(),
     Pins(),
     Links(),
-    HotObject(nullptr),
-    ActiveObject(nullptr),
+    //HotObject(nullptr),
+    //ActiveObject(nullptr),
     SelectedObject(nullptr),
-    ActiveLink(nullptr),
+    LastActiveLink(nullptr),
     CurrentPin(nullptr),
     CurrentNode(nullptr),
     DragOffset(),
@@ -165,8 +166,6 @@ void ed::Context::Begin(const char* id)
     //ImGui::LogToClipboard();
     //Log("---- begin ----");
 
-    SetHotObject(nullptr);
-
     for (auto node : Nodes) node->IsLive = false;
     for (auto pin  : Pins)   pin->IsLive = false;
     for (auto link : Links) link->IsLive = false;
@@ -180,167 +179,48 @@ void ed::Context::Begin(const char* id)
 
 void ed::Context::End()
 {
-    const auto mousePos = ImGui::GetMousePos();
+    auto& io       = ImGui::GetIO();
+    auto  control  = ComputeControl();
+    auto  drawList = ImGui::GetWindowDrawList();
 
-    auto& io = ImGui::GetIO();
 
-    auto drawList = ImGui::GetWindowDrawList();
-    drawList->ChannelsSetCurrent(0);
 
-    // UI objects
-    Object* hotObject     = nullptr;
-    Object* activeObject  = nullptr;
-    Object* clickedObject = nullptr;
-
-    // Draw all elements using invisible buttons and check for interactions
-    for (auto nodeIt = Nodes.rbegin(), nodeItEnd = Nodes.rend(); nodeIt != nodeItEnd; ++nodeIt)
-    {
-        auto& node = *nodeIt;
-
-        for (auto pin = node->LastPin; pin; pin = pin->PreviousPin)
-        {
-            auto pinId = "pin_area_" + std::to_string(pin->ID);
-            ImGui::SetCursorScreenPos(to_imvec(pin->Bounds.location));
-            if (ImGui::InvisibleButton(pinId.c_str(), to_imvec(pin->Bounds.size)))
-                clickedObject = pin;
-
-            if (!hotObject && ImGui::IsItemHoveredRect())
-                hotObject = pin;
-
-            if (ImGui::IsItemActive())
-                activeObject = pin;
-        }
-
-        auto nodeId = "node_area_" + std::to_string(node->ID);
-        ImGui::SetCursorScreenPos(to_imvec(node->Bounds.location));
-
-        if (ImGui::InvisibleButton(nodeId.c_str(), to_imvec(node->Bounds.size)))
-            clickedObject = node;
-
-        if (!hotObject && ImGui::IsItemHoveredRect())
-            hotObject = node;
-
-        if (ImGui::IsItemActive())
-            activeObject = node;
-    }
-
-    // Check for interaction with links
-    for (auto& link : Links)
-    {
-        if (!link->IsLive) continue;
-
-        auto startPoint = link->StartPin->DragPoint;
-        auto endPoint   = link->EndPin->DragPoint;
-
-        // If links goes from right to left we take advantage
-        // of them always have horizontal tangents. In this case
-        // curve will be slightly overshooting.
-        if (startPoint.x > endPoint.x)
-        {
-            std::swap(startPoint.x, endPoint.x);
-            startPoint.x = roundi(startPoint.x - c_LinkStrength * 0.25f);
-            endPoint.x   = roundi(endPoint.x   + c_LinkStrength * 0.25f);
-        }
-
-        if (startPoint.y > endPoint.y)
-            std::swap(startPoint.y, endPoint.y);
-
-        auto thickness = roundi(link->Thickness + c_LinkSelectThickness);
-        startPoint = startPoint - point(thickness, thickness);
-        endPoint   = endPoint   + point(thickness, thickness);
-
-        auto linkRect = rect(startPoint, endPoint);
-        if (linkRect.contains(to_point(mousePos)))
-        {
-            auto distance = Drawing::LinkDistance(mousePos,
-                to_imvec(link->StartPin->DragPoint),
-                to_imvec(link->EndPin->DragPoint),
-                c_LinkStrength);
-
-            if (!hotObject && distance < thickness)
-                hotObject = link;
-        }
-    }
-
-    // Finally check for interaction with background
-    ImGui::SetCursorScreenPos(ImGui::GetWindowPos());
-    auto clickedBackground  = ImGui::InvisibleButton("background", ImGui::GetWindowSize());
-    auto isBackgroundActive = ImGui::IsItemActive();
-
-    Link* hotLink = hotObject ? hotObject->AsLink() : nullptr;
-
-    // Links are "emulated" widgets drawn on background and
-    // can steal click from it.
-    if (hotLink && clickedBackground)
-    {
-        clickedObject     = hotLink;
-        clickedBackground = false;
-    }
-
-    if (!ActiveLink && hotLink && isBackgroundActive)
-        ActiveLink = hotLink;
-    if (ActiveLink && isBackgroundActive)
-        activeObject = ActiveLink;
-    else if (ActiveLink && !isBackgroundActive)
-        ActiveLink = nullptr;
-
-    Link* clickedLink = clickedObject ? clickedObject->AsLink() : nullptr;
-    Link* activeLink  = activeObject  ? activeObject->AsLink()  : nullptr;
-    Pin*  hotPin      = hotObject     ? hotObject->AsPin()      : nullptr;
-    Pin*  activePin   = activeObject  ? activeObject->AsPin()   : nullptr;
-    Pin*  clickedPin  = clickedObject ? clickedObject->AsPin()  : nullptr;
-    Node* hotNode     = hotObject     ? hotObject->AsNode()     : nullptr;
-    Node* activeNode  = activeObject  ? activeObject->AsNode()  : nullptr;
-    Node* clickedNode = clickedObject ? clickedObject->AsNode() : nullptr;
-
-    if (hotPin && !hotNode)
-        hotNode = hotPin->Node;
-
-    SetHotObject(hotObject);
-
-    if (activeNode)
-        SetActiveObject(activeNode);
-    else if (activeLink)
-        SetActiveObject(activeLink);
-    else if (!activeObject)
-        SetActiveObject(nullptr);
-
-    if (clickedBackground)
+    if (control.WasBackgroundClicked)
     {
         ClearSelection();
     }
-    else if (clickedNode && (clickedNode != DraggedNode))
+    else if (control.ClickedNode && (control.ClickedNode != DraggedNode))
     {
         if (IsAnyLinkSelected())
             ClearSelection();
 
         if (io.KeyCtrl)
         {
-            if (IsSelected(clickedNode))
-                RemoveSelectedObject(clickedNode);
+            if (IsSelected(control.ClickedNode))
+                RemoveSelectedObject(control.ClickedNode);
             else
-                AddSelectedObject(clickedNode);
+                AddSelectedObject(control.ClickedNode);
         }
         else
-            SetSelectedObject(clickedNode);
+            SetSelectedObject(control.ClickedNode);
     }
-    else if (clickedLink)
+    else if (control.ClickedLink)
     {
         if (IsAnyNodeSelected())
             ClearSelection();
 
         if (io.KeyCtrl)
         {
-            if (IsSelected(clickedLink))
-                RemoveSelectedObject(clickedLink);
+            if (IsSelected(control.ClickedLink))
+                RemoveSelectedObject(control.ClickedLink);
             else
-                AddSelectedObject(clickedLink);
+                AddSelectedObject(control.ClickedLink);
         }
         else
-            SetSelectedObject(clickedLink);
+            SetSelectedObject(control.ClickedLink);
     }
 
-    auto selectedNode = SelectedObject ? SelectedObject->AsNode() : nullptr;
+    //auto selectedNode = SelectedObject ? SelectedObject->AsNode() : nullptr;
 
     // Highlight hovered node
     for (auto selectedObject : SelectedObjects)
@@ -366,6 +246,7 @@ void ed::Context::End()
     }
 
     // Highlight selected node
+    auto hotNode = control.HotNode;
     if (hotNode && !IsSelected(hotNode))
     {
         drawList->ChannelsSetCurrent(hotNode->Channel + c_NodeBaseChannel);
@@ -377,7 +258,7 @@ void ed::Context::End()
     }
 
     // Highlight hovered pin
-    if (hotPin)
+    if (auto hotPin = control.HotPin)
     {
         drawList->ChannelsSetCurrent(hotPin->Node->Channel + c_NodeBackgroundChannel);
 
@@ -394,7 +275,7 @@ void ed::Context::End()
         if (!link->IsLive)
             continue;
 
-        float extraThickness = !IsSelected(link) && (hotLink == link || activeLink == link) ? 2.0f : 0.0f;
+        float extraThickness = !IsSelected(link) && (control.HotLink == link || control.ActiveLink == link) ? 2.0f : 0.0f;
 
         ax::Drawing::DrawLink(drawList,
             to_imvec(link->StartPin->DragPoint),
@@ -403,55 +284,55 @@ void ed::Context::End()
     }
 
     // Highlight hovered link
-    if (hotLink && !IsSelected(hotLink))
+    if (control.HotLink && !IsSelected(control.HotLink))
     {
         drawList->ChannelsSetCurrent(c_LinkStartChannel + 0);
 
         ax::Drawing::DrawLink(drawList,
-            to_imvec(hotLink->StartPin->DragPoint),
-            to_imvec(hotLink->EndPin->DragPoint),
-            ImColor(50, 176, 255, 255), hotLink->Thickness + 4.5f, c_LinkStrength);
+            to_imvec(control.HotLink->StartPin->DragPoint),
+            to_imvec(control.HotLink->EndPin->DragPoint),
+            ImColor(50, 176, 255, 255), control.HotLink->Thickness + 4.5f, c_LinkStrength);
     }
 
     // Handle node dragging, does not steal selection
-    if (!DraggedNode && activeNode && ImGui::IsMouseDragging(0))
+    if (!DraggedNode && control.ActiveNode && ImGui::IsMouseDragging(0))
     {
-        DraggedNode = activeNode;
-        activeNode->DragStart = activeNode->Bounds.location;
+        DraggedNode = control.ActiveNode;
+        control.ActiveNode->DragStart = control.ActiveNode->Bounds.location;
 
-        if (IsSelected(activeNode))
+        if (IsSelected(control.ActiveNode))
         {
             for (auto selectedObject : SelectedObjects)
                 if (auto selectedNode = selectedObject->AsNode())
                     selectedNode->DragStart = selectedNode->Bounds.location;
         }
         else
-            activeNode->DragStart = activeNode->Bounds.location;
+            control.ActiveNode->DragStart = control.ActiveNode->Bounds.location;
     }
 
-    if (DraggedNode && activeNode == DraggedNode)
+    if (DraggedNode && control.ActiveNode == DraggedNode)
     {
         DragOffset = ImGui::GetMouseDragDelta(0, 0.0f);
 
-        if (IsSelected(activeNode))
+        if (IsSelected(control.ActiveNode))
         {
             for (auto selectedObject : SelectedObjects)
                 if (auto selectedNode = selectedObject->AsNode())
                     selectedNode->Bounds.location = selectedNode->DragStart + to_point(DragOffset);
         }
         else
-            activeNode->Bounds.location = activeNode->DragStart + to_point(DragOffset);
+            control.ActiveNode->Bounds.location = control.ActiveNode->DragStart + to_point(DragOffset);
     }
-    else if (DraggedNode && !activeNode)
+    else if (DraggedNode && !control.ActiveNode)
     {
         DraggedNode = nullptr;
     }
 
 
     // Link creation
-    if (!DraggedPin && activePin && ImGui::IsMouseDragging(0))
+    if (!DraggedPin && control.ActivePin && ImGui::IsMouseDragging(0))
     {
-        DraggedPin = activePin;
+        DraggedPin = control.ActivePin;
         LinkCreateStage  = LinkCreateStage::Possible;
         LinkStart  = DraggedPin->Type == PinType::Output ? DraggedPin : nullptr;
         LinkEnd    = DraggedPin->Type == PinType::Input  ? DraggedPin : nullptr;
@@ -459,27 +340,27 @@ void ed::Context::End()
         ClearSelection();
     }
 
-    if (DraggedPin && activePin == DraggedPin && (LinkCreateStage == LinkCreateStage::Edit || LinkCreateStage == LinkCreateStage::Accept || LinkCreateStage == LinkCreateStage::Reject))
+    if (DraggedPin && control.ActivePin == DraggedPin && (LinkCreateStage == LinkCreateStage::Edit || LinkCreateStage == LinkCreateStage::Accept || LinkCreateStage == LinkCreateStage::Reject))
     {
         auto& startPin = DraggedPin->Type == PinType::Output ? LinkStart : LinkEnd;
         auto& endPin   = DraggedPin->Type == PinType::Output ? LinkEnd   : LinkStart;
 
         ImVec2 startPoint = to_imvec(DraggedPin->DragPoint);
-        ImVec2 endPoint   = mousePos;
+        ImVec2 endPoint   = ImGui::GetMousePos();
         if (LinkCreateStage == LinkCreateStage::Accept)
             endPoint = to_imvec(endPin->DragPoint);
 
         if (DraggedPin->Type == PinType::Input)
             std::swap(startPoint, endPoint);
 
-        ax::Drawing::DrawLink(drawList, startPoint, endPoint, LinkColor, LinkThickness);
+        ax::Drawing::DrawLink(drawList, startPoint, endPoint, LinkColor, LinkThickness, c_LinkStrength);
 
-        if (hotPin && hotPin != DraggedPin)
-            endPin = hotPin;
+        if (control.HotPin && control.HotPin != DraggedPin)
+            endPin = control.HotPin;
         else
             endPin = nullptr;
     }
-    else if (DraggedPin && !activePin)
+    else if (DraggedPin && !control.ActivePin)
     {
         DraggedPin = nullptr;
 
@@ -491,7 +372,7 @@ void ed::Context::End()
 
     // Link deletion
     const bool isDeletePressed = ImGui::IsKeyPressed(ImGui::GetKeyIndex(ImGuiKey_Delete));
-    if ((IsAnyLinkSelected() && isDeletePressed) || (clickedLink && io.KeyAlt))
+    if ((IsAnyLinkSelected() && isDeletePressed) || (control.ClickedLink && io.KeyAlt))
     {
         if (IsAnyLinkSelected())
         {
@@ -499,16 +380,16 @@ void ed::Context::End()
                 DeletedLinks.push_back(selectedObject->AsLink());
         }
 
-        if (clickedObject && !IsSelected(clickedObject))
-            DeletedLinks.push_back(clickedLink);
+        if (control.ClickedObject && !IsSelected(control.ClickedObject))
+            DeletedLinks.push_back(control.ClickedLink);
     }
     else
         DeletedLinks.clear();
 
     // Bring active node to front
-    std::stable_sort(Nodes.begin(), Nodes.end(), [activeNode](Node* lhs, Node* rhs)
+    std::stable_sort(Nodes.begin(), Nodes.end(), [&control](Node* lhs, Node* rhs)
     {
-        return (rhs == activeNode);
+        return (rhs == control.ActiveNode);
     });
 
     // Every node has few channels assigned. Grow channel list
@@ -541,10 +422,9 @@ void ed::Context::End()
         else return "";
     };
 
-    ImGui::Text("Hot Object: %s (%d)", getObjectName(HotObject), HotObject ? HotObject->ID : 0);
-    ImGui::Text("Active Object: %s (%d)", getObjectName(ActiveObject), ActiveObject ? ActiveObject->ID : 0);
-    ImGui::Text("Active Link: %p", ActiveLink);
-    ImGui::Text("Is Active Link: %s", isBackgroundActive ? "true" : "false");
+    ImGui::Text("Hot Object: %s (%d)", getObjectName(control.HotObject), control.HotObject ? control.HotObject->ID : 0);
+    ImGui::Text("Active Object: %s (%d)", getObjectName(control.ActiveObject), control.ActiveObject ? control.ActiveObject->ID : 0);
+    ImGui::Text("Active Link: %p", LastActiveLink);
 
     ImGui::EndChild();
 
@@ -753,8 +633,8 @@ int ed::Context::GetDestroyedLinkId()
     DeletedLinks.pop_back();
 
     RemoveSelectedObject(link);
-    if (link == ActiveLink)
-        ActiveLink = nullptr;
+    if (link == LastActiveLink)
+        LastActiveLink = nullptr;
 
     return link->ID;
 }
@@ -855,15 +735,15 @@ ed::Link* ed::Context::FindLink(int id)
     return nullptr;
 }
 
-void ed::Context::SetHotObject(Object* object)
-{
-    HotObject = object;
-}
-
-void ed::Context::SetActiveObject(Object* object)
-{
-    ActiveObject = object;
-}
+//void ed::Context::SetHotObject(Object* object)
+//{
+//    HotObject = object;
+//}
+//
+//void ed::Context::SetActiveObject(Object* object)
+//{
+//    ActiveObject = object;
+//}
 
 void ed::Context::ClearSelection()
 {
@@ -1173,3 +1053,145 @@ void ed::Context::MarkSettingsDirty()
     Settings.Dirty = true;
 }
 
+ed::Link* ed::Context::FindLinkAt(const ax::point& p)
+{
+    for (auto& link : Links)
+    {
+        if (!link->IsLive) continue;
+
+        // Live links are guarantee to have complete set of pins.
+        auto startPoint = link->StartPin->DragPoint;
+        auto endPoint   = link->EndPin->DragPoint;
+
+        // Build bounding rectangle of link.
+        auto topLeft = startPoint;
+        auto bottomRight = endPoint;
+
+        // Links are drawn as Bezier quadratic curves with
+        // start point tangent always pointing to right, end tangent
+        // pointing to left. If curve is drawn from right to left
+        // there is small overshot outside of bounding box based on
+        // tangent strength.
+        if (topLeft.x > bottomRight.x)
+        {
+            std::swap(topLeft.x, bottomRight.x);
+            topLeft.x = roundi(topLeft.x - c_LinkStrength * 0.25f);
+            bottomRight.x = roundi(bottomRight.x + c_LinkStrength * 0.25f);
+        }
+
+        if (topLeft.y > bottomRight.y)
+            std::swap(topLeft.y, bottomRight.y);
+
+        // Calculate thickness of interactive area around curve.
+        // Making it slightly larger help user to click it.
+        const auto thickness = roundi(link->Thickness + c_LinkSelectThickness);
+
+        // Expand bounding rectangle corners by curve thickness.
+        topLeft -= point(thickness, thickness);
+        bottomRight += point(thickness, thickness);
+
+        // Ignore link if mouse is not hovering bounding rect.
+        const auto curveBoundingRect = rect(topLeft, bottomRight);
+        if (!curveBoundingRect.contains(p))
+            continue;
+
+        // Calculate distance from mouse position to link curve.
+        const auto distance = ax::Drawing::LinkDistance(to_imvec(p),
+            to_imvec(startPoint), to_imvec(endPoint), c_LinkStrength);
+
+        // If point is close enough link was found.
+        if (distance < thickness)
+            return link;
+    }
+
+    return nullptr;
+}
+
+ed::Control ed::Context::ComputeControl()
+{
+    const auto mousePos = to_point(ImGui::GetMousePos());
+
+    Object* hotObject     = nullptr;
+    Object* activeObject  = nullptr;
+    Object* clickedObject = nullptr;
+
+    // Emits invisible button and returns true if it is clicked.
+    auto emitInteractiveArea = [](int id, const rect& rect)
+    {
+        char idString[33]; // itoa can output 33 bytes maximum
+        _itoa(id, idString, 16);
+        ImGui::SetCursorScreenPos(to_imvec(rect.location));
+        return ImGui::InvisibleButton(idString, to_imvec(rect.size));
+    };
+
+    // Check input interactions over area.
+    auto checkInteractionsInArea = [&emitInteractiveArea, &hotObject, &activeObject, &clickedObject](int id, const rect& rect, Object* object)
+    {
+        if (emitInteractiveArea(id, rect))
+            clickedObject = object;
+
+        if (!hotObject && ImGui::IsItemHoveredRect())
+            hotObject = object;
+
+        if (ImGui::IsItemActive())
+            activeObject = object;
+    };
+
+    // Process live nodes and pins.
+    for (auto nodeIt = Nodes.rbegin(), nodeItEnd = Nodes.rend(); nodeIt != nodeItEnd; ++nodeIt)
+    {
+        auto node = *nodeIt;
+
+        if (!node->IsLive) continue;
+
+        // Check for interactions with live pins in node before
+        // processing node itself. Pins does not overlap each other
+        // and all are within node bounds.
+        for (auto pin = node->LastPin; pin; pin = pin->PreviousPin)
+        {
+            if (!pin->IsLive) continue;
+
+            checkInteractionsInArea(pin->ID, pin->Bounds, pin);
+        }
+
+        // Check for interactions with node.
+        checkInteractionsInArea(node->ID, node->Bounds, node);
+    }
+
+    // Links are not regular widgets and must be done manually since
+    // ImGui does not support interactive elements with custom hit maps.
+    //
+    // Links can steal input from background.
+
+    // Links are just over background. So if anything else
+    // is hovered we can skip them.
+    if (nullptr == hotObject)
+        hotObject = FindLinkAt(mousePos);
+
+    const auto editorRect = rect(to_point(ImGui::GetWindowPos()), to_size(ImGui::GetWindowSize()));
+
+    // Check for interaction with background.
+    auto backgroundClicked  = emitInteractiveArea(0, editorRect);
+    auto isBackgroundActive = ImGui::IsItemActive();
+
+    // Process link input using background interactions.
+    auto hotLink = hotObject ? hotObject->AsLink() : nullptr;
+
+    // ImGui take care of tracking active items. With link
+    // we must do this ourself.
+    if (isBackgroundActive && hotLink && !LastActiveLink)
+        LastActiveLink = hotLink;
+    if (isBackgroundActive && LastActiveLink)
+        activeObject = LastActiveLink;
+    else if (!isBackgroundActive && LastActiveLink)
+        LastActiveLink = nullptr;
+
+    // Steal click from backgrounds if link is hovered.
+    if (backgroundClicked && hotLink)
+    {
+        clickedObject     = hotLink;
+        backgroundClicked = false;
+    }
+
+    return Control(hotObject, activeObject, clickedObject, backgroundClicked);
+}
