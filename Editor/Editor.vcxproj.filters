@@ -155,6 +155,9 @@
     <ClInclude Include="Editor\Editor.h">
       <Filter>Editor</Filter>
     </ClInclude>
+    <ClInclude Include="Editor\ImGuiInterop.h">
+      <Filter>Editor</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="Configuration.props" />

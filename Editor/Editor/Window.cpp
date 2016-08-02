@@ -226,25 +226,11 @@ void NodeWindow::OnGui()
     auto& io = ImGui::GetIO();
 
     ImGui::Text("FPS: %.2f", io.Framerate);
-    ImGui::Separator();
+    //ImGui::Spacing();
 
-    static float iconWidth = 24;
-
-    auto iconSize = ImVec2(iconWidth, iconWidth);
-
-    static float scale = 1.77f;
-    static int s_ActiveNodeId = -1;
-
-    ImGui::DragFloat("Scale", &scale, 0.01f, 0.1f, 8.0f);
-    auto iconSize2 = size(roundi(PortIconSize * scale), roundi(PortIconSize * scale));
-    ImGui::Text("size: %d", iconSize2.w);
-
-    static auto portIconSize = PortIconSize;
-    portIconSize = iconSize2.w;
-
+    auto iconSize2 = size(24, 24);
 
     ed::SetCurrentEditor(m_Editor);
-
 
     auto& style = ImGui::GetStyle();
 

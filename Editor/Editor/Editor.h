@@ -149,9 +149,12 @@ struct Control
     Link*   HotLink;
     Link*   ActiveLink;
     Link*   ClickedLink;
-    bool    WasBackgroundClicked;
+    bool    BackgroundHot;
+    bool    BackgroundActive;
+    bool    BackgroundClicked;
 
-    Control(Object* hotObject, Object* activeObject, Object* clickedObject, bool wasBackgroundClicked):
+    Control(Object* hotObject, Object* activeObject, Object* clickedObject,
+        bool backgroundHot, bool backgroundActive, bool backgroundClicked):
         HotObject(hotObject),
         ActiveObject(activeObject),
         ClickedObject(clickedObject),
@@ -164,7 +167,9 @@ struct Control
         HotLink(nullptr),
         ActiveLink(nullptr),
         ClickedLink(nullptr),
-        WasBackgroundClicked(wasBackgroundClicked)
+        BackgroundHot(backgroundHot),
+        BackgroundActive(backgroundActive),
+        BackgroundClicked(backgroundClicked)
     {
         if (hotObject)
         {
@@ -222,18 +227,15 @@ struct Context
     bool DoLink(int id, int startPinId, int endPinId, ImU32 color, float thickness);
 
 private:
-    Pin* CreatePin(int id, PinType type);
-    Node* CreateNode(int id);
-    Link* CreateLink(int id);
-    void DestroyObject(Node* node);
+    Pin*    CreatePin(int id, PinType type);
+    Node*   CreateNode(int id);
+    Link*   CreateLink(int id);
+    void    DestroyObject(Node* node);
     Object* FindObject(int id);
 
     Node* FindNode(int id);
-    Pin* FindPin(int id);
+    Pin*  FindPin(int id);
     Link* FindLink(int id);
-
-    //void SetHotObject(Object* object);
-    //void SetActiveObject(Object* object);
 
     void ClearSelection();
     void AddSelectedObject(Object* object);
@@ -267,8 +269,6 @@ private:
     vector<Pin*>    Pins;
     vector<Link*>   Links;
 
-    //Object*         HotObject;
-    //Object*         ActiveObject;
     Object*         SelectedObject;
     vector<Object*> SelectedObjects;
 
@@ -280,6 +280,8 @@ private:
     ImVec2          DragOffset;
     Node*           DraggedNode;
     Pin*            DraggedPin;
+
+    ImVec2          Scrolling;
 
     // Node building
     NodeStage       NodeBuildStage;

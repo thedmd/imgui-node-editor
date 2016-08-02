@@ -18,7 +18,7 @@ static inline size   to_size (const ImVec2& value)  { return size (roundi(value.
 static inline ImVec2 to_imvec(const point& value)   { return ImVec2(static_cast<float>(value.x), static_cast<float>(value.y)); }
 static inline ImVec2 to_imvec(const pointf& value)  { return ImVec2(value.x, value.y); }
 static inline ImVec2 to_imvec(const size& value)    { return ImVec2(static_cast<float>(value.w), static_cast<float>(value.h)); }
-static inline rect   get_item_bounds()              { return rect(to_point(ImGui::GetItemRectMin()), to_point(ImGui::GetItemRectMax())); }
+static inline rect   ImGui_GetItemRect()            { return rect(to_point(ImGui::GetItemRectMin()), to_point(ImGui::GetItemRectMax())); }
 
 } // namespace ImGuiInterop
 } // namespace ax

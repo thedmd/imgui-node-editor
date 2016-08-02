@@ -1,6 +1,5 @@
 #include "Editor.h"
 #include "Backend/imgui_impl_dx11.h"
-#include "imgui/imgui_internal.h"
 #include "Drawing.h"
 #include <cstdlib> // _itoa
 #include <string>
@@ -111,6 +110,42 @@ static void ImDrawList_SwapChannels(ImDrawList* drawList, int left, int right)
         drawList->_ChannelsCurrent = left;
 }
 
+static void ImDrawList_OffsetChannels(ImDrawList* drawList, const ImVec2& offset, int begin, int end)
+{
+    int lastCurrentChannel = drawList->_ChannelsCurrent;
+    if (lastCurrentChannel != 0)
+        drawList->ChannelsSetCurrent(0);
+
+    auto& vtxBuffer = drawList->VtxBuffer;
+    for (int channelIndex = begin; channelIndex < end; ++channelIndex)
+    {
+        auto& channel = drawList->_Channels[channelIndex];
+        auto  idxRead = channel.IdxBuffer.Data;
+
+        int indexOffset = 0;
+        for (auto& cmd : channel.CmdBuffer)
+        {
+            if (cmd.ElemCount == 0) continue;
+
+            auto idxRange = std::minmax_element(idxRead, idxRead + cmd.ElemCount);
+            auto vtxBegin = vtxBuffer.Data + *idxRange.first;
+            auto vtxEnd   = vtxBuffer.Data + *idxRange.second + 1;
+
+            for (auto vtx = vtxBegin; vtx < vtxEnd; ++vtx)
+            {
+                vtx->pos.x += offset.x;
+                vtx->pos.y += offset.y;
+            }
+
+            idxRead += cmd.ElemCount;
+        }
+    }
+
+    if (lastCurrentChannel != 0)
+        drawList->ChannelsSetCurrent(lastCurrentChannel);
+}
+
+
 
 //------------------------------------------------------------------------------
 ed::Context::Context():
@@ -126,6 +161,7 @@ ed::Context::Context():
     DragOffset(),
     DraggedNode(nullptr),
     DraggedPin(nullptr),
+    Scrolling(0, 0),
     NodeBuildStage(NodeStage::Invalid),
     LinkCreateStage(LinkCreateStage::None),
     IsInitialized(false),
@@ -170,6 +206,8 @@ void ed::Context::Begin(const char* id)
     for (auto pin  : Pins)   pin->IsLive = false;
     for (auto link : Links) link->IsLive = false;
 
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
+    ImGui::PushStyleColor(ImGuiCol_ChildWindowBg, ImColor(60, 60, 70, 0));
     ImGui::BeginChild(id, ImVec2(0, 0), true, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoMove);
 
     // Reserve channels for background and links
@@ -183,9 +221,7 @@ void ed::Context::End()
     auto  control  = ComputeControl();
     auto  drawList = ImGui::GetWindowDrawList();
 
-
-
-    if (control.WasBackgroundClicked)
+    if (control.BackgroundClicked)
     {
         ClearSelection();
     }
@@ -230,8 +266,8 @@ void ed::Context::End()
             drawList->ChannelsSetCurrent(selectedNode->Channel + c_NodeBaseChannel);
 
             drawList->AddRect(
-                to_imvec(selectedNode->Bounds.top_left()),
-                to_imvec(selectedNode->Bounds.bottom_right()),
+                to_imvec(selectedNode->Bounds.top_left()) - Scrolling,
+                to_imvec(selectedNode->Bounds.bottom_right()) - Scrolling,
                 ImColor(255, 176, 50, 255), c_NodeFrameRounding, 15, 3.5f);
         }
         else if (auto selectedLink = selectedObject->AsLink())
@@ -252,8 +288,8 @@ void ed::Context::End()
         drawList->ChannelsSetCurrent(hotNode->Channel + c_NodeBaseChannel);
 
         drawList->AddRect(
-            to_imvec(hotNode->Bounds.top_left()),
-            to_imvec(hotNode->Bounds.bottom_right()),
+            to_imvec(hotNode->Bounds.top_left()) - Scrolling,
+            to_imvec(hotNode->Bounds.bottom_right()) - Scrolling,
             ImColor(50, 176, 255, 255), c_NodeFrameRounding, 15, 3.5f);
     }
 
@@ -267,6 +303,16 @@ void ed::Context::End()
             to_imvec(hotPin->Bounds.bottom_right()),
             ImColor(60, 180, 255, 100), 4.0f);
     }
+
+//     for (auto pin : Pins)
+//     {
+//         drawList->ChannelsSetCurrent(pin->Node->Channel + c_NodeBackgroundChannel);
+// 
+//         drawList->AddRectFilled(
+//             to_imvec(pin->Bounds.top_left()),
+//             to_imvec(pin->Bounds.bottom_right()),
+//             ImColor(60, 180, 255, 100), 4.0f);
+//     }
 
     // Draw links
     drawList->ChannelsSetCurrent(c_LinkStartChannel + 1);
@@ -398,7 +444,7 @@ void ed::Context::End()
     {
         // Reserve two additional channels for sorted list of channels
         auto nodeChannelCount = drawList->_ChannelsCount;
-        ImDrawList_ChannelsGrow(drawList, (drawList->_ChannelsCount - 1) * c_ChannelsPerNode + 1);
+        ImDrawList_ChannelsGrow(drawList, (drawList->_ChannelsCount - 1) * 2 + 1);
 
         int targetChannel = nodeChannelCount;
         for (auto node : Nodes)
@@ -410,6 +456,28 @@ void ed::Context::End()
         }
     }
 
+    // Draw grid
+    {
+        drawList->ChannelsSetCurrent(c_BackgroundChannelStart + 0);
+
+        ImVec2 offset      = ImVec2(0, 0) - Scrolling;
+        //ImVec2 offset    = ImVec2(0, 0);
+        ImU32 GRID_COLOR = ImColor(120, 120, 120, 40);
+        float GRID_SZ    = 32.0f;
+        ImVec2 win_pos   = ImGui::GetWindowPos();
+        ImVec2 canvas_sz = ImGui::GetWindowSize();
+
+        drawList->AddRectFilled(win_pos, win_pos + canvas_sz, ImColor(60, 60, 70, 200));
+
+        for (float x = fmodf(offset.x, GRID_SZ); x < canvas_sz.x; x += GRID_SZ)
+            drawList->AddLine(ImVec2(x, 0.0f) + win_pos, ImVec2(x, canvas_sz.y) + win_pos, GRID_COLOR);
+        for (float y = fmodf(offset.y, GRID_SZ); y < canvas_sz.y; y += GRID_SZ)
+            drawList->AddLine(ImVec2(0.0f, y) + win_pos, ImVec2(canvas_sz.x, y) + win_pos, GRID_COLOR);
+    }
+
+    if (ImGui::IsWindowHovered() && !ImGui::IsAnyItemActive() && ImGui::IsMouseDragging(2, 0.0f))
+        Scrolling = Scrolling - ImGui::GetIO().MouseDelta;
+
     drawList->ChannelsMerge();
 
     ImGui::SetCursorScreenPos(ImGui::GetWindowPos());
@@ -417,16 +485,18 @@ void ed::Context::End()
     {
         if (!object) return "";
         else if (object->AsNode()) return "Node";
-        else if (object->AsPin()) return "Pin";
+        else if (object->AsPin())  return "Pin";
         else if (object->AsLink()) return "Link";
         else return "";
     };
 
     ImGui::Text("Hot Object: %s (%d)", getObjectName(control.HotObject), control.HotObject ? control.HotObject->ID : 0);
     ImGui::Text("Active Object: %s (%d)", getObjectName(control.ActiveObject), control.ActiveObject ? control.ActiveObject->ID : 0);
-    ImGui::Text("Active Link: %p", LastActiveLink);
+    //ImGui::Text("Clicked Object: %s (%d)", getObjectName(control.ClickedObject), control.ClickedObject ? control.ClickedObject->ID : 0);
 
     ImGui::EndChild();
+    ImGui::PopStyleColor();
+    ImGui::PopStyleVar();
 
     if (Settings.Dirty)
     {
@@ -446,9 +516,9 @@ void ed::Context::BeginNode(int id)
     SetCurrentNode(node);
 
     // Position node on screen
-    ImGui::SetCursorScreenPos(to_imvec(node->Bounds.location));
+    ImGui::SetCursorScreenPos(to_imvec(node->Bounds.location) - Scrolling);
 
-    node->IsLive = true;
+    node->IsLive  = true;
     node->LastPin = nullptr;
 
     auto drawList = ImGui::GetWindowDrawList();
@@ -473,36 +543,38 @@ void ed::Context::EndNode()
     }
 
     // Draw background
-    auto drawList = ImGui::GetWindowDrawList();
+    {
+        auto drawList = ImGui::GetWindowDrawList();
 
-    auto drawListForegroundEnd = drawList->CmdBuffer.size();
+        auto drawListForegroundEnd = drawList->CmdBuffer.size();
 
-    drawList->ChannelsSetCurrent(CurrentNode->Channel + c_NodeBackgroundChannel);
+        drawList->ChannelsSetCurrent(CurrentNode->Channel + c_NodeBackgroundChannel);
 
-    auto headerColor = 0xC0000000 | (HeaderColor & 0x00FFFFFF);
-    ax::Drawing::DrawHeader(drawList, HeaderTextureID,
-        to_imvec(HeaderRect.top_left()),
-        to_imvec(HeaderRect.bottom_right()),
-        headerColor, c_NodeFrameRounding, 4.0f);
+        auto headerColor = 0xFF000000 | (HeaderColor & 0x00FFFFFF);
+        ax::Drawing::DrawHeader(drawList, HeaderTextureID,
+            to_imvec(HeaderRect.top_left()),
+            to_imvec(HeaderRect.bottom_right()),
+            headerColor, c_NodeFrameRounding, 4.0f);
 
-    auto headerSeparatorRect      = ax::rect(HeaderRect.bottom_left(),  ContentRect.top_right());
-    auto footerSeparatorRect      = ax::rect(ContentRect.bottom_left(), NodeRect.bottom_right());
-    auto contentWithSeparatorRect = ax::rect::make_union(headerSeparatorRect, footerSeparatorRect);
+        auto headerSeparatorRect      = ax::rect(HeaderRect.bottom_left(),  ContentRect.top_right());
+        auto footerSeparatorRect      = ax::rect(ContentRect.bottom_left(), NodeRect.bottom_right());
+        auto contentWithSeparatorRect = ax::rect::make_union(headerSeparatorRect, footerSeparatorRect);
 
-    drawList->AddRectFilled(
-        to_imvec(contentWithSeparatorRect.top_left()),
-        to_imvec(contentWithSeparatorRect.bottom_right()),
-        ImColor(32, 32, 32, 200), c_NodeFrameRounding, 4 | 8);
+        drawList->AddRectFilled(
+            to_imvec(contentWithSeparatorRect.top_left()),
+            to_imvec(contentWithSeparatorRect.bottom_right()),
+            ImColor(32, 32, 32, 200), c_NodeFrameRounding, 4 | 8);
 
-    drawList->AddLine(
-        to_imvec(headerSeparatorRect.top_left() + point(1, -1)),
-        to_imvec(headerSeparatorRect.top_right() + point(-1, -1)),
-        ImColor(255, 255, 255, 96 / 3), 1.0f);
+        drawList->AddLine(
+            to_imvec(headerSeparatorRect.top_left() + point(1, -1)),
+            to_imvec(headerSeparatorRect.top_right() + point(-1, -1)),
+            ImColor(255, 255, 255, 96 / 3), 1.0f);
 
-    drawList->AddRect(
-        to_imvec(NodeRect.top_left()),
-        to_imvec(NodeRect.bottom_right()),
-        ImColor(255, 255, 255, 96), c_NodeFrameRounding, 15, 1.5f);
+        drawList->AddRect(
+            to_imvec(NodeRect.top_left()),
+            to_imvec(NodeRect.bottom_right()),
+            ImColor(255, 255, 255, 96), c_NodeFrameRounding, 15, 1.5f);
+    }
 
     SetCurrentNode(nullptr);
 
@@ -585,9 +657,9 @@ bool ed::Context::CreateLink(int* startId, int* endId, ImU32 color, float thickn
 
     if (LinkCreateStage != LinkCreateStage::Created)
     {
-        LinkCreateStage     = LinkCreateStage::Edit;
-        LinkColor     = color;
-        LinkThickness = thickness;
+        LinkCreateStage = LinkCreateStage::Edit;
+        LinkColor       = color;
+        LinkThickness   = thickness;
     }
 
     return true;
@@ -596,9 +668,9 @@ bool ed::Context::CreateLink(int* startId, int* endId, ImU32 color, float thickn
 void ed::Context::RejectLink(ImU32 color, float thickness)
 {
     assert(LinkCreateStage == LinkCreateStage::Edit || LinkCreateStage == LinkCreateStage::Accept || LinkCreateStage == LinkCreateStage::Reject);
-    LinkCreateStage     = LinkCreateStage::Reject;
-    LinkColor     = color;
-    LinkThickness = thickness;
+    LinkCreateStage = LinkCreateStage::Reject;
+    LinkColor       = color;
+    LinkThickness   = thickness;
 }
 
 bool ed::Context::AcceptLink(ImU32 color, float thickness)
@@ -608,15 +680,17 @@ bool ed::Context::AcceptLink(ImU32 color, float thickness)
 
     LinkColor     = color;
     LinkThickness = thickness;
+
     if (LinkCreateStage == LinkCreateStage::Created)
     {
         LinkCreateStage = LinkCreateStage::None;
         return true;
     }
-
-    LinkCreateStage = LinkCreateStage::Accept;
-
-    return false;
+    else
+    {
+        LinkCreateStage = LinkCreateStage::Accept;
+        return false;
+    }
 }
 
 bool ed::Context::DestroyLink()
@@ -708,42 +782,30 @@ ed::Object* ed::Context::FindObject(int id)
     return nullptr;
 }
 
+template <typename C>
+static inline auto FindItemIn(C& container, int id)
+{
+    for (auto item : container)
+        if (item->ID == id)
+            return item;
+
+    return (typename C::value_type)nullptr;
+}
+
 ed::Node* ed::Context::FindNode(int id)
 {
-    for (auto node : Nodes)
-        if (node->ID == id)
-            return node;
-
-    return nullptr;
+    return FindItemIn(Nodes, id);
 }
 
 ed::Pin* ed::Context::FindPin(int id)
 {
-    for (auto pin : Pins)
-        if (pin->ID == id)
-            return pin;
-
-    return nullptr;
+    return FindItemIn(Pins, id);
 }
 
 ed::Link* ed::Context::FindLink(int id)
 {
-    for (auto link : Links)
-        if (link->ID == id)
-            return link;
-
-    return nullptr;
+    return FindItemIn(Links, id);
 }
-
-//void ed::Context::SetHotObject(Object* object)
-//{
-//    HotObject = object;
-//}
-//
-//void ed::Context::SetActiveObject(Object* object)
-//{
-//    ActiveObject = object;
-//}
 
 void ed::Context::ClearSelection()
 {
@@ -826,7 +888,7 @@ bool ed::Context::SetNodeStage(NodeStage stage)
 
         case NodeStage::Header:
             ImGui::EndHorizontal();
-            HeaderRect = get_item_bounds();
+            HeaderRect = ImGui_GetItemRect();
 
             // spacing between header and content
             ImGui::Spring(0);
@@ -837,17 +899,13 @@ bool ed::Context::SetNodeStage(NodeStage stage)
             break;
 
         case NodeStage::Input:
-            //ImGui::Spring(0);
             ImGui::Spring(1);
             ImGui::EndVertical();
-            //ImGui::GetWindowDrawList()->AddRectFilled(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), ImColor(0, 255, 0, 32));
             break;
 
         case NodeStage::Output:
-            //ImGui::Spring(0);
             ImGui::Spring(1);
             ImGui::EndVertical();
-            //ImGui::GetWindowDrawList()->AddRectFilled(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), ImColor(0, 255, 0, 32));
             break;
 
         case NodeStage::End:
@@ -883,15 +941,11 @@ bool ed::Context::SetNodeStage(NodeStage stage)
                 ImGui::Spring(1);
             ImGui::Spring(0);
             ImGui::EndHorizontal();
-            ContentRect = get_item_bounds();
-
-            //ImGui::GetWindowDrawList()->AddRectFilled(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), ImColor(0, 0, 255, 32));
-            //ImGui::GetWindowDrawList()->AddRectFilled(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), ImColor(0, 0, 255, 64));
+            ContentRect = ImGui_GetItemRect();
 
             ImGui::Spring(0);
             ImGui::EndVertical();
-            NodeRect = get_item_bounds();
-            //ImGui::GetWindowDrawList()->AddRect(ImGui::GetItemRectMin() - ImVec2(2,2), ImGui::GetItemRectMax() + ImVec2(2, 2), ImColor(255, 255, 255));
+            NodeRect = ImGui_GetItemRect();
             break;
     }
 
@@ -922,10 +976,7 @@ void ed::Context::BeginPin(int id, PinType type)
 
 void ed::Context::EndPin()
 {
-    auto pinRect = get_item_bounds();
-
-//     if (ImGui::IsItemHoveredRect())
-//         SetHotObject(CurrentPin);
+    auto pinRect = ImGui_GetItemRect();
 
     CurrentPin->Bounds = pinRect;
 
@@ -1116,18 +1167,18 @@ ed::Control ed::Context::ComputeControl()
     Object* clickedObject = nullptr;
 
     // Emits invisible button and returns true if it is clicked.
-    auto emitInteractiveArea = [](int id, const rect& rect)
+    auto emitInteractiveArea = [this](int id, const rect& rect, bool scroll)
     {
         char idString[33]; // itoa can output 33 bytes maximum
         _itoa(id, idString, 16);
-        ImGui::SetCursorScreenPos(to_imvec(rect.location));
+        ImGui::SetCursorScreenPos(to_imvec(rect.location) - (scroll ? Scrolling : ImVec2(0, 0)));
         return ImGui::InvisibleButton(idString, to_imvec(rect.size));
     };
 
     // Check input interactions over area.
     auto checkInteractionsInArea = [&emitInteractiveArea, &hotObject, &activeObject, &clickedObject](int id, const rect& rect, Object* object)
     {
-        if (emitInteractiveArea(id, rect))
+        if (emitInteractiveArea(id, rect, !!object->AsNode()))
             clickedObject = object;
 
         if (!hotObject && ImGui::IsItemHoveredRect())
@@ -1171,8 +1222,9 @@ ed::Control ed::Context::ComputeControl()
     const auto editorRect = rect(to_point(ImGui::GetWindowPos()), to_size(ImGui::GetWindowSize()));
 
     // Check for interaction with background.
-    auto backgroundClicked  = emitInteractiveArea(0, editorRect);
+    auto backgroundClicked  = emitInteractiveArea(0, editorRect, false);
     auto isBackgroundActive = ImGui::IsItemActive();
+    auto isBackgroundHot    = !hotObject && ImGui::IsItemHoveredRect();
 
     // Process link input using background interactions.
     auto hotLink = hotObject ? hotObject->AsLink() : nullptr;
@@ -1182,7 +1234,10 @@ ed::Control ed::Context::ComputeControl()
     if (isBackgroundActive && hotLink && !LastActiveLink)
         LastActiveLink = hotLink;
     if (isBackgroundActive && LastActiveLink)
-        activeObject = LastActiveLink;
+    {
+        activeObject       = LastActiveLink;
+        isBackgroundActive = false;
+    }
     else if (!isBackgroundActive && LastActiveLink)
         LastActiveLink = nullptr;
 
@@ -1193,5 +1248,6 @@ ed::Control ed::Context::ComputeControl()
         backgroundClicked = false;
     }
 
-    return Control(hotObject, activeObject, clickedObject, backgroundClicked);
+    return Control(hotObject, activeObject, clickedObject,
+        isBackgroundHot, isBackgroundActive, backgroundClicked);
 }

@@ -200,6 +200,7 @@
     <ClInclude Include="Editor\Drawing.h" />
     <ClInclude Include="Editor\EditorApi.h" />
     <ClInclude Include="Editor\Editor.h" />
+    <ClInclude Include="Editor\ImGuiInterop.h" />
     <ClInclude Include="Editor\Types.h" />
     <ClInclude Include="Editor\Widgets.h" />
     <ClInclude Include="ImGui\imconfig.h" />
