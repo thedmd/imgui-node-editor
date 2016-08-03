@@ -1,5 +1,5 @@
 #include "Editor.h"
-#include "Backend/imgui_impl_dx11.h"
+#include "Application/imgui_impl_dx11.h"
 #include "Drawing.h"
 #include <cstdlib> // _itoa
 #include <string>
@@ -161,6 +161,7 @@ ed::Context::Context():
     DragOffset(),
     DraggedNode(nullptr),
     DraggedPin(nullptr),
+    Offset(0, 0),
     Scrolling(0, 0),
     NodeBuildStage(NodeStage::Invalid),
     LinkCreateStage(LinkCreateStage::None),
@@ -208,7 +209,9 @@ void ed::Context::Begin(const char* id)
 
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
     ImGui::PushStyleColor(ImGuiCol_ChildWindowBg, ImColor(60, 60, 70, 0));
-    ImGui::BeginChild(id, ImVec2(0, 0), true, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoMove);
+    ImGui::BeginChild(id, ImVec2(0, 0), true, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoScrollbar);
+
+    Offset = ImGui::GetWindowPos() - Scrolling;
 
     // Reserve channels for background and links
     auto drawList = ImGui::GetWindowDrawList();
@@ -266,8 +269,8 @@ void ed::Context::End()
             drawList->ChannelsSetCurrent(selectedNode->Channel + c_NodeBaseChannel);
 
             drawList->AddRect(
-                to_imvec(selectedNode->Bounds.top_left()) - Scrolling,
-                to_imvec(selectedNode->Bounds.bottom_right()) - Scrolling,
+                to_imvec(selectedNode->Bounds.top_left()) + Offset,
+                to_imvec(selectedNode->Bounds.bottom_right()) + Offset,
                 ImColor(255, 176, 50, 255), c_NodeFrameRounding, 15, 3.5f);
         }
         else if (auto selectedLink = selectedObject->AsLink())
@@ -288,8 +291,8 @@ void ed::Context::End()
         drawList->ChannelsSetCurrent(hotNode->Channel + c_NodeBaseChannel);
 
         drawList->AddRect(
-            to_imvec(hotNode->Bounds.top_left()) - Scrolling,
-            to_imvec(hotNode->Bounds.bottom_right()) - Scrolling,
+            to_imvec(hotNode->Bounds.top_left()) + Offset,
+            to_imvec(hotNode->Bounds.bottom_right()) + Offset,
             ImColor(50, 176, 255, 255), c_NodeFrameRounding, 15, 3.5f);
     }
 
@@ -460,7 +463,7 @@ void ed::Context::End()
     {
         drawList->ChannelsSetCurrent(c_BackgroundChannelStart + 0);
 
-        ImVec2 offset      = ImVec2(0, 0) - Scrolling;
+        ImVec2 offset      = Offset;
         //ImVec2 offset    = ImVec2(0, 0);
         ImU32 GRID_COLOR = ImColor(120, 120, 120, 40);
         float GRID_SZ    = 32.0f;
@@ -516,7 +519,7 @@ void ed::Context::BeginNode(int id)
     SetCurrentNode(node);
 
     // Position node on screen
-    ImGui::SetCursorScreenPos(to_imvec(node->Bounds.location) - Scrolling);
+    ImGui::SetCursorScreenPos(to_imvec(node->Bounds.location) + Offset);
 
     node->IsLive  = true;
     node->LastPin = nullptr;
@@ -1167,11 +1170,11 @@ ed::Control ed::Context::ComputeControl()
     Object* clickedObject = nullptr;
 
     // Emits invisible button and returns true if it is clicked.
-    auto emitInteractiveArea = [this](int id, const rect& rect, bool scroll)
+    auto emitInteractiveArea = [this](int id, const rect& rect, bool absolute)
     {
         char idString[33]; // itoa can output 33 bytes maximum
         _itoa(id, idString, 16);
-        ImGui::SetCursorScreenPos(to_imvec(rect.location) - (scroll ? Scrolling : ImVec2(0, 0)));
+        ImGui::SetCursorScreenPos(to_imvec(rect.location) + (absolute ? Offset : ImVec2(0, 0)));
         return ImGui::InvisibleButton(idString, to_imvec(rect.size));
     };
 

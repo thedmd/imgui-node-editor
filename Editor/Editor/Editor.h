@@ -281,6 +281,7 @@ private:
     Node*           DraggedNode;
     Pin*            DraggedPin;
 
+    ImVec2          Offset;
     ImVec2          Scrolling;
 
     // Node building

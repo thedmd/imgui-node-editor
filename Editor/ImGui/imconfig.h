@@ -27,11 +27,11 @@
 #define IMGUI_DISABLE_OBSOLETE_FUNCTIONS
 
 //---- All context use same style
-#define IMGUI_ENABLE_SHARED_STYLE
+//#define IMGUI_ENABLE_SHARED_STYLE
 
 //---- Do not create global state, relay on user to create and manage context
 //---- Note: You must keep your own instance of ImFontAtlas and initialize context Fonts field with it
-#define IMGUI_DISABLE_GLOBAL_STATE
+//#define IMGUI_DISABLE_GLOBAL_STATE
 
 //---- Implement STB libraries in a namespace to avoid conflicts
 //#define IMGUI_STB_NAMESPACE     ImGuiStb

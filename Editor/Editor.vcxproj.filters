@@ -4,12 +4,6 @@
     <Filter Include="ImGui">
       <UniqueIdentifier>{917f46dc-1830-4bef-86f2-92146f795b0a}</UniqueIdentifier>
     </Filter>
-    <Filter Include="ImWindow">
-      <UniqueIdentifier>{4d3b4250-a27f-4b70-a719-7b7b0827645c}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Backend">
-      <UniqueIdentifier>{680d2fbb-accb-40b5-a24c-03d3efe72b58}</UniqueIdentifier>
-    </Filter>
     <Filter Include="Editor">
       <UniqueIdentifier>{0a3006ef-56cc-4b61-b811-f41836ad94de}</UniqueIdentifier>
     </Filter>
@@ -18,6 +12,9 @@
     </Filter>
     <Filter Include="Support">
       <UniqueIdentifier>{37b3206d-4f96-4a8f-b0f2-07c0f11b584a}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Application">
+      <UniqueIdentifier>{914bf31c-90fd-448c-9600-334a952bf058}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
@@ -30,39 +27,6 @@
     <ClCompile Include="ImGui\imgui_draw.cpp">
       <Filter>ImGui</Filter>
     </ClCompile>
-    <ClCompile Include="ImWindow\ImwContainer.cpp">
-      <Filter>ImWindow</Filter>
-    </ClCompile>
-    <ClCompile Include="ImWindow\ImwMenu.cpp">
-      <Filter>ImWindow</Filter>
-    </ClCompile>
-    <ClCompile Include="ImWindow\ImwPlatformWindow.cpp">
-      <Filter>ImWindow</Filter>
-    </ClCompile>
-    <ClCompile Include="ImWindow\ImwStatusBar.cpp">
-      <Filter>ImWindow</Filter>
-    </ClCompile>
-    <ClCompile Include="ImWindow\ImwToolBar.cpp">
-      <Filter>ImWindow</Filter>
-    </ClCompile>
-    <ClCompile Include="ImWindow\ImwWindow.cpp">
-      <Filter>ImWindow</Filter>
-    </ClCompile>
-    <ClCompile Include="ImWindow\ImwWindowManager.cpp">
-      <Filter>ImWindow</Filter>
-    </ClCompile>
-    <ClCompile Include="Backend\imgui_impl_dx11.cpp">
-      <Filter>Backend</Filter>
-    </ClCompile>
-    <ClCompile Include="Backend\ImwPlatformWindowDX11.cpp">
-      <Filter>Backend</Filter>
-    </ClCompile>
-    <ClCompile Include="Backend\ImwWindowManagerDX11.cpp">
-      <Filter>Backend</Filter>
-    </ClCompile>
-    <ClCompile Include="Editor\main.cpp">
-      <Filter>Editor</Filter>
-    </ClCompile>
     <ClCompile Include="..\External\DXSDK\src\dxerr.cpp">
       <Filter>External</Filter>
     </ClCompile>
@@ -72,14 +36,20 @@
     <ClCompile Include="Editor\Widgets.cpp">
       <Filter>Editor</Filter>
     </ClCompile>
-    <ClCompile Include="Editor\Window.cpp">
-      <Filter>Editor</Filter>
-    </ClCompile>
     <ClCompile Include="Editor\Editor.cpp">
       <Filter>Editor</Filter>
     </ClCompile>
     <ClCompile Include="Editor\EditorApi.cpp">
       <Filter>Editor</Filter>
+    </ClCompile>
+    <ClCompile Include="Application\imgui_impl_dx11.cpp">
+      <Filter>Application</Filter>
+    </ClCompile>
+    <ClCompile Include="Application\main.cpp">
+      <Filter>Application</Filter>
+    </ClCompile>
+    <ClCompile Include="Application\application.cpp">
+      <Filter>Application</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -101,39 +71,6 @@
     <ClInclude Include="ImGui\stb_truetype.h">
       <Filter>ImGui</Filter>
     </ClInclude>
-    <ClInclude Include="ImWindow\ImwConfig.h">
-      <Filter>ImWindow</Filter>
-    </ClInclude>
-    <ClInclude Include="ImWindow\ImwContainer.h">
-      <Filter>ImWindow</Filter>
-    </ClInclude>
-    <ClInclude Include="ImWindow\ImwMenu.h">
-      <Filter>ImWindow</Filter>
-    </ClInclude>
-    <ClInclude Include="ImWindow\ImwPlatformWindow.h">
-      <Filter>ImWindow</Filter>
-    </ClInclude>
-    <ClInclude Include="ImWindow\ImwStatusBar.h">
-      <Filter>ImWindow</Filter>
-    </ClInclude>
-    <ClInclude Include="ImWindow\ImwToolBar.h">
-      <Filter>ImWindow</Filter>
-    </ClInclude>
-    <ClInclude Include="ImWindow\ImwWindow.h">
-      <Filter>ImWindow</Filter>
-    </ClInclude>
-    <ClInclude Include="ImWindow\ImwWindowManager.h">
-      <Filter>ImWindow</Filter>
-    </ClInclude>
-    <ClInclude Include="Backend\imgui_impl_dx11.h">
-      <Filter>Backend</Filter>
-    </ClInclude>
-    <ClInclude Include="Backend\ImwWindowManagerDX11.h">
-      <Filter>Backend</Filter>
-    </ClInclude>
-    <ClInclude Include="Backend\ImwPlatformWindowDX11.h">
-      <Filter>Backend</Filter>
-    </ClInclude>
     <ClInclude Include="Support\stb_image.h">
       <Filter>Support</Filter>
     </ClInclude>
@@ -146,9 +83,6 @@
     <ClInclude Include="Editor\Widgets.h">
       <Filter>Editor</Filter>
     </ClInclude>
-    <ClInclude Include="Editor\Window.h">
-      <Filter>Editor</Filter>
-    </ClInclude>
     <ClInclude Include="Editor\EditorApi.h">
       <Filter>Editor</Filter>
     </ClInclude>
@@ -157,6 +91,15 @@
     </ClInclude>
     <ClInclude Include="Editor\ImGuiInterop.h">
       <Filter>Editor</Filter>
+    </ClInclude>
+    <ClInclude Include="Support\scope_guard.h">
+      <Filter>Support</Filter>
+    </ClInclude>
+    <ClInclude Include="Application\imgui_impl_dx11.h">
+      <Filter>Application</Filter>
+    </ClInclude>
+    <ClInclude Include="Application\application.h">
+      <Filter>Application</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

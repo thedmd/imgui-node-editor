@@ -341,7 +341,7 @@ static void ImGui_ImplDX11_CreateFontsTexture()
     for (int i = 0; i < width * height; ++i)
     {
         auto& a = pixels[i * 4 + 3];
-        a = static_cast<unsigned char>(powf(a / 255.0f, 1.0f / 2.2f) * 255.0f);
+        a = static_cast<unsigned char>(powf(a / 255.0f, 1.0f / 1.4f) * 255.0f);
     }
 
     auto texID = ImGui_CreateTexture(pixels, width, height);
@@ -485,7 +485,7 @@ float4 main(PS_INPUT input) : SV_Target
     float2 gizmoUV   = mul(transform, float4(input.pos.xy, 0.0f, 1.0f)).xy;
     float4 out_col   = input.col * texture0.Sample(sampler0, input.uv);
     float4 gizmo_col = texture1.Sample(sampler1, gizmoUV);
-    return float4(out_col.xyz * gizmo_col.xyz, out_col.a);
+    return float4(out_col.xyz * gizmo_col.xyz, out_col.a * gizmo_col.a);
 }
 )ps";
 
@@ -840,7 +840,7 @@ static void ImGui_UploadTexture(TEXTURE* texture)
 
 static void ImGui_ReleaseTexture(TEXTURE* texture)
 {
-    if (texture->View)
+    if (texture && texture->View)
     {
         texture->View->Release();
         texture->View = nullptr;

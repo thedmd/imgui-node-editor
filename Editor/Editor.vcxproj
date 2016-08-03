@@ -175,7 +175,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="..\External\DXSDK\src\dxerr.cpp" />
-    <ClCompile Include="Backend\imgui_impl_dx11.cpp" />
+    <ClCompile Include="Application\imgui_impl_dx11.cpp" />
     <ClCompile Include="Editor\Editor.cpp" />
     <ClCompile Include="Editor\Drawing.cpp" />
     <ClCompile Include="Editor\EditorApi.cpp" />
@@ -183,20 +183,11 @@
     <ClCompile Include="ImGui\imgui.cpp" />
     <ClCompile Include="ImGui\imgui_demo.cpp" />
     <ClCompile Include="ImGui\imgui_draw.cpp" />
-    <ClCompile Include="Backend\ImwPlatformWindowDX11.cpp" />
-    <ClCompile Include="Backend\ImwWindowManagerDX11.cpp" />
-    <ClCompile Include="Editor\main.cpp" />
-    <ClCompile Include="Editor\Window.cpp" />
-    <ClCompile Include="ImWindow\ImwContainer.cpp" />
-    <ClCompile Include="ImWindow\ImwMenu.cpp" />
-    <ClCompile Include="ImWindow\ImwPlatformWindow.cpp" />
-    <ClCompile Include="ImWindow\ImwStatusBar.cpp" />
-    <ClCompile Include="ImWindow\ImwToolBar.cpp" />
-    <ClCompile Include="ImWindow\ImwWindow.cpp" />
-    <ClCompile Include="ImWindow\ImwWindowManager.cpp" />
+    <ClCompile Include="Application\main.cpp" />
+    <ClCompile Include="Application\application.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="Backend\imgui_impl_dx11.h" />
+    <ClInclude Include="Application\imgui_impl_dx11.h" />
     <ClInclude Include="Editor\Drawing.h" />
     <ClInclude Include="Editor\EditorApi.h" />
     <ClInclude Include="Editor\Editor.h" />
@@ -209,17 +200,8 @@
     <ClInclude Include="ImGui\stb_rect_pack.h" />
     <ClInclude Include="ImGui\stb_textedit.h" />
     <ClInclude Include="ImGui\stb_truetype.h" />
-    <ClInclude Include="Backend\ImwPlatformWindowDX11.h" />
-    <ClInclude Include="Backend\ImwWindowManagerDX11.h" />
-    <ClInclude Include="Editor\Window.h" />
-    <ClInclude Include="ImWindow\ImwConfig.h" />
-    <ClInclude Include="ImWindow\ImwContainer.h" />
-    <ClInclude Include="ImWindow\ImwMenu.h" />
-    <ClInclude Include="ImWindow\ImwPlatformWindow.h" />
-    <ClInclude Include="ImWindow\ImwStatusBar.h" />
-    <ClInclude Include="ImWindow\ImwToolBar.h" />
-    <ClInclude Include="ImWindow\ImwWindow.h" />
-    <ClInclude Include="ImWindow\ImwWindowManager.h" />
+    <ClInclude Include="Application\application.h" />
+    <ClInclude Include="Support\scope_guard.h" />
     <ClInclude Include="Support\stb_image.h" />
   </ItemGroup>
   <ItemGroup>
