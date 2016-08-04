@@ -266,21 +266,29 @@ void ed::Context::End()
     {
         if (auto selectedNode = selectedObject->AsNode())
         {
-            drawList->ChannelsSetCurrent(selectedNode->Channel + c_NodeBaseChannel);
+            const auto rectMin = to_imvec(selectedNode->Bounds.top_left()) + Offset;
+            const auto rectMax = to_imvec(selectedNode->Bounds.bottom_right()) + Offset;
 
-            drawList->AddRect(
-                to_imvec(selectedNode->Bounds.top_left()) + Offset,
-                to_imvec(selectedNode->Bounds.bottom_right()) + Offset,
-                ImColor(255, 176, 50, 255), c_NodeFrameRounding, 15, 3.5f);
+            if (ImGui::IsRectVisible(rectMin, rectMax))
+            {
+                drawList->ChannelsSetCurrent(selectedNode->Channel + c_NodeBaseChannel);
+
+                drawList->AddRect(rectMin, rectMax,
+                    ImColor(255, 176, 50, 255), c_NodeFrameRounding, 15, 3.5f);
+            }
         }
         else if (auto selectedLink = selectedObject->AsLink())
         {
-            drawList->ChannelsSetCurrent(c_LinkStartChannel + 0);
+            const auto rectMin = to_imvec(selectedLink->StartPin->DragPoint);
+            const auto rectMax = to_imvec(selectedLink->EndPin->DragPoint);
 
-            ax::Drawing::DrawLink(drawList,
-                to_imvec(selectedLink->StartPin->DragPoint),
-                to_imvec(selectedLink->EndPin->DragPoint),
-                ImColor(255, 176, 50, 255), selectedLink->Thickness + 4.5f, c_LinkStrength);
+            if (ImGui::IsRectVisible(rectMin, rectMax))
+            {
+                drawList->ChannelsSetCurrent(c_LinkStartChannel + 0);
+
+                ax::Drawing::DrawLink(drawList, rectMin, rectMax,
+                    ImColor(255, 176, 50, 255), selectedLink->Thickness + 4.5f, c_LinkStrength);
+            }
         }
     }
 
@@ -288,34 +296,26 @@ void ed::Context::End()
     auto hotNode = control.HotNode;
     if (hotNode && !IsSelected(hotNode))
     {
+        const auto rectMin = to_imvec(hotNode->Bounds.top_left()) + Offset;
+        const auto rectMax = to_imvec(hotNode->Bounds.bottom_right()) + Offset;
+
         drawList->ChannelsSetCurrent(hotNode->Channel + c_NodeBaseChannel);
 
-        drawList->AddRect(
-            to_imvec(hotNode->Bounds.top_left()) + Offset,
-            to_imvec(hotNode->Bounds.bottom_right()) + Offset,
+        drawList->AddRect(rectMin, rectMax,
             ImColor(50, 176, 255, 255), c_NodeFrameRounding, 15, 3.5f);
     }
 
     // Highlight hovered pin
     if (auto hotPin = control.HotPin)
     {
+        const auto rectMin = to_imvec(hotPin->Bounds.top_left());
+        const auto rectMax = to_imvec(hotPin->Bounds.bottom_right());
+
         drawList->ChannelsSetCurrent(hotPin->Node->Channel + c_NodeBackgroundChannel);
 
-        drawList->AddRectFilled(
-            to_imvec(hotPin->Bounds.top_left()),
-            to_imvec(hotPin->Bounds.bottom_right()),
+        drawList->AddRectFilled(rectMin, rectMax,
             ImColor(60, 180, 255, 100), 4.0f);
     }
-
-//     for (auto pin : Pins)
-//     {
-//         drawList->ChannelsSetCurrent(pin->Node->Channel + c_NodeBackgroundChannel);
-// 
-//         drawList->AddRectFilled(
-//             to_imvec(pin->Bounds.top_left()),
-//             to_imvec(pin->Bounds.bottom_right()),
-//             ImColor(60, 180, 255, 100), 4.0f);
-//     }
 
     // Draw links
     drawList->ChannelsSetCurrent(c_LinkStartChannel + 1);
@@ -546,6 +546,7 @@ void ed::Context::EndNode()
     }
 
     // Draw background
+    if (ImGui::IsItemVisible())
     {
         auto drawList = ImGui::GetWindowDrawList();
 
@@ -1114,39 +1115,21 @@ ed::Link* ed::Context::FindLinkAt(const ax::point& p)
         if (!link->IsLive) continue;
 
         // Live links are guarantee to have complete set of pins.
-        auto startPoint = link->StartPin->DragPoint;
-        auto endPoint   = link->EndPin->DragPoint;
+        const auto startPoint = link->StartPin->DragPoint;
+        const auto endPoint   = link->EndPin->DragPoint;
 
         // Build bounding rectangle of link.
-        auto topLeft = startPoint;
-        auto bottomRight = endPoint;
-
-        // Links are drawn as Bezier quadratic curves with
-        // start point tangent always pointing to right, end tangent
-        // pointing to left. If curve is drawn from right to left
-        // there is small overshot outside of bounding box based on
-        // tangent strength.
-        if (topLeft.x > bottomRight.x)
-        {
-            std::swap(topLeft.x, bottomRight.x);
-            topLeft.x = roundi(topLeft.x - c_LinkStrength * 0.25f);
-            bottomRight.x = roundi(bottomRight.x + c_LinkStrength * 0.25f);
-        }
-
-        if (topLeft.y > bottomRight.y)
-            std::swap(topLeft.y, bottomRight.y);
+        const auto linkBounds = ax::Drawing::GetLinkBounds(to_imvec(startPoint), to_imvec(endPoint), c_LinkStrength);
 
         // Calculate thickness of interactive area around curve.
         // Making it slightly larger help user to click it.
         const auto thickness = roundi(link->Thickness + c_LinkSelectThickness);
 
         // Expand bounding rectangle corners by curve thickness.
-        topLeft -= point(thickness, thickness);
-        bottomRight += point(thickness, thickness);
+        const auto interactiveBounds = linkBounds.expanded(thickness);
 
         // Ignore link if mouse is not hovering bounding rect.
-        const auto curveBoundingRect = rect(topLeft, bottomRight);
-        if (!curveBoundingRect.contains(p))
+        if (!interactiveBounds.contains(p))
             continue;
 
         // Calculate distance from mouse position to link curve.

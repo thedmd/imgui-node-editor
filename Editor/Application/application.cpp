@@ -267,6 +267,11 @@ void Application_Frame()
             ed::BeginNode(node.ID);
                 ed::BeginHeader(node.Color);
                     ImGui::Spring(0);
+//                     auto headerTextSize = ImGui::CalcTextSize(node.Name.c_str());
+//                     ImGui::GetWindowDrawList()->AddRectFilled(
+//                         ImGui::GetCursorScreenPos() - ImVec2(style.ItemInnerSpacing.x, 0),
+//                         ImGui::GetCursorScreenPos() + ImVec2(style.ItemInnerSpacing.x, 0) + headerTextSize,
+//                         ImColor(0, 0, 0, 64), headerTextSize.y / 3.0f);
                     ImGui::TextUnformatted(node.Name.c_str());
                     ImGui::Spring(1);
                     //ImGui::Text("%d", orderIndex);

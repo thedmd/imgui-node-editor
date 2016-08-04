@@ -242,6 +242,9 @@ void ax::Drawing::DrawLink(ImDrawList* drawList, const ImVec2& a, const ImVec2& 
     ImVec2 cp0 = ImVec2(a.x + strength, a.y);
     ImVec2 cp1 = ImVec2(b.x - strength, b.y);
 
+    drawList->AddCircleFilled(cp0, 4.0f, 0xFFFF00FF);
+    drawList->AddCircleFilled(cp1, 4.0f, 0xFFFF00FF);
+
     drawList->AddBezierCurve(a, cp0, cp1, b, color, thickness);
 }
 
@@ -258,4 +261,30 @@ float ax::Drawing::LinkDistance(const ImVec2& p, const ImVec2& a, const ImVec2& 
         to_pointf(a), to_pointf(cp0), to_pointf(cp1), to_pointf(b), 50);
 
     return result.distance;
+}
+
+ax::rectf ax::Drawing::GetLinkBounds(const ImVec2& a, const ImVec2& b, float strength/* = 1.0f*/)
+{
+    using namespace ImGuiInterop;
+
+    // Build bounding rectangle of link.
+    auto topLeft     = to_pointf(a);
+    auto bottomRight = to_pointf(b);
+
+    // Links are drawn as Bezier quadratic curves with
+    // start point tangent always pointing to right, end tangent
+    // pointing to left. If curve is drawn from right to left
+    // there is small overshot outside of bounding box based on
+    // tangent strength.
+    if (topLeft.x > bottomRight.x)
+    {
+        std::swap(topLeft.x, bottomRight.x);
+        topLeft.x     = topLeft.x - strength * 0.25f;
+        bottomRight.x = bottomRight.x + strength * 0.25f;
+    }
+
+    if (topLeft.y > bottomRight.y)
+        std::swap(topLeft.y, bottomRight.y);
+
+    return rectf(topLeft, bottomRight);
 }

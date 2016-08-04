@@ -152,6 +152,51 @@ struct basic_rect
         return r.x >= x && r.y >= y && r.right() <= right() && r.bottom() <= bottom();
     }
 
+    template <typename P>
+    void expand(P extent)
+    {
+        expand(extent, extent);
+    }
+
+    template <typename P>
+    void expand(P hotizontal, P vertical)
+    {
+        expand(hotizontal, vertical, hotizontal, vertical);
+    }
+
+    template <typename P>
+    void expand(P left, P top, P right, P bottom)
+    {
+        x -= left;
+        y -= top;
+        w += left + right;
+        h += top + bottom;
+    }
+
+    template <typename P>
+    basic_rect expanded(P extent) const
+    {
+        auto result = basic_rect(*this);
+        result.expand(extent);
+        return result;
+    }
+
+    template <typename P>
+    basic_rect expand(P hotizontal, P vertical)  const
+    {
+        auto result = basic_rect(*this);
+        result.expand(hotizontal, vertical);
+        return result;
+    }
+
+    template <typename P>
+    basic_rect expand(P left, P top, P right, P bottom)  const
+    {
+        auto result = basic_rect(*this);
+        result.expand(left, top, right, bottom);
+        return result;
+    }
+
     point_t get_closest_point(const point_t& p, bool on_edge) const
     {
         if (!on_edge && contains(p))

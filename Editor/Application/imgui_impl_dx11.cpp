@@ -485,7 +485,7 @@ float4 main(PS_INPUT input) : SV_Target
     float2 gizmoUV   = mul(transform, float4(input.pos.xy, 0.0f, 1.0f)).xy;
     float4 out_col   = input.col * texture0.Sample(sampler0, input.uv);
     float4 gizmo_col = texture1.Sample(sampler1, gizmoUV);
-    return float4(out_col.xyz * gizmo_col.xyz, out_col.a * gizmo_col.a);
+    return float4(out_col.xyz, out_col.a * gizmo_col.a);
 }
 )ps";
 
