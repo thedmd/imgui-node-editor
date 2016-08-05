@@ -417,7 +417,7 @@ void ImDrawList::AddPolyline(const ImVec2* points, const int points_count, ImU32
         return;
 
     const ImVec2 uv = GImGui->FontTexUvWhitePixel;
-    anti_aliased &= GImGui->Style->AntiAliasedLines;
+    anti_aliased &= GImGui->Style.AntiAliasedLines;
     //if (ImGui::GetIO().KeyCtrl) anti_aliased = false; // Debug
 
     int count = points_count;
@@ -595,7 +595,7 @@ void ImDrawList::AddPolyline(const ImVec2* points, const int points_count, ImU32
 void ImDrawList::AddConvexPolyFilled(const ImVec2* points, const int points_count, ImU32 col, bool anti_aliased)
 {
     const ImVec2 uv = GImGui->FontTexUvWhitePixel;
-    anti_aliased &= GImGui->Style->AntiAliasedShapes;
+    anti_aliased &= GImGui->Style.AntiAliasedShapes;
     //if (ImGui::GetIO().KeyCtrl) anti_aliased = false; // Debug
 
     if (anti_aliased)
@@ -751,7 +751,7 @@ void ImDrawList::PathBezierCurveTo(const ImVec2& p2, const ImVec2& p3, const ImV
     if (num_segments == 0)
     {
         // Auto-tessellated
-        PathBezierToCasteljau(&_Path, p1.x, p1.y, p2.x, p2.y, p3.x, p3.y, p4.x, p4.y, GImGui->Style->CurveTessellationTol, 0);
+        PathBezierToCasteljau(&_Path, p1.x, p1.y, p2.x, p2.y, p3.x, p3.y, p4.x, p4.y, GImGui->Style.CurveTessellationTol, 0);
     }
     else
     {

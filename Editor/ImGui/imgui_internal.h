@@ -102,11 +102,6 @@ IMGUI_API const char*   ImStristr(const char* haystack, const char* haystack_end
 IMGUI_API int           ImFormatString(char* buf, int buf_size, const char* fmt, ...) IM_PRINTFARGS(3);
 IMGUI_API int           ImFormatStringV(char* buf, int buf_size, const char* fmt, va_list args);
 
-// Helpers: Global state
-#ifdef IMGUI_ENABLE_SHARED_STYLE
-IMGUI_API ImGuiStyle*   ImGetGlobalStyle();
-#endif
-
 // Helpers: Math
 // We are keeping those not leaking to the user by default, in the case the user has implicit cast operators between ImVec2 and its own types (when IM_VEC2_CLASS_EXTRA is defined)
 #ifdef IMGUI_DEFINE_MATH_OPERATORS
@@ -405,10 +400,7 @@ struct ImGuiContext
 {
     bool                    Initialized;
     ImGuiIO                 IO;
-#ifndef IMGUI_ENABLE_SHARED_STYLE
-    ImGuiStyle              LocalStyle;
-#endif
-    ImGuiStyle*             Style;
+    ImGuiStyle              Style;
     ImFont*                 Font;                               // (Shortcut) == FontStack.empty() ? IO.Font : FontStack.back()
     float                   FontSize;                           // (Shortcut) == FontBaseSize * g.CurrentWindow->FontWindowScale == window->FontSize()
     float                   FontBaseSize;                       // (Shortcut) == IO.FontGlobalScale * Font->Scale * Font->FontSize. Size of characters.
@@ -500,12 +492,7 @@ struct ImGuiContext
     int                     CaptureKeyboardNextFrame;
     char                    TempBuffer[1024*3+1];               // temporary text buffer
 
-    ImGuiContext():
-#ifdef IMGUI_ENABLE_SHARED_STYLE
-        Style(ImGetGlobalStyle())
-#else
-        Style(&LocalStyle)
-#endif
+    ImGuiContext()
     {
         Initialized = false;
         Font = NULL;
@@ -582,7 +569,6 @@ struct IMGUI_API ImGuiDrawContext
 {
     ImVec2                  CursorPos;
     ImVec2                  CursorPosPrevLine;
-    ImVec2                  CursorClientStartPos;   // Initial position of client area without any indents
     ImVec2                  CursorStartPos;         // Initial position in client area with padding
     ImVec2                  CursorMaxPos;           // Implicitly calculate the size of our contents, always extending. Saved into window->SizeContents at the end of the frame
     ImVec2                  CurrentLineSize;
@@ -735,9 +721,9 @@ public:
 
     ImRect      Rect() const                            { return ImRect(Pos.x, Pos.y, Pos.x+Size.x, Pos.y+Size.y); }
     float       CalcFontSize() const                    { return GImGui->FontBaseSize * FontWindowScale; }
-    float       TitleBarHeight() const                  { return (Flags & ImGuiWindowFlags_NoTitleBar) ? 0.0f : CalcFontSize() + GImGui->Style->FramePadding.y * 2.0f; }
+    float       TitleBarHeight() const                  { return (Flags & ImGuiWindowFlags_NoTitleBar) ? 0.0f : CalcFontSize() + GImGui->Style.FramePadding.y * 2.0f; }
     ImRect      TitleBarRect() const                    { return ImRect(Pos, ImVec2(Pos.x + SizeFull.x, Pos.y + TitleBarHeight())); }
-    float       MenuBarHeight() const                   { return (Flags & ImGuiWindowFlags_MenuBar) ? CalcFontSize() + GImGui->Style->FramePadding.y * 2.0f : 0.0f; }
+    float       MenuBarHeight() const                   { return (Flags & ImGuiWindowFlags_MenuBar) ? CalcFontSize() + GImGui->Style.FramePadding.y * 2.0f : 0.0f; }
     ImRect      MenuBarRect() const                     { float y1 = Pos.y + TitleBarHeight(); return ImRect(Pos.x, y1, Pos.x + SizeFull.x, y1 + MenuBarHeight()); }
 };
 
@@ -776,8 +762,8 @@ namespace ImGui
 
     IMGUI_API void          OpenPopupEx(const char* str_id, bool reopen_existing);
 
-    inline IMGUI_API ImU32  GetColorU32(ImGuiCol idx, float alpha_mul)  { ImVec4 c = GImGui->Style->Colors[idx]; c.w *= GImGui->Style->Alpha * alpha_mul; return ImGui::ColorConvertFloat4ToU32(c); }
-    inline IMGUI_API ImU32  GetColorU32(const ImVec4& col)              { ImVec4 c = col; c.w *= GImGui->Style->Alpha; return ImGui::ColorConvertFloat4ToU32(c); }
+    inline IMGUI_API ImU32  GetColorU32(ImGuiCol idx, float alpha_mul)  { ImVec4 c = GImGui->Style.Colors[idx]; c.w *= GImGui->Style.Alpha * alpha_mul; return ImGui::ColorConvertFloat4ToU32(c); }
+    inline IMGUI_API ImU32  GetColorU32(const ImVec4& col)              { ImVec4 c = col; c.w *= GImGui->Style.Alpha; return ImGui::ColorConvertFloat4ToU32(c); }
 
     // NB: All position are in absolute pixels coordinates (not window coordinates)
     // FIXME: All those functions are a mess and needs to be refactored into something decent. Avoid use outside of imgui.cpp!
