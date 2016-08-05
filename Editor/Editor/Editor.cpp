@@ -539,6 +539,7 @@ void ed::Context::End()
         }
     };
 
+    ImGui::Text("Is Editor Active: %s", ImGui::IsWindowHovered() ? "true" : "false");
     ImGui::Text("Hot Object: %s (%d)", getObjectName(control.HotObject), control.HotObject ? control.HotObject->ID : 0);
     ImGui::Text("Active Object: %s (%d)", getObjectName(control.ActiveObject), control.ActiveObject ? control.ActiveObject->ID : 0);
     //ImGui::Text("Clicked Object: %s (%d)", getObjectName(control.ClickedObject), control.ClickedObject ? control.ClickedObject->ID : 0);
@@ -702,6 +703,25 @@ void ed::Context::EndOutput()
     ImGui::Spring(0, 0);
 }
 
+bool ed::Context::DoLink(int id, int startPinId, int endPinId, ImU32 color, float thickness)
+{
+    auto link     = GetLink(id);
+    auto startPin = FindPin(startPinId);
+    auto endPin   = FindPin(endPinId);
+
+    link->StartPin = startPin;
+    link->EndPin   = endPin;
+
+    link->Color     = color;
+    link->Thickness = thickness;
+
+    link->IsLive =
+        (startPin && startPin->IsLive) &&
+        (endPin   && endPin->IsLive);
+
+    return link->IsLive;
+}
+
 bool ed::Context::DestroyLink()
 {
     return !DeletedLinks.empty();
@@ -722,23 +742,16 @@ int ed::Context::GetDestroyedLinkId()
     return link->ID;
 }
 
-bool ed::Context::DoLink(int id, int startPinId, int endPinId, ImU32 color, float thickness)
+void ed::Context::SetNodePosition(int nodeId, const ImVec2& screenPosition)
 {
-    auto link     = GetLink(id);
-    auto startPin = FindPin(startPinId);
-    auto endPin   = FindPin(endPinId);
+    auto node = FindNode(nodeId);
+    if (!node)
+    {
+        node = CreateNode(nodeId);
+        node->IsLive = false;
+    }
 
-    link->StartPin = startPin;
-    link->EndPin   = endPin;
-
-    link->Color     = color;
-    link->Thickness = thickness;
-
-    link->IsLive =
-        (startPin && startPin->IsLive) &&
-        (endPin   && endPin->IsLive);
-
-    return link->IsLive;
+    node->Bounds.location = to_point(screenPosition);
 }
 
 ed::Pin* ed::Context::CreatePin(int id, PinType type)
@@ -1151,6 +1164,9 @@ ed::Link* ed::Context::FindLinkAt(const ax::point& p)
 
 ed::Control ed::Context::ComputeControl()
 {
+    if (!ImGui::IsWindowHovered())
+        return ed::Control(nullptr, nullptr, nullptr, false, false, false);
+
     const auto mousePos = to_point(ImGui::GetMousePos());
 
     Object* hotObject     = nullptr;
@@ -1375,8 +1391,8 @@ ed::CreationContext::Result ed::CreationContext::QueryLink(int* startId, int* en
 
     int linkStartId = LinkStart->ID;
     int linkEndId   = LinkEnd->ID;
-    if (LinkStart->Type == PinType::Input)
-        std::swap(linkStartId, linkEndId);
+//     if (LinkStart->Type == PinType::Input)
+//         std::swap(linkStartId, linkEndId);
 
     *startId = linkStartId;
     *endId   = linkEndId;

@@ -43,6 +43,11 @@ void ax::Editor::EndInput()                         { s_Editor->EndInput();     
 void ax::Editor::BeginOutput(int id)                { s_Editor->BeginOutput(id);             }
 void ax::Editor::EndOutput()                        { s_Editor->EndOutput();                 }
 
+bool ax::Editor::Link(int id, int startPinId, int endPinId, const ImVec4& color/* = ImVec4(1, 1, 1, 1)*/, float thickness/* = 1.0f*/)
+{
+    return s_Editor->DoLink(id, startPinId, endPinId, ImColor(color), thickness);
+}
+
 bool ax::Editor::BeginCreate(const ImVec4& color, float thickness)
 {
     auto& context = s_Editor->GetCreationContext();
@@ -156,11 +161,7 @@ int ax::Editor::GetDestroyedLinkId()
     return s_Editor->GetDestroyedLinkId();
 }
 
-bool ax::Editor::Link(int id, int startPinId, int endPinId, const ImVec4& color/* = ImVec4(1, 1, 1, 1)*/, float thickness/* = 1.0f*/)
+void ax::Editor::SetNodePosition(int nodeId, const ImVec2& screenPosition)
 {
-    return s_Editor->DoLink(id, startPinId, endPinId, ImColor(color), thickness);
+    s_Editor->SetNodePosition(nodeId, screenPosition);
 }
-
-
-
-

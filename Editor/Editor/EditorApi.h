@@ -31,6 +31,8 @@ void EndInput();
 void BeginOutput(int id);
 void EndOutput();
 
+bool Link(int id, int startPinId, int endPinId, const ImVec4& color = ImVec4(1, 1, 1, 1), float thickness = 1.0f);
+
 bool BeginCreate(const ImVec4& color = ImVec4(1, 1, 1, 1), float thickness = 1.0f);
 void EndCreate();
 
@@ -46,8 +48,7 @@ void RejectItem(const ImVec4& color, float thickness = 1.0f);
 bool DestroyLink();
 int GetDestroyedLinkId();
 
-bool Link(int id, int startPinId, int endPinId, const ImVec4& color = ImVec4(1, 1, 1, 1), float thickness = 1.0f);
-
+void SetNodePosition(int nodeId, const ImVec2& screenPosition);
 
 //------------------------------------------------------------------------------
 } // namespace Editor

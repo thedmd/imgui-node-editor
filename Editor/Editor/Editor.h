@@ -271,12 +271,14 @@ struct Context
     void BeginOutput(int id);
     void EndOutput();
 
+    bool DoLink(int id, int startPinId, int endPinId, ImU32 color, float thickness);
+
     CreationContext& GetCreationContext() { return Creation; }
 
     bool DestroyLink();
     int GetDestroyedLinkId();
 
-    bool DoLink(int id, int startPinId, int endPinId, ImU32 color, float thickness);
+    void SetNodePosition(int nodeId, const ImVec2& screenPosition);
 
 private:
     Pin*    CreatePin(int id, PinType type);
