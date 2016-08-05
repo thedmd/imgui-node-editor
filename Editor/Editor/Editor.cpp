@@ -12,9 +12,11 @@ namespace ed = ax::Editor::Detail;
 
 //------------------------------------------------------------------------------
 static const int c_BackgroundChannelCount = 1;
-static const int c_LinkChannelCount       = 2;
+static const int c_LinkChannelCount       = 3;
+static const int c_UserLayersCount        = 1;
 
-static const int c_BackgroundChannelStart = 0;
+static const int c_UserLayerChannelStart  = 0;
+static const int c_BackgroundChannelStart = c_UserLayerChannelStart  + c_UserLayersCount;
 static const int c_LinkStartChannel       = c_BackgroundChannelStart + c_BackgroundChannelCount;
 static const int c_NodeStartChannel       = c_LinkStartChannel       + c_LinkChannelCount;
 
@@ -147,13 +149,16 @@ static void ImDrawList_OffsetChannels(ImDrawList* drawList, const ImVec2& offset
 
 
 
+
+//------------------------------------------------------------------------------
+//
+// Editor Context
+//
 //------------------------------------------------------------------------------
 ed::Context::Context():
     Nodes(),
     Pins(),
     Links(),
-    //HotObject(nullptr),
-    //ActiveObject(nullptr),
     SelectedObject(nullptr),
     LastActiveLink(nullptr),
     CurrentPin(nullptr),
@@ -164,7 +169,6 @@ ed::Context::Context():
     Offset(0, 0),
     Scrolling(0, 0),
     NodeBuildStage(NodeStage::Invalid),
-    LinkCreateStage(LinkCreateStage::None),
     IsInitialized(false),
     HeaderTextureID(nullptr),
     Settings()
@@ -324,12 +328,18 @@ void ed::Context::End()
         if (!link->IsLive)
             continue;
 
-        float extraThickness = !IsSelected(link) && (control.HotLink == link || control.ActiveLink == link) ? 2.0f : 0.0f;
+        const auto startPoint = to_imvec(link->StartPin->DragPoint);
+        const auto endPoint   = to_imvec(link->EndPin->DragPoint);
 
-        ax::Drawing::DrawLink(drawList,
-            to_imvec(link->StartPin->DragPoint),
-            to_imvec(link->EndPin->DragPoint),
-            link->Color, link->Thickness + extraThickness, c_LinkStrength);
+        const auto bounds     = ax::Drawing::GetLinkBounds(startPoint, endPoint, c_LinkStrength);
+
+        if (ImGui::IsRectVisible(to_imvec(bounds.top_left()), to_imvec(bounds.bottom_right())))
+        {
+            float extraThickness = !IsSelected(link) && (control.HotLink == link || control.ActiveLink == link) ? 2.0f : 0.0f;
+
+            ax::Drawing::DrawLink(drawList, startPoint, endPoint,
+                link->Color, link->Thickness + extraThickness, c_LinkStrength);
+        }
     }
 
     // Highlight hovered link
@@ -382,41 +392,40 @@ void ed::Context::End()
     if (!DraggedPin && control.ActivePin && ImGui::IsMouseDragging(0))
     {
         DraggedPin = control.ActivePin;
-        LinkCreateStage  = LinkCreateStage::Possible;
-        LinkStart  = DraggedPin->Type == PinType::Output ? DraggedPin : nullptr;
-        LinkEnd    = DraggedPin->Type == PinType::Input  ? DraggedPin : nullptr;
+
+        Creation.DragStart(DraggedPin);
 
         ClearSelection();
     }
 
-    if (DraggedPin && control.ActivePin == DraggedPin && (LinkCreateStage == LinkCreateStage::Edit || LinkCreateStage == LinkCreateStage::Accept || LinkCreateStage == LinkCreateStage::Reject))
+    if (DraggedPin && control.ActivePin == DraggedPin && (Creation.CurrentStage == CreationContext::Possible))
     {
-        auto& startPin = DraggedPin->Type == PinType::Output ? LinkStart : LinkEnd;
-        auto& endPin   = DraggedPin->Type == PinType::Output ? LinkEnd   : LinkStart;
-
         ImVec2 startPoint = to_imvec(DraggedPin->DragPoint);
         ImVec2 endPoint   = ImGui::GetMousePos();
-        if (LinkCreateStage == LinkCreateStage::Accept)
-            endPoint = to_imvec(endPin->DragPoint);
+
+        if (control.HotPin)
+        {
+            Creation.DropPin(control.HotPin);
+
+            if (Creation.UserAction == CreationContext::Accept)
+                endPoint = to_imvec(control.HotPin->DragPoint);
+        }
+        else if (control.BackgroundHot)
+            Creation.DropNode();
+        else
+            Creation.DropNothing();
 
         if (DraggedPin->Type == PinType::Input)
             std::swap(startPoint, endPoint);
 
-        ax::Drawing::DrawLink(drawList, startPoint, endPoint, LinkColor, LinkThickness, c_LinkStrength);
+        drawList->ChannelsSetCurrent(c_LinkStartChannel + 2);
 
-        if (control.HotPin && control.HotPin != DraggedPin)
-            endPin = control.HotPin;
-        else
-            endPin = nullptr;
+        ax::Drawing::DrawLink(drawList, startPoint, endPoint, Creation.LinkColor, Creation.LinkThickness, c_LinkStrength);
     }
     else if (DraggedPin && !control.ActivePin)
     {
         DraggedPin = nullptr;
-
-        if (LinkCreateStage == LinkCreateStage::Accept)
-            LinkCreateStage = LinkCreateStage::Created;
-        else
-            LinkCreateStage = LinkCreateStage::None;
+        Creation.DragEnd();
     }
 
     // Link deletion
@@ -481,6 +490,10 @@ void ed::Context::End()
     if (ImGui::IsWindowHovered() && !ImGui::IsAnyItemActive() && ImGui::IsMouseDragging(2, 0.0f))
         Scrolling = Scrolling - ImGui::GetIO().MouseDelta;
 
+    auto userChannel = drawList->_ChannelsCount;
+    ImDrawList_ChannelsGrow(drawList, userChannel + 1);
+    ImDrawList_SwapChannels(drawList, userChannel, c_UserLayerChannelStart);
+
     drawList->ChannelsMerge();
 
     ImGui::SetCursorScreenPos(ImGui::GetWindowPos());
@@ -493,9 +506,47 @@ void ed::Context::End()
         else return "";
     };
 
+    auto getCreationStageName = [](CreationContext::Stage stage)
+    {
+        switch (stage)
+        {
+            case CreationContext::None:     return "None";
+            case CreationContext::Possible: return "Possible";
+            case CreationContext::Create:   return "Create";
+            default:                        return "<unknown>";
+        }
+    };
+
+    auto getCreationActionName = [](CreationContext::Action action)
+    {
+        switch (action)
+        {
+            default:
+            case CreationContext::Unknown: return "Unknown";
+            case CreationContext::Reject:  return "Reject";
+            case CreationContext::Accept:  return "Accept";
+        }
+    };
+
+    auto getCreationItemName = [](CreationContext::Type item)
+    {
+        switch (item)
+        {
+            default:
+            case CreationContext::NoItem: return "NoItem";
+            case CreationContext::Node:   return "Node";
+            case CreationContext::Link:   return "Link";
+        }
+    };
+
     ImGui::Text("Hot Object: %s (%d)", getObjectName(control.HotObject), control.HotObject ? control.HotObject->ID : 0);
     ImGui::Text("Active Object: %s (%d)", getObjectName(control.ActiveObject), control.ActiveObject ? control.ActiveObject->ID : 0);
     //ImGui::Text("Clicked Object: %s (%d)", getObjectName(control.ClickedObject), control.ClickedObject ? control.ClickedObject->ID : 0);
+    ImGui::TextUnformatted("Creation Context:");
+    ImGui::Text("    Stage: %s", getCreationStageName(Creation.CurrentStage));
+    ImGui::Text("    Next Stage: %s", getCreationStageName(Creation.NextStage));
+    ImGui::Text("    User Action: %s", getCreationActionName(Creation.UserAction));
+    ImGui::Text("    Item Type: %s", getCreationItemName(Creation.ItemType));
 
     ImGui::EndChild();
     ImGui::PopStyleColor();
@@ -649,52 +700,6 @@ void ed::Context::EndOutput()
     EndPin();
 
     ImGui::Spring(0, 0);
-}
-
-bool ed::Context::CreateLink(int* startId, int* endId, ImU32 color, float thickness)
-{
-    if (LinkCreateStage == LinkCreateStage::None)
-        return false;
-
-    *startId = LinkStart ? LinkStart->ID : 0;
-    *endId   = LinkEnd   ? LinkEnd->ID   : 0;
-
-    if (LinkCreateStage != LinkCreateStage::Created)
-    {
-        LinkCreateStage = LinkCreateStage::Edit;
-        LinkColor       = color;
-        LinkThickness   = thickness;
-    }
-
-    return true;
-}
-
-void ed::Context::RejectLink(ImU32 color, float thickness)
-{
-    assert(LinkCreateStage == LinkCreateStage::Edit || LinkCreateStage == LinkCreateStage::Accept || LinkCreateStage == LinkCreateStage::Reject);
-    LinkCreateStage = LinkCreateStage::Reject;
-    LinkColor       = color;
-    LinkThickness   = thickness;
-}
-
-bool ed::Context::AcceptLink(ImU32 color, float thickness)
-{
-    assert(LinkCreateStage == LinkCreateStage::Edit || LinkCreateStage == LinkCreateStage::Accept || LinkCreateStage == LinkCreateStage::Reject || LinkCreateStage == LinkCreateStage::Created);
-    assert(LinkEnd);
-
-    LinkColor     = color;
-    LinkThickness = thickness;
-
-    if (LinkCreateStage == LinkCreateStage::Created)
-    {
-        LinkCreateStage = LinkCreateStage::None;
-        return true;
-    }
-    else
-    {
-        LinkCreateStage = LinkCreateStage::Accept;
-        return false;
-    }
 }
 
 bool ed::Context::DestroyLink()
@@ -1236,4 +1241,171 @@ ed::Control ed::Context::ComputeControl()
 
     return Control(hotObject, activeObject, clickedObject,
         isBackgroundHot, isBackgroundActive, backgroundClicked);
+}
+
+
+
+
+//------------------------------------------------------------------------------
+//
+// Creation Context
+//
+//------------------------------------------------------------------------------
+ed::CreationContext::CreationContext():
+    InActive(false),
+    NextStage(None),
+    CurrentStage(None),
+    ItemType(NoItem),
+    UserAction(Unknown),
+    LinkColor(IM_COL32_WHITE),
+    LinkThickness(1.0f),
+    LinkStart(nullptr),
+    LinkEnd(nullptr)
+{
+}
+
+void ed::CreationContext::SetStyle(ImU32 color, float thickness)
+{
+    LinkColor     = color;
+    LinkThickness = thickness;
+}
+
+bool ed::CreationContext::Begin()
+{
+    IM_ASSERT(false == InActive);
+
+    InActive        = true;
+    CurrentStage    = NextStage;
+    UserAction      = Unknown;
+    LinkColor       = IM_COL32_WHITE;
+    LinkThickness   = 1.0f;
+
+    if (CurrentStage == CreationContext::None)
+        return false;
+
+    return true;
+}
+
+void ed::CreationContext::End()
+{
+    IM_ASSERT(InActive);
+
+    InActive = false;
+}
+
+void ed::CreationContext::DragStart(Pin* startPin)
+{
+    NextStage = Possible;
+    LinkStart = startPin;
+    LinkEnd   = nullptr;
+}
+
+void ed::CreationContext::DragEnd()
+{
+    if (CurrentStage == Possible && UserAction == Accept)
+    {
+        NextStage = Create;
+    }
+    else
+    {
+        NextStage = None;
+        ItemType  = NoItem;
+        LinkStart = nullptr;
+        LinkEnd   = nullptr;
+    }
+}
+
+void ed::CreationContext::DropPin(Pin* endPin)
+{
+    ItemType = Link;
+    LinkEnd  = endPin;
+}
+
+void ed::CreationContext::DropNode()
+{
+    ItemType = Node;
+    LinkEnd  = nullptr;
+}
+
+void ed::CreationContext::DropNothing()
+{
+    ItemType = NoItem;
+    LinkEnd  = nullptr;
+}
+
+ed::CreationContext::Result ed::CreationContext::RejectItem()
+{
+    IM_ASSERT(InActive);
+
+    if (!InActive || CurrentStage == CreationContext::None || ItemType == CreationContext::NoItem)
+        return Indeterminate;
+
+    UserAction = Reject;
+
+    return True;
+}
+
+ed::CreationContext::Result ed::CreationContext::AcceptItem()
+{
+    IM_ASSERT(InActive);
+
+    if (!InActive || CurrentStage == CreationContext::None || ItemType == CreationContext::NoItem)
+        return Indeterminate;
+
+    UserAction = Accept;
+
+    if (CurrentStage == Create)
+    {
+        NextStage = None;
+        ItemType  = NoItem;
+        LinkStart = nullptr;
+        LinkEnd   = nullptr;
+        return True;
+    }
+    else
+        return False;
+}
+
+ed::CreationContext::Result ed::CreationContext::QueryLink(int* startId, int* endId)
+{
+    IM_ASSERT(InActive);
+
+    if (!InActive || CurrentStage == CreationContext::None || ItemType != CreationContext::Link)
+        return Indeterminate;
+
+    int linkStartId = LinkStart->ID;
+    int linkEndId   = LinkEnd->ID;
+    if (LinkStart->Type == PinType::Input)
+        std::swap(linkStartId, linkEndId);
+
+    *startId = linkStartId;
+    *endId   = linkEndId;
+
+    SetUserContext();
+
+    return True;
+}
+
+ed::CreationContext::Result ed::CreationContext::QueryNode(int* pinId)
+{
+    IM_ASSERT(InActive);
+
+    if (!InActive || CurrentStage == CreationContext::None || ItemType != CreationContext::Node)
+        return Indeterminate;
+
+    *pinId = LinkStart ? LinkStart->ID : 0;
+
+    SetUserContext();
+
+    return True;
+}
+
+void ed::CreationContext::SetUserContext()
+{
+    // Move drawing cursor to mouse location and prepare layer for
+    // content added by user.
+    ImGui::SetCursorScreenPos(ImGui::GetMousePos());
+
+    auto drawList = ImGui::GetWindowDrawList();
+    drawList->ChannelsSetCurrent(c_UserLayerChannelStart);
 }

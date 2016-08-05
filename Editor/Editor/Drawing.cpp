@@ -242,8 +242,8 @@ void ax::Drawing::DrawLink(ImDrawList* drawList, const ImVec2& a, const ImVec2& 
     ImVec2 cp0 = ImVec2(a.x + strength, a.y);
     ImVec2 cp1 = ImVec2(b.x - strength, b.y);
 
-    drawList->AddCircleFilled(cp0, 4.0f, 0xFFFF00FF);
-    drawList->AddCircleFilled(cp1, 4.0f, 0xFFFF00FF);
+    //drawList->AddCircleFilled(cp0, 4.0f, 0xFFFF00FF);
+    //drawList->AddCircleFilled(cp1, 4.0f, 0xFFFF00FF);
 
     drawList->AddBezierCurve(a, cp0, cp1, b, color, thickness);
 }

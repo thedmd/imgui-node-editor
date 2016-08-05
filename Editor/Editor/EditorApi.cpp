@@ -43,19 +43,107 @@ void ax::Editor::EndInput()                         { s_Editor->EndInput();     
 void ax::Editor::BeginOutput(int id)                { s_Editor->BeginOutput(id);             }
 void ax::Editor::EndOutput()                        { s_Editor->EndOutput();                 }
 
-bool ax::Editor::CreateLink(int* startId, int* endId, const ImColor& color, float thickness)
+bool ax::Editor::BeginCreate(const ImVec4& color, float thickness)
 {
-    return s_Editor->CreateLink(startId, endId, color, thickness);
+    auto& context = s_Editor->GetCreationContext();
+
+    if (context.Begin())
+    {
+        context.SetStyle(ImColor(color), thickness);
+        return true;
+    }
+    else
+        return false;
 }
 
-void ax::Editor::RejectLink(const ImVec4& color, float thickness)
+void ax::Editor::EndCreate()
 {
-    s_Editor->RejectLink(ImColor(color), thickness);
+    auto& context = s_Editor->GetCreationContext();
+
+    context.End();
 }
 
-bool ax::Editor::AcceptLink(const ImVec4& color, float thickness)
+bool ax::Editor::QueryLink(int* startId, int* endId)
 {
-    return s_Editor->AcceptLink(ImColor(color), thickness);
+    using Result = ax::Editor::Detail::CreationContext::Result;
+
+    auto& context = s_Editor->GetCreationContext();
+
+    return context.QueryLink(startId, endId) == Result::True;
+}
+
+bool ax::Editor::QueryLink(int* startId, int* endId, const ImVec4& color, float thickness)
+{
+    using Result = ax::Editor::Detail::CreationContext::Result;
+
+    auto& context = s_Editor->GetCreationContext();
+
+    auto result = context.QueryLink(startId, endId);
+    if (result != Result::Indeterminate)
+        context.SetStyle(ImColor(color), thickness);
+
+    return result == Result::True;
+}
+
+bool ax::Editor::QueryNode(int* pinId)
+{
+    using Result = ax::Editor::Detail::CreationContext::Result;
+
+    auto& context = s_Editor->GetCreationContext();
+
+    return context.QueryNode(pinId) == Result::True;
+}
+
+bool ax::Editor::QueryNode(int* pinId, const ImVec4& color, float thickness)
+{
+    using Result = ax::Editor::Detail::CreationContext::Result;
+
+    auto& context = s_Editor->GetCreationContext();
+
+    auto result = context.QueryNode(pinId);
+    if (result != Result::Indeterminate)
+        context.SetStyle(ImColor(color), thickness);
+
+    return result == Result::True;
+}
+
+bool ax::Editor::AcceptItem()
+{
+    using Result = ax::Editor::Detail::CreationContext::Result;
+
+    auto& context = s_Editor->GetCreationContext();
+
+    return context.AcceptItem() == Result::True;
+}
+
+bool ax::Editor::AcceptItem(const ImVec4& color, float thickness)
+{
+    using Result = ax::Editor::Detail::CreationContext::Result;
+
+    auto& context = s_Editor->GetCreationContext();
+
+    auto result = context.AcceptItem();
+    if (result != Result::Indeterminate)
+        context.SetStyle(ImColor(color), thickness);
+
+    return result == Result::True;
+}
+
+void ax::Editor::RejectItem()
+{
+    auto& context = s_Editor->GetCreationContext();
+
+    context.RejectItem();
+}
+
+void ax::Editor::RejectItem(const ImVec4& color, float thickness)
+{
+    using Result = ax::Editor::Detail::CreationContext::Result;
+
+    auto& context = s_Editor->GetCreationContext();
+
+    if (context.RejectItem() != Result::Indeterminate)
+        context.SetStyle(ImColor(color), thickness);
 }
 
 bool ax::Editor::DestroyLink()

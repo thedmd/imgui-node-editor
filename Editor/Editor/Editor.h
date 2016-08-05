@@ -40,16 +40,6 @@ enum class PinType
     Input, Output
 };
 
-enum class LinkCreateStage
-{
-    None,
-    Possible,
-    Edit,
-    Reject,
-    Accept,
-    Created
-};
-
 struct Node;
 struct Pin;
 struct Link;
@@ -197,6 +187,70 @@ struct Control
     }
 };
 
+struct CreationContext
+{
+    enum Stage
+    {
+        None,
+        Possible,
+        Create
+    };
+
+    enum Action
+    {
+        Unknown,
+        Reject,
+        Accept
+    };
+
+    enum Type
+    {
+        NoItem,
+        Node,
+        Link
+    };
+
+    enum Result
+    {
+        True,
+        False,
+        Indeterminate
+    };
+
+    bool      InActive;
+    Stage     NextStage;
+
+    Stage     CurrentStage;
+    Type      ItemType;
+    Action    UserAction;
+    ImU32     LinkColor;
+    float     LinkThickness;
+    Pin*      LinkStart;
+    Pin*      LinkEnd;
+
+    CreationContext();
+
+    void SetStyle(ImU32 color, float thickness);
+
+    bool Begin();
+    void End();
+
+    void DragStart(Pin* startPin);
+    void DragEnd();
+    void DropPin(Pin* endPin);
+    void DropNode();
+    void DropNothing();
+
+    Result RejectItem();
+    Result AcceptItem();
+
+    Result QueryLink(int* startId, int* endId);
+    Result QueryNode(int* pinId);
+
+private:
+    void SetUserContext();
+};
+
 struct Context
 {
     Context();
@@ -217,9 +271,7 @@ struct Context
     void BeginOutput(int id);
     void EndOutput();
 
-    bool CreateLink(int* startId, int* endId, ImU32 color, float thickness);
-    void RejectLink(ImU32 color, float thickness);
-    bool AcceptLink(ImU32 color, float thickness);
+    CreationContext& GetCreationContext() { return Creation; }
 
     bool DestroyLink();
     int GetDestroyedLinkId();
@@ -291,12 +343,7 @@ private:
     rect            HeaderRect;
     rect            ContentRect;
 
-    // Link creating
-    LinkCreateStage LinkCreateStage;
-    ImU32           LinkColor;
-    float           LinkThickness;
-    Pin*            LinkStart;
-    Pin*            LinkEnd;
+    CreationContext Creation;
 
     // Link deleting
     vector<Link*>   DeletedLinks;

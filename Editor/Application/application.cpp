@@ -131,28 +131,55 @@ static void DrawItemRect(ImColor color, float expand = 0.0f)
         color);
 };
 
-static void FillItemRect(ImColor color, float expand = 0.0f)
+static void FillItemRect(ImColor color, float expand = 0.0f, float rounding = 0.0f)
 {
     ImGui::GetWindowDrawList()->AddRectFilled(
         ImGui::GetItemRectMin() - ImVec2(expand, expand),
         ImGui::GetItemRectMax() + ImVec2(expand, expand),
-        color);
+        color, rounding);
 };
 
-void Application_Initialize()
+static void BuildNode(Node* node)
 {
-    m_Editor = ed::CreateEditor();
+    for (auto& input : node->Inputs)
+    {
+        input.Node = node;
+        input.Kind = PinKind::Input;
+    }
 
+    for (auto& output : node->Outputs)
+    {
+        output.Node = node;
+        output.Kind = PinKind::Output;
+    }
+}
+
+static Node* SpawnInputActionNode()
+{
     s_Nodes.emplace_back(GetNextId(), "InputAction Fire", ImColor(255, 128, 128));
     s_Nodes.back().Outputs.emplace_back(GetNextId(), "Pressed", PinType::Flow);
     s_Nodes.back().Outputs.emplace_back(GetNextId(), "Released", PinType::Flow);
 
+    BuildNode(&s_Nodes.back());
+
+    return &s_Nodes.back();
+}
+
+static Node* SpawnBranchNode()
+{
     s_Nodes.emplace_back(GetNextId(), "Branch");
     s_Nodes.back().Inputs.emplace_back(GetNextId(), "", PinType::Flow);
     s_Nodes.back().Inputs.emplace_back(GetNextId(), "Condition", PinType::Bool);
     s_Nodes.back().Outputs.emplace_back(GetNextId(), "True", PinType::Flow);
     s_Nodes.back().Outputs.emplace_back(GetNextId(), "False", PinType::Flow);
 
+    BuildNode(&s_Nodes.back());
+
+    return &s_Nodes.back();
+}
+
+static Node* SpawnDoNNode()
+{
     s_Nodes.emplace_back(GetNextId(), "Do N");
     s_Nodes.back().Inputs.emplace_back(GetNextId(), "Enter", PinType::Flow);
     s_Nodes.back().Inputs.emplace_back(GetNextId(), "N", PinType::Int);
@@ -160,10 +187,24 @@ void Application_Initialize()
     s_Nodes.back().Outputs.emplace_back(GetNextId(), "Exit", PinType::Flow);
     s_Nodes.back().Outputs.emplace_back(GetNextId(), "Counter", PinType::Int);
 
+    BuildNode(&s_Nodes.back());
+
+    return &s_Nodes.back();
+}
+
+static Node* SpawnOutputActionNode()
+{
     s_Nodes.emplace_back(GetNextId(), "OutputAction");
     s_Nodes.back().Inputs.emplace_back(GetNextId(), "Sample", PinType::Float);
     s_Nodes.back().Outputs.emplace_back(GetNextId(), "Condition", PinType::Bool);
 
+    BuildNode(&s_Nodes.back());
+
+    return &s_Nodes.back();
+}
+
+static Node* SpawnSetTimerNode()
+{
     s_Nodes.emplace_back(GetNextId(), "Set Timer", ImColor(128, 195, 248));
     s_Nodes.back().Inputs.emplace_back(GetNextId(), "", PinType::Flow);
     s_Nodes.back().Inputs.emplace_back(GetNextId(), "Object", PinType::Object);
@@ -172,34 +213,40 @@ void Application_Initialize()
     s_Nodes.back().Inputs.emplace_back(GetNextId(), "Looping", PinType::Bool);
     s_Nodes.back().Outputs.emplace_back(GetNextId(), "", PinType::Flow);
 
+    BuildNode(&s_Nodes.back());
 
-    //     s_Nodes.emplace_back(GetNextId(), "Single Line Trace by Channel", point(600, 30));
-    //     s_Nodes.back().Inputs.emplace_back(GetNextId(), "", PinType::Flow);
-    //     s_Nodes.back().Inputs.emplace_back(GetNextId(), "Start", PinType::Flow);
-    //     s_Nodes.back().Inputs.emplace_back(GetNextId(), "End", PinType::Int);
-    //     s_Nodes.back().Inputs.emplace_back(GetNextId(), "Trace Channel", PinType::Float);
-    //     s_Nodes.back().Inputs.emplace_back(GetNextId(), "Trace Complex", PinType::Bool);
-    //     s_Nodes.back().Inputs.emplace_back(GetNextId(), "Actors to Ignore", PinType::Int);
-    //     s_Nodes.back().Inputs.emplace_back(GetNextId(), "Draw Debug Type", PinType::Bool);
-    //     s_Nodes.back().Inputs.emplace_back(GetNextId(), "Ignore Self", PinType::Bool);
-    //     s_Nodes.back().Outputs.emplace_back(GetNextId(), "", PinType::Flow);
-    //     s_Nodes.back().Outputs.emplace_back(GetNextId(), "Out Hit", PinType::Float);
-    //     s_Nodes.back().Outputs.emplace_back(GetNextId(), "Return Value", PinType::Bool);
+    return &s_Nodes.back();
+}
 
-    for (auto& node : s_Nodes)
-    {
-        for (auto& input : node.Inputs)
-        {
-            input.Node = &node;
-            input.Kind = PinKind::Input;
-        }
+static Node* SpawnTraceByChannelNode()
+{
+    s_Nodes.emplace_back(GetNextId(), "Single Line Trace by Channel", ImColor(255, 128, 64));
+    s_Nodes.back().Inputs.emplace_back(GetNextId(), "", PinType::Flow);
+    s_Nodes.back().Inputs.emplace_back(GetNextId(), "Start", PinType::Flow);
+    s_Nodes.back().Inputs.emplace_back(GetNextId(), "End", PinType::Int);
+    s_Nodes.back().Inputs.emplace_back(GetNextId(), "Trace Channel", PinType::Float);
+    s_Nodes.back().Inputs.emplace_back(GetNextId(), "Trace Complex", PinType::Bool);
+    s_Nodes.back().Inputs.emplace_back(GetNextId(), "Actors to Ignore", PinType::Int);
+    s_Nodes.back().Inputs.emplace_back(GetNextId(), "Draw Debug Type", PinType::Bool);
+    s_Nodes.back().Inputs.emplace_back(GetNextId(), "Ignore Self", PinType::Bool);
+    s_Nodes.back().Outputs.emplace_back(GetNextId(), "", PinType::Flow);
+    s_Nodes.back().Outputs.emplace_back(GetNextId(), "Out Hit", PinType::Float);
+    s_Nodes.back().Outputs.emplace_back(GetNextId(), "Return Value", PinType::Bool);
 
-        for (auto& output : node.Outputs)
-        {
-            output.Node = &node;
-            output.Kind = PinKind::Output;
-        }
-    }
+    BuildNode(&s_Nodes.back());
+
+    return &s_Nodes.back();
+}
+
+void Application_Initialize()
+{
+    m_Editor = ed::CreateEditor();
+
+    SpawnInputActionNode();
+    SpawnBranchNode();
+    SpawnDoNNode();
+    SpawnOutputActionNode();
+    SpawnSetTimerNode();
 }
 
 void Application_Finalize()
@@ -317,27 +364,75 @@ void Application_Frame()
         for (auto& link : s_Links)
             ed::Link(link.ID, link.StartPinID, link.EndPinID, link.Color, 2.0f);
 
-        int startPinId = 0, endPinId = 0;
-        if (ed::CreateLink(&startPinId, &endPinId, ImColor(255, 255, 255), 2.0f))
+        if (ed::BeginCreate(ImColor(255, 255, 255), 2.0f))
         {
-            auto startPin = FindPin(startPinId);
-            auto endPin   = FindPin(endPinId);
-
-            if (startPin && endPin)
+            auto showLabel = [](const char* label, ImColor color)
             {
-                if (endPin->Kind == startPin->Kind)
-                    ed::RejectLink(ImColor(255, 0, 0), 2.0f);
-                else if (endPin->Node == startPin->Node)
-                    ed::RejectLink(ImColor(255, 0, 0), 1.0f);
-                else if (endPin->Type != startPin->Type)
-                    ed::RejectLink(ImColor(255, 128, 128), 1.0f);
-                else if (ed::AcceptLink(ImColor(128, 255, 128), 4.0f))
+                ImGui::SetCursorPosY(ImGui::GetCursorPosY() - ImGui::GetTextLineHeight());
+                auto size = ImGui::CalcTextSize(label);
+
+                auto padding = ImGui::GetStyle().FramePadding;
+                auto spacing = ImGui::GetStyle().ItemSpacing;
+
+                ImGui::SetCursorPos(ImGui::GetCursorPos() + ImVec2(spacing.x, -spacing.y));
+
+                auto rectMin = ImGui::GetCursorScreenPos() - padding;
+                auto rectMax = ImGui::GetCursorScreenPos() + size + padding;
+
+                auto drawList = ImGui::GetWindowDrawList();
+                drawList->AddRectFilled(rectMin, rectMax, color, size.y * 0.15f);
+                ImGui::TextUnformatted(label);
+            };
+
+            int startPinId = 0, endPinId = 0;
+            if (ed::QueryLink(&startPinId, &endPinId))
+            {
+                auto startPin = FindPin(startPinId);
+                auto endPin   = FindPin(endPinId);
+
+                if (startPin && endPin)
                 {
-                    s_Links.emplace_back(Link(GetNextId(), startPinId, endPinId));
-                    s_Links.back().Color = getIconColor(startPin->Type);
+                    if (endPin == startPin)
+                    {
+                        ed::RejectItem(ImColor(255, 0, 0), 2.0f);
+                    }
+                    else if (endPin->Kind == startPin->Kind)
+                    {
+                        showLabel("x Incompatible Pin Kind", ImColor(45, 32, 32, 180));
+                        ed::RejectItem(ImColor(255, 0, 0), 2.0f);
+                    }
+                    else if (endPin->Node == startPin->Node)
+                    {
+                        showLabel("x Cannot connect to self", ImColor(45, 32, 32, 180));
+                        ed::RejectItem(ImColor(255, 0, 0), 1.0f);
+                    }
+                    else if (endPin->Type != startPin->Type)
+                    {
+                        showLabel("x Incompatible Pin Type", ImColor(45, 32, 32, 180));
+                        ed::RejectItem(ImColor(255, 128, 128), 1.0f);
+                    }
+                    else
+                    {
+                        showLabel("+ Create Link", ImColor(32, 45, 32, 180));
+                        if (ed::AcceptItem(ImColor(128, 255, 128), 4.0f))
+                        {
+                            s_Links.emplace_back(Link(GetNextId(), startPinId, endPinId));
+                            s_Links.back().Color = getIconColor(startPin->Type);
+                        }
+                    }
+                }
+            }
+
+            int pinId = 0;
+            if (ed::QueryNode(&pinId))
+            {
+                showLabel("+ Create Node", ImColor(32, 45, 32, 180));
+                if (ed::AcceptItem())
+                {
                 }
             }
         }
+        ed::EndCreate();
 
         if (ed::DestroyLink())
         {
