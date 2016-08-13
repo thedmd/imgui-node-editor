@@ -398,7 +398,7 @@ void ed::Context::End()
         ClearSelection();
     }
 
-    if (DraggedPin && control.ActivePin == DraggedPin && (Creation.CurrentStage == CreationContext::Possible))
+    if (DraggedPin && control.ActivePin == DraggedPin && (Creation.CurrentStage == ItemBuilder::Possible))
     {
         ImVec2 startPoint = to_imvec(DraggedPin->DragPoint);
         ImVec2 endPoint   = ImGui::GetMousePos();
@@ -407,7 +407,7 @@ void ed::Context::End()
         {
             Creation.DropPin(control.HotPin);
 
-            if (Creation.UserAction == CreationContext::Accept)
+            if (Creation.UserAction == ItemBuilder::Accept)
                 endPoint = to_imvec(control.HotPin->DragPoint);
         }
         else if (control.BackgroundHot)
@@ -506,36 +506,36 @@ void ed::Context::End()
         else return "";
     };
 
-    auto getCreationStageName = [](CreationContext::Stage stage)
+    auto getCreationStageName = [](ItemBuilder::Stage stage)
     {
         switch (stage)
         {
-            case CreationContext::None:     return "None";
-            case CreationContext::Possible: return "Possible";
-            case CreationContext::Create:   return "Create";
+            case ItemBuilder::None:     return "None";
+            case ItemBuilder::Possible: return "Possible";
+            case ItemBuilder::Create:   return "Create";
             default:                        return "<unknown>";
         }
     };
 
-    auto getCreationActionName = [](CreationContext::Action action)
+    auto getCreationActionName = [](ItemBuilder::Action action)
     {
         switch (action)
         {
             default:
-            case CreationContext::Unknown: return "Unknown";
-            case CreationContext::Reject:  return "Reject";
-            case CreationContext::Accept:  return "Accept";
+            case ItemBuilder::Unknown: return "Unknown";
+            case ItemBuilder::Reject:  return "Reject";
+            case ItemBuilder::Accept:  return "Accept";
         }
     };
 
-    auto getCreationItemName = [](CreationContext::Type item)
+    auto getCreationItemName = [](ItemBuilder::Type item)
     {
         switch (item)
         {
             default:
-            case CreationContext::NoItem: return "NoItem";
-            case CreationContext::Node:   return "Node";
-            case CreationContext::Link:   return "Link";
+            case ItemBuilder::NoItem: return "NoItem";
+            case ItemBuilder::Node:   return "Node";
+            case ItemBuilder::Link:   return "Link";
         }
     };
 
@@ -543,7 +543,7 @@ void ed::Context::End()
     ImGui::Text("Hot Object: %s (%d)", getObjectName(control.HotObject), control.HotObject ? control.HotObject->ID : 0);
     ImGui::Text("Active Object: %s (%d)", getObjectName(control.ActiveObject), control.ActiveObject ? control.ActiveObject->ID : 0);
     //ImGui::Text("Clicked Object: %s (%d)", getObjectName(control.ClickedObject), control.ClickedObject ? control.ClickedObject->ID : 0);
-    ImGui::TextUnformatted("Creation Context:");
+    ImGui::TextUnformatted("Item Builder:");
     ImGui::Text("    Stage: %s", getCreationStageName(Creation.CurrentStage));
     ImGui::Text("    Next Stage: %s", getCreationStageName(Creation.NextStage));
     ImGui::Text("    User Action: %s", getCreationActionName(Creation.UserAction));
@@ -742,7 +742,7 @@ int ed::Context::GetDestroyedLinkId()
     return link->ID;
 }
 
-void ed::Context::SetNodePosition(int nodeId, const ImVec2& screenPosition)
+void ed::Context::SetNodePosition(int nodeId, const ImVec2& position)
 {
     auto node = FindNode(nodeId);
     if (!node)
@@ -751,7 +751,7 @@ void ed::Context::SetNodePosition(int nodeId, const ImVec2& screenPosition)
         node->IsLive = false;
     }
 
-    node->Bounds.location = to_point(screenPosition);
+    node->Bounds.location = to_point(position - Offset);
 }
 
 ed::Pin* ed::Context::CreatePin(int id, PinType type)
@@ -1267,7 +1267,7 @@ ed::Control ed::Context::ComputeControl()
 // Creation Context
 //
 //------------------------------------------------------------------------------
-ed::CreationContext::CreationContext():
+ed::ItemBuilder::ItemBuilder():
     InActive(false),
     NextStage(None),
     CurrentStage(None),
@@ -1280,13 +1280,13 @@ ed::CreationContext::CreationContext():
 {
 }
 
-void ed::CreationContext::SetStyle(ImU32 color, float thickness)
+void ed::ItemBuilder::SetStyle(ImU32 color, float thickness)
 {
     LinkColor     = color;
     LinkThickness = thickness;
 }
 
-bool ed::CreationContext::Begin()
+bool ed::ItemBuilder::Begin()
 {
     IM_ASSERT(false == InActive);
 
@@ -1296,28 +1296,32 @@ bool ed::CreationContext::Begin()
     LinkColor       = IM_COL32_WHITE;
     LinkThickness   = 1.0f;
 
-    if (CurrentStage == CreationContext::None)
+    if (CurrentStage == ItemBuilder::None)
         return false;
 
     return true;
 }
 
-void ed::CreationContext::End()
+void ed::ItemBuilder::End()
 {
     IM_ASSERT(InActive);
 
     InActive = false;
 }
 
-void ed::CreationContext::DragStart(Pin* startPin)
+void ed::ItemBuilder::DragStart(Pin* startPin)
 {
+    IM_ASSERT(!InActive);
+
     NextStage = Possible;
     LinkStart = startPin;
     LinkEnd   = nullptr;
 }
 
-void ed::CreationContext::DragEnd()
+void ed::ItemBuilder::DragEnd()
 {
+    IM_ASSERT(!InActive);
+
     if (CurrentStage == Possible && UserAction == Accept)
     {
         NextStage = Create;
@@ -1331,29 +1335,35 @@ void ed::CreationContext::DragEnd()
     }
 }
 
-void ed::CreationContext::DropPin(Pin* endPin)
+void ed::ItemBuilder::DropPin(Pin* endPin)
 {
+    IM_ASSERT(!InActive);
+
     ItemType = Link;
     LinkEnd  = endPin;
 }
 
-void ed::CreationContext::DropNode()
+void ed::ItemBuilder::DropNode()
 {
+    IM_ASSERT(!InActive);
+
     ItemType = Node;
     LinkEnd  = nullptr;
 }
 
-void ed::CreationContext::DropNothing()
+void ed::ItemBuilder::DropNothing()
 {
+    IM_ASSERT(!InActive);
+
     ItemType = NoItem;
     LinkEnd  = nullptr;
 }
 
-ed::CreationContext::Result ed::CreationContext::RejectItem()
+ed::ItemBuilder::Result ed::ItemBuilder::RejectItem()
 {
     IM_ASSERT(InActive);
 
-    if (!InActive || CurrentStage == CreationContext::None || ItemType == CreationContext::NoItem)
+    if (!InActive || CurrentStage == ItemBuilder::None || ItemType == ItemBuilder::NoItem)
         return Indeterminate;
 
     UserAction = Reject;
@@ -1361,11 +1371,11 @@ ed::CreationContext::Result ed::CreationContext::RejectItem()
     return True;
 }
 
-ed::CreationContext::Result ed::CreationContext::AcceptItem()
+ed::ItemBuilder::Result ed::ItemBuilder::AcceptItem()
 {
     IM_ASSERT(InActive);
 
-    if (!InActive || CurrentStage == CreationContext::None || ItemType == CreationContext::NoItem)
+    if (!InActive || CurrentStage == ItemBuilder::None || ItemType == ItemBuilder::NoItem)
         return Indeterminate;
 
     UserAction = Accept;
@@ -1382,11 +1392,11 @@ ed::CreationContext::Result ed::CreationContext::AcceptItem()
         return False;
 }
 
-ed::CreationContext::Result ed::CreationContext::QueryLink(int* startId, int* endId)
+ed::ItemBuilder::Result ed::ItemBuilder::QueryLink(int* startId, int* endId)
 {
     IM_ASSERT(InActive);
 
-    if (!InActive || CurrentStage == CreationContext::None || ItemType != CreationContext::Link)
+    if (!InActive || CurrentStage == ItemBuilder::None || ItemType != ItemBuilder::Link)
         return Indeterminate;
 
     int linkStartId = LinkStart->ID;
@@ -1402,11 +1412,11 @@ ed::CreationContext::Result ed::CreationContext::QueryLink(int* startId, int* en
     return True;
 }
 
-ed::CreationContext::Result ed::CreationContext::QueryNode(int* pinId)
+ed::ItemBuilder::Result ed::ItemBuilder::QueryNode(int* pinId)
 {
     IM_ASSERT(InActive);
 
-    if (!InActive || CurrentStage == CreationContext::None || ItemType != CreationContext::Node)
+    if (!InActive || CurrentStage == ItemBuilder::None || ItemType != ItemBuilder::Node)
         return Indeterminate;
 
     *pinId = LinkStart ? LinkStart->ID : 0;
@@ -1416,7 +1426,7 @@ ed::CreationContext::Result ed::CreationContext::QueryNode(int* pinId)
     return True;
 }
 
-void ed::CreationContext::SetUserContext()
+void ed::ItemBuilder::SetUserContext()
 {
     // Move drawing cursor to mouse location and prepare layer for
     // content added by user.

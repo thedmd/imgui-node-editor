@@ -187,7 +187,7 @@ struct Control
     }
 };
 
-struct CreationContext
+struct ItemBuilder
 {
     enum Stage
     {
@@ -228,7 +228,7 @@ struct CreationContext
     Pin*      LinkStart;
     Pin*      LinkEnd;
 
-    CreationContext();
+    ItemBuilder();
 
     void SetStyle(ImU32 color, float thickness);
 
@@ -273,7 +273,7 @@ struct Context
 
     bool DoLink(int id, int startPinId, int endPinId, ImU32 color, float thickness);
 
-    CreationContext& GetCreationContext() { return Creation; }
+    ItemBuilder& GetItemBuilder() { return Creation; }
 
     bool DestroyLink();
     int GetDestroyedLinkId();
@@ -345,7 +345,7 @@ private:
     rect            HeaderRect;
     rect            ContentRect;
 
-    CreationContext Creation;
+    ItemBuilder Creation;
 
     // Link deleting
     vector<Link*>   DeletedLinks;
