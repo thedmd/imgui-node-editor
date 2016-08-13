@@ -273,7 +273,7 @@ struct Context
 
     bool DoLink(int id, int startPinId, int endPinId, ImU32 color, float thickness);
 
-    ItemBuilder& GetItemBuilder() { return Creation; }
+    ItemBuilder& GetItemBuilder() { return ItemBuilder; }
 
     bool DestroyLink();
     int GetDestroyedLinkId();
@@ -319,6 +319,8 @@ private:
     Link* FindLinkAt(const point& p);
     Control ComputeControl();
 
+    void ShowMetrics(const Control& control);
+
     vector<Node*>   Nodes;
     vector<Pin*>    Pins;
     vector<Link*>   Links;
@@ -345,7 +347,7 @@ private:
     rect            HeaderRect;
     rect            ContentRect;
 
-    ItemBuilder Creation;
+    ItemBuilder ItemBuilder;
 
     // Link deleting
     vector<Link*>   DeletedLinks;

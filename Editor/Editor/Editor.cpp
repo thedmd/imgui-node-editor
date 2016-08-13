@@ -388,45 +388,82 @@ void ed::Context::End()
     }
 
 
-    // Link creation
+    // Item creation
     if (!DraggedPin && control.ActivePin && ImGui::IsMouseDragging(0))
     {
         DraggedPin = control.ActivePin;
 
-        Creation.DragStart(DraggedPin);
+        ItemBuilder.DragStart(DraggedPin);
 
         ClearSelection();
     }
 
-    if (DraggedPin && control.ActivePin == DraggedPin && (Creation.CurrentStage == ItemBuilder::Possible))
+    if (DraggedPin && control.ActivePin == DraggedPin && (ItemBuilder.CurrentStage == ItemBuilder::Possible))
     {
         ImVec2 startPoint = to_imvec(DraggedPin->DragPoint);
         ImVec2 endPoint   = ImGui::GetMousePos();
 
         if (control.HotPin)
         {
-            Creation.DropPin(control.HotPin);
+            ItemBuilder.DropPin(control.HotPin);
 
-            if (Creation.UserAction == ItemBuilder::Accept)
+            if (ItemBuilder.UserAction == ItemBuilder::Accept)
                 endPoint = to_imvec(control.HotPin->DragPoint);
         }
         else if (control.BackgroundHot)
-            Creation.DropNode();
+            ItemBuilder.DropNode();
         else
-            Creation.DropNothing();
+            ItemBuilder.DropNothing();
 
         if (DraggedPin->Type == PinType::Input)
             std::swap(startPoint, endPoint);
 
         drawList->ChannelsSetCurrent(c_LinkStartChannel + 2);
 
-        ax::Drawing::DrawLink(drawList, startPoint, endPoint, Creation.LinkColor, Creation.LinkThickness, c_LinkStrength);
+        ax::Drawing::DrawLink(drawList, startPoint, endPoint, ItemBuilder.LinkColor, ItemBuilder.LinkThickness, c_LinkStrength);
     }
     else if (DraggedPin && !control.ActivePin)
     {
         DraggedPin = nullptr;
-        Creation.DragEnd();
+        ItemBuilder.DragEnd();
     }
+
+    if (nullptr == ItemBuilder.LinkStart)
+    {
+        if (ItemBuilder.CurrentStage == ItemBuilder::Possible && nullptr == ItemBuilder.LinkStart)
+        {
+            ItemBuilder.DragEnd();
+        }
+
+        if (control.BackgroundHot && ImGui::IsMouseClicked(1))
+        {
+            ItemBuilder.DragStart(nullptr);
+            ClearSelection();
+            ItemBuilder.DropNode();
+            //ItemBuilder.DragEnd();
+        }
+    }
+
+
+//     if ((ItemBuilder.CurrentStage == ItemBuilder::Possible) && ItemBuilder.LinkStart == nullptr)
+//     {
+//         ItemBuilder.DropNode();
+//         else
+//             ItemBuilder.DropNothing();
+// 
+//         if (DraggedPin->Type == PinType::Input)
+//             std::swap(startPoint, endPoint);
+// 
+//         drawList->ChannelsSetCurrent(c_LinkStartChannel + 2);
+// 
+//         ax::Drawing::DrawLink(drawList, startPoint, endPoint, ItemBuilder.LinkColor, ItemBuilder.LinkThickness, c_LinkStrength);
+//     }
+//     else if (DraggedPin && !control.ActivePin)
+//     {
+//         DraggedPin = nullptr;
+//         ItemBuilder.DragEnd();
+//     }
+
 
     // Link deletion
     const bool isDeletePressed = ImGui::IsKeyPressed(ImGui::GetKeyIndex(ImGuiKey_Delete));
@@ -496,58 +533,7 @@ void ed::Context::End()
 
     drawList->ChannelsMerge();
 
-    ImGui::SetCursorScreenPos(ImGui::GetWindowPos());
-    auto getObjectName = [](Object* object)
-    {
-        if (!object) return "";
-        else if (object->AsNode()) return "Node";
-        else if (object->AsPin())  return "Pin";
-        else if (object->AsLink()) return "Link";
-        else return "";
-    };
-
-    auto getCreationStageName = [](ItemBuilder::Stage stage)
-    {
-        switch (stage)
-        {
-            case ItemBuilder::None:     return "None";
-            case ItemBuilder::Possible: return "Possible";
-            case ItemBuilder::Create:   return "Create";
-            default:                        return "<unknown>";
-        }
-    };
-
-    auto getCreationActionName = [](ItemBuilder::Action action)
-    {
-        switch (action)
-        {
-            default:
-            case ItemBuilder::Unknown: return "Unknown";
-            case ItemBuilder::Reject:  return "Reject";
-            case ItemBuilder::Accept:  return "Accept";
-        }
-    };
-
-    auto getCreationItemName = [](ItemBuilder::Type item)
-    {
-        switch (item)
-        {
-            default:
-            case ItemBuilder::NoItem: return "NoItem";
-            case ItemBuilder::Node:   return "Node";
-            case ItemBuilder::Link:   return "Link";
-        }
-    };
-
-    ImGui::Text("Is Editor Active: %s", ImGui::IsWindowHovered() ? "true" : "false");
-    ImGui::Text("Hot Object: %s (%d)", getObjectName(control.HotObject), control.HotObject ? control.HotObject->ID : 0);
-    ImGui::Text("Active Object: %s (%d)", getObjectName(control.ActiveObject), control.ActiveObject ? control.ActiveObject->ID : 0);
-    //ImGui::Text("Clicked Object: %s (%d)", getObjectName(control.ClickedObject), control.ClickedObject ? control.ClickedObject->ID : 0);
-    ImGui::TextUnformatted("Item Builder:");
-    ImGui::Text("    Stage: %s", getCreationStageName(Creation.CurrentStage));
-    ImGui::Text("    Next Stage: %s", getCreationStageName(Creation.NextStage));
-    ImGui::Text("    User Action: %s", getCreationActionName(Creation.UserAction));
-    ImGui::Text("    Item Type: %s", getCreationItemName(Creation.ItemType));
+    ShowMetrics(control);
 
     ImGui::EndChild();
     ImGui::PopStyleColor();
@@ -1259,6 +1245,64 @@ ed::Control ed::Context::ComputeControl()
         isBackgroundHot, isBackgroundActive, backgroundClicked);
 }
 
+void ed::Context::ShowMetrics(const Control& control)
+{
+    ImGui::SetCursorScreenPos(ImGui::GetWindowPos());
+    auto getObjectName = [](Object* object)
+    {
+        if (!object) return "";
+        else if (object->AsNode()) return "Node";
+        else if (object->AsPin())  return "Pin";
+        else if (object->AsLink()) return "Link";
+        else return "";
+    };
+
+    auto getItemBuilderStageName = [](ItemBuilder::Stage stage)
+    {
+        switch (stage)
+        {
+            case ItemBuilder::None:     return "None";
+            case ItemBuilder::Possible: return "Possible";
+            case ItemBuilder::Create:   return "Create";
+            default:                        return "<unknown>";
+        }
+    };
+
+    auto getItemBuilderActionName = [](ItemBuilder::Action action)
+    {
+        switch (action)
+        {
+            default:
+            case ItemBuilder::Unknown: return "Unknown";
+            case ItemBuilder::Reject:  return "Reject";
+            case ItemBuilder::Accept:  return "Accept";
+        }
+    };
+
+    auto getItemBuilderItemName = [](ItemBuilder::Type item)
+    {
+        switch (item)
+        {
+            default:
+            case ItemBuilder::NoItem: return "NoItem";
+            case ItemBuilder::Node:   return "Node";
+            case ItemBuilder::Link:   return "Link";
+        }
+    };
+
+    ImGui::SetCursorPos(ImVec2(10, 10));
+    ImGui::BeginGroup();
+    ImGui::Text("Is Editor Active: %s", ImGui::IsWindowHovered() ? "true" : "false");
+    ImGui::Text("Hot Object: %s (%d)", getObjectName(control.HotObject), control.HotObject ? control.HotObject->ID : 0);
+    ImGui::Text("Active Object: %s (%d)", getObjectName(control.ActiveObject), control.ActiveObject ? control.ActiveObject->ID : 0);
+    //ImGui::Text("Clicked Object: %s (%d)", getObjectName(control.ClickedObject), control.ClickedObject ? control.ClickedObject->ID : 0);
+    ImGui::TextUnformatted("Item Builder:");
+    ImGui::Text("    Stage: %s", getItemBuilderStageName(ItemBuilder.CurrentStage));
+    ImGui::Text("    Next Stage: %s", getItemBuilderStageName(ItemBuilder.NextStage));
+    ImGui::Text("    User Action: %s", getItemBuilderActionName(ItemBuilder.UserAction));
+    ImGui::Text("    Item Type: %s", getItemBuilderItemName(ItemBuilder.ItemType));
+    ImGui::EndGroup();
+}
 
 
 
