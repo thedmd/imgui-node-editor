@@ -188,6 +188,7 @@ struct Control
 };
 
 struct Context;
+struct DragAction;
 struct SelectAction;
 struct CreateItemAction;
 
@@ -203,10 +204,28 @@ struct EditorAction
 
     virtual void ShowMetrics() {}
 
+    virtual DragAction*       AsDrag()     { return nullptr; }
     virtual SelectAction*     AsSelect()     { return nullptr; }
     virtual CreateItemAction* AsCreateItem() { return nullptr; }
 
     Context* Editor;
+};
+
+struct DragAction final: EditorAction
+{
+    bool  IsActive;
+    Node* DraggedNode;
+
+    DragAction(Context* editor);
+
+    virtual const char* GetName() const override final { return "Drag"; }
+
+    virtual bool Accept(const Control& control) override final;
+    virtual bool Process(const Control& control) override final;
+
+    virtual void ShowMetrics() override final;
+
+    virtual DragAction* AsDrag() override final { return this; }
 };
 
 struct SelectAction final: EditorAction
@@ -338,9 +357,12 @@ struct Context
     void SelectObject(Object* object);
     void DeselectObject(Object* object);
     void SetSelectedObject(Object* object);
+    void ToggleObjectSelection(Object* object);
     bool IsSelected(Object* object);
+    const vector<Object*>& GetSelectedObjects();
     bool IsAnyNodeSelected();
     bool IsAnyLinkSelected();
+
 
 private:
     Pin*    CreatePin(int id, PinType type);
@@ -387,9 +409,6 @@ private:
     Pin*            CurrentPin;
     Node*           CurrentNode;
 
-    ImVec2          DragOffset;
-    Node*           DraggedNode;
-
     ImVec2          Offset;
     ImVec2          Scrolling;
 
@@ -401,8 +420,9 @@ private:
     rect            ContentRect;
 
     EditorAction*       CurrentAction;
-    SelectAction    SelectionBuilder;
-    CreateItemAction         ItemCreator;
+    DragAction          Drag;
+    SelectAction        SelectionBuilder;
+    CreateItemAction    ItemCreator;
 
     // Link deleting
     vector<Link*>   DeletedLinks;

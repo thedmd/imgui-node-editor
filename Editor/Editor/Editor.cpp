@@ -163,12 +163,11 @@ ed::Context::Context():
     LastActiveLink(nullptr),
     CurrentPin(nullptr),
     CurrentNode(nullptr),
-    DragOffset(),
-    DraggedNode(nullptr),
     Offset(0, 0),
     Scrolling(0, 0),
     NodeBuildStage(NodeStage::Invalid),
     CurrentAction(nullptr),
+    Drag(this),
     SelectionBuilder(this),
     ItemCreator(this),
     IsInitialized(false),
@@ -230,40 +229,40 @@ void ed::Context::End()
     auto  control  = ComputeControl();
     auto  drawList = ImGui::GetWindowDrawList();
 
-    if (control.BackgroundClicked)
-    {
-        ClearSelection();
-    }
-    else if (control.ClickedNode && (control.ClickedNode != DraggedNode))
-    {
-        if (IsAnyLinkSelected())
-            ClearSelection();
+    //if (control.BackgroundClicked)
+    //{
+    //    ClearSelection();
+    //}
+    //else if (control.ClickedNode && (control.ClickedNode != DraggedNode))
+    //{
+    //    if (IsAnyLinkSelected())
+    //        ClearSelection();
 
-        if (io.KeyCtrl)
-        {
-            if (IsSelected(control.ClickedNode))
-                DeselectObject(control.ClickedNode);
-            else
-                SelectObject(control.ClickedNode);
-        }
-        else
-            SetSelectedObject(control.ClickedNode);
-    }
-    else if (control.ClickedLink)
-    {
-        if (IsAnyNodeSelected())
-            ClearSelection();
+    //    if (io.KeyCtrl)
+    //    {
+    //        if (IsSelected(control.ClickedNode))
+    //            DeselectObject(control.ClickedNode);
+    //        else
+    //            SelectObject(control.ClickedNode);
+    //    }
+    //    else
+    //        SetSelectedObject(control.ClickedNode);
+    //}
+    //else if (control.ClickedLink)
+    //{
+    //    if (IsAnyNodeSelected())
+    //        ClearSelection();
 
-        if (io.KeyCtrl)
-        {
-            if (IsSelected(control.ClickedLink))
-                DeselectObject(control.ClickedLink);
-            else
-                SelectObject(control.ClickedLink);
-        }
-        else
-            SetSelectedObject(control.ClickedLink);
-    }
+    //    if (io.KeyCtrl)
+    //    {
+    //        if (IsSelected(control.ClickedLink))
+    //            DeselectObject(control.ClickedLink);
+    //        else
+    //            SelectObject(control.ClickedLink);
+    //    }
+    //    else
+    //        SetSelectedObject(control.ClickedLink);
+    //}
 
     //auto selectedNode = SelectedObject ? SelectedObject->AsNode() : nullptr;
 
@@ -299,7 +298,9 @@ void ed::Context::End()
     }
 
     // Highlight selected node
-    auto hotNode = DraggedNode ? DraggedNode : control.HotNode;
+    auto hotNode = control.HotNode;
+    if (CurrentAction && CurrentAction->AsDrag())
+        hotNode = CurrentAction->AsDrag()->DraggedNode;
     if (hotNode && !IsSelected(hotNode))
     {
         const auto rectMin = to_imvec(hotNode->Bounds.top_left()) + Offset;
@@ -356,45 +357,46 @@ void ed::Context::End()
     }
 
     // Handle node dragging, does not steal selection
-    if (!DraggedNode && control.ActiveNode && ImGui::IsMouseDragging(0))
-    {
-        DraggedNode = control.ActiveNode;
-        control.ActiveNode->DragStart = control.ActiveNode->Bounds.location;
+    //if (!DraggedNode && control.ActiveNode && ImGui::IsMouseDragging(0))
+    //{
+    //    DraggedNode = control.ActiveNode;
+    //    control.ActiveNode->DragStart = control.ActiveNode->Bounds.location;
 
-        if (IsSelected(control.ActiveNode))
-        {
-            for (auto selectedObject : SelectedObjects)
-                if (auto selectedNode = selectedObject->AsNode())
-                    selectedNode->DragStart = selectedNode->Bounds.location;
-        }
-        else
-            control.ActiveNode->DragStart = control.ActiveNode->Bounds.location;
-    }
+    //    if (IsSelected(control.ActiveNode))
+    //    {
+    //        for (auto selectedObject : SelectedObjects)
+    //            if (auto selectedNode = selectedObject->AsNode())
+    //                selectedNode->DragStart = selectedNode->Bounds.location;
+    //    }
+    //    else
+    //        control.ActiveNode->DragStart = control.ActiveNode->Bounds.location;
+    //}
 
-    if (DraggedNode && control.ActiveNode == DraggedNode)
-    {
-        DragOffset = ImGui::GetMouseDragDelta(0, 0.0f);
+    //if (DraggedNode && control.ActiveNode == DraggedNode)
+    //{
+    //    DragOffset = ImGui::GetMouseDragDelta(0, 0.0f);
 
-        if (IsSelected(control.ActiveNode))
-        {
-            for (auto selectedObject : SelectedObjects)
-                if (auto selectedNode = selectedObject->AsNode())
-                    selectedNode->Bounds.location = selectedNode->DragStart + to_point(DragOffset);
-        }
-        else
-            control.ActiveNode->Bounds.location = control.ActiveNode->DragStart + to_point(DragOffset);
-    }
-    else if (DraggedNode && !control.ActiveNode)
-    {
-        DraggedNode = nullptr;
-    }
+    //    if (IsSelected(control.ActiveNode))
+    //    {
+    //        for (auto selectedObject : SelectedObjects)
+    //            if (auto selectedNode = selectedObject->AsNode())
+    //                selectedNode->Bounds.location = selectedNode->DragStart + to_point(DragOffset);
+    //    }
+    //    else
+    //        control.ActiveNode->Bounds.location = control.ActiveNode->DragStart + to_point(DragOffset);
+    //}
+    //else if (DraggedNode && !control.ActiveNode)
+    //{
+    //    DraggedNode = nullptr;
+    //}
 
     if (CurrentAction && !CurrentAction->Process(control))
         CurrentAction = nullptr;
 
-
     if (nullptr == CurrentAction)
     {
+        if (Drag.Accept(control))
+            CurrentAction = &Drag;
         if (SelectionBuilder.Accept(control))
             CurrentAction = &SelectionBuilder;
         else if (ItemCreator.Accept(control))
@@ -778,9 +780,22 @@ void ed::Context::SetSelectedObject(Object* object)
     SelectObject(object);
 }
 
+void ed::Context::ToggleObjectSelection(Object* object)
+{
+    if (IsSelected(object))
+        DeselectObject(object);
+    else
+        SelectObject(object);
+}
+
 bool ed::Context::IsSelected(Object* object)
 {
     return std::find(SelectedObjects.begin(), SelectedObjects.end(), object) != SelectedObjects.end();
+}
+
+const ed::vector<ed::Object*>& ed::Context::GetSelectedObjects()
+{
+    return SelectedObjects;
 }
 
 bool ed::Context::IsAnyNodeSelected()
@@ -1273,6 +1288,7 @@ void ed::Context::ShowMetrics(const Control& control)
     ImGui::Text("Active Object: %s (%d)", getObjectName(control.ActiveObject), control.ActiveObject ? control.ActiveObject->ID : 0);
     ImGui::Text("Action: %s", CurrentAction ? CurrentAction->GetName() : "<none>");
     //ImGui::Text("Clicked Object: %s (%d)", getObjectName(control.ClickedObject), control.ClickedObject ? control.ClickedObject->ID : 0);
+    Drag.ShowMetrics();
     SelectionBuilder.ShowMetrics();
     ItemCreator.ShowMetrics();
     ImGui::EndGroup();
@@ -1282,7 +1298,94 @@ void ed::Context::ShowMetrics(const Control& control)
 
 //------------------------------------------------------------------------------
 //
-// Selection Builder
+// Drag Action
+//
+//------------------------------------------------------------------------------
+ed::DragAction::DragAction(Context* editor):
+    EditorAction(editor),
+    IsActive(false),
+    DraggedNode(nullptr)
+{
+}
+
+bool ed::DragAction::Accept(const Control& control)
+{
+    assert(!IsActive);
+
+    if (IsActive)
+        return false;
+
+    if (control.ActiveNode && ImGui::IsMouseDragging(0))
+    {
+        DraggedNode = control.ActiveNode;
+        control.ActiveNode->DragStart = control.ActiveNode->Bounds.location;
+
+        if (Editor->IsSelected(control.ActiveNode))
+        {
+            for (auto selectedObject : Editor->GetSelectedObjects())
+                if (auto selectedNode = selectedObject->AsNode())
+                    selectedNode->DragStart = selectedNode->Bounds.location;
+        }
+        else
+            control.ActiveNode->DragStart = control.ActiveNode->Bounds.location;
+
+        IsActive = true;
+    }
+
+    return IsActive;
+}
+
+bool ed::DragAction::Process(const Control& control)
+{
+    if (!IsActive)
+        return false;
+
+    if (control.ActiveNode == DraggedNode)
+    {
+        auto dragOffset = ImGui::GetMouseDragDelta(0, 0.0f);
+
+        if (Editor->IsSelected(control.ActiveNode))
+        {
+            for (auto selectedObject : Editor->GetSelectedObjects())
+                if (auto selectedNode = selectedObject->AsNode())
+                    selectedNode->Bounds.location = selectedNode->DragStart + to_point(dragOffset);
+        }
+        else
+            control.ActiveNode->Bounds.location = control.ActiveNode->DragStart + to_point(dragOffset);
+    }
+    else if (!control.ActiveNode)
+    {
+        DraggedNode = nullptr;
+        IsActive = false;
+        return true;
+    }
+
+
+    return IsActive;
+}
+
+void ed::DragAction::ShowMetrics()
+{
+    EditorAction::ShowMetrics();
+
+    auto getObjectName = [](Object* object)
+    {
+        if (!object) return "";
+        else if (object->AsNode()) return "Node";
+        else if (object->AsPin())  return "Pin";
+        else if (object->AsLink()) return "Link";
+        else return "";
+    };
+
+    ImGui::Text("%s:", GetName());
+    ImGui::Text("    Active: %s", IsActive ? "yes" : "no");
+    ImGui::Text("    Node: %s (%d)", getObjectName(DraggedNode), DraggedNode ? DraggedNode->ID : 0);
+}
+
+
+//------------------------------------------------------------------------------
+//
+// Select Action
 //
 //------------------------------------------------------------------------------
 ed::SelectAction::SelectAction(Context* editor):
@@ -1294,13 +1397,42 @@ ed::SelectAction::SelectAction(Context* editor):
 
 bool ed::SelectAction::Accept(const Control& control)
 {
-    if (IsActive || !control.BackgroundActive)
+    assert(!IsActive);
+
+    if (IsActive)
         return false;
 
-    IsActive = true;
-    StartPoint = ImGui::GetMousePos();
+    if (control.BackgroundActive)
+    {
+        IsActive = true;
+        StartPoint = ImGui::GetMousePos();
+    }
+    else if (control.BackgroundClicked)
+    {
+        Editor->ClearSelection();
+    }
+    else
+    {
+        Object* clickedObject = control.ClickedNode ? static_cast<Object*>(control.ClickedNode) : static_cast<Object*>(control.ClickedLink);
 
-    return true;
+        if (clickedObject)
+        {
+            // Links and nodes cannot be selected together
+            if ((clickedObject->AsLink() && Editor->IsAnyNodeSelected()) ||
+                (clickedObject->AsNode() && Editor->IsAnyLinkSelected()))
+            {
+                Editor->ClearSelection();
+            }
+
+            auto& io = ImGui::GetIO();
+            if (io.KeyCtrl)
+                Editor->ToggleObjectSelection(clickedObject);
+            else
+                Editor->SetSelectedObject(clickedObject);
+        }
+    }
+
+    return IsActive;
 }
 
 bool ed::SelectAction::Process(const Control& control)
@@ -1460,7 +1592,7 @@ void ed::CreateItemAction::ShowMetrics()
         switch (item)
         {
             default:
-            case NoItem: return "NoItem";
+            case NoItem: return "None";
             case Node:   return "Node";
             case Link:   return "Link";
         }
@@ -1468,7 +1600,6 @@ void ed::CreateItemAction::ShowMetrics()
 
     ImGui::Text("%s:", GetName());
     ImGui::Text("    Stage: %s", getStageName(CurrentStage));
-    ImGui::Text("    Next Stage: %s", getStageName(NextStage));
     ImGui::Text("    User Action: %s", getActionName(UserAction));
     ImGui::Text("    Item Type: %s", getItemName(ItemType));
 }
