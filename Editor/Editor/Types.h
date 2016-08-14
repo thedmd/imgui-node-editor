@@ -38,7 +38,11 @@ struct basic_point
 {
     typedef T value_type;
 
-    T x, y;
+    union
+    {
+        struct { T x, y; };
+        T values[2];
+    };
 
     basic_point(): x(0), y(0) {}
     basic_point(T x, T y): x(x), y(y) {}
@@ -52,9 +56,18 @@ struct basic_point
 
     inline basic_point cwise_min(const basic_point& rhs) const { return basic_point(std::min(x, rhs.x), std::min(y, rhs.y)); }
     inline basic_point cwise_max(const basic_point& rhs) const { return basic_point(std::max(x, rhs.x), std::max(y, rhs.y)); }
+    inline basic_point cwise_product(const basic_point& rhs) const { return basic_point(x * rhs.x, y * rhs.y); }
+    inline basic_point cwise_quotient(const basic_point& rhs) const { return basic_point(x / rhs.x, y / rhs.y); }
+    inline basic_point cwise_sqrt() const { return basic_point(sqrtf(x), sqrtf(y)); }
 
     friend inline bool operator == (const basic_point& lhs, const basic_point& rhs) { return lhs.x == rhs.x && lhs.y == rhs.y; }
     friend inline bool operator != (const basic_point& lhs, const basic_point& rhs) { return !(lhs == rhs); }
+
+          T& operator[](size_t i)       { return values[i]; }
+    const T& operator[](size_t i) const { return values[i]; }
+
+    friend inline basic_point operator + (const basic_point& lhs) { return lhs; }
+    friend inline basic_point operator - (const basic_point& lhs) { return basic_point(-lhs.x, -lhs.y); }
 
     friend inline basic_point operator + (const basic_point& lhs, const basic_point& rhs) { return basic_point(lhs.x + rhs.x, lhs.y + rhs.y); }
     friend inline basic_point operator - (const basic_point& lhs, const basic_point& rhs) { return basic_point(lhs.x - rhs.x, lhs.y - rhs.y); }
@@ -373,7 +386,8 @@ inline void transform_v(basic_point<T>* point, size_t n, const M& matrix)
 
 
 //------------------------------------------------------------------------------
-inline pointf bezier(const pointf& p0, const pointf& p1, const pointf& p2, const pointf& p3, float t)
+template <typename P, typename T>
+inline P bezier(const P& p0, const P& p1, const P& p2, const P& p3, T t)
 {
     const auto a = 1 - t;
     const auto b = a * a * a;
@@ -382,7 +396,8 @@ inline pointf bezier(const pointf& p0, const pointf& p1, const pointf& p2, const
     return b * p0 + 3 * t * a * a * p1 + 3 * t * t * a * p2 + c * p3;
 }
 
-inline pointf bezier_dt(const pointf& p0, const pointf& p1, const pointf& p2, const pointf& p3, float t)
+template <typename P, typename T>
+inline P bezier_dt(const P& p0, const P& p1, const P& p2, const P& p3, T t)
 {
     const auto a = 1 - t;
     const auto b = a * a;
@@ -400,7 +415,7 @@ struct bezier_project_result
     float distance;
 };
 
-static bezier_project_result bezier_project_point(const pointf& f, const pointf& p0, const pointf& p1, const pointf& p2, const pointf& p3, const int subdivisions = 100)
+inline bezier_project_result bezier_project_point(const pointf& f, const pointf& p0, const pointf& p1, const pointf& p2, const pointf& p3, const int subdivisions = 100)
 {
     // http://pomax.github.io/bezierinfo/#projections
 
@@ -447,6 +462,163 @@ static bezier_project_result bezier_project_point(const pointf& f, const pointf&
     }
 
     return bezier_project_result{ position, sqrtf(distance) };
+}
+
+inline int bezier_line_intersect(const pointf& p0, const pointf& p1, const pointf& p2, const pointf& p3, const pointf& a0, const pointf& a1, pointf results[3])
+{
+    auto cubic_roots = [](float a, float b, float c, float d, float* roots) -> int
+    {
+        int count = 0;
+
+        auto sign = [](float x) -> float { return x < 0 ? -1.0f : 1.0f; };
+
+        auto A = b / a;
+        auto B = c / a;
+        auto C = d / a;
+
+        auto Q = (3 * B - powf(A, 2)) / 9;
+        auto R = (9 * A * B - 27 * C - 2 * powf(A, 3)) / 54;
+        auto D = powf(Q, 3) + powf(R, 2);               // polynomial discriminant
+
+        if (D >= 0) // complex or duplicate roots
+        {
+            auto S = sign(R + sqrtf(D)) * powf(fabsf(R + sqrtf(D)), (1.0f / 3.0f));
+            auto T = sign(R - sqrtf(D)) * powf(fabsf(R - sqrtf(D)), (1.0f / 3.0f));
+
+            roots[0] = -A / 3 + (S + T);                // real root
+            roots[1] = -A / 3 - (S + T) / 2;            // real part of complex root
+            roots[2] = -A / 3 - (S + T) / 2;            // real part of complex root
+            auto Im = fabsf(sqrtf(3) * (S - T) / 2);    // complex part of root pair
+
+                                                        // discard complex roots
+            if (Im != 0)
+                count = 1;
+            else
+                count = 3;
+        }
+        else                                            // distinct real roots
+        {
+            auto th = acosf(R / sqrtf(-powf(Q, 3)));
+
+            roots[0] = 2 * sqrtf(-Q) * cosf(th / 3) - A / 3;
+            roots[1] = 2 * sqrtf(-Q) * cosf((th + 2 * AX_PI) / 3) - A / 3;
+            roots[2] = 2 * sqrtf(-Q) * cosf((th + 4 * AX_PI) / 3) - A / 3;
+
+            count = 3;
+        }
+
+        return count;
+    };
+
+    // https://github.com/kaishiqi/Geometric-Bezier/blob/master/GeometricBezier/src/kaishiqi/geometric/intersection/Intersection.as
+    //
+    // Start with Bezier using Bernstein polynomials for weighting functions:
+    //     (1-t^3)P0 + 3t(1-t)^2P1 + 3t^2(1-t)P2 + t^3P3
+    //
+    // Expand and collect terms to form linear combinations of original Bezier
+    // controls.  This ends up with a vector cubic in t:
+    //     (-P0+3P1-3P2+P3)t^3 + (3P0-6P1+3P2)t^2 + (-3P0+3P1)t + P0
+    //             /\                  /\                /\       /\
+    //             ||                  ||                ||       ||
+    //             c3                  c2                c1       c0
+
+    // Calculate the coefficients
+    auto c3 =     -p0 + 3 * p1 - 3 * p2 + p3;
+    auto c2 =  3 * p0 - 6 * p1 + 3 * p2;
+    auto c1 = -3 * p0 + 3 * p1;
+    auto c0 =      p0;
+
+    // Convert line to normal form: ax + by + c = 0
+    auto a = a1.y - a0.y;
+    auto b = a0.x - a1.x;
+    auto c = a0.x * (a0.y - a1.y) + a0.y * (a1.x - a0.x);
+
+    // Rotate each cubic coefficient using line for new coordinate system?
+    // Find roots of rotated cubic
+    float roots[3];
+    auto rootCount = cubic_roots(
+        a * c3.x + b * c3.y,
+        a * c2.x + b * c2.y,
+        a * c1.x + b * c1.y,
+        a * c0.x + b * c0.y + c,
+        roots);
+
+    // Any roots in closed interval [0,1] are intersections on Bezier, but
+    // might not be on the line segment.
+    // Find intersections and calculate point coordinates
+
+    auto min = a0.cwise_min(a1);
+    auto max = a0.cwise_max(a1);
+
+    auto result = results;
+    for (int i = 0; i < rootCount; ++i)
+    {
+        auto root = roots[i];
+
+        if (0 <= root && root <= 1)
+        {
+            // We're within the Bezier curve
+            // Find point on Bezier
+            auto p = bezier(p0, p1, p2, p3, root);
+
+            // See if point is on line segment
+            // Had to make special cases for vertical and horizontal lines due
+            // to slight errors in calculation of p00
+            if (a0.x == a1.x)
+            {
+                if (min.y <= p.y && p.y <= max.y)
+                    *result++ = p;
+            }
+            else if (a0.y == a1.y)
+            {
+                if (min.x <= p.x && p.x <= max.x)
+                    *result++ = p;
+            }
+            else if (p.x >= min.x && p.y >= min.y && p.x <= max.x && p.y <= max.y)
+            {
+                *result++ = p;
+            }
+        }
+    }
+
+    return result - results;
+}
+
+inline rectf bezier_bounding_rect(const pointf& p0, const pointf& p1, const pointf& p2, const pointf& p3)
+{
+    auto a = 3 * p3 - 9 * p2 + 9 * p1 - 3 * p0;
+    auto b = 6 * p0 - 12 * p1 + 6 * p2;
+    auto c = 3 * p1 - 3 * p0;
+    auto delta_squared = b.cwise_product(b) - 4 * a.cwise_product(c);
+
+    auto tl = p0.cwise_min(p3);
+    auto rb = p0.cwise_max(p3);
+
+    for (int i = 0; i < 2; ++i)
+    {
+        if (delta_squared[i] >= 0)
+        {
+            auto delta = sqrtf(delta_squared[i]);
+
+            auto t0 = (-b[i] + delta) / (2 * a[i]);
+            if (t0 > 0 && t0 < 1)
+            {
+                auto p = bezier(p0[i], p1[i], p2[i], p3[i], t0);
+                tl[i] = std::min(tl[i], p);
+                rb[i] = std::max(rb[i], p);
+            }
+
+            auto t1 = (-b[i] - delta) / (2 * a[i]);
+            if (t1 > 0 && t1 < 1)
+            {
+                auto p = bezier(p0[i], p1[i], p2[i], p3[i], t1);
+                tl[i] = std::min(tl[i], p);
+                rb[i] = std::max(rb[i], p);
+            }
+        }
+    }
+
+    return rectf(tl, rb);
 }
 
 

@@ -267,24 +267,58 @@ ax::rectf ax::Drawing::GetLinkBounds(const ImVec2& a, const ImVec2& b, float str
 {
     using namespace ImGuiInterop;
 
+    strength = std::min(strength, fabsf(a.x - b.x) * 0.5f);
+
+    ImVec2 cp0 = ImVec2(a.x + strength, a.y);
+    ImVec2 cp1 = ImVec2(b.x - strength, b.y);
+
+    return bezier_bounding_rect(to_pointf(a), to_pointf(cp0), to_pointf(cp1), to_pointf(b));
+
     // Build bounding rectangle of link.
-    auto topLeft     = to_pointf(a);
-    auto bottomRight = to_pointf(b);
+    //auto topLeft     = to_pointf(a);
+    //auto bottomRight = to_pointf(b);
 
-    // Links are drawn as Bezier quadratic curves with
-    // start point tangent always pointing to right, end tangent
-    // pointing to left. If curve is drawn from right to left
-    // there is small overshot outside of bounding box based on
-    // tangent strength.
-    if (topLeft.x > bottomRight.x)
-    {
-        std::swap(topLeft.x, bottomRight.x);
-        topLeft.x     = topLeft.x - strength * 0.25f;
-        bottomRight.x = bottomRight.x + strength * 0.25f;
-    }
+    //// Links are drawn as Bezier quadratic curves with
+    //// start point tangent always pointing to right, end tangent
+    //// pointing to left. If curve is drawn from right to left
+    //// there is small overshot outside of bounding box based on
+    //// tangent strength.
+    //if (topLeft.x > bottomRight.x)
+    //{
+    //    std::swap(topLeft.x, bottomRight.x);
+    //    topLeft.x     = topLeft.x - strength * 0.25f;
+    //    bottomRight.x = bottomRight.x + strength * 0.25f;
+    //}
 
-    if (topLeft.y > bottomRight.y)
-        std::swap(topLeft.y, bottomRight.y);
+    //if (topLeft.y > bottomRight.y)
+    //    std::swap(topLeft.y, bottomRight.y);
 
-    return rectf(topLeft, bottomRight);
+    //return rectf(topLeft, bottomRight);
+}
+
+bool ax::Drawing::CollideLinkWithRect(const ax::rect& r, const ImVec2& a, const ImVec2& b, float strength/* = 1.0f*/)
+{
+    using namespace ImGuiInterop;
+
+    strength = std::min(strength, fabsf(a.x - b.x) * 0.5f);
+
+    ImVec2 cp0 = ImVec2(a.x + strength, a.y);
+    ImVec2 cp1 = ImVec2(b.x - strength, b.y);
+
+    auto p0 = r.top_left();
+    auto p1 = r.top_right();
+    auto p2 = r.bottom_right();
+    auto p3 = r.bottom_left();
+
+    pointf points[3];
+    if (bezier_line_intersect(to_pointf(a), to_pointf(cp0), to_pointf(cp1), to_pointf(b), to_pointf(p0), to_pointf(p1), points) > 0)
+        return true;
+    if (bezier_line_intersect(to_pointf(a), to_pointf(cp0), to_pointf(cp1), to_pointf(b), to_pointf(p1), to_pointf(p2), points) > 0)
+        return true;
+    if (bezier_line_intersect(to_pointf(a), to_pointf(cp0), to_pointf(cp1), to_pointf(b), to_pointf(p2), to_pointf(p3), points) > 0)
+        return true;
+    if (bezier_line_intersect(to_pointf(a), to_pointf(cp0), to_pointf(cp1), to_pointf(b), to_pointf(p3), to_pointf(p0), points) > 0)
+        return true;
+
+    return false;
 }

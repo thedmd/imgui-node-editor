@@ -230,6 +230,27 @@ void ed::Context::End()
     auto  control  = ComputeControl();
     auto  drawList = ImGui::GetWindowDrawList();
 
+    // Draw links
+    drawList->ChannelsSetCurrent(c_LinkStartChannel + 1);
+    for (auto link : Links)
+    {
+        if (!link->IsLive)
+            continue;
+
+        const auto startPoint = to_imvec(link->StartPin->DragPoint);
+        const auto endPoint = to_imvec(link->EndPin->DragPoint);
+
+        const auto bounds = ax::Drawing::GetLinkBounds(startPoint, endPoint, c_LinkStrength);
+
+        if (ImGui::IsRectVisible(to_imvec(bounds.top_left()), to_imvec(bounds.bottom_right())))
+        {
+            float extraThickness = !IsSelected(link) && (control.HotLink == link || control.ActiveLink == link) ? 2.0f : 0.0f;
+
+            ax::Drawing::DrawLink(drawList, startPoint, endPoint,
+                link->Color, link->Thickness + extraThickness, c_LinkStrength);
+        }
+    }
+
     // Highlight hovered node
     {
         auto selectedObjects = &SelectedObjects;
@@ -295,38 +316,17 @@ void ed::Context::End()
             drawList->AddRectFilled(rectMin, rectMax,
                 ImColor(60, 180, 255, 100), 4.0f);
         }
-    }
 
-    // Draw links
-    drawList->ChannelsSetCurrent(c_LinkStartChannel + 1);
-    for (auto link : Links)
-    {
-        if (!link->IsLive)
-            continue;
-
-        const auto startPoint = to_imvec(link->StartPin->DragPoint);
-        const auto endPoint   = to_imvec(link->EndPin->DragPoint);
-
-        const auto bounds     = ax::Drawing::GetLinkBounds(startPoint, endPoint, c_LinkStrength);
-
-        if (ImGui::IsRectVisible(to_imvec(bounds.top_left()), to_imvec(bounds.bottom_right())))
+        // Highlight hovered link
+        if (control.HotLink && !IsSelected(control.HotLink))
         {
-            float extraThickness = !IsSelected(link) && (control.HotLink == link || control.ActiveLink == link) ? 2.0f : 0.0f;
+            drawList->ChannelsSetCurrent(c_LinkStartChannel + 0);
 
-            ax::Drawing::DrawLink(drawList, startPoint, endPoint,
-                link->Color, link->Thickness + extraThickness, c_LinkStrength);
+            ax::Drawing::DrawLink(drawList,
+                to_imvec(control.HotLink->StartPin->DragPoint),
+                to_imvec(control.HotLink->EndPin->DragPoint),
+                ImColor(50, 176, 255, 255), control.HotLink->Thickness + 4.5f, c_LinkStrength);
         }
-    }
-
-    // Highlight hovered link
-    if (control.HotLink && !IsSelected(control.HotLink))
-    {
-        drawList->ChannelsSetCurrent(c_LinkStartChannel + 0);
-
-        ax::Drawing::DrawLink(drawList,
-            to_imvec(control.HotLink->StartPin->DragPoint),
-            to_imvec(control.HotLink->EndPin->DragPoint),
-            ImColor(50, 176, 255, 255), control.HotLink->Thickness + 4.5f, c_LinkStrength);
     }
 
     if (CurrentAction && !CurrentAction->Process(control))
@@ -616,6 +616,7 @@ int ed::Context::GetDestroyedLinkId()
     DeletedLinks.pop_back();
 
     DeselectObject(link);
+
     if (link == LastActiveLink)
         LastActiveLink = nullptr;
 
@@ -713,6 +714,43 @@ void ed::Context::FindNodesInRect(ax::rect r, vector<Node*>& result)
 
         if (!node->Bounds.is_empty() && r.intersects(node->Bounds))
             result.push_back(node);
+    }
+}
+
+void ed::Context::FindLinksInRect(ax::rect r, vector<Link*>& result)
+{
+    using namespace ImGuiInterop;
+
+    result.clear();
+
+    if (r.is_empty())
+        return;
+
+    r.location += to_point(ToScreen(ImVec2(0, 0)));
+
+    for (auto link : Links)
+    {
+        if (!link->IsLive)
+            continue;
+
+        auto a      = link->StartPin->DragPoint;
+        auto b      = link->EndPin->DragPoint;
+        auto bounds = Drawing::GetLinkBounds(to_imvec(a), to_imvec(b), c_LinkStrength);
+
+//         auto drawList = ImGui::GetWindowDrawList();
+//         drawList->AddRectFilled(
+//             to_imvec(bounds.top_left()),
+//             to_imvec(bounds.bottom_right()),
+//             IM_COL32(255, 0, 0, 64));
+
+        if (r.contains(bounds))
+        {
+            result.push_back(link);
+        }
+        else if (r.intersects(bounds) && Drawing::CollideLinkWithRect(r, to_imvec(a), to_imvec(b), c_LinkStrength))
+        {
+            result.push_back(link);
+        }
     }
 }
 
@@ -1152,13 +1190,14 @@ ed::Control ed::Context::ComputeControl()
     auto backgroundClicked  = emitInteractiveArea(0, editorRect, false);
     auto isBackgroundActive = ImGui::IsItemActive();
     auto isBackgroundHot    = !hotObject && ImGui::IsItemHoveredRect();
+    auto isDragging         = ImGui::IsMouseDragging(0, 1) || ImGui::IsMouseDragging(1, 1) || ImGui::IsMouseDragging(2, 1);
 
     // Process link input using background interactions.
     auto hotLink = hotObject ? hotObject->AsLink() : nullptr;
 
     // ImGui take care of tracking active items. With link
     // we must do this ourself.
-    if (isBackgroundActive && hotLink && !LastActiveLink)
+    if (!isDragging && isBackgroundActive && hotLink && !LastActiveLink)
         LastActiveLink = hotLink;
     if (isBackgroundActive && LastActiveLink)
     {
@@ -1169,7 +1208,7 @@ ed::Control ed::Context::ComputeControl()
         LastActiveLink = nullptr;
 
     // Steal click from backgrounds if link is hovered.
-    if (backgroundClicked && hotLink)
+    if (!isDragging && backgroundClicked && hotLink)
     {
         clickedObject     = hotLink;
         backgroundClicked = false;
@@ -1361,6 +1400,7 @@ void ed::DragAction::ShowMetrics()
 ed::SelectAction::SelectAction(Context* editor):
     EditorAction(editor),
     IsActive(false),
+    SelectLinkMode(false),
     StartPoint()
 {
 }
@@ -1373,6 +1413,9 @@ bool ed::SelectAction::Accept(const Control& control)
         return false;
 
     auto& io = ImGui::GetIO();
+    SelectLinkMode = io.KeyAlt;
+
+    SelectedObjectsAtStart.clear();
 
     if (control.BackgroundActive && ImGui::IsMouseDragging(0, 0))
     {
@@ -1380,10 +1423,15 @@ bool ed::SelectAction::Accept(const Control& control)
         StartPoint = ImGui::GetMousePos();
         EndPoint   = StartPoint;
 
+        // Links and nodes cannot be selected together
+        if ((SelectLinkMode && Editor->IsAnyNodeSelected()) ||
+           (!SelectLinkMode && Editor->IsAnyLinkSelected()))
+        {
+            Editor->ClearSelection();
+        }
+
         if (io.KeyCtrl)
             SelectedObjectsAtStart = Editor->GetSelectedObjects();
-        else
-            SelectedObjectsAtStart.clear();
     }
     else if (control.BackgroundClicked)
     {
@@ -1428,9 +1476,19 @@ bool ed::SelectAction::Process(const Control& control)
         auto rect        = ax::rect(to_point(topLeft), to_point(bottomRight));
 
         vector<Node*> nodes;
-        Editor->FindNodesInRect(rect, nodes);
+        vector<Link*> links;
 
-        CandidateObjects.assign(nodes.begin(), nodes.end());
+        if (SelectLinkMode)
+        {
+            Editor->FindLinksInRect(rect, links);
+            CandidateObjects.assign(links.begin(), links.end());
+        }
+        else
+        {
+            Editor->FindNodesInRect(rect, nodes);
+            CandidateObjects.assign(nodes.begin(), nodes.end());
+        }
+
         CandidateObjects.insert(CandidateObjects.end(), SelectedObjectsAtStart.begin(), SelectedObjectsAtStart.end());
         std::sort(CandidateObjects.begin(), CandidateObjects.end());
         CandidateObjects.erase(std::unique(CandidateObjects.begin(), CandidateObjects.end()), CandidateObjects.end());

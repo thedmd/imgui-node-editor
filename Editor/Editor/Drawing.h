@@ -16,6 +16,7 @@ void DrawLink(ImDrawList* drawList, const ImVec2& a, const ImVec2& b, ImU32 colo
 // returns distance to link compatible
 float LinkDistance(const ImVec2& p, const ImVec2& a, const ImVec2& b, float strength = 1.0f);
 ax::rectf GetLinkBounds(const ImVec2& a, const ImVec2& b, float strength = 1.0f);
+bool CollideLinkWithRect(const ax::rect& r, const ImVec2& a, const ImVec2& b, float strength = 1.0f);
 
 } // namespace Drawing
 } // namespace ax

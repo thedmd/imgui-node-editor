@@ -252,6 +252,7 @@ struct SelectAction final: EditorAction
 {
     bool            IsActive;
 
+    bool            SelectLinkMode;
     ImVec2          StartPoint;
     ImVec2          EndPoint;
     vector<Object*> CandidateObjects;
@@ -388,6 +389,7 @@ struct Context
     bool IsAnyLinkSelected();
 
     void FindNodesInRect(ax::rect r, vector<Node*>& result);
+    void FindLinksInRect(ax::rect r, vector<Link*>& result);
 
     ImVec2 ToClient(ImVec2 point);
     ImVec2 ToScreen(ImVec2 point);
