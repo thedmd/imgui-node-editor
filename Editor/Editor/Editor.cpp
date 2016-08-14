@@ -11,7 +11,7 @@ namespace ed = ax::Editor::Detail;
 
 
 //------------------------------------------------------------------------------
-static const int c_BackgroundChannelCount = 1;
+static const int c_BackgroundChannelCount = 2;
 static const int c_LinkChannelCount       = 3;
 static const int c_UserLayersCount        = 1;
 
@@ -165,10 +165,12 @@ ed::Context::Context():
     CurrentNode(nullptr),
     DragOffset(),
     DraggedNode(nullptr),
-    DraggedPin(nullptr),
     Offset(0, 0),
     Scrolling(0, 0),
     NodeBuildStage(NodeStage::Invalid),
+    CurrentAction(nullptr),
+    SelectionBuilder(this),
+    ItemCreator(this),
     IsInitialized(false),
     HeaderTextureID(nullptr),
     Settings()
@@ -240,9 +242,9 @@ void ed::Context::End()
         if (io.KeyCtrl)
         {
             if (IsSelected(control.ClickedNode))
-                RemoveSelectedObject(control.ClickedNode);
+                DeselectObject(control.ClickedNode);
             else
-                AddSelectedObject(control.ClickedNode);
+                SelectObject(control.ClickedNode);
         }
         else
             SetSelectedObject(control.ClickedNode);
@@ -255,9 +257,9 @@ void ed::Context::End()
         if (io.KeyCtrl)
         {
             if (IsSelected(control.ClickedLink))
-                RemoveSelectedObject(control.ClickedLink);
+                DeselectObject(control.ClickedLink);
             else
-                AddSelectedObject(control.ClickedLink);
+                SelectObject(control.ClickedLink);
         }
         else
             SetSelectedObject(control.ClickedLink);
@@ -297,7 +299,7 @@ void ed::Context::End()
     }
 
     // Highlight selected node
-    auto hotNode = control.HotNode;
+    auto hotNode = DraggedNode ? DraggedNode : control.HotNode;
     if (hotNode && !IsSelected(hotNode))
     {
         const auto rectMin = to_imvec(hotNode->Bounds.top_left()) + Offset;
@@ -387,83 +389,90 @@ void ed::Context::End()
         DraggedNode = nullptr;
     }
 
+    if (CurrentAction && !CurrentAction->Process(control))
+        CurrentAction = nullptr;
+
+
+    if (nullptr == CurrentAction)
+    {
+        if (SelectionBuilder.Accept(control))
+            CurrentAction = &SelectionBuilder;
+        else if (ItemCreator.Accept(control))
+            CurrentAction = &ItemCreator;
+    }
+
+
+    if (SelectionBuilder.IsActive)
+    {
+        drawList->ChannelsSetCurrent(c_BackgroundChannelStart + 1);
+
+        auto from = SelectionBuilder.StartPoint;
+        auto to   = ImGui::GetMousePos();
+
+        auto min  = ImVec2(std::min(from.x, to.x), std::min(from.y, to.y));
+        auto max  = ImVec2(std::max(from.x, to.x), std::max(from.y, to.y));
+
+        drawList->AddRectFilled(min, max,
+            ImColor(5, 130, 255, 64));
+
+        drawList->AddRect(min, max,
+            ImColor(5, 130, 255, 128));
+    }
 
     // Item creation
-    if (!DraggedPin && control.ActivePin && ImGui::IsMouseDragging(0))
-    {
-        DraggedPin = control.ActivePin;
+    //if (!DraggedPin && control.ActivePin && ImGui::IsMouseDragging(0))
+    //{
+    //    DraggedPin = control.ActivePin;
 
-        ItemBuilder.DragStart(DraggedPin);
+    //    ItemBuilder.DragStart(DraggedPin);
 
-        ClearSelection();
-    }
+    //    ClearSelection();
+    //}
 
-    if (DraggedPin && control.ActivePin == DraggedPin && (ItemBuilder.CurrentStage == ItemBuilder::Possible))
-    {
-        ImVec2 startPoint = to_imvec(DraggedPin->DragPoint);
-        ImVec2 endPoint   = ImGui::GetMousePos();
+    //if (DraggedPin && control.ActivePin == DraggedPin && (ItemBuilder.CurrentStage == ItemBuilder::Possible))
+    //{
+    //    ImVec2 startPoint = to_imvec(DraggedPin->DragPoint);
+    //    ImVec2 endPoint   = ImGui::GetMousePos();
 
-        if (control.HotPin)
-        {
-            ItemBuilder.DropPin(control.HotPin);
+    //    if (control.HotPin)
+    //    {
+    //        ItemBuilder.DropPin(control.HotPin);
 
-            if (ItemBuilder.UserAction == ItemBuilder::Accept)
-                endPoint = to_imvec(control.HotPin->DragPoint);
-        }
-        else if (control.BackgroundHot)
-            ItemBuilder.DropNode();
-        else
-            ItemBuilder.DropNothing();
+    //        if (ItemBuilder.UserAction == ItemBuilder::UserAccept)
+    //            endPoint = to_imvec(control.HotPin->DragPoint);
+    //    }
+    //    else if (control.BackgroundHot)
+    //        ItemBuilder.DropNode();
+    //    else
+    //        ItemBuilder.DropNothing();
 
-        if (DraggedPin->Type == PinType::Input)
-            std::swap(startPoint, endPoint);
+    //    if (DraggedPin->Type == PinType::Input)
+    //        std::swap(startPoint, endPoint);
 
-        drawList->ChannelsSetCurrent(c_LinkStartChannel + 2);
+    //    drawList->ChannelsSetCurrent(c_LinkStartChannel + 2);
 
-        ax::Drawing::DrawLink(drawList, startPoint, endPoint, ItemBuilder.LinkColor, ItemBuilder.LinkThickness, c_LinkStrength);
-    }
-    else if (DraggedPin && !control.ActivePin)
-    {
-        DraggedPin = nullptr;
-        ItemBuilder.DragEnd();
-    }
+    //    ax::Drawing::DrawLink(drawList, startPoint, endPoint, ItemBuilder.LinkColor, ItemBuilder.LinkThickness, c_LinkStrength);
+    //}
+    //else if (DraggedPin && !control.ActivePin)
+    //{
+    //    DraggedPin = nullptr;
+    //    ItemBuilder.DragEnd();
+    //}
 
-    if (nullptr == ItemBuilder.LinkStart)
-    {
-        if (ItemBuilder.CurrentStage == ItemBuilder::Possible && nullptr == ItemBuilder.LinkStart)
-        {
-            ItemBuilder.DragEnd();
-        }
+    //if (nullptr == ItemBuilder.LinkStart)
+    //{
+    //    if (ItemBuilder.CurrentStage == ItemBuilder::Possible && nullptr == ItemBuilder.LinkStart)
+    //    {
+    //        ItemBuilder.DragEnd();
+    //    }
 
-        if (control.BackgroundHot && ImGui::IsMouseClicked(1))
-        {
-            ItemBuilder.DragStart(nullptr);
-            ClearSelection();
-            ItemBuilder.DropNode();
-            //ItemBuilder.DragEnd();
-        }
-    }
-
-
-//     if ((ItemBuilder.CurrentStage == ItemBuilder::Possible) && ItemBuilder.LinkStart == nullptr)
-//     {
-//         ItemBuilder.DropNode();
-//         else
-//             ItemBuilder.DropNothing();
-// 
-//         if (DraggedPin->Type == PinType::Input)
-//             std::swap(startPoint, endPoint);
-// 
-//         drawList->ChannelsSetCurrent(c_LinkStartChannel + 2);
-// 
-//         ax::Drawing::DrawLink(drawList, startPoint, endPoint, ItemBuilder.LinkColor, ItemBuilder.LinkThickness, c_LinkStrength);
-//     }
-//     else if (DraggedPin && !control.ActivePin)
-//     {
-//         DraggedPin = nullptr;
-//         ItemBuilder.DragEnd();
-//     }
-
+    //    if (control.BackgroundHot && ImGui::IsMouseClicked(1))
+    //    {
+    //        ItemBuilder.DragStart(nullptr);
+    //        ClearSelection();
+    //        ItemBuilder.DropNode();
+    //    }
+    //}
 
     // Link deletion
     const bool isDeletePressed = ImGui::IsKeyPressed(ImGui::GetKeyIndex(ImGuiKey_Delete));
@@ -721,7 +730,7 @@ int ed::Context::GetDestroyedLinkId()
     auto link = DeletedLinks.back();
     DeletedLinks.pop_back();
 
-    RemoveSelectedObject(link);
+    DeselectObject(link);
     if (link == LastActiveLink)
         LastActiveLink = nullptr;
 
@@ -738,6 +747,58 @@ void ed::Context::SetNodePosition(int nodeId, const ImVec2& position)
     }
 
     node->Bounds.location = to_point(position - Offset);
+}
+
+void ed::Context::ClearSelection()
+{
+    SelectedObjects.clear();
+    SelectedObject = nullptr;
+}
+
+void ed::Context::SelectObject(Object* object)
+{
+    SelectedObjects.push_back(object);
+    SelectedObject = SelectedObjects.front();
+}
+
+void ed::Context::DeselectObject(Object* object)
+{
+    auto objectIt = std::find(SelectedObjects.begin(), SelectedObjects.end(), object);
+    if (objectIt != SelectedObjects.end())
+    {
+        SelectedObjects.erase(objectIt);
+        if (!SelectedObjects.empty())
+            SelectedObject = SelectedObjects.front();
+    }
+}
+
+void ed::Context::SetSelectedObject(Object* object)
+{
+    ClearSelection();
+    SelectObject(object);
+}
+
+bool ed::Context::IsSelected(Object* object)
+{
+    return std::find(SelectedObjects.begin(), SelectedObjects.end(), object) != SelectedObjects.end();
+}
+
+bool ed::Context::IsAnyNodeSelected()
+{
+    for (auto object : SelectedObjects)
+        if (object->AsNode())
+            return true;
+
+    return false;
+}
+
+bool ed::Context::IsAnyLinkSelected()
+{
+    for (auto object : SelectedObjects)
+        if (object->AsLink())
+            return true;
+
+    return false;
 }
 
 ed::Pin* ed::Context::CreatePin(int id, PinType type)
@@ -813,58 +874,6 @@ ed::Pin* ed::Context::FindPin(int id)
 ed::Link* ed::Context::FindLink(int id)
 {
     return FindItemIn(Links, id);
-}
-
-void ed::Context::ClearSelection()
-{
-    SelectedObjects.clear();
-    SelectedObject = nullptr;
-}
-
-void ed::Context::AddSelectedObject(Object* object)
-{
-    SelectedObjects.push_back(object);
-    SelectedObject = SelectedObjects.front();
-}
-
-void ed::Context::RemoveSelectedObject(Object* object)
-{
-    auto objectIt = std::find(SelectedObjects.begin(), SelectedObjects.end(), object);
-    if (objectIt != SelectedObjects.end())
-    {
-        SelectedObjects.erase(objectIt);
-        if (!SelectedObjects.empty())
-            SelectedObject = SelectedObjects.front();
-    }
-}
-
-void ed::Context::SetSelectedObject(Object* object)
-{
-    ClearSelection();
-    AddSelectedObject(object);
-}
-
-bool ed::Context::IsSelected(Object* object)
-{
-    return std::find(SelectedObjects.begin(), SelectedObjects.end(), object) != SelectedObjects.end();
-}
-
-bool ed::Context::IsAnyNodeSelected()
-{
-    for (auto object : SelectedObjects)
-        if (object->AsNode())
-            return true;
-
-    return false;
-}
-
-bool ed::Context::IsAnyLinkSelected()
-{
-    for (auto object : SelectedObjects)
-        if (object->AsLink())
-            return true;
-
-    return false;
 }
 
 void ed::Context::SetCurrentNode(Node* node)
@@ -1257,50 +1266,15 @@ void ed::Context::ShowMetrics(const Control& control)
         else return "";
     };
 
-    auto getItemBuilderStageName = [](ItemBuilder::Stage stage)
-    {
-        switch (stage)
-        {
-            case ItemBuilder::None:     return "None";
-            case ItemBuilder::Possible: return "Possible";
-            case ItemBuilder::Create:   return "Create";
-            default:                        return "<unknown>";
-        }
-    };
-
-    auto getItemBuilderActionName = [](ItemBuilder::Action action)
-    {
-        switch (action)
-        {
-            default:
-            case ItemBuilder::Unknown: return "Unknown";
-            case ItemBuilder::Reject:  return "Reject";
-            case ItemBuilder::Accept:  return "Accept";
-        }
-    };
-
-    auto getItemBuilderItemName = [](ItemBuilder::Type item)
-    {
-        switch (item)
-        {
-            default:
-            case ItemBuilder::NoItem: return "NoItem";
-            case ItemBuilder::Node:   return "Node";
-            case ItemBuilder::Link:   return "Link";
-        }
-    };
-
     ImGui::SetCursorPos(ImVec2(10, 10));
     ImGui::BeginGroup();
     ImGui::Text("Is Editor Active: %s", ImGui::IsWindowHovered() ? "true" : "false");
     ImGui::Text("Hot Object: %s (%d)", getObjectName(control.HotObject), control.HotObject ? control.HotObject->ID : 0);
     ImGui::Text("Active Object: %s (%d)", getObjectName(control.ActiveObject), control.ActiveObject ? control.ActiveObject->ID : 0);
+    ImGui::Text("Action: %s", CurrentAction ? CurrentAction->GetName() : "<none>");
     //ImGui::Text("Clicked Object: %s (%d)", getObjectName(control.ClickedObject), control.ClickedObject ? control.ClickedObject->ID : 0);
-    ImGui::TextUnformatted("Item Builder:");
-    ImGui::Text("    Stage: %s", getItemBuilderStageName(ItemBuilder.CurrentStage));
-    ImGui::Text("    Next Stage: %s", getItemBuilderStageName(ItemBuilder.NextStage));
-    ImGui::Text("    User Action: %s", getItemBuilderActionName(ItemBuilder.UserAction));
-    ImGui::Text("    Item Type: %s", getItemBuilderItemName(ItemBuilder.ItemType));
+    SelectionBuilder.ShowMetrics();
+    ItemCreator.ShowMetrics();
     ImGui::EndGroup();
 }
 
@@ -1308,10 +1282,57 @@ void ed::Context::ShowMetrics(const Control& control)
 
 //------------------------------------------------------------------------------
 //
-// Creation Context
+// Selection Builder
 //
 //------------------------------------------------------------------------------
-ed::ItemBuilder::ItemBuilder():
+ed::SelectAction::SelectAction(Context* editor):
+    EditorAction(editor),
+    IsActive(false),
+    StartPoint()
+{
+}
+
+bool ed::SelectAction::Accept(const Control& control)
+{
+    if (IsActive || !control.BackgroundActive)
+        return false;
+
+    IsActive = true;
+    StartPoint = ImGui::GetMousePos();
+
+    return true;
+}
+
+bool ed::SelectAction::Process(const Control& control)
+{
+    assert(IsActive);
+
+    if (!ImGui::IsMouseDown(0))
+    {
+        IsActive = false;
+    }
+
+    return IsActive;
+}
+
+void ed::SelectAction::ShowMetrics()
+{
+    EditorAction::ShowMetrics();
+
+    ImGui::Text("%s:", GetName());
+    ImGui::Text("    Active: %s", IsActive ? "yes" : "no");
+}
+
+
+
+
+//------------------------------------------------------------------------------
+//
+// Item Builder
+//
+//------------------------------------------------------------------------------
+ed::CreateItemAction::CreateItemAction(Context* editor):
+    EditorAction(editor),
     InActive(false),
     NextStage(None),
     CurrentStage(None),
@@ -1320,17 +1341,145 @@ ed::ItemBuilder::ItemBuilder():
     LinkColor(IM_COL32_WHITE),
     LinkThickness(1.0f),
     LinkStart(nullptr),
-    LinkEnd(nullptr)
+    LinkEnd(nullptr),
+
+    IsActive(false),
+    DraggedPin(nullptr)
 {
 }
 
-void ed::ItemBuilder::SetStyle(ImU32 color, float thickness)
+bool ed::CreateItemAction::Accept(const Control& control)
+{
+    assert(!IsActive);
+
+    if (IsActive)
+        return false;
+
+    if (control.ActivePin && ImGui::IsMouseDragging(0))
+    {
+        DraggedPin = control.ActivePin;
+        DragStart(DraggedPin);
+    }
+    else if (control.BackgroundHot && ImGui::IsMouseClicked(1))
+    {
+        DragStart(nullptr);
+        DropNode();
+    }
+    else
+        return false;
+
+    Editor->ClearSelection();
+
+    IsActive = true;
+
+    return true;
+}
+
+bool ed::CreateItemAction::Process(const Control& control)
+{
+    assert(IsActive);
+
+    if (!IsActive)
+        return false;
+
+    if (DraggedPin)
+    {
+        if (control.ActivePin == DraggedPin && (CurrentStage == Possible))
+        {
+            ImVec2 startPoint = to_imvec(DraggedPin->DragPoint);
+            ImVec2 endPoint = ImGui::GetMousePos();
+
+            if (control.HotPin)
+            {
+                DropPin(control.HotPin);
+
+                if (UserAction == UserAccept)
+                    endPoint = to_imvec(control.HotPin->DragPoint);
+            }
+            else if (control.BackgroundHot)
+                DropNode();
+            else
+                DropNothing();
+
+            auto  drawList = ImGui::GetWindowDrawList();
+
+            if (DraggedPin->Type == PinType::Input)
+                std::swap(startPoint, endPoint);
+
+            drawList->ChannelsSetCurrent(c_LinkStartChannel + 2);
+
+            ax::Drawing::DrawLink(drawList, startPoint, endPoint, LinkColor, LinkThickness, c_LinkStrength);
+        }
+        else if (!control.ActivePin)
+        {
+            DraggedPin = nullptr;
+            DragEnd();
+            IsActive = false;
+        }
+    }
+    else
+    {
+        if (CurrentStage == Possible)
+        {
+            DragEnd();
+            IsActive = false;
+        }
+    }
+
+    return IsActive;
+}
+
+void ed::CreateItemAction::ShowMetrics()
+{
+    EditorAction::ShowMetrics();
+
+    auto getStageName = [](Stage stage)
+    {
+        switch (stage)
+        {
+            case None:     return "None";
+            case Possible: return "Possible";
+            case Create:   return "Create";
+            default:                        return "<unknown>";
+        }
+    };
+
+    auto getActionName = [](Action action)
+    {
+        switch (action)
+        {
+            default:
+            case Unknown:     return "Unknown";
+            case UserReject:  return "Reject";
+            case UserAccept:  return "Accept";
+        }
+    };
+
+    auto getItemName = [](Type item)
+    {
+        switch (item)
+        {
+            default:
+            case NoItem: return "NoItem";
+            case Node:   return "Node";
+            case Link:   return "Link";
+        }
+    };
+
+    ImGui::Text("%s:", GetName());
+    ImGui::Text("    Stage: %s", getStageName(CurrentStage));
+    ImGui::Text("    Next Stage: %s", getStageName(NextStage));
+    ImGui::Text("    User Action: %s", getActionName(UserAction));
+    ImGui::Text("    Item Type: %s", getItemName(ItemType));
+}
+
+void ed::CreateItemAction::SetStyle(ImU32 color, float thickness)
 {
     LinkColor     = color;
     LinkThickness = thickness;
 }
 
-bool ed::ItemBuilder::Begin()
+bool ed::CreateItemAction::Begin()
 {
     IM_ASSERT(false == InActive);
 
@@ -1340,20 +1489,20 @@ bool ed::ItemBuilder::Begin()
     LinkColor       = IM_COL32_WHITE;
     LinkThickness   = 1.0f;
 
-    if (CurrentStage == ItemBuilder::None)
+    if (CurrentStage == None)
         return false;
 
     return true;
 }
 
-void ed::ItemBuilder::End()
+void ed::CreateItemAction::End()
 {
     IM_ASSERT(InActive);
 
     InActive = false;
 }
 
-void ed::ItemBuilder::DragStart(Pin* startPin)
+void ed::CreateItemAction::DragStart(Pin* startPin)
 {
     IM_ASSERT(!InActive);
 
@@ -1362,11 +1511,11 @@ void ed::ItemBuilder::DragStart(Pin* startPin)
     LinkEnd   = nullptr;
 }
 
-void ed::ItemBuilder::DragEnd()
+void ed::CreateItemAction::DragEnd()
 {
     IM_ASSERT(!InActive);
 
-    if (CurrentStage == Possible && UserAction == Accept)
+    if (CurrentStage == Possible && UserAction == UserAccept)
     {
         NextStage = Create;
     }
@@ -1379,7 +1528,7 @@ void ed::ItemBuilder::DragEnd()
     }
 }
 
-void ed::ItemBuilder::DropPin(Pin* endPin)
+void ed::CreateItemAction::DropPin(Pin* endPin)
 {
     IM_ASSERT(!InActive);
 
@@ -1387,7 +1536,7 @@ void ed::ItemBuilder::DropPin(Pin* endPin)
     LinkEnd  = endPin;
 }
 
-void ed::ItemBuilder::DropNode()
+void ed::CreateItemAction::DropNode()
 {
     IM_ASSERT(!InActive);
 
@@ -1395,7 +1544,7 @@ void ed::ItemBuilder::DropNode()
     LinkEnd  = nullptr;
 }
 
-void ed::ItemBuilder::DropNothing()
+void ed::CreateItemAction::DropNothing()
 {
     IM_ASSERT(!InActive);
 
@@ -1403,26 +1552,26 @@ void ed::ItemBuilder::DropNothing()
     LinkEnd  = nullptr;
 }
 
-ed::ItemBuilder::Result ed::ItemBuilder::RejectItem()
+ed::CreateItemAction::Result ed::CreateItemAction::RejectItem()
 {
     IM_ASSERT(InActive);
 
-    if (!InActive || CurrentStage == ItemBuilder::None || ItemType == ItemBuilder::NoItem)
+    if (!InActive || CurrentStage == None || ItemType == NoItem)
         return Indeterminate;
 
-    UserAction = Reject;
+    UserAction = UserReject;
 
     return True;
 }
 
-ed::ItemBuilder::Result ed::ItemBuilder::AcceptItem()
+ed::CreateItemAction::Result ed::CreateItemAction::AcceptItem()
 {
     IM_ASSERT(InActive);
 
-    if (!InActive || CurrentStage == ItemBuilder::None || ItemType == ItemBuilder::NoItem)
+    if (!InActive || CurrentStage == None || ItemType == NoItem)
         return Indeterminate;
 
-    UserAction = Accept;
+    UserAction = UserAccept;
 
     if (CurrentStage == Create)
     {
@@ -1436,11 +1585,11 @@ ed::ItemBuilder::Result ed::ItemBuilder::AcceptItem()
         return False;
 }
 
-ed::ItemBuilder::Result ed::ItemBuilder::QueryLink(int* startId, int* endId)
+ed::CreateItemAction::Result ed::CreateItemAction::QueryLink(int* startId, int* endId)
 {
     IM_ASSERT(InActive);
 
-    if (!InActive || CurrentStage == ItemBuilder::None || ItemType != ItemBuilder::Link)
+    if (!InActive || CurrentStage == None || ItemType != Link)
         return Indeterminate;
 
     int linkStartId = LinkStart->ID;
@@ -1456,11 +1605,11 @@ ed::ItemBuilder::Result ed::ItemBuilder::QueryLink(int* startId, int* endId)
     return True;
 }
 
-ed::ItemBuilder::Result ed::ItemBuilder::QueryNode(int* pinId)
+ed::CreateItemAction::Result ed::CreateItemAction::QueryNode(int* pinId)
 {
     IM_ASSERT(InActive);
 
-    if (!InActive || CurrentStage == ItemBuilder::None || ItemType != ItemBuilder::Node)
+    if (!InActive || CurrentStage == None || ItemType != Node)
         return Indeterminate;
 
     *pinId = LinkStart ? LinkStart->ID : 0;
@@ -1470,7 +1619,7 @@ ed::ItemBuilder::Result ed::ItemBuilder::QueryNode(int* pinId)
     return True;
 }
 
-void ed::ItemBuilder::SetUserContext()
+void ed::CreateItemAction::SetUserContext()
 {
     // Move drawing cursor to mouse location and prepare layer for
     // content added by user.

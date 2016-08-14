@@ -187,7 +187,46 @@ struct Control
     }
 };
 
-struct ItemBuilder
+struct Context;
+struct SelectAction;
+struct CreateItemAction;
+
+struct EditorAction
+{
+    EditorAction(Context* editor): Editor(editor) {}
+    virtual ~EditorAction() {}
+
+    virtual const char* GetName() const = 0;
+
+    virtual bool Accept(const Control& control) = 0;
+    virtual bool Process(const Control& control) = 0;
+
+    virtual void ShowMetrics() {}
+
+    virtual SelectAction*     AsSelect()     { return nullptr; }
+    virtual CreateItemAction* AsCreateItem() { return nullptr; }
+
+    Context* Editor;
+};
+
+struct SelectAction final: EditorAction
+{
+    bool    IsActive;
+    ImVec2  StartPoint;
+
+    SelectAction(Context* editor);
+
+    virtual const char* GetName() const override final { return "Select"; }
+
+    virtual bool Accept(const Control& control) override final;
+    virtual bool Process(const Control& control) override final;
+
+    virtual void ShowMetrics() override final;
+
+    virtual SelectAction* AsSelect() override final { return this; }
+};
+
+struct CreateItemAction final : EditorAction
 {
     enum Stage
     {
@@ -199,8 +238,8 @@ struct ItemBuilder
     enum Action
     {
         Unknown,
-        Reject,
-        Accept
+        UserReject,
+        UserAccept
     };
 
     enum Type
@@ -228,18 +267,25 @@ struct ItemBuilder
     Pin*      LinkStart;
     Pin*      LinkEnd;
 
-    ItemBuilder();
+    bool      IsActive;
+    Pin*      DraggedPin;
+
+
+    CreateItemAction(Context* editor);
+
+    virtual const char* GetName() const override final { return "Create Item"; }
+
+    virtual bool Accept(const Control& control) override final;
+    virtual bool Process(const Control& control) override final;
+
+    virtual void ShowMetrics() override final;
+
+    virtual CreateItemAction* AsCreateItem() override final { return this; }
 
     void SetStyle(ImU32 color, float thickness);
 
     bool Begin();
     void End();
-
-    void DragStart(Pin* startPin);
-    void DragEnd();
-    void DropPin(Pin* endPin);
-    void DropNode();
-    void DropNothing();
 
     Result RejectItem();
     Result AcceptItem();
@@ -248,6 +294,12 @@ struct ItemBuilder
     Result QueryNode(int* pinId);
 
 private:
+    void DragStart(Pin* startPin);
+    void DragEnd();
+    void DropPin(Pin* endPin);
+    void DropNode();
+    void DropNothing();
+
     void SetUserContext();
 };
 
@@ -273,12 +325,22 @@ struct Context
 
     bool DoLink(int id, int startPinId, int endPinId, ImU32 color, float thickness);
 
-    ItemBuilder& GetItemBuilder() { return ItemBuilder; }
+    EditorAction* GetCurrentAction() { return CurrentAction; }
+
+    CreateItemAction& GetItemCreator() { return ItemCreator; }
 
     bool DestroyLink();
     int GetDestroyedLinkId();
 
     void SetNodePosition(int nodeId, const ImVec2& screenPosition);
+
+    void ClearSelection();
+    void SelectObject(Object* object);
+    void DeselectObject(Object* object);
+    void SetSelectedObject(Object* object);
+    bool IsSelected(Object* object);
+    bool IsAnyNodeSelected();
+    bool IsAnyLinkSelected();
 
 private:
     Pin*    CreatePin(int id, PinType type);
@@ -290,14 +352,6 @@ private:
     Node* FindNode(int id);
     Pin*  FindPin(int id);
     Link* FindLink(int id);
-
-    void ClearSelection();
-    void AddSelectedObject(Object* object);
-    void RemoveSelectedObject(Object* object);
-    void SetSelectedObject(Object* object);
-    bool IsSelected(Object* object);
-    bool IsAnyNodeSelected();
-    bool IsAnyLinkSelected();
 
     void SetCurrentNode(Node* node);
     void SetCurrentPin(Pin* pin);
@@ -335,7 +389,6 @@ private:
 
     ImVec2          DragOffset;
     Node*           DraggedNode;
-    Pin*            DraggedPin;
 
     ImVec2          Offset;
     ImVec2          Scrolling;
@@ -347,7 +400,9 @@ private:
     rect            HeaderRect;
     rect            ContentRect;
 
-    ItemBuilder ItemBuilder;
+    EditorAction*       CurrentAction;
+    SelectAction    SelectionBuilder;
+    CreateItemAction         ItemCreator;
 
     // Link deleting
     vector<Link*>   DeletedLinks;

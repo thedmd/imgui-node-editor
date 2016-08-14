@@ -50,7 +50,7 @@ bool ax::Editor::Link(int id, int startPinId, int endPinId, const ImVec4& color/
 
 bool ax::Editor::BeginCreate(const ImVec4& color, float thickness)
 {
-    auto& context = s_Editor->GetItemBuilder();
+    auto& context = s_Editor->GetItemCreator();
 
     if (context.Begin())
     {
@@ -63,25 +63,25 @@ bool ax::Editor::BeginCreate(const ImVec4& color, float thickness)
 
 void ax::Editor::EndCreate()
 {
-    auto& context = s_Editor->GetItemBuilder();
+    auto& context = s_Editor->GetItemCreator();
 
     context.End();
 }
 
 bool ax::Editor::QueryLink(int* startId, int* endId)
 {
-    using Result = ax::Editor::Detail::ItemBuilder::Result;
+    using Result = ax::Editor::Detail::CreateItemAction::Result;
 
-    auto& context = s_Editor->GetItemBuilder();
+    auto& context = s_Editor->GetItemCreator();
 
     return context.QueryLink(startId, endId) == Result::True;
 }
 
 bool ax::Editor::QueryLink(int* startId, int* endId, const ImVec4& color, float thickness)
 {
-    using Result = ax::Editor::Detail::ItemBuilder::Result;
+    using Result = ax::Editor::Detail::CreateItemAction::Result;
 
-    auto& context = s_Editor->GetItemBuilder();
+    auto& context = s_Editor->GetItemCreator();
 
     auto result = context.QueryLink(startId, endId);
     if (result != Result::Indeterminate)
@@ -92,18 +92,18 @@ bool ax::Editor::QueryLink(int* startId, int* endId, const ImVec4& color, float 
 
 bool ax::Editor::QueryNode(int* pinId)
 {
-    using Result = ax::Editor::Detail::ItemBuilder::Result;
+    using Result = ax::Editor::Detail::CreateItemAction::Result;
 
-    auto& context = s_Editor->GetItemBuilder();
+    auto& context = s_Editor->GetItemCreator();
 
     return context.QueryNode(pinId) == Result::True;
 }
 
 bool ax::Editor::QueryNode(int* pinId, const ImVec4& color, float thickness)
 {
-    using Result = ax::Editor::Detail::ItemBuilder::Result;
+    using Result = ax::Editor::Detail::CreateItemAction::Result;
 
-    auto& context = s_Editor->GetItemBuilder();
+    auto& context = s_Editor->GetItemCreator();
 
     auto result = context.QueryNode(pinId);
     if (result != Result::Indeterminate)
@@ -114,18 +114,18 @@ bool ax::Editor::QueryNode(int* pinId, const ImVec4& color, float thickness)
 
 bool ax::Editor::AcceptItem()
 {
-    using Result = ax::Editor::Detail::ItemBuilder::Result;
+    using Result = ax::Editor::Detail::CreateItemAction::Result;
 
-    auto& context = s_Editor->GetItemBuilder();
+    auto& context = s_Editor->GetItemCreator();
 
     return context.AcceptItem() == Result::True;
 }
 
 bool ax::Editor::AcceptItem(const ImVec4& color, float thickness)
 {
-    using Result = ax::Editor::Detail::ItemBuilder::Result;
+    using Result = ax::Editor::Detail::CreateItemAction::Result;
 
-    auto& context = s_Editor->GetItemBuilder();
+    auto& context = s_Editor->GetItemCreator();
 
     auto result = context.AcceptItem();
     if (result != Result::Indeterminate)
@@ -136,16 +136,16 @@ bool ax::Editor::AcceptItem(const ImVec4& color, float thickness)
 
 void ax::Editor::RejectItem()
 {
-    auto& context = s_Editor->GetItemBuilder();
+    auto& context = s_Editor->GetItemCreator();
 
     context.RejectItem();
 }
 
 void ax::Editor::RejectItem(const ImVec4& color, float thickness)
 {
-    using Result = ax::Editor::Detail::ItemBuilder::Result;
+    using Result = ax::Editor::Detail::CreateItemAction::Result;
 
-    auto& context = s_Editor->GetItemBuilder();
+    auto& context = s_Editor->GetItemCreator();
 
     if (context.RejectItem() != Result::Indeterminate)
         context.SetStyle(ImColor(color), thickness);
