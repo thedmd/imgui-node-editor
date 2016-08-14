@@ -265,12 +265,13 @@ void Application_Finalize()
         m_Editor = nullptr;
     }
 }
+extern "C" __declspec(dllimport) void __stdcall Sleep(unsigned int);
 
 void Application_Frame()
 {
     auto& io = ImGui::GetIO();
 
-    ImGui::Text("FPS: %.2f", io.Framerate);
+    ImGui::Text("FPS: %.2f (%.2gms)", io.Framerate, io.Framerate ? 1000.0f / io.Framerate : 0.0f);
     //ImGui::Spacing();
 
     auto iconSize2 = size(24, 24);
@@ -311,6 +312,7 @@ void Application_Frame()
         }
 
         ax::Widgets::Icon(to_imvec(iconSize2), iconType, connected, color, ImColor(32, 32, 32, alpha));
+        //ImGui::Dummy(to_imvec(iconSize2));
     };
 
     static bool createNewNode = false;
@@ -356,8 +358,8 @@ void Application_Frame()
                     }
                     if (input.Type == PinType::Bool)
                     {
-                        ImGui::Button("Hello");
-                        ImGui::Spring(0);
+//                         ImGui::Button("Hello");
+//                         ImGui::Spring(0);
                     }
                     ImGui::PopStyleVar();
                     ed::EndInput();
@@ -461,8 +463,9 @@ void Application_Frame()
                 if (ed::QueryNode(&pinId))
                 {
                     newLinkPin = FindPin(pinId);
+                    if (newLinkPin)
+                        showLabel("+ Create Node", ImColor(32, 45, 32, 180));
 
-                    showLabel("+ Create Node", ImColor(32, 45, 32, 180));
                     if (ed::AcceptItem())
                     {
                         createNewNode  = true;
@@ -548,5 +551,7 @@ void Application_Frame()
     ImGui::PopStyleVar();
 
     ed::End();
+
+    //Sleep(16);
 }
 
