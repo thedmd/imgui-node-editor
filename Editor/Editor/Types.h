@@ -153,6 +153,12 @@ struct basic_rect
     }
 
     template <typename P>
+    bool intersects(const basic_rect<P>& r) const
+    {
+        return left() < r.right() && right() > r.left() && top() < r.bottom() && bottom() > r.top();
+    }
+
+    template <typename P>
     void expand(P extent)
     {
         expand(extent, extent);

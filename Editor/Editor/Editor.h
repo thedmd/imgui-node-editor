@@ -188,6 +188,7 @@ struct Control
 };
 
 struct Context;
+struct ScrollAction;
 struct DragAction;
 struct SelectAction;
 struct CreateItemAction;
@@ -204,11 +205,30 @@ struct EditorAction
 
     virtual void ShowMetrics() {}
 
-    virtual DragAction*       AsDrag()     { return nullptr; }
+    virtual ScrollAction*     AsScroll()     { return nullptr; }
+    virtual DragAction*       AsDrag()       { return nullptr; }
     virtual SelectAction*     AsSelect()     { return nullptr; }
     virtual CreateItemAction* AsCreateItem() { return nullptr; }
 
     Context* Editor;
+};
+
+struct ScrollAction final: EditorAction
+{
+    bool   IsActive;
+    ImVec2 Scroll;
+    ImVec2 ScrollStart;
+
+    ScrollAction(Context* editor);
+
+    virtual const char* GetName() const override final { return "Scroll"; }
+
+    virtual bool Accept(const Control& control) override final;
+    virtual bool Process(const Control& control) override final;
+
+    virtual void ShowMetrics() override final;
+
+    virtual ScrollAction* AsScroll() override final { return this; }
 };
 
 struct DragAction final: EditorAction
@@ -230,8 +250,12 @@ struct DragAction final: EditorAction
 
 struct SelectAction final: EditorAction
 {
-    bool    IsActive;
-    ImVec2  StartPoint;
+    bool            IsActive;
+
+    ImVec2          StartPoint;
+    ImVec2          EndPoint;
+    vector<Object*> CandidateObjects;
+    vector<Object*> SelectedObjectsAtStart;
 
     SelectAction(Context* editor);
 
@@ -346,7 +370,7 @@ struct Context
 
     EditorAction* GetCurrentAction() { return CurrentAction; }
 
-    CreateItemAction& GetItemCreator() { return ItemCreator; }
+    CreateItemAction& GetItemCreator() { return CreateItemAction; }
 
     bool DestroyLink();
     int GetDestroyedLinkId();
@@ -363,6 +387,10 @@ struct Context
     bool IsAnyNodeSelected();
     bool IsAnyLinkSelected();
 
+    void FindNodesInRect(ax::rect r, vector<Node*>& result);
+
+    ImVec2 ToClient(ImVec2 point);
+    ImVec2 ToScreen(ImVec2 point);
 
 private:
     Pin*    CreatePin(int id, PinType type);
@@ -397,39 +425,39 @@ private:
 
     void ShowMetrics(const Control& control);
 
-    vector<Node*>   Nodes;
-    vector<Pin*>    Pins;
-    vector<Link*>   Links;
+    vector<Node*>       Nodes;
+    vector<Pin*>        Pins;
+    vector<Link*>       Links;
 
-    Object*         SelectedObject;
-    vector<Object*> SelectedObjects;
+    Object*             SelectedObject;
+    vector<Object*>     SelectedObjects;
 
-    Link*           LastActiveLink;
+    Link*               LastActiveLink;
 
-    Pin*            CurrentPin;
-    Node*           CurrentNode;
+    Pin*                CurrentPin;
+    Node*               CurrentNode;
 
-    ImVec2          Offset;
-    ImVec2          Scrolling;
+    ImVec2              Offset;
 
     // Node building
-    NodeStage       NodeBuildStage;
-    ImU32           HeaderColor;
-    rect            NodeRect;
-    rect            HeaderRect;
-    rect            ContentRect;
+    NodeStage           NodeBuildStage;
+    ImU32               HeaderColor;
+    rect                NodeRect;
+    rect                HeaderRect;
+    rect                ContentRect;
 
     EditorAction*       CurrentAction;
-    DragAction          Drag;
-    SelectAction        SelectionBuilder;
-    CreateItemAction    ItemCreator;
+    ScrollAction        ScrollAction;
+    DragAction          DragAction;
+    SelectAction        SelectAction;
+    CreateItemAction    CreateItemAction;
 
     // Link deleting
-    vector<Link*>   DeletedLinks;
+    vector<Link*>       DeletedLinks;
 
-    bool            IsInitialized;
-    ImTextureID     HeaderTextureID;
-    Settings        Settings;
+    bool                IsInitialized;
+    ImTextureID         HeaderTextureID;
+    Settings            Settings;
 };
 
 } // namespace Detail

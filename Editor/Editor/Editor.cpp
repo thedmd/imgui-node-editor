@@ -1,6 +1,7 @@
 #include "Editor.h"
 #include "Application/imgui_impl_dx11.h"
 #include "Drawing.h"
+#include "ImGuiInterop.h"
 #include <cstdlib> // _itoa
 #include <string>
 #include <fstream>
@@ -164,12 +165,12 @@ ed::Context::Context():
     CurrentPin(nullptr),
     CurrentNode(nullptr),
     Offset(0, 0),
-    Scrolling(0, 0),
     NodeBuildStage(NodeStage::Invalid),
     CurrentAction(nullptr),
-    Drag(this),
-    SelectionBuilder(this),
-    ItemCreator(this),
+    ScrollAction(this),
+    DragAction(this),
+    SelectAction(this),
+    CreateItemAction(this),
     IsInitialized(false),
     HeaderTextureID(nullptr),
     Settings()
@@ -216,7 +217,7 @@ void ed::Context::Begin(const char* id)
     ImGui::PushStyleColor(ImGuiCol_ChildWindowBg, ImColor(60, 60, 70, 0));
     ImGui::BeginChild(id, ImVec2(0, 0), true, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoScrollbar);
 
-    Offset = ImGui::GetWindowPos() - Scrolling;
+    Offset = ImGui::GetWindowPos() - ScrollAction.Scroll;
 
     // Reserve channels for background and links
     auto drawList = ImGui::GetWindowDrawList();
@@ -229,99 +230,71 @@ void ed::Context::End()
     auto  control  = ComputeControl();
     auto  drawList = ImGui::GetWindowDrawList();
 
-    //if (control.BackgroundClicked)
-    //{
-    //    ClearSelection();
-    //}
-    //else if (control.ClickedNode && (control.ClickedNode != DraggedNode))
-    //{
-    //    if (IsAnyLinkSelected())
-    //        ClearSelection();
-
-    //    if (io.KeyCtrl)
-    //    {
-    //        if (IsSelected(control.ClickedNode))
-    //            DeselectObject(control.ClickedNode);
-    //        else
-    //            SelectObject(control.ClickedNode);
-    //    }
-    //    else
-    //        SetSelectedObject(control.ClickedNode);
-    //}
-    //else if (control.ClickedLink)
-    //{
-    //    if (IsAnyNodeSelected())
-    //        ClearSelection();
-
-    //    if (io.KeyCtrl)
-    //    {
-    //        if (IsSelected(control.ClickedLink))
-    //            DeselectObject(control.ClickedLink);
-    //        else
-    //            SelectObject(control.ClickedLink);
-    //    }
-    //    else
-    //        SetSelectedObject(control.ClickedLink);
-    //}
-
-    //auto selectedNode = SelectedObject ? SelectedObject->AsNode() : nullptr;
-
     // Highlight hovered node
-    for (auto selectedObject : SelectedObjects)
     {
-        if (auto selectedNode = selectedObject->AsNode())
+        auto selectedObjects = &SelectedObjects;
+        if (CurrentAction && CurrentAction->AsSelect())
+            selectedObjects = &CurrentAction->AsSelect()->CandidateObjects;
+
+        for (auto selectedObject : *selectedObjects)
         {
-            const auto rectMin = to_imvec(selectedNode->Bounds.top_left()) + Offset;
-            const auto rectMax = to_imvec(selectedNode->Bounds.bottom_right()) + Offset;
-
-            if (ImGui::IsRectVisible(rectMin, rectMax))
+            if (auto selectedNode = selectedObject->AsNode())
             {
-                drawList->ChannelsSetCurrent(selectedNode->Channel + c_NodeBaseChannel);
+                const auto rectMin = to_imvec(selectedNode->Bounds.top_left()) + Offset;
+                const auto rectMax = to_imvec(selectedNode->Bounds.bottom_right()) + Offset;
 
-                drawList->AddRect(rectMin, rectMax,
-                    ImColor(255, 176, 50, 255), c_NodeFrameRounding, 15, 3.5f);
+                if (ImGui::IsRectVisible(rectMin, rectMax))
+                {
+                    drawList->ChannelsSetCurrent(selectedNode->Channel + c_NodeBaseChannel);
+
+                    drawList->AddRect(rectMin, rectMax,
+                        ImColor(255, 176, 50, 255), c_NodeFrameRounding, 15, 3.5f);
+                }
             }
-        }
-        else if (auto selectedLink = selectedObject->AsLink())
-        {
-            const auto rectMin = to_imvec(selectedLink->StartPin->DragPoint);
-            const auto rectMax = to_imvec(selectedLink->EndPin->DragPoint);
-
-            if (ImGui::IsRectVisible(rectMin, rectMax))
+            else if (auto selectedLink = selectedObject->AsLink())
             {
-                drawList->ChannelsSetCurrent(c_LinkStartChannel + 0);
+                const auto rectMin = to_imvec(selectedLink->StartPin->DragPoint);
+                const auto rectMax = to_imvec(selectedLink->EndPin->DragPoint);
 
-                ax::Drawing::DrawLink(drawList, rectMin, rectMax,
-                    ImColor(255, 176, 50, 255), selectedLink->Thickness + 4.5f, c_LinkStrength);
+                if (ImGui::IsRectVisible(rectMin, rectMax))
+                {
+                    drawList->ChannelsSetCurrent(c_LinkStartChannel + 0);
+
+                    ax::Drawing::DrawLink(drawList, rectMin, rectMax,
+                        ImColor(255, 176, 50, 255), selectedLink->Thickness + 4.5f, c_LinkStrength);
+                }
             }
         }
     }
 
-    // Highlight selected node
-    auto hotNode = control.HotNode;
-    if (CurrentAction && CurrentAction->AsDrag())
-        hotNode = CurrentAction->AsDrag()->DraggedNode;
-    if (hotNode && !IsSelected(hotNode))
+    if (!CurrentAction || !CurrentAction->AsSelect())
     {
-        const auto rectMin = to_imvec(hotNode->Bounds.top_left()) + Offset;
-        const auto rectMax = to_imvec(hotNode->Bounds.bottom_right()) + Offset;
+        // Highlight selected node
+        auto hotNode = control.HotNode;
+        if (CurrentAction && CurrentAction->AsDrag())
+            hotNode = CurrentAction->AsDrag()->DraggedNode;
+        if (hotNode && !IsSelected(hotNode))
+        {
+            const auto rectMin = to_imvec(hotNode->Bounds.top_left()) + Offset;
+            const auto rectMax = to_imvec(hotNode->Bounds.bottom_right()) + Offset;
 
-        drawList->ChannelsSetCurrent(hotNode->Channel + c_NodeBaseChannel);
+            drawList->ChannelsSetCurrent(hotNode->Channel + c_NodeBaseChannel);
 
-        drawList->AddRect(rectMin, rectMax,
-            ImColor(50, 176, 255, 255), c_NodeFrameRounding, 15, 3.5f);
-    }
+            drawList->AddRect(rectMin, rectMax,
+                ImColor(50, 176, 255, 255), c_NodeFrameRounding, 15, 3.5f);
+        }
 
-    // Highlight hovered pin
-    if (auto hotPin = control.HotPin)
-    {
-        const auto rectMin = to_imvec(hotPin->Bounds.top_left());
-        const auto rectMax = to_imvec(hotPin->Bounds.bottom_right());
+        // Highlight hovered pin
+        if (auto hotPin = control.HotPin)
+        {
+            const auto rectMin = to_imvec(hotPin->Bounds.top_left());
+            const auto rectMax = to_imvec(hotPin->Bounds.bottom_right());
 
-        drawList->ChannelsSetCurrent(hotPin->Node->Channel + c_NodeBackgroundChannel);
+            drawList->ChannelsSetCurrent(hotPin->Node->Channel + c_NodeBackgroundChannel);
 
-        drawList->AddRectFilled(rectMin, rectMax,
-            ImColor(60, 180, 255, 100), 4.0f);
+            drawList->AddRectFilled(rectMin, rectMax,
+                ImColor(60, 180, 255, 100), 4.0f);
+        }
     }
 
     // Draw links
@@ -356,59 +329,27 @@ void ed::Context::End()
             ImColor(50, 176, 255, 255), control.HotLink->Thickness + 4.5f, c_LinkStrength);
     }
 
-    // Handle node dragging, does not steal selection
-    //if (!DraggedNode && control.ActiveNode && ImGui::IsMouseDragging(0))
-    //{
-    //    DraggedNode = control.ActiveNode;
-    //    control.ActiveNode->DragStart = control.ActiveNode->Bounds.location;
-
-    //    if (IsSelected(control.ActiveNode))
-    //    {
-    //        for (auto selectedObject : SelectedObjects)
-    //            if (auto selectedNode = selectedObject->AsNode())
-    //                selectedNode->DragStart = selectedNode->Bounds.location;
-    //    }
-    //    else
-    //        control.ActiveNode->DragStart = control.ActiveNode->Bounds.location;
-    //}
-
-    //if (DraggedNode && control.ActiveNode == DraggedNode)
-    //{
-    //    DragOffset = ImGui::GetMouseDragDelta(0, 0.0f);
-
-    //    if (IsSelected(control.ActiveNode))
-    //    {
-    //        for (auto selectedObject : SelectedObjects)
-    //            if (auto selectedNode = selectedObject->AsNode())
-    //                selectedNode->Bounds.location = selectedNode->DragStart + to_point(DragOffset);
-    //    }
-    //    else
-    //        control.ActiveNode->Bounds.location = control.ActiveNode->DragStart + to_point(DragOffset);
-    //}
-    //else if (DraggedNode && !control.ActiveNode)
-    //{
-    //    DraggedNode = nullptr;
-    //}
-
     if (CurrentAction && !CurrentAction->Process(control))
         CurrentAction = nullptr;
 
     if (nullptr == CurrentAction)
     {
-        if (Drag.Accept(control))
-            CurrentAction = &Drag;
-        if (SelectionBuilder.Accept(control))
-            CurrentAction = &SelectionBuilder;
-        else if (ItemCreator.Accept(control))
-            CurrentAction = &ItemCreator;
+        if (ScrollAction.Accept(control))
+            CurrentAction = &ScrollAction;
+        else if (DragAction.Accept(control))
+            CurrentAction = &DragAction;
+        else if (SelectAction.Accept(control))
+            CurrentAction = &SelectAction;
+        else if (CreateItemAction.Accept(control))
+            CurrentAction = &CreateItemAction;
     }
 
 
-    if (SelectionBuilder.IsActive)
+    if (SelectAction.IsActive)
     {
         drawList->ChannelsSetCurrent(c_BackgroundChannelStart + 1);
 
-        auto from = SelectionBuilder.StartPoint;
+        auto from = SelectAction.StartPoint;
         auto to   = ImGui::GetMousePos();
 
         auto min  = ImVec2(std::min(from.x, to.x), std::min(from.y, to.y));
@@ -420,61 +361,6 @@ void ed::Context::End()
         drawList->AddRect(min, max,
             ImColor(5, 130, 255, 128));
     }
-
-    // Item creation
-    //if (!DraggedPin && control.ActivePin && ImGui::IsMouseDragging(0))
-    //{
-    //    DraggedPin = control.ActivePin;
-
-    //    ItemBuilder.DragStart(DraggedPin);
-
-    //    ClearSelection();
-    //}
-
-    //if (DraggedPin && control.ActivePin == DraggedPin && (ItemBuilder.CurrentStage == ItemBuilder::Possible))
-    //{
-    //    ImVec2 startPoint = to_imvec(DraggedPin->DragPoint);
-    //    ImVec2 endPoint   = ImGui::GetMousePos();
-
-    //    if (control.HotPin)
-    //    {
-    //        ItemBuilder.DropPin(control.HotPin);
-
-    //        if (ItemBuilder.UserAction == ItemBuilder::UserAccept)
-    //            endPoint = to_imvec(control.HotPin->DragPoint);
-    //    }
-    //    else if (control.BackgroundHot)
-    //        ItemBuilder.DropNode();
-    //    else
-    //        ItemBuilder.DropNothing();
-
-    //    if (DraggedPin->Type == PinType::Input)
-    //        std::swap(startPoint, endPoint);
-
-    //    drawList->ChannelsSetCurrent(c_LinkStartChannel + 2);
-
-    //    ax::Drawing::DrawLink(drawList, startPoint, endPoint, ItemBuilder.LinkColor, ItemBuilder.LinkThickness, c_LinkStrength);
-    //}
-    //else if (DraggedPin && !control.ActivePin)
-    //{
-    //    DraggedPin = nullptr;
-    //    ItemBuilder.DragEnd();
-    //}
-
-    //if (nullptr == ItemBuilder.LinkStart)
-    //{
-    //    if (ItemBuilder.CurrentStage == ItemBuilder::Possible && nullptr == ItemBuilder.LinkStart)
-    //    {
-    //        ItemBuilder.DragEnd();
-    //    }
-
-    //    if (control.BackgroundHot && ImGui::IsMouseClicked(1))
-    //    {
-    //        ItemBuilder.DragStart(nullptr);
-    //        ClearSelection();
-    //        ItemBuilder.DropNode();
-    //    }
-    //}
 
     // Link deletion
     const bool isDeletePressed = ImGui::IsKeyPressed(ImGui::GetKeyIndex(ImGuiKey_Delete));
@@ -534,9 +420,6 @@ void ed::Context::End()
         for (float y = fmodf(offset.y, GRID_SZ); y < canvas_sz.y; y += GRID_SZ)
             drawList->AddLine(ImVec2(0.0f, y) + win_pos, ImVec2(canvas_sz.x, y) + win_pos, GRID_COLOR);
     }
-
-    if (ImGui::IsWindowHovered() && !ImGui::IsAnyItemActive() && ImGui::IsMouseDragging(2, 0.0f))
-        Scrolling = Scrolling - ImGui::GetIO().MouseDelta;
 
     auto userChannel = drawList->_ChannelsCount;
     ImDrawList_ChannelsGrow(drawList, userChannel + 1);
@@ -814,6 +697,33 @@ bool ed::Context::IsAnyLinkSelected()
             return true;
 
     return false;
+}
+
+void ed::Context::FindNodesInRect(ax::rect r, vector<Node*>& result)
+{
+    result.clear();
+
+    if (r.is_empty())
+        return;
+
+    for (auto node : Nodes)
+    {
+        if (!node->IsLive)
+            continue;
+
+        if (!node->Bounds.is_empty() && r.intersects(node->Bounds))
+            result.push_back(node);
+    }
+}
+
+ImVec2 ed::Context::ToClient(ImVec2 point)
+{
+    return point - Offset;
+}
+
+ImVec2 ed::Context::ToScreen(ImVec2 point)
+{
+    return point + Offset;
 }
 
 ed::Pin* ed::Context::CreatePin(int id, PinType type)
@@ -1288,11 +1198,71 @@ void ed::Context::ShowMetrics(const Control& control)
     ImGui::Text("Active Object: %s (%d)", getObjectName(control.ActiveObject), control.ActiveObject ? control.ActiveObject->ID : 0);
     ImGui::Text("Action: %s", CurrentAction ? CurrentAction->GetName() : "<none>");
     //ImGui::Text("Clicked Object: %s (%d)", getObjectName(control.ClickedObject), control.ClickedObject ? control.ClickedObject->ID : 0);
-    Drag.ShowMetrics();
-    SelectionBuilder.ShowMetrics();
-    ItemCreator.ShowMetrics();
+    ScrollAction.ShowMetrics();
+    DragAction.ShowMetrics();
+    SelectAction.ShowMetrics();
+    CreateItemAction.ShowMetrics();
     ImGui::EndGroup();
 }
+
+
+
+//------------------------------------------------------------------------------
+//
+// Scroll Action
+//
+//------------------------------------------------------------------------------
+ed::ScrollAction::ScrollAction(Context* editor):
+    EditorAction(editor),
+    IsActive(false),
+    Scroll(0, 0),
+    ScrollStart(0, 0)
+{
+}
+
+bool ed::ScrollAction::Accept(const Control& control)
+{
+    assert(!IsActive);
+
+    if (IsActive)
+        return false;
+
+    if (ImGui::IsWindowHovered() && !ImGui::IsAnyItemActive() && ImGui::IsMouseDragging(2, 0.0f))
+    {
+        IsActive    = true;
+        ScrollStart = Scroll;
+        Scroll      = ScrollStart - ImGui::GetMouseDragDelta(2);
+    }
+
+    return IsActive;
+}
+
+bool ed::ScrollAction::Process(const Control& control)
+{
+    if (!IsActive)
+        return false;
+
+    if (ImGui::IsMouseDragging(2, 0.0f))
+    {
+        Scroll = ScrollStart - ImGui::GetMouseDragDelta(2);
+    }
+    else
+    {
+        IsActive = false;
+    }
+
+    return IsActive;
+}
+
+void ed::ScrollAction::ShowMetrics()
+{
+    EditorAction::ShowMetrics();
+
+    ImGui::Text("%s:", GetName());
+    ImGui::Text("    Active: %s", IsActive ? "yes" : "no");
+    ImGui::Text("    Scroll: { x=%g y=%g }", Scroll.x, Scroll.y);
+}
+
 
 
 
@@ -1402,10 +1372,18 @@ bool ed::SelectAction::Accept(const Control& control)
     if (IsActive)
         return false;
 
-    if (control.BackgroundActive)
+    auto& io = ImGui::GetIO();
+
+    if (control.BackgroundActive && ImGui::IsMouseDragging(0, 0))
     {
         IsActive = true;
         StartPoint = ImGui::GetMousePos();
+        EndPoint   = StartPoint;
+
+        if (io.KeyCtrl)
+            SelectedObjectsAtStart = Editor->GetSelectedObjects();
+        else
+            SelectedObjectsAtStart.clear();
     }
     else if (control.BackgroundClicked)
     {
@@ -1424,7 +1402,6 @@ bool ed::SelectAction::Accept(const Control& control)
                 Editor->ClearSelection();
             }
 
-            auto& io = ImGui::GetIO();
             if (io.KeyCtrl)
                 Editor->ToggleObjectSelection(clickedObject);
             else
@@ -1437,11 +1414,36 @@ bool ed::SelectAction::Accept(const Control& control)
 
 bool ed::SelectAction::Process(const Control& control)
 {
-    assert(IsActive);
+    if (!IsActive)
+        return false;
 
-    if (!ImGui::IsMouseDown(0))
+    using namespace ax::ImGuiInterop;
+
+    if (ImGui::IsMouseDragging(0, 0))
     {
+        EndPoint = ImGui::GetMousePos();
+
+        auto topLeft     = Editor->ToClient(ImVec2(std::min(StartPoint.x, EndPoint.x), std::min(StartPoint.y, EndPoint.y)));
+        auto bottomRight = Editor->ToClient(ImVec2(std::max(StartPoint.x, EndPoint.x), std::max(StartPoint.y, EndPoint.y)));
+        auto rect        = ax::rect(to_point(topLeft), to_point(bottomRight));
+
+        vector<Node*> nodes;
+        Editor->FindNodesInRect(rect, nodes);
+
+        CandidateObjects.assign(nodes.begin(), nodes.end());
+        CandidateObjects.insert(CandidateObjects.end(), SelectedObjectsAtStart.begin(), SelectedObjectsAtStart.end());
+        std::sort(CandidateObjects.begin(), CandidateObjects.end());
+        CandidateObjects.erase(std::unique(CandidateObjects.begin(), CandidateObjects.end()), CandidateObjects.end());
+    }
+    else
+    {
+        Editor->ClearSelection();
+        for (auto object : CandidateObjects)
+            Editor->SelectObject(object);
+
         IsActive = false;
+
+        return true;
     }
 
     return IsActive;
