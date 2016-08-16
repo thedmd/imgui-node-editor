@@ -171,6 +171,7 @@ ed::Context::Context():
     DragAction(this),
     SelectAction(this),
     CreateItemAction(this),
+    DeleteItemsAction(this),
     IsInitialized(false),
     HeaderTextureID(nullptr),
     Settings()
@@ -254,8 +255,8 @@ void ed::Context::End()
     // Highlight hovered node
     {
         auto selectedObjects = &SelectedObjects;
-        if (CurrentAction && CurrentAction->AsSelect())
-            selectedObjects = &CurrentAction->AsSelect()->CandidateObjects;
+        if (auto selectAction = CurrentAction ? CurrentAction->AsSelect() : nullptr)
+            selectedObjects = &selectAction->CandidateObjects;
 
         for (auto selectedObject : *selectedObjects)
         {
@@ -342,11 +343,15 @@ void ed::Context::End()
             CurrentAction = &SelectAction;
         else if (CreateItemAction.Accept(control))
             CurrentAction = &CreateItemAction;
+        else if (DeleteItemsAction.Accept(control))
+            CurrentAction = &DeleteItemsAction;
     }
-
 
     if (SelectAction.IsActive)
     {
+        auto fillColor    = SelectAction.SelectLinkMode ? ImColor(5, 130, 255, 64) : ImColor(5, 130, 255, 64);
+        auto outlineColor = SelectAction.SelectLinkMode ? ImColor(5, 130, 255, 128) : ImColor(5, 130, 255, 128);
+
         drawList->ChannelsSetCurrent(c_BackgroundChannelStart + 1);
 
         auto from = SelectAction.StartPoint;
@@ -355,33 +360,17 @@ void ed::Context::End()
         auto min  = ImVec2(std::min(from.x, to.x), std::min(from.y, to.y));
         auto max  = ImVec2(std::max(from.x, to.x), std::max(from.y, to.y));
 
-        drawList->AddRectFilled(min, max,
-            ImColor(5, 130, 255, 64));
-
-        drawList->AddRect(min, max,
-            ImColor(5, 130, 255, 128));
+        drawList->AddRectFilled(min, max, fillColor);
+        drawList->AddRect(min, max, outlineColor);
     }
-
-    // Link deletion
-    const bool isDeletePressed = ImGui::IsKeyPressed(ImGui::GetKeyIndex(ImGuiKey_Delete));
-    if ((IsAnyLinkSelected() && isDeletePressed) || (control.ClickedLink && io.KeyAlt))
-    {
-        if (IsAnyLinkSelected())
-        {
-            for (auto selectedObject : SelectedObjects)
-                DeletedLinks.push_back(selectedObject->AsLink());
-        }
-
-        if (control.ClickedObject && !IsSelected(control.ClickedObject))
-            DeletedLinks.push_back(control.ClickedLink);
-    }
-    else
-        DeletedLinks.clear();
 
     // Bring active node to front
     std::stable_sort(Nodes.begin(), Nodes.end(), [&control](Node* lhs, Node* rhs)
     {
-        return (rhs == control.ActiveNode);
+        if (lhs->IsLive && rhs->IsLive)
+            return (rhs == control.ActiveNode);
+        else
+            return lhs->IsLive;
     });
 
     // Every node has few channels assigned. Grow channel list
@@ -395,6 +384,9 @@ void ed::Context::End()
         int targetChannel = nodeChannelCount;
         for (auto node : Nodes)
         {
+            if (!node->IsLive)
+                continue;
+
             for (int i = 0; i < c_ChannelsPerNode; ++i)
                 ImDrawList_SwapChannels(drawList, node->Channel + i, targetChannel + i);
             node->Channel = targetChannel;
@@ -602,27 +594,6 @@ bool ed::Context::DoLink(int id, int startPinId, int endPinId, ImU32 color, floa
     return link->IsLive;
 }
 
-bool ed::Context::DestroyLink()
-{
-    return !DeletedLinks.empty();
-}
-
-int ed::Context::GetDestroyedLinkId()
-{
-    if (DeletedLinks.empty())
-        return 0;
-
-    auto link = DeletedLinks.back();
-    DeletedLinks.pop_back();
-
-    DeselectObject(link);
-
-    if (link == LastActiveLink)
-        LastActiveLink = nullptr;
-
-    return link->ID;
-}
-
 void ed::Context::SetNodePosition(int nodeId, const ImVec2& position)
 {
     auto node = FindNode(nodeId);
@@ -633,6 +604,15 @@ void ed::Context::SetNodePosition(int nodeId, const ImVec2& position)
     }
 
     node->Bounds.location = to_point(position - Offset);
+}
+
+ImVec2 ed::Context::GetNodePosition(int nodeId)
+{
+    auto node = FindNode(nodeId);
+    if (!node)
+        return ImVec2(FLT_MAX, FLT_MAX);
+
+    return to_imvec(node->Bounds.location + to_point(Offset));
 }
 
 void ed::Context::ClearSelection()
@@ -655,6 +635,8 @@ void ed::Context::DeselectObject(Object* object)
         SelectedObjects.erase(objectIt);
         if (!SelectedObjects.empty())
             SelectedObject = SelectedObjects.front();
+        else
+            SelectedObject = nullptr;
     }
 }
 
@@ -762,6 +744,12 @@ ImVec2 ed::Context::ToClient(ImVec2 point)
 ImVec2 ed::Context::ToScreen(ImVec2 point)
 {
     return point + Offset;
+}
+
+void ed::Context::NotifyLinkDeleted(Link* link)
+{
+    if (LastActiveLink == link)
+        LastActiveLink = nullptr;
 }
 
 ed::Pin* ed::Context::CreatePin(int id, PinType type)
@@ -1241,6 +1229,7 @@ void ed::Context::ShowMetrics(const Control& control)
     DragAction.ShowMetrics();
     SelectAction.ShowMetrics();
     CreateItemAction.ShowMetrics();
+    DeleteItemsAction.ShowMetrics();
     ImGui::EndGroup();
 }
 
@@ -1392,6 +1381,8 @@ void ed::DragAction::ShowMetrics()
 }
 
 
+
+
 //------------------------------------------------------------------------------
 //
 // Select Action
@@ -1499,6 +1490,8 @@ bool ed::SelectAction::Process(const Control& control)
         for (auto object : CandidateObjects)
             Editor->SelectObject(object);
 
+        CandidateObjects.clear();
+
         IsActive = false;
 
         return true;
@@ -1520,7 +1513,7 @@ void ed::SelectAction::ShowMetrics()
 
 //------------------------------------------------------------------------------
 //
-// Item Builder
+// Create Item Action
 //
 //------------------------------------------------------------------------------
 ed::CreateItemAction::CreateItemAction(Context* editor):
@@ -1819,3 +1812,195 @@ void ed::CreateItemAction::SetUserContext()
     auto drawList = ImGui::GetWindowDrawList();
     drawList->ChannelsSetCurrent(c_UserLayerChannelStart);
 }
+
+
+
+
+//------------------------------------------------------------------------------
+//
+// Delete Items Action
+//
+//------------------------------------------------------------------------------
+ed::DeleteItemsAction::DeleteItemsAction(Context* editor):
+    EditorAction(editor),
+    IsActive(false),
+    InInteraction(false),
+    CurrentItemType(Unknown),
+    UserAction(Undetermined)
+{
+}
+
+bool ed::DeleteItemsAction::Accept(const Control& control)
+{
+    assert(!IsActive);
+
+    if (IsActive)
+        return false;
+
+    auto& io = ImGui::GetIO();
+    if (ImGui::IsKeyPressed(ImGui::GetKeyIndex(ImGuiKey_Delete)))
+    {
+        auto& selection = Editor->GetSelectedObjects();
+        if (!selection.empty())
+        {
+            CandidateObjects = selection;
+            IsActive = true;
+            return true;
+        }
+    }
+    else if (control.ClickedLink && io.KeyAlt)
+    {
+        CandidateObjects.clear();
+        CandidateObjects.push_back(control.ClickedLink);
+        IsActive = true;
+        return true;
+    }
+
+    return IsActive;
+}
+
+bool ed::DeleteItemsAction::Process(const Control& control)
+{
+    if (!IsActive)
+        return false;
+
+    if (CandidateObjects.empty())
+    {
+        IsActive = false;
+        return true;
+    }
+
+    return IsActive;
+}
+
+void ed::DeleteItemsAction::ShowMetrics()
+{
+    EditorAction::ShowMetrics();
+
+    auto getObjectName = [](Object* object)
+    {
+        if (!object) return "";
+        else if (object->AsNode()) return "Node";
+        else if (object->AsPin())  return "Pin";
+        else if (object->AsLink()) return "Link";
+        else return "";
+    };
+
+    ImGui::Text("%s:", GetName());
+    ImGui::Text("    Active: %s", IsActive ? "yes" : "no");
+    //ImGui::Text("    Node: %s (%d)", getObjectName(DeleteItemsgedNode), DeleteItemsgedNode ? DeleteItemsgedNode->ID : 0);
+}
+
+bool ed::DeleteItemsAction::Begin()
+{
+    if (!IsActive)
+        return false;
+
+    assert(!InInteraction);
+    InInteraction = true;
+
+    CurrentItemType = Unknown;
+    UserAction      = Undetermined;
+
+    return IsActive;
+}
+
+void ed::DeleteItemsAction::End()
+{
+    if (!IsActive)
+        return;
+
+    assert(InInteraction);
+    InInteraction = false;
+}
+
+bool ed::DeleteItemsAction::QueryLink(int* linkId)
+{
+    return QueryItem(linkId, Link);
+}
+
+bool ed::DeleteItemsAction::QueryNode(int* nodeId)
+{
+    return QueryItem(nodeId, Node);
+}
+
+bool ed::DeleteItemsAction::QueryItem(int* itemId, IteratorType itemType)
+{
+    if (!InInteraction)
+        return false;
+
+    if (CurrentItemType != itemType)
+    {
+        CurrentItemType    = itemType;
+        CandidateItemIndex = 0;
+    }
+    else if (UserAction == Undetermined)
+    {
+        RejectItem();
+    }
+
+    UserAction = Undetermined;
+
+    auto itemCount = (int)CandidateObjects.size();
+    while (CandidateItemIndex < itemCount)
+    {
+        auto item = CandidateObjects[CandidateItemIndex];
+        if (itemType == Node)
+        {
+            if (auto node = item->AsNode())
+            {
+                *itemId = node->ID;
+                return true;
+            }
+        }
+        else if (itemType == Link)
+        {
+            if (auto link = item->AsLink())
+            {
+                *itemId = link->ID;
+                return true;
+            }
+        }
+
+        ++CandidateItemIndex;
+    }
+
+    if (CandidateItemIndex == itemCount)
+        CurrentItemType = Unknown;
+
+    return false;
+}
+
+bool ed::DeleteItemsAction::AcceptItem()
+{
+    if (!InInteraction)
+        return false;
+
+    UserAction = Accepted;
+
+    RemoveItem();
+
+    return true;
+}
+
+void ed::DeleteItemsAction::RejectItem()
+{
+    if (!InInteraction)
+        return;
+
+    UserAction = Rejected;
+
+    RemoveItem();
+}
+
+void ed::DeleteItemsAction::RemoveItem()
+{
+    auto item = CandidateObjects[CandidateItemIndex];
+    CandidateObjects.erase(CandidateObjects.begin() + CandidateItemIndex);
+
+    Editor->DeselectObject(item);
+
+    if (CurrentItemType == Link)
+        Editor->NotifyLinkDeleted(item->AsLink());
+}
+

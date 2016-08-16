@@ -192,6 +192,7 @@ struct ScrollAction;
 struct DragAction;
 struct SelectAction;
 struct CreateItemAction;
+struct DeleteItemsAction;
 
 struct EditorAction
 {
@@ -205,10 +206,11 @@ struct EditorAction
 
     virtual void ShowMetrics() {}
 
-    virtual ScrollAction*     AsScroll()     { return nullptr; }
-    virtual DragAction*       AsDrag()       { return nullptr; }
-    virtual SelectAction*     AsSelect()     { return nullptr; }
-    virtual CreateItemAction* AsCreateItem() { return nullptr; }
+    virtual ScrollAction*      AsScroll()      { return nullptr; }
+    virtual DragAction*        AsDrag()        { return nullptr; }
+    virtual SelectAction*      AsSelect()      { return nullptr; }
+    virtual CreateItemAction*  AsCreateItem()  { return nullptr; }
+    virtual DeleteItemsAction* AsDeleteItems() { return nullptr; }
 
     Context* Editor;
 };
@@ -347,6 +349,44 @@ private:
     void SetUserContext();
 };
 
+struct DeleteItemsAction final: EditorAction
+{
+    bool    IsActive;
+    bool    InInteraction;
+
+    DeleteItemsAction(Context* editor);
+
+    virtual const char* GetName() const override final { return "Delete Items"; }
+
+    virtual bool Accept(const Control& control) override final;
+    virtual bool Process(const Control& control) override final;
+
+    virtual void ShowMetrics() override final;
+
+    virtual DeleteItemsAction* AsDeleteItems() override final { return this; }
+
+    bool Begin();
+    void End();
+
+    bool QueryLink(int* linkId);
+    bool QueryNode(int* nodeId);
+
+    bool AcceptItem();
+    void RejectItem();
+
+private:
+    enum IteratorType { Unknown, Link, Node };
+    enum UserAction { Undetermined, Accepted, Rejected };
+
+    bool QueryItem(int* itemId, IteratorType itemType);
+    void RemoveItem();
+
+    IteratorType    CurrentItemType;
+    UserAction      UserAction;
+    vector<Object*> CandidateObjects;
+    int             CandidateItemIndex;
+};
+
 struct Context
 {
     Context();
@@ -372,11 +412,13 @@ struct Context
     EditorAction* GetCurrentAction() { return CurrentAction; }
 
     CreateItemAction& GetItemCreator() { return CreateItemAction; }
+    DeleteItemsAction& GetItemDeleter() { return DeleteItemsAction; }
 
     bool DestroyLink();
     int GetDestroyedLinkId();
 
     void SetNodePosition(int nodeId, const ImVec2& screenPosition);
+    ImVec2 GetNodePosition(int nodeId);
 
     void ClearSelection();
     void SelectObject(Object* object);
@@ -393,6 +435,8 @@ struct Context
 
     ImVec2 ToClient(ImVec2 point);
     ImVec2 ToScreen(ImVec2 point);
+
+    void NotifyLinkDeleted(Link* link);
 
 private:
     Pin*    CreatePin(int id, PinType type);
@@ -453,9 +497,7 @@ private:
     DragAction          DragAction;
     SelectAction        SelectAction;
     CreateItemAction    CreateItemAction;
-
-    // Link deleting
-    vector<Link*>       DeletedLinks;
+    DeleteItemsAction   DeleteItemsAction;
 
     bool                IsInitialized;
     ImTextureID         HeaderTextureID;

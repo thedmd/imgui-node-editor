@@ -1,6 +1,7 @@
 #include "application.h"
 #include <string>
 #include <vector>
+#include <map>
 #include <algorithm>
 #include <utility>
 #include "Editor/Types.h"
@@ -21,6 +22,18 @@ static ed::Context* m_Editor = nullptr;
 
 const int   PortIconSize = 16;
 const float JoinBezierStrength = 50;
+
+extern "C" __declspec(dllimport) short __stdcall GetAsyncKeyState(int vkey);
+extern "C" bool Debug_KeyPress(int vkey)
+{
+    static std::map<int, bool> state;
+    auto lastState = state[vkey];
+    state[vkey] = (GetAsyncKeyState(vkey) & 0x8000) != 0;
+    if (state[vkey] && !lastState)
+        return true;
+    else
+        return false;
+}
 
 enum class PinType
 {
@@ -413,7 +426,7 @@ void Application_Frame()
                 };
 
                 int startPinId = 0, endPinId = 0;
-                if (ed::QueryLink(&startPinId, &endPinId))
+                if (ed::QueryNewLink(&startPinId, &endPinId))
                 {
                     auto startPin = FindPin(startPinId);
                     auto endPin   = FindPin(endPinId);
@@ -430,27 +443,27 @@ void Application_Frame()
                     {
                         if (endPin == startPin)
                         {
-                            ed::RejectItem(ImColor(255, 0, 0), 2.0f);
+                            ed::RejectNewItem(ImColor(255, 0, 0), 2.0f);
                         }
                         else if (endPin->Kind == startPin->Kind)
                         {
                             showLabel("x Incompatible Pin Kind", ImColor(45, 32, 32, 180));
-                            ed::RejectItem(ImColor(255, 0, 0), 2.0f);
+                            ed::RejectNewItem(ImColor(255, 0, 0), 2.0f);
                         }
                         else if (endPin->Node == startPin->Node)
                         {
                             showLabel("x Cannot connect to self", ImColor(45, 32, 32, 180));
-                            ed::RejectItem(ImColor(255, 0, 0), 1.0f);
+                            ed::RejectNewItem(ImColor(255, 0, 0), 1.0f);
                         }
                         else if (endPin->Type != startPin->Type)
                         {
                             showLabel("x Incompatible Pin Type", ImColor(45, 32, 32, 180));
-                            ed::RejectItem(ImColor(255, 128, 128), 1.0f);
+                            ed::RejectNewItem(ImColor(255, 128, 128), 1.0f);
                         }
                         else
                         {
                             showLabel("+ Create Link", ImColor(32, 45, 32, 180));
-                            if (ed::AcceptItem(ImColor(128, 255, 128), 4.0f))
+                            if (ed::AcceptNewItem(ImColor(128, 255, 128), 4.0f))
                             {
                                 s_Links.emplace_back(Link(GetNextId(), startPinId, endPinId));
                                 s_Links.back().Color = getIconColor(startPin->Type);
@@ -460,13 +473,13 @@ void Application_Frame()
                 }
 
                 int pinId = 0;
-                if (ed::QueryNode(&pinId))
+                if (ed::QueryNewNode(&pinId))
                 {
                     newLinkPin = FindPin(pinId);
                     if (newLinkPin)
                         showLabel("+ Create Node", ImColor(32, 45, 32, 180));
 
-                    if (ed::AcceptItem())
+                    if (ed::AcceptNewItem())
                     {
                         createNewNode  = true;
                         newNodeLinkPin = FindPin(pinId);
@@ -479,17 +492,43 @@ void Application_Frame()
             else
                 newLinkPin = nullptr;
             ed::EndCreate();
+
+            if (ed::BeginDelete())
+            {
+                int linkId = 0;
+                while (ed::QueryDeletedLink(&linkId))
+                {
+                    if (ed::AcceptDeletedItem())
+                    {
+                        auto id = std::find_if(s_Links.begin(), s_Links.end(), [linkId](auto& link) { return link.ID == linkId; });
+                        if (id != s_Links.end())
+                            s_Links.erase(id);
+                    }
+                }
+
+                int nodeId = 0;
+                while (ed::QueryDeletedNode(&nodeId))
+                {
+                    if (ed::AcceptDeletedItem())
+                    {
+                        auto id = std::find_if(s_Nodes.begin(), s_Nodes.end(), [nodeId](auto& node) { return node.ID == nodeId; });
+                        if (id != s_Nodes.end())
+                            s_Nodes.erase(id);
+                    }
+                }
+            }
+            ed::EndDelete();
         }
 
-        if (ed::DestroyLink())
-        {
-            while (int linkId = ed::GetDestroyedLinkId())
-            {
-                auto id = std::find_if(s_Links.begin(), s_Links.end(), [linkId](auto& link) { return link.ID == linkId; });
-                if (id != s_Links.end())
-                    s_Links.erase(id);
-            }
-        }
+//         if (ed::DestroyLink())
+//         {
+//             while (int linkId = ed::GetDestroyedLinkId())
+//             {
+//                 auto id = std::find_if(s_Links.begin(), s_Links.end(), [linkId](auto& link) { return link.ID == linkId; });
+//                 if (id != s_Links.end())
+//                     s_Links.erase(id);
+//             }
+//         }
 
         ImGui::SetCursorScreenPos(cursorTopLeft);
     }
@@ -549,6 +588,41 @@ void Application_Frame()
     else
         createNewNode = false;
     ImGui::PopStyleVar();
+
+
+//     auto p0 = pointf(400,  300);
+//     auto p1 = pointf(1200, 200);
+//     auto p2 = pointf(1600,  600);
+//     auto p3 = pointf(900,  700);
+//
+//     auto a0 = pointf(600, 200);
+//     auto a1 = to_pointf(ImGui::GetMousePos());//pointf(200, 500);
+//
+//     auto drawList = ImGui::GetWindowDrawList();
+//     drawList->PushClipRectFullScreen();
+//
+//     drawList->AddLine(to_imvec(p0), to_imvec(p1), IM_COL32(255, 0, 255, 255), 1.0f);
+//     drawList->AddLine(to_imvec(p1), to_imvec(p2), IM_COL32(255, 0, 255, 255), 1.0f);
+//     drawList->AddLine(to_imvec(p2), to_imvec(p3), IM_COL32(255, 0, 255, 255), 1.0f);
+//     drawList->AddBezierCurve(to_imvec(p0), to_imvec(p1), to_imvec(p2), to_imvec(p3), IM_COL32(255, 255, 255, 255), 4.0f);
+//
+//     drawList->AddLine(to_imvec(a0), to_imvec(a1), IM_COL32(255, 255, 0, 255), 1.0f);
+//
+//     pointf roots[3];
+//     auto count = bezier_line_intersect(p0, p1, p2, p3, a0, a1, roots);
+//     for (int i = 0; i < count; ++i)
+//     {
+//         auto p = roots[i];
+//         drawList->AddCircleFilled(to_imvec(p), 5.0f, IM_COL32(255, 255, 0, 255));
+//     }
+//
+//     auto bounds = bezier_bounding_rect(p0, p1, p2, p3);
+//     drawList->AddRect(
+//         to_imvec(bounds.top_left()),
+//         to_imvec(bounds.bottom_right()),
+//         IM_COL32(0, 0, 255, 255), 0.0f, 15, 2.0f);
+//
+//     drawList->PopClipRect();
 
     ed::End();
 

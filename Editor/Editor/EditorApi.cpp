@@ -61,14 +61,7 @@ bool ax::Editor::BeginCreate(const ImVec4& color, float thickness)
         return false;
 }
 
-void ax::Editor::EndCreate()
-{
-    auto& context = s_Editor->GetItemCreator();
-
-    context.End();
-}
-
-bool ax::Editor::QueryLink(int* startId, int* endId)
+bool ax::Editor::QueryNewLink(int* startId, int* endId)
 {
     using Result = ax::Editor::Detail::CreateItemAction::Result;
 
@@ -77,7 +70,7 @@ bool ax::Editor::QueryLink(int* startId, int* endId)
     return context.QueryLink(startId, endId) == Result::True;
 }
 
-bool ax::Editor::QueryLink(int* startId, int* endId, const ImVec4& color, float thickness)
+bool ax::Editor::QueryNewLink(int* startId, int* endId, const ImVec4& color, float thickness)
 {
     using Result = ax::Editor::Detail::CreateItemAction::Result;
 
@@ -90,7 +83,7 @@ bool ax::Editor::QueryLink(int* startId, int* endId, const ImVec4& color, float 
     return result == Result::True;
 }
 
-bool ax::Editor::QueryNode(int* pinId)
+bool ax::Editor::QueryNewNode(int* pinId)
 {
     using Result = ax::Editor::Detail::CreateItemAction::Result;
 
@@ -99,7 +92,7 @@ bool ax::Editor::QueryNode(int* pinId)
     return context.QueryNode(pinId) == Result::True;
 }
 
-bool ax::Editor::QueryNode(int* pinId, const ImVec4& color, float thickness)
+bool ax::Editor::QueryNewNode(int* pinId, const ImVec4& color, float thickness)
 {
     using Result = ax::Editor::Detail::CreateItemAction::Result;
 
@@ -112,7 +105,7 @@ bool ax::Editor::QueryNode(int* pinId, const ImVec4& color, float thickness)
     return result == Result::True;
 }
 
-bool ax::Editor::AcceptItem()
+bool ax::Editor::AcceptNewItem()
 {
     using Result = ax::Editor::Detail::CreateItemAction::Result;
 
@@ -121,7 +114,7 @@ bool ax::Editor::AcceptItem()
     return context.AcceptItem() == Result::True;
 }
 
-bool ax::Editor::AcceptItem(const ImVec4& color, float thickness)
+bool ax::Editor::AcceptNewItem(const ImVec4& color, float thickness)
 {
     using Result = ax::Editor::Detail::CreateItemAction::Result;
 
@@ -134,14 +127,14 @@ bool ax::Editor::AcceptItem(const ImVec4& color, float thickness)
     return result == Result::True;
 }
 
-void ax::Editor::RejectItem()
+void ax::Editor::RejectNewItem()
 {
     auto& context = s_Editor->GetItemCreator();
 
     context.RejectItem();
 }
 
-void ax::Editor::RejectItem(const ImVec4& color, float thickness)
+void ax::Editor::RejectNewItem(const ImVec4& color, float thickness)
 {
     using Result = ax::Editor::Detail::CreateItemAction::Result;
 
@@ -151,17 +144,61 @@ void ax::Editor::RejectItem(const ImVec4& color, float thickness)
         context.SetStyle(ImColor(color), thickness);
 }
 
-bool ax::Editor::DestroyLink()
+void ax::Editor::EndCreate()
 {
-    return s_Editor->DestroyLink();
+    auto& context = s_Editor->GetItemCreator();
+
+    context.End();
 }
 
-int ax::Editor::GetDestroyedLinkId()
+bool ax::Editor::BeginDelete()
 {
-    return s_Editor->GetDestroyedLinkId();
+    auto& context = s_Editor->GetItemDeleter();
+
+    return context.Begin();
+}
+
+bool ax::Editor::QueryDeletedLink(int* linkId)
+{
+    auto& context = s_Editor->GetItemDeleter();
+
+    return context.QueryLink(linkId);
+}
+
+bool ax::Editor::QueryDeletedNode(int* nodeId)
+{
+    auto& context = s_Editor->GetItemDeleter();
+
+    return context.QueryNode(nodeId);
+}
+
+bool ax::Editor::AcceptDeletedItem()
+{
+    auto& context = s_Editor->GetItemDeleter();
+
+    return context.AcceptItem();
+}
+
+void ax::Editor::RejectDeletedItem()
+{
+    auto& context = s_Editor->GetItemDeleter();
+
+    context.RejectItem();
+}
+
+void ax::Editor::EndDelete()
+{
+    auto& context = s_Editor->GetItemDeleter();
+
+    context.End();
 }
 
 void ax::Editor::SetNodePosition(int nodeId, const ImVec2& position)
 {
     s_Editor->SetNodePosition(nodeId, position);
+}
+
+ImVec2 ax::Editor::GetNodePosition(int nodeId)
+{
+    return s_Editor->GetNodePosition(nodeId);
 }
