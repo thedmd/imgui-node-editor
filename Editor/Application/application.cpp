@@ -361,6 +361,7 @@ void Application_Frame()
                         alpha = 48;
 
                     ed::BeginInput(input.ID);
+                    alpha = (int)(alpha * ImGui::GetStyle().Alpha);
                     ImGui::PushStyleVar(ImGuiStyleVar_Alpha, alpha / 255.0f);
                     drawPinIcon(input, IsPinLinked(input.ID), alpha);
                     ImGui::Spring(0);
@@ -384,6 +385,7 @@ void Application_Frame()
                     if (newLinkPin && !CanCreateLink(newLinkPin, &output) && &output != newLinkPin)
                         alpha = 48;
 
+                    alpha = (int)(alpha * ImGui::GetStyle().Alpha);
                     ImGui::PushStyleVar(ImGuiStyleVar_Alpha, alpha / 255.0f);
                     ed::BeginOutput(output.ID);
                     if (!output.Name.empty())
