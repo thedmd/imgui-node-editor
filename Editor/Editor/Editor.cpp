@@ -231,6 +231,8 @@ void ed::Context::End()
     auto  control  = ComputeControl();
     auto  drawList = ImGui::GetWindowDrawList();
 
+    bool isSelecting = CurrentAction && CurrentAction->AsSelect() != nullptr;
+
     // Draw links
     drawList->ChannelsSetCurrent(c_LinkStartChannel + 1);
     for (auto link : Links)
@@ -245,7 +247,7 @@ void ed::Context::End()
 
         if (ImGui::IsRectVisible(to_imvec(bounds.top_left()), to_imvec(bounds.bottom_right())))
         {
-            float extraThickness = !IsSelected(link) && (control.HotLink == link || control.ActiveLink == link) ? 2.0f : 0.0f;
+            float extraThickness = !isSelecting && !IsSelected(link) && (control.HotLink == link || control.ActiveLink == link) ? 2.0f : 0.0f;
 
             ax::Drawing::DrawLink(drawList, startPoint, endPoint,
                 link->Color, link->Thickness + extraThickness, c_LinkStrength);
@@ -289,7 +291,7 @@ void ed::Context::End()
         }
     }
 
-    if (!CurrentAction || !CurrentAction->AsSelect())
+    if (!isSelecting)
     {
         // Highlight selected node
         auto hotNode = control.HotNode;
@@ -478,6 +480,11 @@ void ed::Context::EndNode()
 
         drawList->ChannelsSetCurrent(CurrentNode->Channel + c_NodeBackgroundChannel);
 
+        drawList->AddRectFilled(
+            to_imvec(NodeRect.top_left()),
+            to_imvec(NodeRect.bottom_right()),
+            ImColor(32, 32, 32, 200), c_NodeFrameRounding);
+
         auto headerColor = 0xFF000000 | (HeaderColor & 0x00FFFFFF);
         ax::Drawing::DrawHeader(drawList, HeaderTextureID,
             to_imvec(HeaderRect.top_left()),
@@ -488,10 +495,10 @@ void ed::Context::EndNode()
         auto footerSeparatorRect      = ax::rect(ContentRect.bottom_left(), NodeRect.bottom_right());
         auto contentWithSeparatorRect = ax::rect::make_union(headerSeparatorRect, footerSeparatorRect);
 
-        drawList->AddRectFilled(
-            to_imvec(contentWithSeparatorRect.top_left()),
-            to_imvec(contentWithSeparatorRect.bottom_right()),
-            ImColor(32, 32, 32, 200), c_NodeFrameRounding, 4 | 8);
+        //drawList->AddRectFilled(
+        //    to_imvec(contentWithSeparatorRect.top_left()),
+        //    to_imvec(contentWithSeparatorRect.bottom_right()),
+        //    ImColor(32, 32, 32, 200), c_NodeFrameRounding, 4 | 8);
 
         drawList->AddLine(
             to_imvec(headerSeparatorRect.top_left() + point(1, -1)),
@@ -1465,6 +1472,10 @@ bool ed::SelectAction::Process(const Control& control)
         auto topLeft     = Editor->ToClient(ImVec2(std::min(StartPoint.x, EndPoint.x), std::min(StartPoint.y, EndPoint.y)));
         auto bottomRight = Editor->ToClient(ImVec2(std::max(StartPoint.x, EndPoint.x), std::max(StartPoint.y, EndPoint.y)));
         auto rect        = ax::rect(to_point(topLeft), to_point(bottomRight));
+        if (rect.w <= 0)
+            rect.w = 1;
+        if (rect.h <= 0)
+            rect.h = 1;
 
         vector<Node*> nodes;
         vector<Link*> links;
