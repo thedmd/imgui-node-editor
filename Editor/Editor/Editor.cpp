@@ -455,6 +455,8 @@ void ed::Context::BeginNode(int id)
     ImDrawList_ChannelsGrow(drawList, drawList->_ChannelsCount + c_ChannelsPerNode);
     drawList->ChannelsSetCurrent(node->Channel + c_NodeContentChannel);
 
+    ImGui::PushStyleVar(ImGuiStyleVar_Alpha, 1.0f);
+
     SetNodeStage(NodeStage::Begin);
 }
 
@@ -474,6 +476,8 @@ void ed::Context::EndNode()
     // Draw background
     if (ImGui::IsItemVisible())
     {
+        auto alpha = static_cast<int>(255 * ImGui::GetStyle().Alpha);
+
         auto drawList = ImGui::GetWindowDrawList();
 
         auto drawListForegroundEnd = drawList->CmdBuffer.size();
@@ -483,9 +487,9 @@ void ed::Context::EndNode()
         drawList->AddRectFilled(
             to_imvec(NodeRect.top_left()),
             to_imvec(NodeRect.bottom_right()),
-            ImColor(32, 32, 32, 200), c_NodeFrameRounding);
+            ImColor(32, 32, 32, (200 * alpha) / 255), c_NodeFrameRounding);
 
-        auto headerColor = 0xFF000000 | (HeaderColor & 0x00FFFFFF);
+        auto headerColor = IM_COL32(0, 0, 0, alpha) | (HeaderColor & IM_COL32(255, 255, 255, 0));
         ax::Drawing::DrawHeader(drawList, HeaderTextureID,
             to_imvec(HeaderRect.top_left()),
             to_imvec(HeaderRect.bottom_right()),
@@ -503,13 +507,15 @@ void ed::Context::EndNode()
         drawList->AddLine(
             to_imvec(headerSeparatorRect.top_left() + point(1, -1)),
             to_imvec(headerSeparatorRect.top_right() + point(-1, -1)),
-            ImColor(255, 255, 255, 96 / 3), 1.0f);
+            ImColor(255, 255, 255, 96 * alpha / (3 * 255)), 1.0f);
 
         drawList->AddRect(
             to_imvec(NodeRect.top_left()),
             to_imvec(NodeRect.bottom_right()),
-            ImColor(255, 255, 255, 96), c_NodeFrameRounding, 15, 1.5f);
+            ImColor(255, 255, 255, 96 * alpha / 255), c_NodeFrameRounding, 15, 1.5f);
     }
+
+    ImGui::PopStyleVar();
 
     SetCurrentNode(nullptr);
 
