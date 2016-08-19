@@ -209,15 +209,15 @@
  - 2015/05/27 (1.40) - removed the third 'repeat_if_held' parameter from Button() - sorry! it was rarely used and inconsistent. Use PushButtonRepeat(true) / PopButtonRepeat() to enable repeat on desired buttons.
  - 2015/05/11 (1.40) - changed BeginPopup() API, takes a string identifier instead of a bool. ImGui needs to manage the open/closed state of popups. Call OpenPopup() to actually set the "open" state of a popup. BeginPopup() returns true if the popup is opened.
  - 2015/05/03 (1.40) - removed style.AutoFitPadding, using style.WindowPadding makes more sense (the default values were already the same).
- - 2015/04/13 (1.38) - renamed IsClipped() to IsRectClipped(). Kept inline redirection function (will obsolete).
+ - 2015/04/13 (1.38) - renamed IsClipped() to IsRectClipped(). Kept inline redirection function until 1.50.
  - 2015/04/09 (1.38) - renamed ImDrawList::AddArc() to ImDrawList::AddArcFast() for compatibility with future API
  - 2015/04/03 (1.38) - removed ImGuiCol_CheckHovered, ImGuiCol_CheckActive, replaced with the more general ImGuiCol_FrameBgHovered, ImGuiCol_FrameBgActive.
  - 2014/04/03 (1.38) - removed support for passing -FLT_MAX..+FLT_MAX as the range for a SliderFloat(). Use DragFloat() or Inputfloat() instead.
- - 2015/03/17 (1.36) - renamed GetItemBoxMin()/GetItemBoxMax()/IsMouseHoveringBox() to GetItemRectMin()/GetItemRectMax()/IsMouseHoveringRect(). Kept inline redirection function (will obsolete).
+ - 2015/03/17 (1.36) - renamed GetItemBoxMin()/GetItemBoxMax()/IsMouseHoveringBox() to GetItemRectMin()/GetItemRectMax()/IsMouseHoveringRect(). Kept inline redirection function until 1.50.
  - 2015/03/15 (1.36) - renamed style.TreeNodeSpacing to style.IndentSpacing, ImGuiStyleVar_TreeNodeSpacing to ImGuiStyleVar_IndentSpacing
- - 2015/03/13 (1.36) - renamed GetWindowIsFocused() to IsWindowFocused(). Kept inline redirection function (will obsolete).
+ - 2015/03/13 (1.36) - renamed GetWindowIsFocused() to IsWindowFocused(). Kept inline redirection function until 1.50.
  - 2015/03/08 (1.35) - renamed style.ScrollBarWidth to style.ScrollbarWidth (casing)
- - 2015/02/27 (1.34) - renamed OpenNextNode(bool) to SetNextTreeNodeOpened(bool, ImGuiSetCond). Kept inline redirection function (will obsolete).
+ - 2015/02/27 (1.34) - renamed OpenNextNode(bool) to SetNextTreeNodeOpened(bool, ImGuiSetCond). Kept inline redirection function until 1.50.
  - 2015/02/27 (1.34) - renamed ImGuiSetCondition_*** to ImGuiSetCond_***, and _FirstUseThisSession becomes _Once.
  - 2015/02/11 (1.32) - changed text input callback ImGuiTextEditCallback return type from void-->int. reserved for future use, return 0 for now.
  - 2015/02/10 (1.32) - renamed GetItemWidth() to CalcItemWidth() to clarify its evolving behavior
@@ -1219,6 +1219,20 @@ ImU32 ImGui::ColorConvertFloat4ToU32(const ImVec4& in)
     return out;
 }
 
+ImU32 ImGui::GetColorU32(ImGuiCol idx, float alpha_mul)  
+{ 
+    ImVec4 c = GImGui->Style.Colors[idx]; 
+    c.w *= GImGui->Style.Alpha * alpha_mul; 
+    return ImGui::ColorConvertFloat4ToU32(c); 
+}
+
+ImU32 ImGui::GetColorU32(const ImVec4& col)
+{ 
+    ImVec4 c = col; 
+    c.w *= GImGui->Style.Alpha; 
+    return ImGui::ColorConvertFloat4ToU32(c); 
+}
+
 // Convert rgb floats ([0-1],[0-1],[0-1]) to hsv floats ([0-1],[0-1],[0-1]), from Foley & van Dam p592
 // Optimized http://lolengine.net/blog/2013/01/13/fast-rgb-to-hsv
 void ImGui::ColorConvertRGBtoHSV(float r, float g, float b, float& out_h, float& out_s, float& out_v)
@@ -1885,7 +1899,7 @@ void ImGui::ItemSize(const ImVec2& size, float text_offset_y)
         window->DC.PrevLineSize = ImVec2(lineSize.x, window->DC.CurrentLineSize.y);
     }
 
-    //window->DrawList->AddCircle(window->DC.CursorMaxPos, 3.0f, 0xFF0000FF, 4); // Debug
+    //window->DrawList->AddCircle(window->DC.CursorMaxPos, 3.0f, IM_COL32(255,0,0,255), 4); // Debug
 
     window->DC.PrevLineTextBaseOffset    = text_base_offset;
     window->DC.CurrentLineSize           = ImVec2(0.0f, 0.0f);
@@ -2737,10 +2751,10 @@ void ImGui::Render()
             const ImVec2 size = cursor_data.Size;
             const ImTextureID tex_id = g.IO.Fonts->TexID;
             g.OverlayDrawList.PushTextureID(tex_id);
-            g.OverlayDrawList.AddImage(tex_id, pos+ImVec2(1,0), pos+ImVec2(1,0) + size, cursor_data.TexUvMin[1], cursor_data.TexUvMax[1], 0x30000000); // Shadow
-            g.OverlayDrawList.AddImage(tex_id, pos+ImVec2(2,0), pos+ImVec2(2,0) + size, cursor_data.TexUvMin[1], cursor_data.TexUvMax[1], 0x30000000); // Shadow
-            g.OverlayDrawList.AddImage(tex_id, pos,             pos + size,             cursor_data.TexUvMin[1], cursor_data.TexUvMax[1], 0xFF000000); // Black border
-            g.OverlayDrawList.AddImage(tex_id, pos,             pos + size,             cursor_data.TexUvMin[0], cursor_data.TexUvMax[0], 0xFFFFFFFF); // White fill
+            g.OverlayDrawList.AddImage(tex_id, pos+ImVec2(1,0), pos+ImVec2(1,0) + size, cursor_data.TexUvMin[1], cursor_data.TexUvMax[1], IM_COL32(0,0,0,48));        // Shadow
+            g.OverlayDrawList.AddImage(tex_id, pos+ImVec2(2,0), pos+ImVec2(2,0) + size, cursor_data.TexUvMin[1], cursor_data.TexUvMax[1], IM_COL32(0,0,0,48));        // Shadow
+            g.OverlayDrawList.AddImage(tex_id, pos,             pos + size,             cursor_data.TexUvMin[1], cursor_data.TexUvMax[1], IM_COL32(0,0,0,255));       // Black border
+            g.OverlayDrawList.AddImage(tex_id, pos,             pos + size,             cursor_data.TexUvMin[0], cursor_data.TexUvMax[0], IM_COL32(255,255,255,255)); // White fill
             g.OverlayDrawList.PopTextureID();
         }
         if (!g.OverlayDrawList.VtxBuffer.empty())
@@ -4303,10 +4317,9 @@ bool ImGui::Begin(const char* name, bool* p_open, const ImVec2& size_on_first_us
         window->DC.AllowKeyboardFocus = true;
         window->DC.ButtonRepeat = false;
         window->DC.ItemWidthStack.resize(0);
-        window->DC.TextWrapPosStack.resize(0);
         window->DC.AllowKeyboardFocusStack.resize(0);
         window->DC.ButtonRepeatStack.resize(0);
-        window->DC.ColorEditMode = ImGuiColorEditMode_UserSelect;
+        window->DC.TextWrapPosStack.resize(0);
         window->DC.ColumnsCurrent = 0;
         window->DC.ColumnsCount = 1;
         window->DC.ColumnsStartPosY = window->DC.CursorPos.y;
@@ -4314,6 +4327,7 @@ bool ImGui::Begin(const char* name, bool* p_open, const ImVec2& size_on_first_us
         window->DC.TreeDepth = 0;
         window->DC.StateStorage = &window->StateStorage;
         window->DC.GroupStack.resize(0);
+        window->DC.ColorEditMode = ImGuiColorEditMode_UserSelect;
         window->MenuColumns.Update(3, style.ItemSpacing.x, !window_was_active);
 
         if (window->AutoFitFramesX > 0)
@@ -6233,7 +6247,7 @@ void ImGui::BulletTextV(const char* fmt, va_list args)
 
     const char* text_begin = g.TempBuffer;
     const char* text_end = text_begin + ImFormatStringV(g.TempBuffer, IM_ARRAYSIZE(g.TempBuffer), fmt, args);
-    const ImVec2 label_size = CalcTextSize(text_begin, text_end, true);
+    const ImVec2 label_size = CalcTextSize(text_begin, text_end, false);
     const float text_base_offset_y = ImMax(0.0f, window->DC.CurrentLineTextBaseOffset); // Latch before ItemSize changes it
     const float line_height = ImMax(ImMin(window->DC.CurrentLineSize.y, g.FontSize + g.Style.FramePadding.y*2), g.FontSize);
     const ImRect bb(window->DC.CursorPos, window->DC.CursorPos + ImVec2(g.FontSize + (label_size.x > 0.0f ? (label_size.x + style.FramePadding.x*2) : 0.0f), ImMax(line_height, label_size.y)));  // Empty text doesn't add padding
@@ -6243,7 +6257,7 @@ void ImGui::BulletTextV(const char* fmt, va_list args)
 
     // Render
     RenderBullet(bb.Min + ImVec2(style.FramePadding.x + g.FontSize*0.5f, line_height*0.5f));
-    RenderText(bb.Min+ImVec2(g.FontSize + style.FramePadding.x*2, text_base_offset_y), text_begin, text_end);
+    RenderText(bb.Min+ImVec2(g.FontSize + style.FramePadding.x*2, text_base_offset_y), text_begin, text_end, false);
 }
 
 void ImGui::BulletText(const char* fmt, ...)
@@ -8878,7 +8892,7 @@ bool ImGui::BeginMenu(const char* label, bool enabled)
                 tb.y = ta.y + ImMax((tb.y - extra) - ta.y, -100.0f);            // triangle is maximum 200 high to limit the slope and the bias toward large sub-menus // FIXME: Multiply by fb_scale?
                 tc.y = ta.y + ImMin((tc.y + extra) - ta.y, +100.0f);
                 moving_within_opened_triangle = ImIsPointInTriangle(g.IO.MousePos, ta, tb, tc);
-                //window->DrawList->PushClipRectFullScreen(); window->DrawList->AddTriangleFilled(ta, tb, tc, moving_within_opened_triangle ? 0x80008000 : 0x80000080); window->DrawList->PopClipRect(); // Debug
+                //window->DrawList->PushClipRectFullScreen(); window->DrawList->AddTriangleFilled(ta, tb, tc, moving_within_opened_triangle ? IM_COL32(0,128,0,128) : IM_COL32(128,0,0,128)); window->DrawList->PopClipRect(); // Debug
             }
         }
 
@@ -9169,10 +9183,10 @@ bool ImGui::IsRectVisible(const ImVec2& size)
     return window->ClipRect.Overlaps(ImRect(window->DC.CursorPos, window->DC.CursorPos + size));
 }
 
-bool ImGui::IsRectVisible(const ImVec2& a, const ImVec2& b)
+bool ImGui::IsRectVisible(const ImVec2& rect_min, const ImVec2& rect_max)
 {
     ImGuiWindow* window = GetCurrentWindowRead();
-    return window->ClipRect.Overlaps(ImRect(a, b));
+    return window->ClipRect.Overlaps(ImRect(rect_min, rect_max));
 }
 
 // Lock horizontal starting position + capture group bounding box into one "item" (so you can use IsItemHovered() or layout primitives such as SameLine() on whole group, etc.)
@@ -9227,7 +9241,7 @@ void ImGui::EndGroup()
 
     window->DC.GroupStack.pop_back();
 
-    // window->DrawList->AddRect(group_bb.Min, group_bb.Max, 0xFFFF00FF);   // Debug
+    //window->DrawList->AddRect(group_bb.Min, group_bb.Max, IM_COL32(255,0,255,255));   // Debug
 }
 
 // Gets back to previous line and continue with horizontal layout
@@ -10167,10 +10181,10 @@ void ImGui::ValueColor(const char* prefix, ImU32 v)
     SameLine();
 
     ImVec4 col;
-    col.x = (float)((v >> 0) & 0xFF) / 255.0f;
-    col.y = (float)((v >> 8) & 0xFF) / 255.0f;
-    col.z = (float)((v >> 16) & 0xFF) / 255.0f;
-    col.w = (float)((v >> 24) & 0xFF) / 255.0f;
+    col.x = (float)((v >> IM_COL32_R_SHIFT) & 0xFF) / 255.0f;
+    col.y = (float)((v >> IM_COL32_G_SHIFT) & 0xFF) / 255.0f;
+    col.z = (float)((v >> IM_COL32_B_SHIFT) & 0xFF) / 255.0f;
+    col.w = (float)((v >> IM_COL32_A_SHIFT) & 0xFF) / 255.0f;
     ColorButton(col, true);
 }
 
