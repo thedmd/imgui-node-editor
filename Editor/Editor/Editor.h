@@ -433,6 +433,8 @@ struct Context
     void FindNodesInRect(ax::rect r, vector<Node*>& result);
     void FindLinksInRect(ax::rect r, vector<Link*>& result);
 
+    void FindLinksForNode(int nodeId, vector<Link*>& result, bool add = false);
+
     ImVec2 ToClient(ImVec2 point);
     ImVec2 ToScreen(ImVec2 point);
 

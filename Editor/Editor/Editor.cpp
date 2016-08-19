@@ -743,6 +743,21 @@ void ed::Context::FindLinksInRect(ax::rect r, vector<Link*>& result)
     }
 }
 
+void ed::Context::FindLinksForNode(int nodeId, vector<Link*>& result, bool add)
+{
+    if (!add)
+        result.clear();
+
+    for (auto link : Links)
+    {
+        if (!link->IsLive)
+            continue;
+
+        if (link->StartPin->Node->ID == nodeId || link->EndPin->Node->ID == nodeId)
+            result.push_back(link);
+    }
+}
+
 ImVec2 ed::Context::ToClient(ImVec2 point)
 {
     return point - Offset;
@@ -1855,6 +1870,23 @@ bool ed::DeleteItemsAction::Accept(const Control& control)
         if (!selection.empty())
         {
             CandidateObjects = selection;
+
+            vector<ed::Link*> links;
+            for (auto object : selection)
+            {
+                auto node = object->AsNode();
+                if (!node)
+                    continue;
+
+                Editor->FindLinksForNode(node->ID, links, true);
+            }
+            if (!links.empty())
+            {
+                std::sort(links.begin(), links.end());
+                links.erase(std::unique(links.begin(), links.end()), links.end());
+                CandidateObjects.insert(CandidateObjects.end(), links.begin(), links.end());
+            }
+
             IsActive = true;
             return true;
         }
