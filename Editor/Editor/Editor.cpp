@@ -216,7 +216,10 @@ void ed::Context::Begin(const char* id)
 
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
     ImGui::PushStyleColor(ImGuiCol_ChildWindowBg, ImColor(60, 60, 70, 0));
-    ImGui::BeginChild(id, ImVec2(0, 0), true, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoScrollbar);
+    ImGui::BeginChild(id, ImVec2(0, 0), true,
+        ImGuiWindowFlags_NoMove |
+        ImGuiWindowFlags_NoScrollbar |
+        ImGuiWindowFlags_NoScrollWithMouse);
 
     Offset = ImGui::GetWindowPos() - ScrollAction.Scroll;
 
@@ -1246,9 +1249,16 @@ void ed::Context::ShowMetrics(const Control& control)
         else return "";
     };
 
+    auto liveNodeCount = (int)std::count_if(Nodes.begin(), Nodes.end(), [](Node* node) { return node->IsLive; });
+    auto livePinCount  = (int)std::count_if(Pins.begin(),  Pins.end(),  [](Pin*  pin)  { return  pin->IsLive; });
+    auto liveLinkCount = (int)std::count_if(Links.begin(), Links.end(), [](Link* link) { return link->IsLive; });
+
     ImGui::SetCursorPos(ImVec2(10, 10));
     ImGui::BeginGroup();
     ImGui::Text("Is Editor Active: %s", ImGui::IsWindowHovered() ? "true" : "false");
+    ImGui::Text("Live Nodes: %d", liveNodeCount);
+    ImGui::Text("Live Pins: %d", livePinCount);
+    ImGui::Text("Live Links: %d", liveLinkCount);
     ImGui::Text("Hot Object: %s (%d)", getObjectName(control.HotObject), control.HotObject ? control.HotObject->ID : 0);
     ImGui::Text("Active Object: %s (%d)", getObjectName(control.ActiveObject), control.ActiveObject ? control.ActiveObject->ID : 0);
     ImGui::Text("Action: %s", CurrentAction ? CurrentAction->GetName() : "<none>");
