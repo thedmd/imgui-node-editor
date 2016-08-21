@@ -54,6 +54,9 @@ void EndDelete();
 void SetNodePosition(int nodeId, const ImVec2& screenPosition);
 ImVec2 GetNodePosition(int nodeId);
 
+void Suspend();
+void Resume();
+
 //------------------------------------------------------------------------------
 } // namespace Editor
 } // namespace ax

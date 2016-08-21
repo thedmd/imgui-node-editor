@@ -202,3 +202,13 @@ ImVec2 ax::Editor::GetNodePosition(int nodeId)
 {
     return s_Editor->GetNodePosition(nodeId);
 }
+
+void ax::Editor::Suspend()
+{
+    s_Editor->Suspend();
+}
+
+void ax::Editor::Resume()
+{
+    s_Editor->Resume();
+}

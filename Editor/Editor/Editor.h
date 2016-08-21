@@ -187,6 +187,36 @@ struct Control
     }
 };
 
+// Spaces:
+//   Canvas - where objects are
+//   Client - where objects are drawn
+//   Screen - global screen space
+struct Canvas
+{
+    ImVec2 WindowScreenPos;
+    ImVec2 WindowScreenSize;
+    ImVec2 ClientSize;
+    ImVec2 Origin;
+    ImVec2 Scale;
+    ImVec2 InvScale;
+
+    Canvas();
+
+    void SetWindow(ImVec2 position, ImVec2 size);
+    void SetScale(ImVec2 scale);
+    void SetOrigin(ImVec2 offset);
+
+    ImVec2 ScreenToCanvas(ImVec2 point);
+    ImVec2 ScreenToClient(ImVec2 point);
+    ImVec2 CanvasToScreen(ImVec2 point);
+    ImVec2 ClientToScreen(ImVec2 point);
+    ImVec2 CanvasToClient(ImVec2 point);
+    ImVec2 ClientToCanvas(ImVec2 point);
+
+private:
+    void ApplyScale();
+};
+
 struct Context;
 struct ScrollAction;
 struct DragAction;
@@ -218,8 +248,6 @@ struct EditorAction
 struct ScrollAction final: EditorAction
 {
     bool   IsActive;
-    ImVec2 Scroll;
-    ImVec2 ScrollStart;
 
     ScrollAction(Context* editor);
 
@@ -231,6 +259,22 @@ struct ScrollAction final: EditorAction
     virtual void ShowMetrics() override final;
 
     virtual ScrollAction* AsScroll() override final { return this; }
+
+    void SetWindow(ImVec2 position, ImVec2 size);
+
+    Canvas GetCanvas() { return Canvas; }
+
+private:
+    float  Zoom;
+    ImVec2 Scroll;
+    ImVec2 ScrollStart;
+    Canvas Canvas;
+
+    float MatchZoom(int steps, float fallbackZoom);
+    int MatchZoomIndex();
+
+    static const float s_ZoomLevels[];
+    static const int   s_ZoomLevelCount;
 };
 
 struct DragAction final: EditorAction
@@ -435,10 +479,17 @@ struct Context
 
     void FindLinksForNode(int nodeId, vector<Link*>& result, bool add = false);
 
-    ImVec2 ToClient(ImVec2 point);
-    ImVec2 ToScreen(ImVec2 point);
+    ImVec2 ScreenToCanvas(ImVec2 point) { return Canvas.ScreenToCanvas(point); }
+    ImVec2 ScreenToClient(ImVec2 point) { return Canvas.ScreenToClient(point); }
+    ImVec2 CanvasToScreen(ImVec2 point) { return Canvas.CanvasToScreen(point); }
+    ImVec2 ClientToScreen(ImVec2 point) { return Canvas.ClientToScreen(point); }
+    ImVec2 CanvasToClient(ImVec2 point) { return Canvas.CanvasToClient(point); }
+    ImVec2 ClientToCanvas(ImVec2 point) { return Canvas.ClientToCanvas(point); }
 
     void NotifyLinkDeleted(Link* link);
+
+    void Suspend();
+    void Resume();
 
 private:
     Pin*    CreatePin(int id, PinType type);
@@ -473,6 +524,9 @@ private:
 
     void ShowMetrics(const Control& control);
 
+    void CaptureMouse();
+    void ReleaseMouse();
+
     vector<Node*>       Nodes;
     vector<Pin*>        Pins;
     vector<Link*>       Links;
@@ -485,7 +539,12 @@ private:
     Pin*                CurrentPin;
     Node*               CurrentNode;
 
-    ImVec2              Offset;
+    ImVec2              MousePosBackup;
+    ImVec2              MouseClickPosBackup[5];
+
+    Canvas              Canvas;
+
+    bool                IsSuspended;
 
     // Node building
     NodeStage           NodeBuildStage;
