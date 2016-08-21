@@ -522,19 +522,10 @@ void Application_Frame()
             ed::EndDelete();
         }
 
-//         if (ed::DestroyLink())
-//         {
-//             while (int linkId = ed::GetDestroyedLinkId())
-//             {
-//                 auto id = std::find_if(s_Links.begin(), s_Links.end(), [linkId](auto& link) { return link.ID == linkId; });
-//                 if (id != s_Links.end())
-//                     s_Links.erase(id);
-//             }
-//         }
-
         ImGui::SetCursorScreenPos(cursorTopLeft);
     }
 
+    ed::Suspend();
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(8, 8));
     if (ImGui::BeginPopup("Create New Node"))
     {
@@ -560,9 +551,9 @@ void Application_Frame()
 
         if (node)
         {
-            ed::SetNodePosition(node->ID, newNodePostion);
-
             createNewNode = false;
+
+            ed::SetNodePosition(node->ID, newNodePostion);
 
             if (auto startPin = newNodeLinkPin)
             {
@@ -590,6 +581,7 @@ void Application_Frame()
     else
         createNewNode = false;
     ImGui::PopStyleVar();
+    ed::Resume();
 
 
 //     auto p0 = pointf(400,  300);
@@ -625,6 +617,7 @@ void Application_Frame()
 //         IM_COL32(0, 0, 255, 255), 0.0f, 15, 2.0f);
 //
 //     drawList->PopClipRect();
+
 
     ed::End();
 
