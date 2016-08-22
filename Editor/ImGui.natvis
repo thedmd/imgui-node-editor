@@ -1,7 +1,35 @@
 <?xml version="1.0" encoding="utf-8"?> 
 <AutoVisualizer xmlns="http://schemas.microsoft.com/vstudio/debugger/natvis/2010">
 
-  <Type Name="ImVec2">
+    <Type Name="ax::basic_point&lt;*&gt;">
+        <DisplayString>{{ x={x,g} y={y,g} }}</DisplayString>
+        <Expand HideRawView="true">
+            <Item Name="x">x</Item>
+            <Item Name="y">y</Item>
+        </Expand>
+    </Type>
+
+    <Type Name="ax::basic_size&lt;*&gt;">
+        <DisplayString>{{ w={w,g} h={h,g} }}</DisplayString>
+        <Expand HideRawView="true">
+            <Item Name="w">w</Item>
+            <Item Name="h">h</Item>
+        </Expand>
+    </Type>
+
+    <Type Name="ax::basic_rect&lt;*&gt;">
+        <DisplayString>{{ x={x,g} y={y,g} r={x + w,g} b={y + h,g} w={w,g} h={h,g} }}</DisplayString>
+        <Expand HideRawView="true">
+            <Item Name="left">x</Item>
+            <Item Name="top">y</Item>
+            <Item Name="right">x + w</Item>
+            <Item Name="bottom">y + w</Item>
+            <Item Name="width">w</Item>
+            <Item Name="height">h</Item>
+        </Expand>
+    </Type>
+
+    <Type Name="ImVec2">
     <DisplayString IncludeView="size">{{ w={x,g} h={y,g} }}</DisplayString>
     <DisplayString>{{ x={x,g} y={y,g} }}</DisplayString>
     <Expand HideRawView="true">
