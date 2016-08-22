@@ -196,7 +196,7 @@ struct Canvas
     ImVec2 WindowScreenPos;
     ImVec2 WindowScreenSize;
     ImVec2 ClientOrigin;
-    ImVec2 CanvasSize;
+    ImVec2 ClientSize;
     ImVec2 Zoom;
     ImVec2 InvZoom;
 
