@@ -432,7 +432,7 @@ struct Context
     Context(const Config* config = nullptr);
     ~Context();
 
-    void Begin(const char* id);
+    void Begin(const char* id, const ImVec2& size = ImVec2(0, 0));
     void End();
 
     void BeginNode(int id);
@@ -469,6 +469,7 @@ struct Context
     const vector<Object*>& GetSelectedObjects();
     bool IsAnyNodeSelected();
     bool IsAnyLinkSelected();
+    bool HasSelectionChanged();
 
     void FindNodesInRect(ax::rect r, vector<Node*>& result);
     void FindLinksInRect(ax::rect r, vector<Link*>& result);
@@ -485,16 +486,16 @@ struct Context
 
     void MarkSettingsDirty();
 
+    Node* FindNode(int id);
+    Pin*  FindPin(int id);
+    Link* FindLink(int id);
+
 private:
     Pin*    CreatePin(int id, PinType type);
     Node*   CreateNode(int id);
     Link*   CreateLink(int id);
     void    DestroyObject(Node* node);
     Object* FindObject(int id);
-
-    Node* FindNode(int id);
-    Pin*  FindPin(int id);
-    Link* FindLink(int id);
 
     void SetCurrentNode(Node* node);
     void SetCurrentPin(Pin* pin);
@@ -526,6 +527,7 @@ private:
 
     Object*             SelectedObject;
     vector<Object*>     SelectedObjects;
+    bool                SelectionChanged;
 
     Link*               LastActiveLink;
 

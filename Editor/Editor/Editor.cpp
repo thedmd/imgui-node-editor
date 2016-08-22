@@ -225,6 +225,7 @@ ed::Context::Context(const ax::Editor::Config* config):
     Pins(),
     Links(),
     SelectedObject(nullptr),
+    SelectionChanged(false),
     LastActiveLink(nullptr),
     CurrentPin(nullptr),
     CurrentNode(nullptr),
@@ -264,7 +265,7 @@ ed::Context::~Context()
     for (auto node : Nodes) delete node;
 }
 
-void ed::Context::Begin(const char* id)
+void ed::Context::Begin(const char* id, const ImVec2& size)
 {
     if (!IsInitialized)
     {
@@ -284,7 +285,7 @@ void ed::Context::Begin(const char* id)
 
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
     ImGui::PushStyleColor(ImGuiCol_ChildWindowBg, ImColor(60, 60, 70, 0));
-    ImGui::BeginChild(id, ImVec2(0, 0), false,
+    ImGui::BeginChild(id, size, false,
         ImGuiWindowFlags_NoMove |
         ImGuiWindowFlags_NoScrollbar |
         ImGuiWindowFlags_NoScrollWithMouse);
@@ -325,6 +326,8 @@ void ed::Context::End()
     auto& io       = ImGui::GetIO();
     auto  control  = ComputeControl();
     auto  drawList = ImGui::GetWindowDrawList();
+
+    SelectionChanged = false;
 
     bool isSelecting = CurrentAction && CurrentAction->AsSelect() != nullptr;
 
@@ -553,7 +556,7 @@ void ed::Context::End()
         drawList->AddRect(Canvas.WindowScreenPos,                Canvas.WindowScreenPos + Canvas.WindowScreenSize,                ImColor(borderColor),      style.WindowRounding);
     }
 
-    ShowMetrics(control);
+    // ShowMetrics(control);
 
     ImGui::EndChild();
     ImGui::PopStyleColor();
@@ -764,6 +767,9 @@ ImVec2 ed::Context::GetNodePosition(int nodeId)
 
 void ed::Context::ClearSelection()
 {
+    if (!SelectedObjects.empty())
+        SelectionChanged = true;
+
     SelectedObjects.clear();
     SelectedObject = nullptr;
 }
@@ -772,6 +778,8 @@ void ed::Context::SelectObject(Object* object)
 {
     SelectedObjects.push_back(object);
     SelectedObject = SelectedObjects.front();
+
+    SelectionChanged = true;
 }
 
 void ed::Context::DeselectObject(Object* object)
@@ -784,6 +792,8 @@ void ed::Context::DeselectObject(Object* object)
             SelectedObject = SelectedObjects.front();
         else
             SelectedObject = nullptr;
+
+        SelectionChanged = true;
     }
 }
 
@@ -827,6 +837,11 @@ bool ed::Context::IsAnyLinkSelected()
             return true;
 
     return false;
+}
+
+bool ed::Context::HasSelectionChanged()
+{
+    return SelectionChanged;
 }
 
 void ed::Context::FindNodesInRect(ax::rect r, vector<Node*>& result)
@@ -1455,7 +1470,7 @@ void ed::Context::ShowMetrics(const Control& control)
 {
     auto& io = ImGui::GetIO();
 
-    ImGui::SetCursorScreenPos(ImGui::GetWindowPos());
+    ImGui::SetCursorScreenPos(Canvas.WindowScreenPos);
     auto getObjectName = [](Object* object)
     {
         if (!object) return "";
@@ -1630,7 +1645,7 @@ bool ed::ScrollAction::Accept(const Control& control)
 //     if (auto drawList = ImGui::GetWindowDrawList())
 //         drawList->AddCircleFilled(io.MousePos, 4.0f, IM_COL32(255, 0, 255, 255));
 
-    if (io.MouseWheel)
+    if (io.MouseWheel && ImGui::IsWindowHovered() && !ImGui::IsAnyItemActive())
     {
         auto mousePos     = io.MousePos;
         auto steps        = (int)io.MouseWheel;

@@ -37,7 +37,7 @@ Context* GetCurrentEditor();
 Context* CreateEditor(const Config* config = nullptr);
 void DestroyEditor(Context* ctx);
 
-void Begin(const char* id);
+void Begin(const char* id, const ImVec2& size = ImVec2(0, 0));
 void End();
 
 void BeginNode(int id);
@@ -77,6 +77,16 @@ ImVec2 GetNodePosition(int nodeId);
 
 void Suspend();
 void Resume();
+
+bool HasSelectionChanged();
+int  GetSelectedObjectCount();
+int  GetSelectedNodes(int* nodes, int size);
+int  GetSelectedLinks(int* links, int size);
+void ClearSelection();
+void SelectNode(int nodeId, bool append = false);
+void SelectLink(int linkId, bool append = false);
+void DeselectNode(int nodeId);
+void DeselectLink(int linkId);
 
 //------------------------------------------------------------------------------
 } // namespace Editor

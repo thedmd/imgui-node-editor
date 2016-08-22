@@ -32,7 +32,11 @@ ax::Editor::Context* ax::Editor::GetCurrentEditor()
     return reinterpret_cast<ax::Editor::Context*>(s_Editor);
 }
 
-void ax::Editor::Begin(const char* id)              { s_Editor->Begin(id);                   }
+void ax::Editor::Begin(const char* id, const ImVec2& size)
+{
+    s_Editor->Begin(id, size);
+}
+
 void ax::Editor::End()                              { s_Editor->End();                       }
 void ax::Editor::BeginNode(int id)                  { s_Editor->BeginNode(id);               }
 void ax::Editor::EndNode()                          { s_Editor->EndNode();                   }
@@ -211,4 +215,91 @@ void ax::Editor::Suspend()
 void ax::Editor::Resume()
 {
     s_Editor->Resume();
+}
+
+bool ax::Editor::HasSelectionChanged()
+{
+    return s_Editor->HasSelectionChanged();
+}
+
+int ax::Editor::GetSelectedObjectCount()
+{
+    return (int)s_Editor->GetSelectedObjects().size();
+}
+
+int ax::Editor::GetSelectedNodes(int* nodes, int size)
+{
+    int count = 0;
+    for (auto object : s_Editor->GetSelectedObjects())
+    {
+        if (size <= 0)
+            break;
+
+        if (auto node = object->AsNode())
+        {
+            nodes[count] = node->ID;
+            ++count;
+            --size;
+        }
+    }
+
+    return count;
+}
+
+int ax::Editor::GetSelectedLinks(int* links, int size)
+{
+    int count = 0;
+    for (auto object : s_Editor->GetSelectedObjects())
+    {
+        if (size <= 0)
+            break;
+
+        if (auto link = object->AsLink())
+        {
+            links[count] = link->ID;
+            ++count;
+            --size;
+        }
+    }
+
+    return count;
+}
+
+void ax::Editor::ClearSelection()
+{
+    s_Editor->ClearSelection();
+}
+
+void ax::Editor::SelectNode(int nodeId, bool append)
+{
+    if (auto node = s_Editor->FindNode(nodeId))
+    {
+        if (append)
+            s_Editor->SelectObject(node);
+        else
+            s_Editor->SetSelectedObject(node);
+    }
+}
+
+void ax::Editor::SelectLink(int linkId, bool append)
+{
+    if (auto link = s_Editor->FindLink(linkId))
+    {
+        if (append)
+            s_Editor->SelectObject(link);
+        else
+            s_Editor->SetSelectedObject(link);
+    }
+}
+
+void ax::Editor::DeselectNode(int nodeId)
+{
+    if (auto node = s_Editor->FindNode(nodeId))
+        s_Editor->DeselectObject(node);
+}
+
+void ax::Editor::DeselectLink(int linkId)
+{
+    if (auto link = s_Editor->FindLink(linkId))
+        s_Editor->DeselectObject(link);
 }
