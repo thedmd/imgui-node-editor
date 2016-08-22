@@ -7,9 +7,9 @@ static ax::Editor::Detail::Context* s_Editor = nullptr;
 
 
 //------------------------------------------------------------------------------
-ax::Editor::Context* ax::Editor::CreateEditor()
+ax::Editor::Context* ax::Editor::CreateEditor(const Config* config)
 {
-    return reinterpret_cast<ax::Editor::Context*>(new ax::Editor::Detail::Context());
+    return reinterpret_cast<ax::Editor::Context*>(new ax::Editor::Detail::Context(config));
 }
 
 void ax::Editor::DestroyEditor(Context* ctx)

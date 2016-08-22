@@ -1,6 +1,7 @@
 #pragma once
 #include "Types.h"
 #include "ImGuiInterop.h"
+#include "EditorApi.h"
 #define PICOJSON_USE_LOCALE 0
 #include "picojson.h"
 #include <vector>
@@ -109,20 +110,22 @@ struct Link final: Object
 
 struct NodeSettings
 {
-    int   ID;
-    point Location;
+    int    ID;
+    ImVec2 Location;
+    bool   WasUsed;
 
-    NodeSettings(int id): ID(id) {}
+    NodeSettings(int id): ID(id), WasUsed(false) {}
 };
 
 struct Settings
 {
-    string  Path;
     bool    Dirty;
 
     vector<NodeSettings> Nodes;
+    ImVec2               ViewScroll;
+    float                ViewZoom;
 
-    Settings(): Path("NodeEditor.json"), Dirty(false) {}
+    Settings(): Dirty(false), ViewScroll(0, 0), ViewZoom(1.0f) {}
 };
 
 struct Control
@@ -239,7 +242,9 @@ struct EditorAction
 
 struct ScrollAction final: EditorAction
 {
-    bool IsActive;
+    bool   IsActive;
+    float  Zoom;
+    ImVec2 Scroll;
 
     ScrollAction(Context* editor);
 
@@ -259,8 +264,6 @@ struct ScrollAction final: EditorAction
 private:
     ImVec2 WindowScreenPos;
     ImVec2 WindowScreenSize;
-    float  Zoom;
-    ImVec2 Scroll;
     ImVec2 ScrollStart;
 
     float MatchZoom(int steps, float fallbackZoom);
@@ -426,7 +429,7 @@ private:
 
 struct Context
 {
-    Context();
+    Context(const Config* config = nullptr);
     ~Context();
 
     void Begin(const char* id);
@@ -480,6 +483,8 @@ struct Context
     void Suspend();
     void Resume();
 
+    void MarkSettingsDirty();
+
 private:
     Pin*    CreatePin(int id, PinType type);
     Node*   CreateNode(int id);
@@ -506,7 +511,6 @@ private:
     NodeSettings* AddNodeSettings(int id);
     void          LoadSettings();
     void          SaveSettings();
-    void          MarkSettingsDirty();
 
     Link* FindLinkAt(const point& p);
     Control ComputeControl();
@@ -552,6 +556,8 @@ private:
     bool                IsInitialized;
     ImTextureID         HeaderTextureID;
     Settings            Settings;
+
+    Config              Config;
 };
 
 } // namespace Detail

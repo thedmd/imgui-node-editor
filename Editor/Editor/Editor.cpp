@@ -220,7 +220,7 @@ static void ImDrawList_TranslateAndClampClipRects(ImDrawList* drawList, int begi
 // Editor Context
 //
 //------------------------------------------------------------------------------
-ed::Context::Context():
+ed::Context::Context(const ax::Editor::Config* config):
     Nodes(),
     Pins(),
     Links(),
@@ -241,7 +241,8 @@ ed::Context::Context():
     DeleteItemsAction(this),
     IsInitialized(false),
     HeaderTextureID(nullptr),
-    Settings()
+    Settings(),
+    Config(config ? *config : ax::Editor::Config())
 {
 }
 
@@ -948,7 +949,9 @@ ed::Node* ed::Context::CreateNode(int id)
         node->Bounds.location = to_point(ImGui::GetCursorScreenPos());
     }
     else
-        node->Bounds.location = settings->Location;
+        node->Bounds.location = to_point(settings->Location);
+
+    settings->WasUsed = true;
 
     return node;
 }
@@ -1151,27 +1154,61 @@ ed::NodeSettings* ed::Context::FindNodeSettings(int id)
 ed::NodeSettings* ed::Context::AddNodeSettings(int id)
 {
     Settings.Nodes.push_back(NodeSettings(id));
-    return &Settings.Nodes.back();
+    auto result = &Settings.Nodes.back();
+    return result;
 }
 
 void ed::Context::LoadSettings()
 {
     namespace json = picojson;
 
-    if (Settings.Path.empty())
-        return;
+    std::vector<char> savedData;
 
-    std::ifstream settingsFile(Settings.Path);
-    if (!settingsFile)
+    if (Config.LoadSettings)
+    {
+        auto dataSize = Config.LoadSettings(nullptr, Config.UserPointer);
+        if (dataSize > 0)
+        {
+            savedData.resize(dataSize);
+            Config.LoadSettings(savedData.data(), Config.UserPointer);
+        }
+    }
+    else if (Config.SettingsFile)
+    {
+        std::ifstream settingsFile(Config.SettingsFile);
+        if (settingsFile)
+            std::copy(std::istream_iterator<char>(settingsFile), std::istream_iterator<char>(), std::back_inserter(savedData));
+    }
+
+    if (savedData.empty())
         return;
 
     json::value settingsValue;
-    auto error = json::parse(settingsValue, settingsFile);
+    auto error = json::parse(settingsValue, savedData.begin(), savedData.end());
     if (!error.empty() || settingsValue.is<json::null>())
         return;
 
     if (!settingsValue.is<json::object>())
         return;
+
+    auto tryParseVector = [](const json::value& v, ImVec2& result) -> bool
+    {
+        if (v.is<json::object>())
+        {
+            auto xValue = v.get("x");
+            auto yValue = v.get("y");
+
+            if (xValue.is<double>() && yValue.is<double>())
+            {
+                result.x = static_cast<float>(xValue.get<double>());
+                result.y = static_cast<float>(yValue.get<double>());
+
+                return true;
+            }
+        }
+
+        return false;
+    };
 
     auto& settingsObject = settingsValue.get<json::object>();
     auto& nodesValue     = settingsValue.get("nodes");
@@ -1188,58 +1225,81 @@ void ed::Context::LoadSettings()
             auto& nodeData = node.second;
 
             auto locationValue = nodeData.get("location");
-            if (locationValue.is<json::object>())
-            {
-                auto xValue = locationValue.get("x");
-                auto yValue = locationValue.get("y");
-
-                if (xValue.is<double>() && yValue.is<double>())
-                {
-                    settings->Location.x = static_cast<int>(xValue.get<double>());
-                    settings->Location.y = static_cast<int>(yValue.get<double>());
-                }
-            }
+            if (!tryParseVector(nodeData.get("location"), settings->Location))
+                settings->Location = ImVec2(0, 0);
         }
     }
+
+    auto& viewValue = settingsValue.get("view");
+    if (viewValue.is<json::object>())
+    {
+        auto& viewScrollValue = viewValue.get("scroll");
+        auto& viewZoomValue   = viewValue.get("zoom");
+
+        if (!tryParseVector(viewValue.get("scroll"), Settings.ViewScroll))
+            Settings.ViewScroll = ImVec2(0, 0);
+
+        Settings.ViewZoom = viewZoomValue.is<double>() ? static_cast<float>(viewZoomValue.get<double>()) : 1.0f;
+    }
+
+    ScrollAction.Scroll = Settings.ViewScroll;
+    ScrollAction.Zoom   = Settings.ViewZoom;
 }
 
 void ed::Context::SaveSettings()
 {
     namespace json = picojson;
 
-    if (Settings.Path.empty())
-        return;
-
-    std::ofstream settingsFile(Settings.Path);
-    if (!settingsFile)
-        return;
+    auto serializeVector = [](ImVec2 p) -> json::object
+    {
+        json::object result;
+        result["x"] = json::value(static_cast<double>(p.x));
+        result["y"] = json::value(static_cast<double>(p.y));
+        return result;
+    };
 
     // update settings data
     for (auto& node : Nodes)
     {
         auto settings = FindNodeSettings(node->ID);
-        settings->Location = node->Bounds.location;
+        settings->Location = to_imvec(node->Bounds.location);
     }
 
+    Settings.ViewScroll = ScrollAction.Scroll;
+    Settings.ViewZoom   = ScrollAction.Zoom;
+
+    // serializes
     json::object nodes;
     for (auto& node : Settings.Nodes)
     {
-        json::object locationData;
-        locationData["x"] = json::value(static_cast<double>(node.Location.x));
-        locationData["y"] = json::value(static_cast<double>(node.Location.y));
+        if (!node.WasUsed)
+            continue;
 
         json::object nodeData;
-        nodeData["location"] = json::value(std::move(locationData));
+        nodeData["location"] = json::value(serializeVector(node.Location));
 
         nodes[std::to_string(node.ID)] = json::value(std::move(nodeData));
     }
 
+    json::object view;
+    view["scroll"] = json::value(serializeVector(Settings.ViewScroll));
+    view["zoom"]   = json::value((double)Settings.ViewZoom);
+
     json::object settings;
     settings["nodes"] = json::value(std::move(nodes));
+    settings["view"]  = json::value(std::move(view));
 
     json::value settingsValue(std::move(settings));
 
-    settingsFile << settingsValue.serialize(true);
+    auto data = settingsValue.serialize(false);
+    if (Config.SaveSettings)
+        Config.SaveSettings(data.c_str(), Config.UserPointer);
+    else if (Config.SettingsFile)
+    {
+        std::ofstream settingsFile(Config.SettingsFile);
+        if (settingsFile)
+            settingsFile << data;
+    }
 }
 
 void ed::Context::MarkSettingsDirty()
@@ -1542,10 +1602,10 @@ const int ed::ScrollAction::s_ZoomLevelCount = sizeof(s_ZoomLevels) / sizeof(*s_
 ed::ScrollAction::ScrollAction(Context* editor):
     EditorAction(editor),
     IsActive(false),
-    WindowScreenPos(0, 0),
-    WindowScreenSize(0, 0),
     Zoom(1),
     Scroll(0, 0),
+    WindowScreenPos(0, 0),
+    WindowScreenSize(0, 0),
     ScrollStart(0, 0)
 {
 }
@@ -1566,18 +1626,9 @@ bool ed::ScrollAction::Accept(const Control& control)
 
     auto& io = ImGui::GetIO();
 
-    auto pos = ImVec2(300, 200);
-
-
+//     // #debug
 //     if (auto drawList = ImGui::GetWindowDrawList())
-//     {
-//         // #debug
 //         drawList->AddCircleFilled(io.MousePos, 4.0f, IM_COL32(255, 0, 255, 255));
-//         drawList->AddCircleFilled(pos, 4.0f, IM_COL32(0, 255, 255, 255));
-//
-//         //drawList->AddLine(ImVec2(0, pos.y), ImVec2(Canvas.ClientSize.x, pos.y), IM_COL32(255, 0, 0, 255));
-//         //drawList->AddLine(ImVec2(pos.x, 0), ImVec2(pos.x, Canvas.ClientSize.y), IM_COL32(255, 0, 0, 255));
-//     }
 
     if (io.MouseWheel)
     {
@@ -1598,6 +1649,8 @@ bool ed::ScrollAction::Accept(const Control& control)
 
         Scroll = Scroll - offset;
 
+        Editor->MarkSettingsDirty();
+
         return true;
     }
 
@@ -1615,6 +1668,9 @@ bool ed::ScrollAction::Process(const Control& control)
     }
     else
     {
+        if (Scroll != ScrollStart)
+            Editor->MarkSettingsDirty();
+
         IsActive = false;
     }
 
