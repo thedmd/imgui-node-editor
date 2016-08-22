@@ -195,26 +195,18 @@ struct Canvas
 {
     ImVec2 WindowScreenPos;
     ImVec2 WindowScreenSize;
-    ImVec2 ClientSize;
-    ImVec2 Origin;
-    ImVec2 Scale;
-    ImVec2 InvScale;
+    ImVec2 ClientOrigin;
+    ImVec2 CanvasSize;
+    ImVec2 Zoom;
+    ImVec2 InvZoom;
 
     Canvas();
+    Canvas(ImVec2 position, ImVec2 size, ImVec2 scale, ImVec2 origin);
 
-    void SetWindow(ImVec2 position, ImVec2 size);
-    void SetScale(ImVec2 scale);
-    void SetOrigin(ImVec2 offset);
-
-    ImVec2 ScreenToCanvas(ImVec2 point);
-    ImVec2 ScreenToClient(ImVec2 point);
-    ImVec2 CanvasToScreen(ImVec2 point);
-    ImVec2 ClientToScreen(ImVec2 point);
-    ImVec2 CanvasToClient(ImVec2 point);
-    ImVec2 ClientToCanvas(ImVec2 point);
-
-private:
-    void ApplyScale();
+    ImVec2 FromScreen(ImVec2 point);
+    ImVec2 ToScreen(ImVec2 point);
+    ImVec2 FromClient(ImVec2 point);
+    ImVec2 ToClient(ImVec2 point);
 };
 
 struct Context;
@@ -247,7 +239,7 @@ struct EditorAction
 
 struct ScrollAction final: EditorAction
 {
-    bool   IsActive;
+    bool IsActive;
 
     ScrollAction(Context* editor);
 
@@ -262,13 +254,14 @@ struct ScrollAction final: EditorAction
 
     void SetWindow(ImVec2 position, ImVec2 size);
 
-    Canvas GetCanvas() { return Canvas; }
+    Canvas GetCanvas();
 
 private:
+    ImVec2 WindowScreenPos;
+    ImVec2 WindowScreenSize;
     float  Zoom;
     ImVec2 Scroll;
     ImVec2 ScrollStart;
-    Canvas Canvas;
 
     float MatchZoom(int steps, float fallbackZoom);
     int MatchZoomIndex();
@@ -479,12 +472,8 @@ struct Context
 
     void FindLinksForNode(int nodeId, vector<Link*>& result, bool add = false);
 
-    ImVec2 ScreenToCanvas(ImVec2 point) { return Canvas.ScreenToCanvas(point); }
-    ImVec2 ScreenToClient(ImVec2 point) { return Canvas.ScreenToClient(point); }
-    ImVec2 CanvasToScreen(ImVec2 point) { return Canvas.CanvasToScreen(point); }
-    ImVec2 ClientToScreen(ImVec2 point) { return Canvas.ClientToScreen(point); }
-    ImVec2 CanvasToClient(ImVec2 point) { return Canvas.CanvasToClient(point); }
-    ImVec2 ClientToCanvas(ImVec2 point) { return Canvas.ClientToCanvas(point); }
+    ImVec2 ToCanvas(ImVec2 point) { return Canvas.FromScreen(point); }
+    ImVec2 ToScreen(ImVec2 point) { return Canvas.ToScreen(point); }
 
     void NotifyLinkDeleted(Link* link);
 
