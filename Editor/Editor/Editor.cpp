@@ -531,10 +531,11 @@ void ed::Context::End()
         ImDrawList_TranslateAndClampClipRects(drawList, c_BackgroundChannelStart + 1, drawList->_ChannelsCount, -Canvas.FromScreen(Canvas.WindowScreenPos));
         ImGui::PopClipRect();
 
-        for (float x = 0; x < Canvas.WindowScreenSize.x; x += 100)
-            drawList->AddLine(ImVec2(x, 0.0f) + Canvas.WindowScreenPos, ImVec2(x, Canvas.WindowScreenSize.y) + Canvas.WindowScreenPos, IM_COL32(255, 0, 0, 128));
-        for (float y = 0; y < Canvas.WindowScreenSize.y; y += 100)
-            drawList->AddLine(ImVec2(0.0f, y) + Canvas.WindowScreenPos, ImVec2(Canvas.WindowScreenSize.x, y) + Canvas.WindowScreenPos, IM_COL32(255, 0, 0, 128));
+        // #debug: Static grid in local space
+        //for (float x = 0; x < Canvas.WindowScreenSize.x; x += 100)
+        //    drawList->AddLine(ImVec2(x, 0.0f) + Canvas.WindowScreenPos, ImVec2(x, Canvas.WindowScreenSize.y) + Canvas.WindowScreenPos, IM_COL32(255, 0, 0, 128));
+        //for (float y = 0; y < Canvas.WindowScreenSize.y; y += 100)
+        //    drawList->AddLine(ImVec2(0.0f, y) + Canvas.WindowScreenPos, ImVec2(Canvas.WindowScreenSize.x, y) + Canvas.WindowScreenPos, IM_COL32(255, 0, 0, 128));
     }
 
     drawList->ChannelsMerge();
@@ -1544,7 +1545,6 @@ ed::ScrollAction::ScrollAction(Context* editor):
     Scroll(0, 0),
     ScrollStart(0, 0)
 {
-    Zoom = 0.75f;
 }
 
 bool ed::ScrollAction::Accept(const Control& control)
@@ -1563,26 +1563,37 @@ bool ed::ScrollAction::Accept(const Control& control)
 
     auto& io = ImGui::GetIO();
 
-    auto pos = (ImVec2(712, 418));
+    auto pos = ImVec2(300, 200);
 
-    if (auto drawList = ImGui::GetWindowDrawList())
+
+//     if (auto drawList = ImGui::GetWindowDrawList())
+//     {
+//         // #debug
+//         drawList->AddCircleFilled(io.MousePos, 4.0f, IM_COL32(255, 0, 255, 255));
+//         drawList->AddCircleFilled(pos, 4.0f, IM_COL32(0, 255, 255, 255));
+//
+//         //drawList->AddLine(ImVec2(0, pos.y), ImVec2(Canvas.ClientSize.x, pos.y), IM_COL32(255, 0, 0, 255));
+//         //drawList->AddLine(ImVec2(pos.x, 0), ImVec2(pos.x, Canvas.ClientSize.y), IM_COL32(255, 0, 0, 255));
+//     }
+
+    if (io.MouseWheel)
     {
-        // #debug
-        drawList->AddCircleFilled(io.MousePos, 4.0f, IM_COL32(255, 0, 255, 255));
-
-        //drawList->AddLine(ImVec2(0, pos.y), ImVec2(Canvas.ClientSize.x, pos.y), IM_COL32(255, 0, 0, 255));
-        //drawList->AddLine(ImVec2(pos.x, 0), ImVec2(pos.x, Canvas.ClientSize.y), IM_COL32(255, 0, 0, 255));
-    }
-
-    if (io.MouseWheel && 0)
-    {
-        auto mousePos     = pos;//io.MousePos;
+        auto mousePos     = io.MousePos;
         auto steps        = (int)io.MouseWheel;
         auto newZoom      = MatchZoom(steps, s_ZoomLevels[steps < 0 ? 0 : s_ZoomLevelCount - 1]);
 
-        //Scroll.x = (Scroll.x + mousePos.x) * newZoom / Zoom - mousePos.x;
-        //Scroll.y = (Scroll.y + mousePos.y) * newZoom / Zoom - mousePos.y;
-        Zoom     = newZoom;
+        auto oldCanvas    = GetCanvas();
+        Zoom = newZoom;
+        auto newCanvas    = GetCanvas();
+
+        auto screenPos    = oldCanvas.ToScreen(mousePos);
+        auto canvasPos    = newCanvas.FromScreen(screenPos);
+
+        auto offset       = canvasPos - mousePos;
+        offset.x *= Zoom;
+        offset.y *= Zoom;
+
+        Scroll = Scroll - offset;
 
         return true;
     }
