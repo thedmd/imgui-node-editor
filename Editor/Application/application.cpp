@@ -278,13 +278,48 @@ void Application_Finalize()
         m_Editor = nullptr;
     }
 }
+
 extern "C" __declspec(dllimport) void __stdcall Sleep(unsigned int);
+
+static void DrawSplitter(int split_vertically, float thickness, float* size0, float* size1, float min_size0, float min_size1)
+{
+    ImVec2 backup_pos = ImGui::GetCursorPos();
+    if (split_vertically)
+        ImGui::SetCursorPosY(backup_pos.y + *size0);
+    else
+        ImGui::SetCursorPosX(backup_pos.x + *size0);
+
+    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0, 0, 0, 0));          // We don't draw while active/pressed because as we move the panes the splitter button will be 1 frame late
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.6f, 0.6f, 0.6f, 0.10f));
+    ImGui::Button("##Splitter", ImVec2(!split_vertically ? thickness : -1.0f, split_vertically ? thickness : -1.0f));
+    ImGui::PopStyleColor(3);
+
+    ImGui::SetItemAllowOverlap(); // This is to allow having other buttons OVER our splitter. 
+
+    if (ImGui::IsItemActive())
+    {
+        float mouse_delta = split_vertically ? ImGui::GetIO().MouseDelta.y : ImGui::GetIO().MouseDelta.x;
+
+        // Minimum pane size
+        if (mouse_delta < min_size0 - *size0)
+            mouse_delta = min_size0 - *size0;
+        if (mouse_delta > *size1 - min_size1)
+            mouse_delta = *size1 - min_size1;
+
+        // Apply resize
+        *size0 += mouse_delta;
+        *size1 -= mouse_delta;
+    }
+    ImGui::SetCursorPos(backup_pos);
+}
 
 void Application_Frame()
 {
     auto& io = ImGui::GetIO();
 
     ImGui::Text("FPS: %.2f (%.2gms)", io.Framerate, io.Framerate ? 1000.0f / io.Framerate : 0.0f);
+    ImGui::Separator();
     //ImGui::Spacing();
 
     auto iconSize2 = size(24, 24);
@@ -332,7 +367,82 @@ void Application_Frame()
     static Pin* newNodeLinkPin = nullptr;
     static Pin* newLinkPin = nullptr;
 
-    ed::Begin("Node editor");
+    static float leftPaneWidth = 360.0f;
+    static float rightPaneWidth = 800.0f;
+    DrawSplitter(0, 4.0f, &leftPaneWidth, &rightPaneWidth, 50.0f, 50.0f);
+
+    ImGui::BeginChild("Selection", ImVec2(leftPaneWidth, 0));
+
+    std::vector<int> selectedNodes, selectedLinks;
+    selectedNodes.resize(ed::GetSelectedObjectCount());
+    selectedLinks.resize(ed::GetSelectedObjectCount());
+
+    int nodeCount = ed::GetSelectedNodes(selectedNodes.data(), selectedNodes.size());
+    int linkCount = ed::GetSelectedLinks(selectedLinks.data(), selectedLinks.size());
+
+    selectedNodes.resize(nodeCount);
+    selectedLinks.resize(linkCount);
+
+    ImGui::GetWindowDrawList()->AddRectFilled(
+        ImGui::GetCursorScreenPos(),
+        ImGui::GetCursorScreenPos() + ImVec2(leftPaneWidth, ImGui::GetTextLineHeight()),
+        ImColor(ImGui::GetStyle().Colors[ImGuiCol_HeaderActive]), ImGui::GetTextLineHeight() * 0.25f);
+    ImGui::Spacing(); ImGui::SameLine();
+    ImGui::TextUnformatted("Nodes");
+    ImGui::Indent();
+    for (auto& node : s_Nodes)
+    {
+        auto start = ImGui::GetCursorScreenPos();
+
+        bool isSelected = std::find(selectedNodes.begin(), selectedNodes.end(), node.ID) != selectedNodes.end();
+        if (ImGui::Selectable(node.Name.c_str(), &isSelected))
+        {
+            if (io.KeyCtrl)
+            {
+                if (isSelected)
+                    ed::SelectNode(node.ID, true);
+                else
+                    ed::DeselectNode(node.ID);
+            }
+            else
+                ed::SelectNode(node.ID, false);
+        }
+
+        auto id       = std::string("(") + std::to_string(node.ID) + ")";
+        auto textSize = ImGui::CalcTextSize(id.c_str(), nullptr);
+        ImGui::GetWindowDrawList()->AddText(
+            start + ImVec2(leftPaneWidth - textSize.x - ImGui::GetStyle().FramePadding.x - ImGui::GetStyle().IndentSpacing, 0),
+            IM_COL32(255, 255, 255, 255), id.c_str(), nullptr);
+    }
+    ImGui::Unindent();
+
+    static int changeCount = 0;
+
+    ImGui::GetWindowDrawList()->AddRectFilled(
+        ImGui::GetCursorScreenPos(),
+        ImGui::GetCursorScreenPos() + ImVec2(leftPaneWidth, ImGui::GetTextLineHeight()),
+        ImColor(ImGui::GetStyle().Colors[ImGuiCol_HeaderActive]), ImGui::GetTextLineHeight() * 0.25f);
+    ImGui::Spacing(); ImGui::SameLine();
+    ImGui::TextUnformatted("Selection");
+
+    ImGui::BeginHorizontal("Selection Stats", ImVec2(leftPaneWidth, 0));
+    ImGui::Text("Changed %d time%s", changeCount, changeCount > 1 ? "s" : "");
+    ImGui::Spring();
+    if (ImGui::Button("Deselect All"))
+        ed::ClearSelection();
+    ImGui::EndHorizontal();
+    ImGui::Indent();
+    for (int i = 0; i < nodeCount; ++i) ImGui::Text("Node (%d)", selectedNodes[i]);
+    for (int i = 0; i < linkCount; ++i) ImGui::Text("Link (%d)", selectedLinks[i]);
+    ImGui::Unindent();
+    ImGui::EndChild();
+
+    if (ed::HasSelectionChanged())
+        ++changeCount;
+
+    ImGui::SameLine();
+
+    ed::Begin("Node editor", ImVec2(0, 0));
     {
         auto cursorTopLeft = ImGui::GetCursorScreenPos();
 
@@ -341,15 +451,8 @@ void Application_Frame()
             ed::BeginNode(node.ID);
                 ed::BeginHeader(node.Color);
                     ImGui::Spring(0);
-//                     auto headerTextSize = ImGui::CalcTextSize(node.Name.c_str());
-//                     ImGui::GetWindowDrawList()->AddRectFilled(
-//                         ImGui::GetCursorScreenPos() - ImVec2(style.ItemInnerSpacing.x, 0),
-//                         ImGui::GetCursorScreenPos() + ImVec2(style.ItemInnerSpacing.x, 0) + headerTextSize,
-//                         ImColor(0, 0, 0, 64), headerTextSize.y / 3.0f);
                     ImGui::TextUnformatted(node.Name.c_str());
                     ImGui::Spring(1);
-                    //ImGui::Text("%d", orderIndex);
-                    //ImGui::Spring(0,0);
                     ImGui::Dummy(ImVec2(0, 28));
                     ImGui::Spring(0);
                 ed::EndHeader();
@@ -372,8 +475,8 @@ void Application_Frame()
                     }
                     if (input.Type == PinType::Bool)
                     {
-//                         ImGui::Button("Hello");
-//                         ImGui::Spring(0);
+                         ImGui::Button("Hello");
+                         ImGui::Spring(0);
                     }
                     ImGui::PopStyleVar();
                     ed::EndInput();
@@ -582,42 +685,6 @@ void Application_Frame()
         createNewNode = false;
     ImGui::PopStyleVar();
     ed::Resume();
-
-
-//     auto p0 = pointf(400,  300);
-//     auto p1 = pointf(1200, 200);
-//     auto p2 = pointf(1600,  600);
-//     auto p3 = pointf(900,  700);
-//
-//     auto a0 = pointf(600, 200);
-//     auto a1 = to_pointf(ImGui::GetMousePos());//pointf(200, 500);
-//
-//     auto drawList = ImGui::GetWindowDrawList();
-//     drawList->PushClipRectFullScreen();
-//
-//     drawList->AddLine(to_imvec(p0), to_imvec(p1), IM_COL32(255, 0, 255, 255), 1.0f);
-//     drawList->AddLine(to_imvec(p1), to_imvec(p2), IM_COL32(255, 0, 255, 255), 1.0f);
-//     drawList->AddLine(to_imvec(p2), to_imvec(p3), IM_COL32(255, 0, 255, 255), 1.0f);
-//     drawList->AddBezierCurve(to_imvec(p0), to_imvec(p1), to_imvec(p2), to_imvec(p3), IM_COL32(255, 255, 255, 255), 4.0f);
-//
-//     drawList->AddLine(to_imvec(a0), to_imvec(a1), IM_COL32(255, 255, 0, 255), 1.0f);
-//
-//     pointf roots[3];
-//     auto count = bezier_line_intersect(p0, p1, p2, p3, a0, a1, roots);
-//     for (int i = 0; i < count; ++i)
-//     {
-//         auto p = roots[i];
-//         drawList->AddCircleFilled(to_imvec(p), 5.0f, IM_COL32(255, 255, 0, 255));
-//     }
-//
-//     auto bounds = bezier_bounding_rect(p0, p1, p2, p3);
-//     drawList->AddRect(
-//         to_imvec(bounds.top_left()),
-//         to_imvec(bounds.bottom_right()),
-//         IM_COL32(0, 0, 255, 255), 0.0f, 15, 2.0f);
-//
-//     drawList->PopClipRect();
-
 
     ed::End();
 
