@@ -319,6 +319,8 @@ void ed::Context::Begin(const char* id, const ImVec2& size)
     // Reserve channels for background and links
     auto drawList = ImGui::GetWindowDrawList();
     ImDrawList_ChannelsGrow(drawList, c_NodeStartChannel);
+
+    SelectionChanged = false;
 }
 
 void ed::Context::End()
@@ -326,8 +328,6 @@ void ed::Context::End()
     auto& io       = ImGui::GetIO();
     auto  control  = ComputeControl();
     auto  drawList = ImGui::GetWindowDrawList();
-
-    SelectionChanged = false;
 
     bool isSelecting = CurrentAction && CurrentAction->AsSelect() != nullptr;
 
@@ -1710,7 +1710,11 @@ void ed::ScrollAction::SetWindow(ImVec2 position, ImVec2 size)
 
 ed::Canvas ed::ScrollAction::GetCanvas()
 {
-    return Canvas(WindowScreenPos, WindowScreenSize, ImVec2(Zoom, Zoom), ImVec2(-Scroll.x, -Scroll.y));
+    ImVec2 origin;
+    origin.x = floorf(-Scroll.x);
+    origin.y = floorf(-Scroll.y);
+
+    return Canvas(WindowScreenPos, WindowScreenSize, ImVec2(Zoom, Zoom), origin);
 }
 
 float ed::ScrollAction::MatchZoom(int steps, float fallbackZoom)
