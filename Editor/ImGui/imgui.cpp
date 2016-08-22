@@ -9896,6 +9896,18 @@ void ImGui::ResumeLayout()
     PopLayout(NULL);
 }
 
+ImVec2 ImGui::GetLayoutItemSize()
+{
+    ImGuiWindow* window = GetCurrentWindow();
+    IM_ASSERT(window->DC.CurrentLayout);
+
+    ImGuiLayout* layout = window->DC.CurrentLayout;
+    if (layout->NextItemIndex >= 0 && layout->NextItemIndex < layout->Items.size())
+        return layout->Items[layout->NextItemIndex].Size;
+    else
+        return ImVec2(0, 0);
+}
+
 void ImGui::NextColumn()
 {
     ImGuiWindow* window = GetCurrentWindow();

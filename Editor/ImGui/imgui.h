@@ -231,6 +231,7 @@ namespace ImGui
     IMGUI_API void          Spring(float weight = 1.0f, float spacing = -1.0f);
     IMGUI_API void          SuspendLayout();
     IMGUI_API void          ResumeLayout();
+    IMGUI_API ImVec2        GetLayoutItemSize();
 
     // Columns
     // You can also use SameLine(pos_x) for simplified columning. The columns API is still work-in-progress and rather lacking.
