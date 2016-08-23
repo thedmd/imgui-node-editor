@@ -20,9 +20,6 @@ using ax::Widgets::IconType;
 
 static ed::Context* m_Editor = nullptr;
 
-const int   PortIconSize = 16;
-const float JoinBezierStrength = 50;
-
 extern "C" __declspec(dllimport) short __stdcall GetAsyncKeyState(int vkey);
 extern "C" bool Debug_KeyPress(int vkey)
 {
@@ -96,6 +93,7 @@ struct Link
     }
 };
 
+static const int            s_PinIconSize = 24;
 static std::vector<Node>    s_Nodes;
 static std::vector<Link>    s_Links;
 
@@ -314,64 +312,45 @@ static void DrawSplitter(int split_vertically, float thickness, float* size0, fl
     ImGui::SetCursorPos(backup_pos);
 }
 
-void Application_Frame()
+ImColor GetIconColor(PinType type)
+{
+    switch (type)
+    {
+        default:
+        case PinType::Flow:     return ImColor(255, 255, 255);
+        case PinType::Bool:     return ImColor(139,   0,   0);
+        case PinType::Int:      return ImColor( 68, 201, 156);
+        case PinType::Float:    return ImColor(147, 226,  74);
+        case PinType::Object:   return ImColor( 51, 150, 215);
+        case PinType::Function: return ImColor(218,   0, 183);
+    }
+};
+
+void DrawPinIcon(const Pin& pin, bool connected, int alpha)
+{
+    IconType iconType;
+    ImColor  color = GetIconColor(pin.Type);
+    color.Value.w = alpha / 255.0f;
+    switch (pin.Type)
+    {
+        case PinType::Flow:     iconType = IconType::Flow;   break;
+        case PinType::Bool:     iconType = IconType::Circle; break;
+        case PinType::Int:      iconType = IconType::Circle; break;
+        case PinType::Float:    iconType = IconType::Circle; break;
+        case PinType::Object:   iconType = IconType::Circle; break;
+        case PinType::Function: iconType = IconType::Circle; break;
+        default:
+            return;
+    }
+
+    ax::Widgets::Icon(to_imvec(size(s_PinIconSize, s_PinIconSize)), iconType, connected, color, ImColor(32, 32, 32, alpha));
+};
+
+void ShowSelectionPane(float paneWidth)
 {
     auto& io = ImGui::GetIO();
 
-    ImGui::Text("FPS: %.2f (%.2gms)", io.Framerate, io.Framerate ? 1000.0f / io.Framerate : 0.0f);
-    //ImGui::Separator();
-    //ImGui::Spacing();
-
-    auto iconSize2 = size(24, 24);
-
-    ed::SetCurrentEditor(m_Editor);
-
-    auto& style = ImGui::GetStyle();
-
-    auto getIconColor = [](PinType type)
-    {
-        switch (type)
-        {
-            default:
-            case PinType::Flow:     return ImColor(255, 255, 255);
-            case PinType::Bool:     return ImColor(139,   0,   0);
-            case PinType::Int:      return ImColor( 68, 201, 156);
-            case PinType::Float:    return ImColor(147, 226,  74);
-            case PinType::Object:   return ImColor( 51, 150, 215);
-            case PinType::Function: return ImColor(218,   0, 183);
-        }
-    };
-
-    auto drawPinIcon = [iconSize2, &getIconColor](const Pin& pin, bool connected, int alpha)
-    {
-        IconType iconType;
-        ImColor  color = getIconColor(pin.Type);
-        color.Value.w = alpha / 255.0f;
-        switch (pin.Type)
-        {
-            case PinType::Flow:     iconType = IconType::Flow;   break;
-            case PinType::Bool:     iconType = IconType::Circle; break;
-            case PinType::Int:      iconType = IconType::Circle; break;
-            case PinType::Float:    iconType = IconType::Circle; break;
-            case PinType::Object:   iconType = IconType::Circle; break;
-            case PinType::Function: iconType = IconType::Circle; break;
-            default:
-                return;
-        }
-
-        ax::Widgets::Icon(to_imvec(iconSize2), iconType, connected, color, ImColor(32, 32, 32, alpha));
-        //ImGui::Dummy(to_imvec(iconSize2));
-    };
-
-    static bool createNewNode = false;
-    static Pin* newNodeLinkPin = nullptr;
-    static Pin* newLinkPin = nullptr;
-
-    static float leftPaneWidth = 360.0f;
-    static float rightPaneWidth = 800.0f;
-    DrawSplitter(0, 4.0f, &leftPaneWidth, &rightPaneWidth, 50.0f, 50.0f);
-
-    ImGui::BeginChild("Selection", ImVec2(leftPaneWidth, 0));
+    ImGui::BeginChild("Selection", ImVec2(paneWidth, 0));
 
     std::vector<int> selectedNodes, selectedLinks;
     selectedNodes.resize(ed::GetSelectedObjectCount());
@@ -385,7 +364,7 @@ void Application_Frame()
 
     ImGui::GetWindowDrawList()->AddRectFilled(
         ImGui::GetCursorScreenPos(),
-        ImGui::GetCursorScreenPos() + ImVec2(leftPaneWidth, ImGui::GetTextLineHeight()),
+        ImGui::GetCursorScreenPos() + ImVec2(paneWidth, ImGui::GetTextLineHeight()),
         ImColor(ImGui::GetStyle().Colors[ImGuiCol_HeaderActive]), ImGui::GetTextLineHeight() * 0.25f);
     ImGui::Spacing(); ImGui::SameLine();
     ImGui::TextUnformatted("Nodes");
@@ -408,10 +387,10 @@ void Application_Frame()
                 ed::SelectNode(node.ID, false);
         }
 
-        auto id       = std::string("(") + std::to_string(node.ID) + ")";
+        auto id = std::string("(") + std::to_string(node.ID) + ")";
         auto textSize = ImGui::CalcTextSize(id.c_str(), nullptr);
         ImGui::GetWindowDrawList()->AddText(
-            start + ImVec2(leftPaneWidth - textSize.x - ImGui::GetStyle().FramePadding.x - ImGui::GetStyle().IndentSpacing, 0),
+            start + ImVec2(paneWidth - textSize.x - ImGui::GetStyle().FramePadding.x - ImGui::GetStyle().IndentSpacing, 0),
             IM_COL32(255, 255, 255, 255), id.c_str(), nullptr);
     }
     ImGui::Unindent();
@@ -420,12 +399,12 @@ void Application_Frame()
 
     ImGui::GetWindowDrawList()->AddRectFilled(
         ImGui::GetCursorScreenPos(),
-        ImGui::GetCursorScreenPos() + ImVec2(leftPaneWidth, ImGui::GetTextLineHeight()),
+        ImGui::GetCursorScreenPos() + ImVec2(paneWidth, ImGui::GetTextLineHeight()),
         ImColor(ImGui::GetStyle().Colors[ImGuiCol_HeaderActive]), ImGui::GetTextLineHeight() * 0.25f);
     ImGui::Spacing(); ImGui::SameLine();
     ImGui::TextUnformatted("Selection");
 
-    ImGui::BeginHorizontal("Selection Stats", ImVec2(leftPaneWidth, 0));
+    ImGui::BeginHorizontal("Selection Stats", ImVec2(paneWidth, 0));
     ImGui::Text("Changed %d time%s", changeCount, changeCount > 1 ? "s" : "");
     ImGui::Spring();
     if (ImGui::Button("Deselect All"))
@@ -435,10 +414,32 @@ void Application_Frame()
     for (int i = 0; i < nodeCount; ++i) ImGui::Text("Node (%d)", selectedNodes[i]);
     for (int i = 0; i < linkCount; ++i) ImGui::Text("Link (%d)", selectedLinks[i]);
     ImGui::Unindent();
-    ImGui::EndChild();
 
     if (ed::HasSelectionChanged())
         ++changeCount;
+
+    ImGui::EndChild();
+}
+
+void Application_Frame()
+{
+    auto& io = ImGui::GetIO();
+
+    ImGui::Text("FPS: %.2f (%.2gms)", io.Framerate, io.Framerate ? 1000.0f / io.Framerate : 0.0f);
+
+    ed::SetCurrentEditor(m_Editor);
+
+    auto& style = ImGui::GetStyle();
+
+    static bool createNewNode  = false;
+    static Pin* newNodeLinkPin = nullptr;
+    static Pin* newLinkPin     = nullptr;
+
+    static float leftPaneWidth  = 360.0f;
+    static float rightPaneWidth = 800.0f;
+    DrawSplitter(0, 4.0f, &leftPaneWidth, &rightPaneWidth, 50.0f, 50.0f);
+
+    ShowSelectionPane(leftPaneWidth);
 
     ImGui::SameLine();
 
@@ -466,7 +467,7 @@ void Application_Frame()
                     ed::BeginInput(input.ID);
                     alpha = (int)(alpha * ImGui::GetStyle().Alpha);
                     ImGui::PushStyleVar(ImGuiStyleVar_Alpha, alpha / 255.0f);
-                    drawPinIcon(input, IsPinLinked(input.ID), alpha);
+                    DrawPinIcon(input, IsPinLinked(input.ID), alpha);
                     ImGui::Spring(0);
                     if (!input.Name.empty())
                     {
@@ -497,7 +498,7 @@ void Application_Frame()
                         ImGui::TextUnformatted(output.Name.c_str());
                     }
                     ImGui::Spring(0);
-                    drawPinIcon(output, IsPinLinked(output.ID), alpha);
+                    DrawPinIcon(output, IsPinLinked(output.ID), alpha);
                     ImGui::PopStyleVar();
                     ed::EndOutput();
                 }
@@ -571,7 +572,7 @@ void Application_Frame()
                             if (ed::AcceptNewItem(ImColor(128, 255, 128), 4.0f))
                             {
                                 s_Links.emplace_back(Link(GetNextId(), startPinId, endPinId));
-                                s_Links.back().Color = getIconColor(startPin->Type);
+                                s_Links.back().Color = GetIconColor(startPin->Type);
                             }
                         }
                     }
@@ -592,10 +593,13 @@ void Application_Frame()
                         ImGui::OpenPopup("Create New Node");
                     }
                 }
-
             }
             else
                 newLinkPin = nullptr;
+
+            if (!ImGui::IsWindowHovered())
+                newLinkPin = nullptr;
+
             ed::EndCreate();
 
             if (ed::BeginDelete())
@@ -671,7 +675,7 @@ void Application_Frame()
                             std::swap(startPin, endPin);
 
                         s_Links.emplace_back(Link(GetNextId(), startPin->ID, endPin->ID));
-                        s_Links.back().Color = getIconColor(startPin->Type);
+                        s_Links.back().Color = GetIconColor(startPin->Type);
 
                         break;
                     }
