@@ -375,14 +375,19 @@ void ed::Context::End()
             }
             else if (auto selectedLink = selectedObject->AsLink())
             {
-                const auto rectMin = to_imvec(selectedLink->StartPin->DragPoint);
-                const auto rectMax = to_imvec(selectedLink->EndPin->DragPoint);
+                const auto start  = to_imvec(selectedLink->StartPin->DragPoint);
+                const auto end    = to_imvec(selectedLink->EndPin->DragPoint);
+
+                const auto bounds = ax::Drawing::GetLinkBounds(start, end, c_LinkStrength);
+
+                const auto rectMin = to_imvec(bounds.top_left());
+                const auto rectMax = to_imvec(bounds.bottom_right());
 
                 if (ImGui::IsRectVisible(rectMin, rectMax))
                 {
                     drawList->ChannelsSetCurrent(c_LinkStartChannel + 0);
 
-                    ax::Drawing::DrawLink(drawList, rectMin, rectMax,
+                    ax::Drawing::DrawLink(drawList, start, end,
                         ImColor(255, 176, 50, 255), selectedLink->Thickness + 4.5f, c_LinkStrength);
                 }
             }
