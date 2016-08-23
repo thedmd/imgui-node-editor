@@ -2063,6 +2063,10 @@ bool ed::CreateItemAction::Process(const Control& control)
         else if (!control.ActivePin)
         {
             DraggedPin = nullptr;
+
+            if (!ImGui::IsWindowHovered())
+                DropNothing();
+
             DragEnd();
             IsActive = false;
         }
