@@ -72,7 +72,7 @@ bool AcceptDeletedItem();
 void RejectDeletedItem();
 void EndDelete();
 
-void SetNodePosition(int nodeId, const ImVec2& screenPosition);
+void SetNodePosition(int nodeId, const ImVec2& editorPosition);
 ImVec2 GetNodePosition(int nodeId);
 
 void Suspend();
