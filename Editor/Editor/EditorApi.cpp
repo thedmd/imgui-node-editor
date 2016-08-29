@@ -32,6 +32,16 @@ ax::Editor::Context* ax::Editor::GetCurrentEditor()
     return reinterpret_cast<ax::Editor::Context*>(s_Editor);
 }
 
+ax::Editor::Style& ax::Editor::GetStyle()
+{
+    return s_Editor->GetStyle();
+}
+
+const char* ax::Editor::GetStyleColorName(StyleColor colorIndex)
+{
+    return s_Editor->GetStyleColorName(colorIndex);
+}
+
 void ax::Editor::Begin(const char* id, const ImVec2& size)
 {
     s_Editor->Begin(id, size);

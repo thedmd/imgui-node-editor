@@ -237,15 +237,20 @@ void ax::Drawing::DrawHeader(ImDrawList* drawList, ImTextureID textureId, const 
 
 void ax::Drawing::DrawLink(ImDrawList* drawList, const ImVec2& a, const ImVec2& b, ImU32 color, float thickness/* = 1.0f*/, float strength/* = 1.0f*/)
 {
-    strength = std::min(strength, fabsf(a.x - b.x) * 0.5f);
+    if (strength != 0.0f)
+    {
+        strength = std::min(strength, fabsf(a.x - b.x) * 0.5f);
 
-    ImVec2 cp0 = ImVec2(a.x + strength, a.y);
-    ImVec2 cp1 = ImVec2(b.x - strength, b.y);
+        ImVec2 cp0 = ImVec2(a.x + strength, a.y);
+        ImVec2 cp1 = ImVec2(b.x - strength, b.y);
 
-    //drawList->AddCircleFilled(cp0, 4.0f, 0xFFFF00FF);
-    //drawList->AddCircleFilled(cp1, 4.0f, 0xFFFF00FF);
+        //drawList->AddCircleFilled(cp0, 4.0f, 0xFFFF00FF);
+        //drawList->AddCircleFilled(cp1, 4.0f, 0xFFFF00FF);
 
-    drawList->AddBezierCurve(a, cp0, cp1, b, color, thickness);
+        drawList->AddBezierCurve(a, cp0, cp1, b, color, thickness);
+    }
+    else
+        drawList->AddLine(a, b, color, thickness);
 }
 
 float ax::Drawing::LinkDistance(const ImVec2& p, const ImVec2& a, const ImVec2& b, float strength/* = 1.0f*/)
@@ -267,12 +272,19 @@ ax::rectf ax::Drawing::GetLinkBounds(const ImVec2& a, const ImVec2& b, float str
 {
     using namespace ImGuiInterop;
 
-    strength = std::min(strength, fabsf(a.x - b.x) * 0.5f);
+    if (strength != 0.0f)
+    {
+        strength = std::min(strength, fabsf(a.x - b.x) * 0.5f);
 
-    ImVec2 cp0 = ImVec2(a.x + strength, a.y);
-    ImVec2 cp1 = ImVec2(b.x - strength, b.y);
+        ImVec2 cp0 = ImVec2(a.x + strength, a.y);
+        ImVec2 cp1 = ImVec2(b.x - strength, b.y);
 
-    return bezier_bounding_rect(to_pointf(a), to_pointf(cp0), to_pointf(cp1), to_pointf(b));
+        return bezier_bounding_rect(to_pointf(a), to_pointf(cp0), to_pointf(cp1), to_pointf(b));
+    }
+    else
+    {
+        return rectf(to_pointf(a).cwise_min(to_pointf(b)), to_pointf(a).cwise_max(to_pointf(b)));
+    }
 
     // Build bounding rectangle of link.
     //auto topLeft     = to_pointf(a);

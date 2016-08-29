@@ -36,6 +36,69 @@ enum class PinKind
 
 
 //------------------------------------------------------------------------------
+enum StyleColor
+{
+    StyleColor_Bg,
+    StyleColor_Grid,
+    StyleColor_NodeBg,
+    StyleColor_NodeBorder,
+    StyleColor_HovNodeBorder,
+    StyleColor_SelNodeBorder,
+    StyleColor_NodeSelRect,
+    StyleColor_NodeSelRectBorder,
+    StyleColor_HovLinkBorder,
+    StyleColor_SelLinkBorder,
+    StyleColor_LinkSelRect,
+    StyleColor_LinkSelRectBorder,
+    StyleColor_HovPinRect,
+    StyleColor_HovPinRectBorder,
+
+    StyleColor_Count
+};
+
+struct Style
+{
+    ImVec2  NodePadding;
+    float   NodeRounding;
+    float   NodeBorderWidth;
+    float   HoveredNodeBorderWidth;
+    float   SelectedNodeBorderWidth;
+    float   HoveredPinRounding;
+    float   HoveredPinBorderWidth;
+    float   LinkStrength;
+    ImVec4  Colors[StyleColor_Count];
+
+    Style()
+    {
+        NodePadding             = ImVec2(8, 8);
+        NodeRounding            = 12.0f;
+        NodeBorderWidth         = 1.5f;
+        HoveredNodeBorderWidth  = 3.5f;
+        SelectedNodeBorderWidth = 3.5f;
+        HoveredPinRounding      = 4.0f;
+        HoveredPinBorderWidth   = 0.0f;
+        LinkStrength            = 100.0f;
+
+        Colors[StyleColor_Bg]                 = ImColor( 60,  60,  70, 200);
+        Colors[StyleColor_Grid]               = ImColor(120, 120, 120,  40);
+        Colors[StyleColor_NodeBg]             = ImColor( 32,  32,  32, 200);
+        Colors[StyleColor_NodeBorder]         = ImColor(255, 255, 255,  96);
+        Colors[StyleColor_HovNodeBorder]      = ImColor( 50, 176, 255, 255);
+        Colors[StyleColor_SelNodeBorder]      = ImColor(255, 176,  50, 255);
+        Colors[StyleColor_NodeSelRect]        = ImColor(  5, 130, 255,  64);
+        Colors[StyleColor_NodeSelRectBorder]  = ImColor(  5, 130, 255, 128);
+        Colors[StyleColor_HovLinkBorder]      = ImColor( 50, 176, 255, 255);
+        Colors[StyleColor_SelLinkBorder]      = ImColor(255, 176,  50, 255);
+        Colors[StyleColor_LinkSelRect]        = ImColor(  5, 130, 255,  64);
+        Colors[StyleColor_LinkSelRectBorder]  = ImColor(  5, 130, 255, 128);
+        Colors[StyleColor_HovPinRect]         = ImColor( 60, 180, 255, 100);
+        Colors[StyleColor_HovPinRectBorder]   = ImColor( 60, 180, 255, 128);
+
+    }
+};
+
+
+//------------------------------------------------------------------------------
 struct Context;
 
 
@@ -44,6 +107,9 @@ void SetCurrentEditor(Context* ctx);
 Context* GetCurrentEditor();
 Context* CreateEditor(const Config* config = nullptr);
 void DestroyEditor(Context* ctx);
+
+Style& GetStyle();
+const char* GetStyleColorName(StyleColor colorIndex);
 
 void Begin(const char* id, const ImVec2& size = ImVec2(0, 0));
 void End();

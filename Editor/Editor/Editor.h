@@ -37,6 +37,8 @@ enum class NodeStage
 };
 
 using ax::Editor::PinKind;
+using ax::Editor::Style;
+using ax::Editor::StyleColor;
 
 struct Node;
 struct Pin;
@@ -450,6 +452,9 @@ struct Context
     Context(const Config* config = nullptr);
     ~Context();
 
+    Style& GetStyle() { return Style; }
+    const char* GetStyleColorName(StyleColor colorIndex) const;
+
     void Begin(const char* id, const ImVec2& size = ImVec2(0, 0));
     void End();
 
@@ -523,6 +528,8 @@ struct Context
 
     Link* FindLinkAt(const point& p);
 
+    ImU32 GetColor(StyleColor colorIndex) const;
+    ImU32 GetColor(StyleColor colorIndex, float alpha) const;
 
 private:
     void SetCurrentNode(Node* node);
@@ -541,6 +548,8 @@ private:
 
     void CaptureMouse();
     void ReleaseMouse();
+
+    Style               Style;
 
     vector<Node*>       Nodes;
     vector<Pin*>        Pins;

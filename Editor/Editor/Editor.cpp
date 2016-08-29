@@ -27,8 +27,8 @@ static const int c_NodeBaseChannel        = 0;
 static const int c_NodeBackgroundChannel  = 1;
 static const int c_NodeContentChannel     = 2;
 
-static const float c_NodeFrameRounding    = 12.0f;
-static const float c_LinkStrength         = 100.0f;
+//static const float c_NodeFrameRounding    = 12.0f;
+//static const float c_LinkStrength         = 100.0f;
 static const float c_LinkSelectThickness  = 5.0f;
 
 
@@ -266,6 +266,30 @@ ed::Context::~Context()
     for (auto node : Nodes) delete node;
 }
 
+const char* ed::Context::GetStyleColorName(StyleColor colorIndex) const
+{
+    switch (colorIndex)
+    {
+        case StyleColor_Bg: return "Bg";
+        case StyleColor_Grid: return "Grid";
+        case StyleColor_NodeBg: return "NodeBg";
+        case StyleColor_NodeBorder: return "NodeBorder";
+        case StyleColor_HovNodeBorder: return "HoveredNodeBorder";
+        case StyleColor_SelNodeBorder: return "SelNodeBorder";
+        case StyleColor_NodeSelRect: return "NodeSelRect";
+        case StyleColor_NodeSelRectBorder: return "NodeSelRectBorder";
+        case StyleColor_HovLinkBorder: return "HoveredLinkBorder";
+        case StyleColor_SelLinkBorder: return "SelLinkBorder";
+        case StyleColor_LinkSelRect: return "LinkSelRect";
+        case StyleColor_LinkSelRectBorder: return "LinkSelRectBorder";
+        case StyleColor_HovPinRect: return "HovPinRect";
+        case StyleColor_HovPinRectBorder: return "HovPinRectBorder";
+    }
+
+    assert(0);
+    return "Unknown";
+}
+
 void ed::Context::Begin(const char* id, const ImVec2& size)
 {
     if (!IsInitialized)
@@ -285,7 +309,7 @@ void ed::Context::Begin(const char* id, const ImVec2& size)
     for (auto link : Links) link->IsLive = false;
 
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
-    ImGui::PushStyleColor(ImGuiCol_ChildWindowBg, ImColor(60, 60, 70, 0));
+    ImGui::PushStyleColor(ImGuiCol_ChildWindowBg, ImColor(0, 0, 0, 0));
     ImGui::BeginChild(id, size, false,
         ImGuiWindowFlags_NoMove |
         ImGuiWindowFlags_NoScrollbar |
@@ -326,9 +350,10 @@ void ed::Context::Begin(const char* id, const ImVec2& size)
 
 void ed::Context::End()
 {
-    auto& io       = ImGui::GetIO();
-    auto  control  = ComputeControl();
-    auto  drawList = ImGui::GetWindowDrawList();
+    auto& io          = ImGui::GetIO();
+    auto  control     = ComputeControl();
+    auto  drawList    = ImGui::GetWindowDrawList();
+    auto& editorStyle = GetStyle();
 
     bool isSelecting = CurrentAction && CurrentAction->AsSelect() != nullptr;
 
@@ -342,54 +367,58 @@ void ed::Context::End()
         const auto startPoint = to_imvec(link->StartPin->DragPoint);
         const auto endPoint   = to_imvec(link->EndPin->DragPoint);
 
-        const auto bounds = ax::Drawing::GetLinkBounds(startPoint, endPoint, c_LinkStrength);
+        const auto bounds = ax::Drawing::GetLinkBounds(startPoint, endPoint, editorStyle.LinkStrength);
 
         if (ImGui::IsRectVisible(to_imvec(bounds.top_left()), to_imvec(bounds.bottom_right())))
         {
             float extraThickness = !isSelecting && !IsSelected(link) && (control.HotLink == link || control.ActiveLink == link) ? 2.0f : 0.0f;
 
             ax::Drawing::DrawLink(drawList, startPoint, endPoint,
-                link->Color, link->Thickness + extraThickness, c_LinkStrength);
+                link->Color, link->Thickness + extraThickness, editorStyle.LinkStrength);
         }
     }
 
-    // Highlight hovered node
+    // Highlight selected objects
     {
         auto selectedObjects = &SelectedObjects;
         if (auto selectAction = CurrentAction ? CurrentAction->AsSelect() : nullptr)
             selectedObjects = &selectAction->CandidateObjects;
 
-        for (auto selectedObject : *selectedObjects)
+        if (!selectedObjects->empty())
         {
-            if (auto selectedNode = selectedObject->AsNode())
+            const auto nodeBorderColor = GetColor(StyleColor_SelNodeBorder);
+            const auto linkBorderColor = GetColor(StyleColor_SelLinkBorder);
+
+            for (auto selectedObject : *selectedObjects)
             {
-                const auto rectMin = to_imvec(selectedNode->Bounds.top_left());
-                const auto rectMax = to_imvec(selectedNode->Bounds.bottom_right());
-
-                if (ImGui::IsRectVisible(rectMin, rectMax))
+                if (auto selectedNode = selectedObject->AsNode())
                 {
-                    drawList->ChannelsSetCurrent(selectedNode->Channel + c_NodeBaseChannel);
+                    const auto rectMin = to_imvec(selectedNode->Bounds.top_left());
+                    const auto rectMax = to_imvec(selectedNode->Bounds.bottom_right());
 
-                    drawList->AddRect(rectMin, rectMax,
-                        ImColor(255, 176, 50, 255), c_NodeFrameRounding, 15, 3.5f);
+                    if (ImGui::IsRectVisible(rectMin, rectMax))
+                    {
+                        drawList->ChannelsSetCurrent(selectedNode->Channel + c_NodeBaseChannel);
+
+                        drawList->AddRect(rectMin, rectMax, nodeBorderColor, GetStyle().NodeRounding, 15, editorStyle.SelectedNodeBorderWidth);
+                    }
                 }
-            }
-            else if (auto selectedLink = selectedObject->AsLink())
-            {
-                const auto start  = to_imvec(selectedLink->StartPin->DragPoint);
-                const auto end    = to_imvec(selectedLink->EndPin->DragPoint);
-
-                const auto bounds = ax::Drawing::GetLinkBounds(start, end, c_LinkStrength);
-
-                const auto rectMin = to_imvec(bounds.top_left());
-                const auto rectMax = to_imvec(bounds.bottom_right());
-
-                if (ImGui::IsRectVisible(rectMin, rectMax))
+                else if (auto selectedLink = selectedObject->AsLink())
                 {
-                    drawList->ChannelsSetCurrent(c_LinkStartChannel + 0);
+                    const auto start  = to_imvec(selectedLink->StartPin->DragPoint);
+                    const auto end    = to_imvec(selectedLink->EndPin->DragPoint);
 
-                    ax::Drawing::DrawLink(drawList, start, end,
-                        ImColor(255, 176, 50, 255), selectedLink->Thickness + 4.5f, c_LinkStrength);
+                    const auto bounds = ax::Drawing::GetLinkBounds(start, end, editorStyle.LinkStrength);
+
+                    const auto rectMin = to_imvec(bounds.top_left());
+                    const auto rectMax = to_imvec(bounds.bottom_right());
+
+                    if (ImGui::IsRectVisible(rectMin, rectMax))
+                    {
+                        drawList->ChannelsSetCurrent(c_LinkStartChannel + 0);
+
+                        ax::Drawing::DrawLink(drawList, start, end, linkBorderColor, selectedLink->Thickness + 4.5f, editorStyle.LinkStrength);
+                    }
                 }
             }
         }
@@ -408,8 +437,7 @@ void ed::Context::End()
 
             drawList->ChannelsSetCurrent(hotNode->Channel + c_NodeBaseChannel);
 
-            drawList->AddRect(rectMin, rectMax,
-                ImColor(50, 176, 255, 255), c_NodeFrameRounding, 15, 3.5f);
+            drawList->AddRect(rectMin, rectMax, GetColor(StyleColor_HovNodeBorder), editorStyle.NodeRounding, 15, editorStyle.HoveredNodeBorderWidth);
         }
 
         // Highlight hovered pin
@@ -420,8 +448,10 @@ void ed::Context::End()
 
             drawList->ChannelsSetCurrent(hotPin->Node->Channel + c_NodeBackgroundChannel);
 
-            drawList->AddRectFilled(rectMin, rectMax,
-                ImColor(60, 180, 255, 100), 4.0f);
+            drawList->AddRectFilled(rectMin, rectMax, GetColor(StyleColor_HovPinRect), editorStyle.HoveredPinRounding);
+
+            if (editorStyle.HoveredPinBorderWidth > 0.0f)
+                drawList->AddRect(rectMin, rectMax, GetColor(StyleColor_HovPinRectBorder), editorStyle.HoveredPinRounding, 15, editorStyle.HoveredPinBorderWidth);
         }
 
         // Highlight hovered link
@@ -432,7 +462,7 @@ void ed::Context::End()
             ax::Drawing::DrawLink(drawList,
                 to_imvec(control.HotLink->StartPin->DragPoint),
                 to_imvec(control.HotLink->EndPin->DragPoint),
-                ImColor(50, 176, 255, 255), control.HotLink->Thickness + 4.5f, c_LinkStrength);
+                GetColor(StyleColor_HovLinkBorder), control.HotLink->Thickness + 4.5f, editorStyle.LinkStrength);
         }
     }
 
@@ -455,8 +485,8 @@ void ed::Context::End()
 
     if (SelectAction.IsActive)
     {
-        auto fillColor    = SelectAction.SelectLinkMode ? ImColor(5, 130, 255, 64) : ImColor(5, 130, 255, 64);
-        auto outlineColor = SelectAction.SelectLinkMode ? ImColor(5, 130, 255, 128) : ImColor(5, 130, 255, 128);
+        const auto fillColor    = GetColor(SelectAction.SelectLinkMode ? StyleColor_LinkSelRect       : StyleColor_NodeSelRect);
+        const auto outlineColor = GetColor(SelectAction.SelectLinkMode ? StyleColor_LinkSelRectBorder : StyleColor_NodeSelRectBorder);
 
         drawList->ChannelsSetCurrent(c_BackgroundChannelStart + 1);
 
@@ -509,13 +539,13 @@ void ed::Context::End()
         ImGui::PushClipRect(Canvas.WindowScreenPos + ImVec2(1, 1), Canvas.WindowScreenPos + Canvas.WindowScreenSize - ImVec2(1, 1), false);
 
         ImVec2 offset    = Canvas.ClientOrigin;
-        ImU32 GRID_COLOR = ImColor(120, 120, 120, 40);
+        ImU32 GRID_COLOR = GetColor(StyleColor_Grid);
         float GRID_SX    = 32.0f * Canvas.Zoom.x;
         float GRID_SY    = 32.0f * Canvas.Zoom.y;
         ImVec2 win_pos   = Canvas.WindowScreenPos;
         ImVec2 canvas_sz = Canvas.WindowScreenSize;
 
-        drawList->AddRectFilled(Canvas.WindowScreenPos, Canvas.WindowScreenPos + Canvas.WindowScreenSize, ImColor(60, 60, 70, 200));
+        drawList->AddRectFilled(Canvas.WindowScreenPos, Canvas.WindowScreenPos + Canvas.WindowScreenSize, GetColor(StyleColor_Bg));
 
         for (float x = fmodf(offset.x, GRID_SX); x < Canvas.WindowScreenSize.x; x += GRID_SX)
             drawList->AddLine(ImVec2(x, 0.0f) + Canvas.WindowScreenPos, ImVec2(x, Canvas.WindowScreenSize.y) + Canvas.WindowScreenPos, GRID_COLOR);
@@ -630,7 +660,7 @@ void ed::Context::EndNode()
         drawList->AddRectFilled(
             to_imvec(NodeRect.top_left()),
             to_imvec(NodeRect.bottom_right()),
-            ImColor(32, 32, 32, (200 * alpha) / 255), c_NodeFrameRounding);
+            ImColor(32, 32, 32, (200 * alpha) / 255), GetStyle().NodeRounding);
 
         auto headerColor = IM_COL32(0, 0, 0, alpha) | (HeaderColor & IM_COL32(255, 255, 255, 0));
         if (!HeaderRect.is_empty())
@@ -646,12 +676,12 @@ void ed::Context::EndNode()
                 to_imvec(HeaderRect.top_left()),
                 to_imvec(HeaderRect.bottom_right()),
                 ImVec2(0.0f, 0.0f), uv,
-                headerColor, c_NodeFrameRounding, 1 | 2);
+                headerColor, GetStyle().NodeRounding, 1 | 2);
 
             //ax::Drawing::DrawHeader(drawList, HeaderTextureID,
             //    to_imvec(HeaderRect.top_left()),
             //    to_imvec(HeaderRect.bottom_right()),
-            //    headerColor, c_NodeFrameRounding, 4.0f);
+            //    headerColor, GetStyle().NodeRoundingc_NodeFrameRounding, 4.0f);
         }
 
         auto headerSeparatorRect      = ax::rect(HeaderRect.bottom_left(),  ContentRect.top_right());
@@ -661,7 +691,7 @@ void ed::Context::EndNode()
         //drawList->AddRectFilled(
         //    to_imvec(contentWithSeparatorRect.top_left()),
         //    to_imvec(contentWithSeparatorRect.bottom_right()),
-        //    ImColor(32, 32, 32, 200), c_NodeFrameRounding, 4 | 8);
+        //    ImColor(32, 32, 32, 200), GetStyle().NodeRounding, 4 | 8);
 
         if (headerSeparatorRect.is_empty())
         {
@@ -674,7 +704,7 @@ void ed::Context::EndNode()
         drawList->AddRect(
             to_imvec(NodeRect.top_left()),
             to_imvec(NodeRect.bottom_right()),
-            ImColor(255, 255, 255, 96 * alpha / 255), c_NodeFrameRounding, 15, 1.5f);
+            ImColor(255, 255, 255, 96 * alpha / 255), GetStyle().NodeRounding, 15, 1.5f);
     }
 
     ImGui::PopStyleVar();
@@ -903,6 +933,8 @@ void ed::Context::FindLinksInRect(ax::rect r, vector<Link*>& result)
 
     //r.location += to_point(Canvas.ClientToCanvas(ImVec2(0, 0)));
 
+    const auto linkStrength = GetStyle().LinkStrength;
+
     for (auto link : Links)
     {
         if (!link->IsLive)
@@ -910,7 +942,7 @@ void ed::Context::FindLinksInRect(ax::rect r, vector<Link*>& result)
 
         auto a      = link->StartPin->DragPoint;
         auto b      = link->EndPin->DragPoint;
-        auto bounds = Drawing::GetLinkBounds(to_imvec(a), to_imvec(b), c_LinkStrength);
+        auto bounds = Drawing::GetLinkBounds(to_imvec(a), to_imvec(b), linkStrength);
 
         //auto drawList = ImGui::GetWindowDrawList();
         //drawList->AddRectFilled(
@@ -922,7 +954,7 @@ void ed::Context::FindLinksInRect(ax::rect r, vector<Link*>& result)
         {
             result.push_back(link);
         }
-        else if (r.intersects(bounds) && Drawing::CollideLinkWithRect(r, to_imvec(a), to_imvec(b), c_LinkStrength))
+        else if (r.intersects(bounds) && Drawing::CollideLinkWithRect(r, to_imvec(a), to_imvec(b), linkStrength))
         {
             result.push_back(link);
         }
@@ -1363,7 +1395,7 @@ ed::Link* ed::Context::FindLinkAt(const ax::point& p)
         const auto endPoint   = link->EndPin->DragPoint;
 
         // Build bounding rectangle of link.
-        const auto linkBounds = ax::Drawing::GetLinkBounds(to_imvec(startPoint), to_imvec(endPoint), c_LinkStrength);
+        const auto linkBounds = ax::Drawing::GetLinkBounds(to_imvec(startPoint), to_imvec(endPoint), GetStyle().LinkStrength);
 
         // Calculate thickness of interactive area around curve.
         // Making it slightly larger help user to click it.
@@ -1378,7 +1410,7 @@ ed::Link* ed::Context::FindLinkAt(const ax::point& p)
 
         // Calculate distance from mouse position to link curve.
         const auto distance = ax::Drawing::LinkDistance(to_imvec(p),
-            to_imvec(startPoint), to_imvec(endPoint), c_LinkStrength);
+            to_imvec(startPoint), to_imvec(endPoint), GetStyle().LinkStrength);
 
         // If point is close enough link was found.
         if (distance < thickness)
@@ -1386,6 +1418,17 @@ ed::Link* ed::Context::FindLinkAt(const ax::point& p)
     }
 
     return nullptr;
+}
+
+ImU32 ed::Context::GetColor(StyleColor colorIndex) const
+{
+    return ImColor(Style.Colors[colorIndex]);
+}
+
+ImU32 ed::Context::GetColor(StyleColor colorIndex, float alpha) const
+{
+    auto color = Style.Colors[colorIndex];
+    return ImColor(color.x, color.y, color.z, color.w * alpha);
 }
 
 ed::Control ed::Context::ComputeControl()
@@ -2088,7 +2131,7 @@ bool ed::CreateItemAction::Process(const Control& control)
 
             drawList->ChannelsSetCurrent(c_LinkStartChannel + 2);
 
-            ax::Drawing::DrawLink(drawList, startPoint, endPoint, LinkColor, LinkThickness, c_LinkStrength);
+            ax::Drawing::DrawLink(drawList, startPoint, endPoint, LinkColor, LinkThickness, GetStyle().LinkStrength);
         }
         else if (!control.ActivePin)
         {
@@ -2562,10 +2605,10 @@ void ed::NodeBuilder::Begin(int nodeId)
     ImGui::BeginGroup();
 
     // Apply frame padding. Begin inner group if necessary.
-    auto& style = ImGui::GetStyle();
-    if (style.FramePadding.x != 0 || style.FramePadding.y != 0)
+    auto& style = Editor->GetStyle();
+    if (style.NodePadding.x != 0 || style.NodePadding.y != 0)
     {
-        ImGui::SetCursorPos(ImGui::GetCursorPos() + style.FramePadding);
+        ImGui::SetCursorPos(ImGui::GetCursorPos() + style.NodePadding);
         ImGui::BeginGroup();
     }
 }
@@ -2576,13 +2619,13 @@ void ed::NodeBuilder::End()
 
     // Apply frame padding. This must be done in this convoluted way if outer group
     // size must contain inner group padding.
-    auto& style = ImGui::GetStyle();
-    if (style.FramePadding.x != 0 || style.FramePadding.y != 0)
+    auto& style = Editor->GetStyle();
+    if (style.NodePadding.x != 0 || style.NodePadding.y != 0)
     {
         ImGui::EndGroup();
-        ImGui::SameLine(0, style.FramePadding.x);
+        ImGui::SameLine(0, style.NodePadding.x);
         ImGui::Dummy(ImVec2(0, 0));
-        ImGui::SetCursorPosY(ImGui::GetCursorPosY() + style.FramePadding.y);
+        ImGui::SetCursorPosY(ImGui::GetCursorPosY() + style.NodePadding.y);
     }
 
     // End outer group.
@@ -2641,7 +2684,9 @@ void ed::NodeBuilder::DrawBackground() const
     // Draw background
     if (ImGui::IsItemVisible())
     {
-        auto alpha = static_cast<int>(255 * ImGui::GetStyle().Alpha);
+        auto& style = Editor->GetStyle();
+
+        const auto alpha = ImGui::GetStyle().Alpha;
 
         auto drawList = ImGui::GetWindowDrawList();
 
@@ -2652,50 +2697,16 @@ void ed::NodeBuilder::DrawBackground() const
         drawList->AddRectFilled(
             to_imvec(NodeRect.top_left()),
             to_imvec(NodeRect.bottom_right()),
-            ImColor(32, 32, 32, (200 * alpha) / 255), c_NodeFrameRounding);
+            Editor->GetColor(StyleColor_NodeBg, alpha),
+            style.NodeRounding);
 
-        //auto headerColor = IM_COL32(0, 0, 0, alpha) | (HeaderColor & IM_COL32(255, 255, 255, 0));
-        //if (!HeaderRect.is_empty())
-        //{
-        //    const auto textureWidth = ImGui_GetTextureWidth(HeaderTextureID);
-        //    const auto textureHeight = ImGui_GetTextureHeight(HeaderTextureID);
-
-        //    const auto uv = ImVec2(
-        //        HeaderRect.w / (float)(4.0f * textureWidth),
-        //        HeaderRect.h / (float)(4.0f * textureHeight));
-
-        //    drawList->AddImage(HeaderTextureID,
-        //        to_imvec(HeaderRect.top_left()),
-        //        to_imvec(HeaderRect.bottom_right()),
-        //        ImVec2(0.0f, 0.0f), uv,
-        //        headerColor, c_NodeFrameRounding, 1 | 2);
-
-        //    //ax::Drawing::DrawHeader(drawList, HeaderTextureID,
-        //    //    to_imvec(HeaderRect.top_left()),
-        //    //    to_imvec(HeaderRect.bottom_right()),
-        //    //    headerColor, c_NodeFrameRounding, 4.0f);
-        //}
-
-        //auto headerSeparatorRect = ax::rect(HeaderRect.bottom_left(), ContentRect.top_right());
-        //auto footerSeparatorRect = ax::rect(ContentRect.bottom_left(), NodeRect.bottom_right());
-        //auto contentWithSeparatorRect = ax::rect::make_union(headerSeparatorRect, footerSeparatorRect);
-
-        //drawList->AddRectFilled(
-        //    to_imvec(contentWithSeparatorRect.top_left()),
-        //    to_imvec(contentWithSeparatorRect.bottom_right()),
-        //    ImColor(32, 32, 32, 200), c_NodeFrameRounding, 4 | 8);
-
-        //if (headerSeparatorRect.is_empty())
-        //{
-        //    drawList->AddLine(
-        //        to_imvec(headerSeparatorRect.top_left() + point(1, -1)),
-        //        to_imvec(headerSeparatorRect.top_right() + point(-1, -1)),
-        //        ImColor(255, 255, 255, 96 * alpha / (3 * 255)), 1.0f);
-        //}
-
-        drawList->AddRect(
-            to_imvec(NodeRect.top_left()),
-            to_imvec(NodeRect.bottom_right()),
-            ImColor(255, 255, 255, 96 * alpha / 255), c_NodeFrameRounding, 15, 1.5f);
+        if (style.NodeBorderWidth > 0.0f)
+        {
+            drawList->AddRect(
+                to_imvec(NodeRect.top_left()),
+                to_imvec(NodeRect.bottom_right()),
+                Editor->GetColor(StyleColor_NodeBorder, alpha),
+                style.NodeRounding, 15, style.NodeBorderWidth);
+        }
     }
 }
