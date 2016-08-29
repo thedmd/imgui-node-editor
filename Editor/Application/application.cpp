@@ -44,8 +44,8 @@ enum class PinType
 
 enum class PinKind
 {
-    Input,
-    Output
+    Source,
+    Target
 };
 
 struct Node;
@@ -59,7 +59,7 @@ struct Pin
     PinKind     Kind;
 
     Pin(int id, const char* name, PinType type):
-        ID(id), Node(nullptr), Name(name), Type(type), Kind(PinKind::Input)
+        ID(id), Node(nullptr), Name(name), Type(type), Kind(PinKind::Target)
     {
     }
 };
@@ -96,6 +96,7 @@ struct Link
 static const int            s_PinIconSize = 24;
 static std::vector<Node>    s_Nodes;
 static std::vector<Link>    s_Links;
+static ImTextureID          s_SampleImage = nullptr;
 
 static int s_NextId = 1;
 static int GetNextId()
@@ -163,13 +164,13 @@ static void BuildNode(Node* node)
     for (auto& input : node->Inputs)
     {
         input.Node = node;
-        input.Kind = PinKind::Input;
+        input.Kind = PinKind::Target;
     }
 
     for (auto& output : node->Outputs)
     {
         output.Node = node;
-        output.Kind = PinKind::Output;
+        output.Kind = PinKind::Source;
     }
 }
 
@@ -266,10 +267,18 @@ void Application_Initialize()
     SpawnDoNNode();
     SpawnOutputActionNode();
     SpawnSetTimerNode();
+
+    s_SampleImage = ImGui_LoadTexture("../Data/Lena512.png");
 }
 
 void Application_Finalize()
 {
+    if (s_SampleImage)
+    {
+        ImGui_DestroyTexture(s_SampleImage);
+        s_SampleImage = nullptr;
+    }
+
     if (m_Editor)
     {
         ed::DestroyEditor(m_Editor);
@@ -449,6 +458,36 @@ void Application_Frame()
 
         for (auto& node : s_Nodes)
         {
+            if (&node == &s_Nodes.front())
+            {
+                ed::BeginNode2(node.ID);
+//                     ImGui::Spacing();
+//                     ImGui::Spacing();
+//                     ImGui::SameLine();
+                    ImGui::TextUnformatted(node.Name.c_str());
+//                     ImGui::SameLine();
+//                     ImGui::Spacing();
+                    //ImGui::SameLine();
+
+                    for (auto& output : node.Outputs)
+                    {
+//                         ImGui::Spacing();
+//                         ImGui::SameLine();
+                        ed::BeginPin2(output.ID, ed::PinKind::Source, ImVec2(1.0f, 0.5f));
+//                             ImGui::Spacing();
+//                             ImGui::SameLine();
+                            ImGui::TextUnformatted(output.Name.c_str());
+//                             ImGui::SameLine();
+//                             ImGui::Spacing();
+                        ed::EndPin2();
+                    }
+
+//                    ImGui::Spacing();
+                ed::EndNode2();
+
+                continue;
+            }
+
             ed::BeginNode(node.ID);
                 ed::BeginHeader(node.Color);
                     ImGui::Spring(0);
@@ -539,7 +578,7 @@ void Application_Frame()
 
                     newLinkPin = startPin ? startPin : endPin;
 
-                    if (startPin->Kind == PinKind::Input)
+                    if (startPin->Kind == PinKind::Target)
                     {
                         std::swap(startPin, endPin);
                         std::swap(startPinId, endPinId);
@@ -664,14 +703,14 @@ void Application_Frame()
 
             if (auto startPin = newNodeLinkPin)
             {
-                auto& pins = startPin->Kind == PinKind::Input ? node->Outputs : node->Inputs;
+                auto& pins = startPin->Kind == PinKind::Target ? node->Outputs : node->Inputs;
 
                 for (auto& pin : pins)
                 {
                     if (CanCreateLink(startPin, &pin))
                     {
                         auto endPin = &pin;
-                        if (startPin->Kind == PinKind::Input)
+                        if (startPin->Kind == PinKind::Target)
                             std::swap(startPin, endPin);
 
                         s_Links.emplace_back(Link(GetNextId(), startPin->ID, endPin->ID));
@@ -689,6 +728,16 @@ void Application_Frame()
         createNewNode = false;
     ImGui::PopStyleVar();
     ed::Resume();
+
+//     static float rounding = 5.0f;
+// 
+//     auto drawList = ImGui::GetWindowDrawList();
+//     drawList->AddRectFilled(ImVec2(100, 100), ImVec2(100, 100) + ImVec2(512, 512), IM_COL32(255, 255, 255, 255), 30.0f, 7);
+//     drawList->AddImage(s_SampleImage, ImVec2(100, 100), ImVec2(100, 100) + ImVec2(512, 512), ImVec2(0, 0), ImVec2(1, 1), IM_COL32(255, 255, 255, 255), rounding, 7);
+// 
+//     ImGui::SliderFloat("Rounding", &rounding, 0.0f, 50.0f);
+
+    // ImGui_PushGizmo()
 
     ed::End();
 
