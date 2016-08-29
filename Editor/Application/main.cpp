@@ -117,8 +117,13 @@ static ImFont* ImGui_LoadFont(ImGuiIO& io, const char* name, float size, const I
     if (!windir)
         return nullptr;
 
+    ImFontConfig config;
+    config.OversampleH = 4;
+    config.OversampleV = 2;
+    config.PixelSnapH  = false;
+
     auto path = std::string(windir) + "\\Fonts\\" + name;
-    auto font = io.Fonts->AddFontFromFileTTF(path.c_str(), size);
+    auto font = io.Fonts->AddFontFromFileTTF(path.c_str(), size, &config);
     if (font)
         font->DisplayOffset = displayOffset;
 
@@ -176,7 +181,6 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _
         Application_Frame();
 
         ImGui::End();
-
 
         //ImGui::ShowMetricsWindow();
 
