@@ -355,11 +355,91 @@ void DrawPinIcon(const Pin& pin, bool connected, int alpha)
     ax::Widgets::Icon(to_imvec(size(s_PinIconSize, s_PinIconSize)), iconType, connected, color, ImColor(32, 32, 32, alpha));
 };
 
-void ShowSelectionPane(float paneWidth)
+void ShowStyleEditor(bool* show = nullptr)
+{
+    if (!ImGui::Begin("Style", show))
+    {
+        ImGui::End();
+        return;
+    }
+
+    auto paneWidth = ImGui::GetContentRegionAvailWidth();
+
+    auto& editorStyle = ed::GetStyle();
+    ImGui::BeginHorizontal("Style buttons", ImVec2(paneWidth, 0), 1.0f);
+    ImGui::TextUnformatted("Values");
+    ImGui::Spring();
+    if (ImGui::Button("Reset to defaults"))
+        editorStyle = ed::Style();
+    ImGui::EndHorizontal();
+    ImGui::Spacing();
+    ImGui::DragFloat2("Node Padding", &editorStyle.NodePadding.x, 0.1f, 0.0f, 40.0f);
+    ImGui::DragFloat("Node Rounding", &editorStyle.NodeRounding, 0.1f, 0.0f, 40.0f);
+    ImGui::DragFloat("Node Border Width", &editorStyle.NodeBorderWidth, 0.1f, 0.0f, 15.0f);
+    ImGui::DragFloat("Hovered Node Border Width", &editorStyle.HoveredNodeBorderWidth, 0.1f, 0.0f, 15.0f);
+    ImGui::DragFloat("Selected Node Border Width", &editorStyle.SelectedNodeBorderWidth, 0.1f, 0.0f, 15.0f);
+    ImGui::DragFloat("Pin Rounding", &editorStyle.HoveredPinRounding, 0.1f, 0.0f, 40.0f);
+    ImGui::DragFloat("Pin Border Width", &editorStyle.HoveredPinBorderWidth, 0.1f, 0.0f, 15.0f);
+    ImGui::DragFloat("Link Strength", &editorStyle.LinkStrength, 1.0f, 0.0f, 500.0f);
+
+    ImGui::Separator();
+
+    static ImGuiColorEditMode edit_mode = ImGuiColorEditMode_RGB;
+    ImGui::BeginHorizontal("Color Mode", ImVec2(paneWidth, 0), 1.0f);
+    ImGui::TextUnformatted("Filter Colors");
+    ImGui::Spring();
+    ImGui::RadioButton("RGB", &edit_mode, ImGuiColorEditMode_RGB);
+    ImGui::Spring(0);
+    ImGui::RadioButton("HSV", &edit_mode, ImGuiColorEditMode_HSV);
+    ImGui::Spring(0);
+    ImGui::RadioButton("HEX", &edit_mode, ImGuiColorEditMode_HEX);
+    ImGui::EndHorizontal();
+
+    static ImGuiTextFilter filter;
+    filter.Draw("", paneWidth);
+
+    ImGui::Spacing();
+
+    ImGui::PushItemWidth(-160);
+    ImGui::ColorEditMode(edit_mode);
+    for (int i = 0; i < ed::StyleColor_Count; ++i)
+    {
+        auto name = ed::GetStyleColorName((ed::StyleColor)i);
+        if (!filter.PassFilter(name))
+            continue;
+
+        ImGui::ColorEdit4(name, &editorStyle.Colors[i].x);
+    }
+    ImGui::PopItemWidth();
+
+    ImGui::End();
+}
+
+void ShowLeftPane(float paneWidth)
 {
     auto& io = ImGui::GetIO();
 
     ImGui::BeginChild("Selection", ImVec2(paneWidth, 0));
+
+    paneWidth = ImGui::GetContentRegionAvailWidth();
+
+
+    ImGui::GetWindowDrawList()->AddRectFilled(
+        ImGui::GetCursorScreenPos(),
+        ImGui::GetCursorScreenPos() + ImVec2(paneWidth, ImGui::GetTextLineHeight()),
+        ImColor(ImGui::GetStyle().Colors[ImGuiCol_HeaderActive]), ImGui::GetTextLineHeight() * 0.25f);
+    ImGui::Spacing(); ImGui::SameLine();
+    ImGui::TextUnformatted("Style");
+
+    static bool showStyleEditor = false;
+    ImGui::BeginHorizontal("Style Editor", ImVec2(paneWidth, 0));
+    ImGui::Spring();
+    if (ImGui::Button("Show Editor"))
+        showStyleEditor = true;
+    ImGui::EndHorizontal();
+
+    if (showStyleEditor)
+        ShowStyleEditor(&showStyleEditor);
 
     std::vector<int> selectedNodes, selectedLinks;
     selectedNodes.resize(ed::GetSelectedObjectCount());
@@ -444,11 +524,11 @@ void Application_Frame()
     static Pin* newNodeLinkPin = nullptr;
     static Pin* newLinkPin     = nullptr;
 
-    static float leftPaneWidth  = 360.0f;
+    static float leftPaneWidth  = 400.0f;
     static float rightPaneWidth = 800.0f;
     DrawSplitter(0, 4.0f, &leftPaneWidth, &rightPaneWidth, 50.0f, 50.0f);
 
-    ShowSelectionPane(leftPaneWidth);
+    ShowLeftPane(leftPaneWidth);
 
     ImGui::SameLine();
 
@@ -458,31 +538,24 @@ void Application_Frame()
 
         for (auto& node : s_Nodes)
         {
-            if (&node == &s_Nodes.front())
+            if (&node == &s_Nodes[1])
             {
                 ed::BeginNode2(node.ID);
-//                     ImGui::Spacing();
-//                     ImGui::Spacing();
-//                     ImGui::SameLine();
                     ImGui::TextUnformatted(node.Name.c_str());
-//                     ImGui::SameLine();
-//                     ImGui::Spacing();
-                    //ImGui::SameLine();
 
-                    for (auto& output : node.Outputs)
+                    for (auto& input : node.Inputs)
                     {
-//                         ImGui::Spacing();
-//                         ImGui::SameLine();
-                        ed::BeginPin2(output.ID, ed::PinKind::Source, ImVec2(1.0f, 0.5f));
-//                             ImGui::Spacing();
-//                             ImGui::SameLine();
-                            ImGui::TextUnformatted(output.Name.c_str());
-//                             ImGui::SameLine();
-//                             ImGui::Spacing();
+                        ed::BeginPin2(input.ID, ed::PinKind::Source, ImVec2(0.0f, 0.5f));
+                            ImGui::Text("IN: %s", input.Name.c_str());
                         ed::EndPin2();
                     }
 
-//                    ImGui::Spacing();
+                    for (auto& output : node.Outputs)
+                    {
+                        ed::BeginPin2(output.ID, ed::PinKind::Source, ImVec2(1.0f, 0.5f));
+                        ImGui::Text("OUT: %s", output.Name.c_str());
+                        ed::EndPin2();
+                    }
                 ed::EndNode2();
 
                 continue;
