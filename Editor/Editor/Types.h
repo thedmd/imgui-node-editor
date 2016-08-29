@@ -34,6 +34,11 @@ enum class matrix_order
 
 //------------------------------------------------------------------------------
 template <typename T>
+struct basic_size;
+
+
+//------------------------------------------------------------------------------
+template <typename T>
 struct basic_point
 {
     typedef T value_type;
@@ -51,6 +56,9 @@ struct basic_point
     basic_point(basic_point&&) = default;
     basic_point& operator=(const basic_point&) = default;
     basic_point& operator=(basic_point&&) = default;
+
+    template <typename P>
+    explicit operator basic_size<P>() const { return basic_size<P>(static_cast<P>(x), static_cast<P>(y)); }
 
     friend inline value_type dot(const basic_point& lhs, const basic_point& rhs) { return lhs.x * rhs.x + lhs.y * rhs.y; }
 
@@ -96,6 +104,9 @@ struct basic_size
     basic_size(basic_size&&) = default;
     basic_size& operator=(const basic_size&) = default;
     basic_size& operator=(basic_size&&) = default;
+
+    template <typename P>
+    explicit operator basic_point<P>() const { return basic_point<P>(static_cast<P>(w), static_cast<P>(h)); }
 
     friend inline bool operator == (const basic_size& lhs, const basic_size& rhs) { return lhs.w == rhs.w && lhs.h == rhs.h; }
     friend inline bool operator != (const basic_size& lhs, const basic_size& rhs) { return !(lhs == rhs); }

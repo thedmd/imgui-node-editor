@@ -37,7 +37,36 @@ void ax::Editor::Begin(const char* id, const ImVec2& size)
     s_Editor->Begin(id, size);
 }
 
-void ax::Editor::End()                              { s_Editor->End();                       }
+void ax::Editor::End()
+{
+    s_Editor->End();
+}
+
+void ax::Editor::BeginNode2(int id)
+{
+    s_Editor->GetNodeBuilder().Begin(id);
+}
+
+void ax::Editor::NodeHeader2(const ImVec4& color/* = ImVec4(1, 1, 1, 1)*/)
+{
+}
+
+void ax::Editor::BeginPin2(int id, PinKind kind, const ImVec2& pivot/* = ImVec2(0.5f, 0.5f)*/)
+{
+    s_Editor->GetNodeBuilder().BeginPin(id, kind, pivot);
+}
+
+void ax::Editor::EndPin2()
+{
+    s_Editor->GetNodeBuilder().EndPin();
+}
+
+void ax::Editor::EndNode2()
+{
+    s_Editor->GetNodeBuilder().End();
+}
+
+
 void ax::Editor::BeginNode(int id)                  { s_Editor->BeginNode(id);               }
 void ax::Editor::EndNode()                          { s_Editor->EndNode();                   }
 void ax::Editor::BeginHeader(const ImVec4& color)   { s_Editor->BeginHeader(ImColor(color)); }

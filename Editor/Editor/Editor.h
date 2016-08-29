@@ -36,10 +36,7 @@ enum class NodeStage
     End
 };
 
-enum class PinType
-{
-    Input, Output
-};
+using ax::Editor::PinKind;
 
 struct Node;
 struct Pin;
@@ -60,14 +57,14 @@ struct Object
 
 struct Pin final: Object
 {
-    PinType Type;
+    PinKind Kind;
     Node*   Node;
     rect    Bounds;
-    point   DragPoint;
+    pointf  DragPoint;
     Pin*    PreviousPin;
 
-    Pin(int id, PinType type):
-        Object(id), Type(type), Node(nullptr), Bounds(), PreviousPin(nullptr)
+    Pin(int id, PinKind kind):
+        Object(id), Kind(kind), Node(nullptr), Bounds(), PreviousPin(nullptr)
     {
     }
 
@@ -83,7 +80,7 @@ struct Node final: Object
 
     Node(int id):
         Object(id),
-        Bounds(to_point(ImGui::GetCursorScreenPos()), size()),
+        Bounds(point(0, 0), size()),
         Channel(0),
         LastPin(nullptr),
         DragStart()
@@ -427,6 +424,27 @@ private:
     int             CandidateItemIndex;
 };
 
+struct NodeBuilder
+{
+    Context* const Editor;
+
+    Node* CurrentNode;
+    Pin*  CurrentPin;
+
+    rect NodeRect;
+
+    NodeBuilder(Context* editor);
+
+    void Begin(int nodeId);
+    void End();
+
+    void BeginPin(int pinId, PinKind kind, const ImVec2& pivot);
+    void EndPin();
+
+private:
+    void DrawBackground() const;
+};
+
 struct Context
 {
     Context(const Config* config = nullptr);
@@ -449,13 +467,12 @@ struct Context
 
     bool DoLink(int id, int startPinId, int endPinId, ImU32 color, float thickness);
 
+    NodeBuilder& GetNodeBuilder() { return NodeBuilder; }
+
     EditorAction* GetCurrentAction() { return CurrentAction; }
 
     CreateItemAction& GetItemCreator() { return CreateItemAction; }
     DeleteItemsAction& GetItemDeleter() { return DeleteItemsAction; }
-
-    bool DestroyLink();
-    int GetDestroyedLinkId();
 
     void SetNodePosition(int nodeId, const ImVec2& screenPosition);
     ImVec2 GetNodePosition(int nodeId);
@@ -486,34 +503,38 @@ struct Context
 
     void MarkSettingsDirty();
 
-    Node* FindNode(int id);
-    Pin*  FindPin(int id);
-    Link* FindLink(int id);
-
-private:
-    Pin*    CreatePin(int id, PinType type);
+    Pin*    CreatePin(int id, PinKind kind);
     Node*   CreateNode(int id);
     Link*   CreateLink(int id);
     void    DestroyObject(Node* node);
     Object* FindObject(int id);
 
+    Node* FindNode(int id);
+    Pin*  FindPin(int id);
+    Link* FindLink(int id);
+
+    Node* GetNode(int id);
+
+    Pin* GetPin(int id, PinKind kind);
+    void BeginPin(int id, PinKind kind);
+    void EndPin();
+
+    Link* GetLink(int id);
+
+    Link* FindLinkAt(const point& p);
+
+
+private:
     void SetCurrentNode(Node* node);
     void SetCurrentPin(Pin* pin);
 
     bool SetNodeStage(NodeStage stage);
-
-    Pin* GetPin(int id, PinType type);
-    void BeginPin(int id, PinType type);
-    void EndPin();
-
-    Link* GetLink(int id);
 
     NodeSettings* FindNodeSettings(int id);
     NodeSettings* AddNodeSettings(int id);
     void          LoadSettings();
     void          SaveSettings();
 
-    Link* FindLinkAt(const point& p);
     Control ComputeControl();
 
     void ShowMetrics(const Control& control);
@@ -547,6 +568,8 @@ private:
     rect                NodeRect;
     rect                HeaderRect;
     rect                ContentRect;
+
+    NodeBuilder         NodeBuilder;
 
     EditorAction*       CurrentAction;
     ScrollAction        ScrollAction;

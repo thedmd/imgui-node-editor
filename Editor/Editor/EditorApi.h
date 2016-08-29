@@ -28,6 +28,14 @@ struct Config
 
 
 //------------------------------------------------------------------------------
+enum class PinKind
+{
+    Target,
+    Source
+};
+
+
+//------------------------------------------------------------------------------
 struct Context;
 
 
@@ -39,6 +47,12 @@ void DestroyEditor(Context* ctx);
 
 void Begin(const char* id, const ImVec2& size = ImVec2(0, 0));
 void End();
+
+void BeginNode2(int id);
+void NodeHeader2(const ImVec4& color = ImVec4(1, 1, 1, 1));
+void BeginPin2(int id, PinKind kind, const ImVec2& pivot = ImVec2(0.5f, 0.5f));
+void EndPin2();
+void EndNode2();
 
 void BeginNode(int id);
 void EndNode();
