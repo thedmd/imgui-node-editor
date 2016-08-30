@@ -568,9 +568,16 @@ private:
     void OnUpdate(float progress) override final
     {
         // http://gizma.com/easing/#quint2
-        --progress;
+        const auto c = (Target - Start);
+        const auto b = Start;
+        const auto d = 1.0f;
 
-        Action.Scroll = Start + (Target - Start) * (progress * progress * progress * progress * progress + 1);
+        auto easeOutQuad = [&c, &d, &b](float t)
+        {
+            return -c * t*(t - 2) + b;
+        };
+
+        Action.Scroll = easeOutQuad(progress);
     }
 
     void OnFinish() override final
