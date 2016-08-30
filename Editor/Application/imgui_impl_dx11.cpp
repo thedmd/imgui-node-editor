@@ -338,6 +338,9 @@ static void ImGui_ImplDX11_CreateFontsTexture()
     unsigned char* pixels;
     int width, height;
     io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
+    std::vector<unsigned char> adjustedPixels;
+    adjustedPixels.assign(pixels, pixels + width * height * 4);
+    pixels = adjustedPixels.data();
     for (int i = 0; i < width * height; ++i)
     {
         auto& a = pixels[i * 4 + 3];
@@ -849,12 +852,16 @@ static void ImGui_ReleaseTexture(TEXTURE* texture)
 
 int ImGui_GetTextureWidth(ImTextureID texture)
 {
-    auto tex = reinterpret_cast<TEXTURE*>(texture);
-    return tex->Width;
+    if (auto tex = reinterpret_cast<TEXTURE*>(texture))
+        return tex->Width;
+    else
+        return 0;
 }
 
 int ImGui_GetTextureHeight(ImTextureID texture)
 {
-    auto tex = reinterpret_cast<TEXTURE*>(texture);
-    return tex->Height;
+    if (auto tex = reinterpret_cast<TEXTURE*>(texture))
+        return tex->Height;
+    else
+        return 0;
 }
