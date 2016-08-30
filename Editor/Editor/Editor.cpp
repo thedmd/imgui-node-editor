@@ -237,7 +237,6 @@ ed::Context::Context(const ax::Editor::Config* config):
     SelectAction(this),
     CreateItemAction(this),
     DeleteItemsAction(this),
-    ScrollAnimation(ScrollAction),
     IsInitialized(false),
     HeaderTextureID(nullptr),
     Settings(),
@@ -288,7 +287,7 @@ void ed::Context::Begin(const char* id, const ImVec2& size)
         ImGuiWindowFlags_NoScrollbar |
         ImGuiWindowFlags_NoScrollWithMouse);
 
-    ScrollAnimation.Update();
+    ScrollAction.Animation.Update();
 
     ScrollAction.SetWindow(ImGui::GetWindowPos(), ImGui::GetWindowSize());
 
@@ -444,6 +443,9 @@ void ed::Context::End()
     if (CurrentAction && !CurrentAction->Process(control))
         CurrentAction = nullptr;
 
+    if (CurrentAction || io.MouseDown[0] || io.MouseDown[1] || io.MouseDown[2])
+        ScrollAction.Animation.Stop();
+
     if (nullptr == CurrentAction)
     {
         if (ScrollAction.Accept(control))
@@ -457,9 +459,6 @@ void ed::Context::End()
         else if (DeleteItemsAction.Accept(control))
             CurrentAction = &DeleteItemsAction;
     }
-
-    if (CurrentAction)
-        ScrollAnimation.Stop();
 
     if (SelectAction.IsActive)
     {
@@ -1156,7 +1155,7 @@ void ed::Context::NavigateTo(const ax::rectf& bounds, bool zoomIn, float duratio
     const auto targetCenter    = to_imvec(targetBounds.center());
     const auto offset          = selectionCenter - targetCenter;
 
-    ScrollAnimation.ScrollTo(
+    ScrollAction.Animation.ScrollTo(
         action.Scroll + offset * action.Zoom,
         action.Zoom,
         GetStyle().ScrollDuration);
@@ -1415,6 +1414,127 @@ ImVec2 ed::Canvas::ToClient(ImVec2 point)
 
 //------------------------------------------------------------------------------
 //
+// Animation
+//
+//------------------------------------------------------------------------------
+ed::Animation::Animation():
+    State(Stopped),
+    Time(0.0f),
+    Duration(0.0f)
+{
+}
+
+ed::Animation::~Animation()
+{
+    Stop();
+}
+
+void ed::Animation::Play(float duration)
+{
+    if (State != Stopped)
+        Stop();
+
+    State = Playing;
+    if (duration < 0)
+        duration = 0.0f;
+
+    Time     = 0.0f;
+    Duration = duration;
+
+    OnPlay();
+
+    if (duration == 0.0f)
+        Stop();
+}
+
+void ed::Animation::Stop()
+{
+    if (State != Playing)
+        return;
+
+    State = Stopped;
+
+    OnStop();
+}
+
+void ed::Animation::Finish()
+{
+    if (State != Playing)
+        return;
+
+    OnFinish();
+
+    Stop();
+}
+
+void ed::Animation::Update()
+{
+    if (State != Playing)
+        return;
+
+    Time += std::max(0.0f, ImGui::GetIO().DeltaTime);
+    if (Time < Duration)
+    {
+        const float progress = Time / Duration;
+        OnUpdate(progress);
+    }
+    else
+    {
+        OnFinish();
+        Stop();
+    }
+}
+
+
+
+
+//------------------------------------------------------------------------------
+//
+// Scroll Animation
+//
+//------------------------------------------------------------------------------
+ed::ScrollAnimation::ScrollAnimation(Context* editor, ScrollAction& scrollAction):
+    Editor(editor),
+    Action(scrollAction)
+{
+}
+
+void ed::ScrollAnimation::ScrollTo(const ImVec2& target, float targetZoom, float duration)
+{
+    Stop();
+
+    Start      = Action.Scroll;
+    StartZoom  = Action.Zoom;
+    Target     = target;
+    TargetZoom = targetZoom;
+
+    Play(duration);
+}
+
+void ed::ScrollAnimation::OnUpdate(float progress)
+{
+    Action.Scroll = EaseOutQuad(Start, Target - Start, progress);
+    Action.Zoom   = EaseOutQuad(StartZoom, TargetZoom - StartZoom, progress);
+}
+
+void ed::ScrollAnimation::OnStop()
+{
+    Editor->MarkSettingsDirty();
+}
+
+void ed::ScrollAnimation::OnFinish()
+{
+    Action.Scroll = Target;
+    Action.Zoom = TargetZoom;
+
+    Editor->MarkSettingsDirty();
+}
+
+
+
+
+//------------------------------------------------------------------------------
+//
 // Scroll Action
 //
 //------------------------------------------------------------------------------
@@ -1430,6 +1550,7 @@ ed::ScrollAction::ScrollAction(Context* editor):
     IsActive(false),
     Zoom(1),
     Scroll(0, 0),
+    Animation(editor, *this),
     WindowScreenPos(0, 0),
     WindowScreenSize(0, 0),
     ScrollStart(0, 0)
@@ -1461,30 +1582,35 @@ bool ax::Editor::Detail::ScrollAction::Accept(const Control& control)
             Editor->NavigateToContent();
     }
 
-    //     // #debug
-    //     if (auto drawList = ImGui::GetWindowDrawList())
-    //         drawList->AddCircleFilled(io.MousePos, 4.0f, IM_COL32(255, 0, 255, 255));
+    // // #debug
+    // if (auto drawList = ImGui::GetWindowDrawList())
+    //     drawList->AddCircleFilled(io.MousePos, 4.0f, IM_COL32(255, 0, 255, 255));
 
     if (io.MouseWheel && ImGui::IsWindowHovered() && !ImGui::IsAnyItemActive())
     {
+        auto savedScroll = Scroll;
+        auto savedZoom   = Zoom;
+
+        Animation.Finish();
+
         auto mousePos     = io.MousePos;
         auto steps        = (int)io.MouseWheel;
         auto newZoom      = MatchZoom(steps, s_ZoomLevels[steps < 0 ? 0 : s_ZoomLevelCount - 1]);
 
-        auto oldCanvas    = GetCanvas();
+        auto oldCanvas    = GetCanvas(false);
         Zoom = newZoom;
-        auto newCanvas    = GetCanvas();
+        auto newCanvas    = GetCanvas(false);
 
         auto screenPos    = oldCanvas.ToScreen(mousePos);
         auto canvasPos    = newCanvas.FromScreen(screenPos);
 
-        auto offset       = canvasPos - mousePos;
-        offset.x *= Zoom;
-        offset.y *= Zoom;
+        auto offset       = (canvasPos - mousePos) * Zoom;
+        auto targetScroll = Scroll - offset;
 
-        Scroll = Scroll - offset;
+        Scroll = savedScroll;
+        Zoom   = savedZoom;
 
-        Editor->MarkSettingsDirty();
+        Animation.ScrollTo(targetScroll, newZoom, 0.15f);
 
         return true;
     }
@@ -2608,4 +2734,3 @@ ImVec4* ed::Style::GetVarVec4Addr(StyleVar idx)
 
     return nullptr;
 }
-

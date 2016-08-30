@@ -212,6 +212,60 @@ struct SelectAction;
 struct CreateItemAction;
 struct DeleteItemsAction;
 
+struct Animation
+{
+    enum State
+    {
+        Playing,
+        Stopped
+    };
+
+    State State;
+    float Time;
+    float Duration;
+
+    Animation();
+    virtual ~Animation();
+
+    void Play(float duration);
+    void Stop();
+    void Finish();
+    void Update();
+
+protected:
+    virtual void OnPlay() {}
+    virtual void OnFinish() {}
+    virtual void OnStop() {}
+
+    virtual void OnUpdate(float progress) {}
+};
+
+struct ScrollAnimation final: Animation
+{
+    Context*      Editor;
+    ScrollAction& Action;
+    ImVec2        Start;
+    float         StartZoom;
+    ImVec2        Target;
+    float         TargetZoom;
+
+    ScrollAnimation(Context* editor, ScrollAction& scrollAction);
+
+    void ScrollTo(const ImVec2& target, float targetZoom, float duration);
+
+private:
+    // http://gizma.com/easing/#quint2
+    template <typename V, typename T>
+    V EaseOutQuad(V b, V c, T t)
+    {
+        return -c * t * (t - 2) + b;
+    }
+
+    void OnUpdate(float progress) override final;
+    void OnStop() override final;
+    void OnFinish() override final;
+};
+
 struct EditorAction
 {
     EditorAction(Context* editor): Editor(editor) {}
@@ -235,9 +289,10 @@ struct EditorAction
 
 struct ScrollAction final: EditorAction
 {
-    bool   IsActive;
-    float  Zoom;
-    ImVec2 Scroll;
+    bool            IsActive;
+    float           Zoom;
+    ImVec2          Scroll;
+    ScrollAnimation Animation;
 
     ScrollAction(Context* editor);
 
@@ -477,118 +532,6 @@ private:
     vector<VarModifier>     VarStack;
 };
 
-struct Animation
-{
-    enum State
-    {
-        Playing,
-        Stopped
-    };
-
-    State State;
-    float Time;
-    float Duration;
-
-    Animation(): State(Stopped), Time(0.0f), Duration(0.0f) {}
-    virtual ~Animation() { Stop(); }
-
-    void Play(float duration)
-    {
-        if (State != Stopped)
-            Stop();
-
-        State = Playing;
-        if (duration < 0)
-            duration = 0.0f;
-
-        Time     = 0.0f;
-        Duration = duration;
-
-        OnPlay();
-
-        if (duration == 0.0f)
-            Stop();
-    }
-
-    void Stop()
-    {
-        if (State != Playing)
-            return;
-
-        State = Stopped;
-
-        OnStop();
-    }
-
-    void Update()
-    {
-        if (State != Playing)
-            return;
-
-        Time += std::max(0.0f, ImGui::GetIO().DeltaTime);
-        if (Time < Duration)
-        {
-            const float progress = Time / Duration;
-            OnUpdate(progress);
-        }
-        else
-        {
-            OnFinish();
-            Stop();
-        }
-    }
-
-protected:
-    virtual void OnPlay() {}
-    virtual void OnFinish() {}
-    virtual void OnStop() {}
-
-    virtual void OnUpdate(float progress) {}
-};
-
-struct ScrollAnimation final: Animation
-{
-    ScrollAction& Action;
-    ImVec2        Start;
-    float         StartZoom;
-    ImVec2        Target;
-    float         TargetZoom;
-
-    ScrollAnimation(ScrollAction& scrollAction):
-        Action(scrollAction)
-    {
-    }
-
-    void ScrollTo(const ImVec2& target, float targetZoom, float duration)
-    {
-        Start      = Action.Scroll;
-        StartZoom  = Action.Zoom;
-        Target     = target;
-        TargetZoom = targetZoom;
-        Play(duration);
-    }
-
-private:
-    // http://gizma.com/easing/#quint2
-    template <typename V, typename T>
-    V EaseOutQuad(V b, V c, T t)
-    {
-        return -c * t * (t - 2) + b;
-    }
-
-    void OnUpdate(float progress) override final
-    {
-        Action.Scroll = EaseOutQuad(Start,     Target     - Start,     progress);
-        Action.Zoom   = EaseOutQuad(StartZoom, TargetZoom - StartZoom, progress);
-    }
-
-    void OnFinish() override final
-    {
-        Action.Scroll = Target;
-        Action.Zoom   = TargetZoom;
-    }
-};
-
 struct Context
 {
     Context(const Config* config = nullptr);
@@ -717,8 +660,6 @@ private:
     SelectAction        SelectAction;
     CreateItemAction    CreateItemAction;
     DeleteItemsAction   DeleteItemsAction;
-
-    ScrollAnimation     ScrollAnimation;
 
     bool                IsInitialized;
     ImTextureID         HeaderTextureID;
