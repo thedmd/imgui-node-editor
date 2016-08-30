@@ -235,11 +235,26 @@ void ax::Drawing::DrawHeader(ImDrawList* drawList, ImTextureID textureId, const 
     }
 }
 
+static float EaseLinkStrength(const ImVec2& a, const ImVec2& b, float strength)
+{
+    const auto distanceX    = b.x - a.x;
+    const auto distanceY    = b.y - a.y;
+    const auto distance     = sqrtf(distanceX * distanceX + distanceY * distanceY);
+    const auto halfDistance = distance * 0.5f;
+
+    if (halfDistance < strength)
+        strength = strength * sinf(ax::AX_PI * 0.5f * halfDistance / strength);
+
+    return strength;
+}
+
 void ax::Drawing::DrawLink(ImDrawList* drawList, const ImVec2& a, const ImVec2& b, ImU32 color, float thickness/* = 1.0f*/, float strength/* = 1.0f*/)
 {
+    using namespace ImGuiInterop;
+
     if (strength != 0.0f)
     {
-        strength = std::min(strength, fabsf(a.x - b.x) * 0.5f);
+        strength = EaseLinkStrength(a, b, strength);
 
         ImVec2 cp0 = ImVec2(a.x + strength, a.y);
         ImVec2 cp1 = ImVec2(b.x - strength, b.y);
@@ -257,7 +272,7 @@ float ax::Drawing::LinkDistance(const ImVec2& p, const ImVec2& a, const ImVec2& 
 {
     using namespace ImGuiInterop;
 
-    strength = std::min(strength, fabsf(a.x - b.x) * 0.5f);
+    strength = EaseLinkStrength(a, b, strength);
 
     ImVec2 cp0 = ImVec2(a.x + strength, a.y);
     ImVec2 cp1 = ImVec2(b.x - strength, b.y);
@@ -274,7 +289,7 @@ ax::rectf ax::Drawing::GetLinkBounds(const ImVec2& a, const ImVec2& b, float str
 
     if (strength != 0.0f)
     {
-        strength = std::min(strength, fabsf(a.x - b.x) * 0.5f);
+        strength = EaseLinkStrength(a, b, strength);
 
         ImVec2 cp0 = ImVec2(a.x + strength, a.y);
         ImVec2 cp1 = ImVec2(b.x - strength, b.y);
@@ -312,7 +327,7 @@ bool ax::Drawing::CollideLinkWithRect(const ax::rect& r, const ImVec2& a, const 
 {
     using namespace ImGuiInterop;
 
-    strength = std::min(strength, fabsf(a.x - b.x) * 0.5f);
+    strength = EaseLinkStrength(a, b, strength);
 
     ImVec2 cp0 = ImVec2(a.x + strength, a.y);
     ImVec2 cp1 = ImVec2(b.x - strength, b.y);
