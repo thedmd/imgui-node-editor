@@ -181,7 +181,8 @@ void SelectLink(int linkId, bool append = false);
 void DeselectNode(int nodeId);
 void DeselectLink(int linkId);
 
-void NavigateToSelection(float duration = -1);
+void NavigateToContent(float duration = -1);
+void NavigateToSelection(bool zoomIn = false, float duration = -1);
 
 //------------------------------------------------------------------------------
 } // namespace Editor

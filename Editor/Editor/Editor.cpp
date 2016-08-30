@@ -1120,16 +1120,6 @@ ax::rectf ed::Context::GetBounds(Object* object)
     return ax::rectf();
 }
 
-ax::rectf ed::Context::GetBounds(const std::vector<Object*>& objects)
-{
-    ax::rectf bounds;
-
-    for (auto object : objects)
-        bounds = make_union(bounds, GetBounds(object));
-
-    return bounds;
-}
-
 ImU32 ed::Context::GetColor(StyleColor colorIndex) const
 {
     return ImColor(Style.Colors[colorIndex]);
@@ -1141,14 +1131,14 @@ ImU32 ed::Context::GetColor(StyleColor colorIndex, float alpha) const
     return ImColor(color.x, color.y, color.z, color.w * alpha);
 }
 
-void ed::Context::NavigateToSelection(float duration)
+void ed::Context::NavigateTo(const ax::rectf& bounds, bool zoomIn, float duration)
 {
-    if (SelectedObjects.empty())
+    if (bounds.is_empty())
         return;
 
     auto canvas = ScrollAction.GetCanvas(false);
 
-    const auto selectionBounds     = GetBounds(SelectedObjects);
+    const auto selectionBounds     = bounds;
     const auto visibleBounds       = canvas.GetVisibleBounds();
 
     const auto visibleBoundsMargin = 0.1f;
@@ -1156,7 +1146,7 @@ void ed::Context::NavigateToSelection(float duration)
     const auto sourceSize          = static_cast<pointf>(selectionBounds.size);
     const auto ratio               = sourceSize.cwise_safe_quotient(targetVisibleSize);
     const auto maxRatio            = std::max(ratio.x, ratio.y);
-    const auto zoomChange          = 1.0f / std::max(maxRatio, 1.0f);
+    const auto zoomChange          = maxRatio ? 1.0f / (zoomIn ? maxRatio : std::max(maxRatio, 1.0f)) : 1.0f;
 
     ed::ScrollAction action = ScrollAction;
     action.Zoom *= zoomChange;
@@ -1446,7 +1436,7 @@ ed::ScrollAction::ScrollAction(Context* editor):
 {
 }
 
-bool ed::ScrollAction::Accept(const Control& control)
+bool ax::Editor::Detail::ScrollAction::Accept(const Control& control)
 {
     assert(!IsActive);
 
@@ -1462,9 +1452,18 @@ bool ed::ScrollAction::Accept(const Control& control)
 
     auto& io = ImGui::GetIO();
 
-//     // #debug
-//     if (auto drawList = ImGui::GetWindowDrawList())
-//         drawList->AddCircleFilled(io.MousePos, 4.0f, IM_COL32(255, 0, 255, 255));
+    if (ImGui::IsKeyPressed(ImGui::GetKeyIndex(ImGuiKey_F)))
+    {
+        auto& selection = Editor->GetSelectedObjects();
+        if (!selection.empty())
+            Editor->NavigateToSelection(io.KeyShift);
+        else
+            Editor->NavigateToContent();
+    }
+
+    //     // #debug
+    //     if (auto drawList = ImGui::GetWindowDrawList())
+    //         drawList->AddCircleFilled(io.MousePos, 4.0f, IM_COL32(255, 0, 255, 255));
 
     if (io.MouseWheel && ImGui::IsWindowHovered() && !ImGui::IsAnyItemActive())
     {

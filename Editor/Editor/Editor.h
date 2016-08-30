@@ -654,12 +654,29 @@ struct Context
     Link* FindLinkAt(const point& p);
 
     ax::rectf GetBounds(Object* object);
-    ax::rectf GetBounds(const std::vector<Object*>& objects);
+    template <typename T>
+    ax::rectf GetBounds(const std::vector<T*>& objects)
+    {
+        ax::rectf bounds;
+
+        for (auto object : objects)
+            bounds = make_union(bounds, GetBounds(object));
+
+        return bounds;
+    }
 
     ImU32 GetColor(StyleColor colorIndex) const;
     ImU32 GetColor(StyleColor colorIndex, float alpha) const;
 
-    void NavigateToSelection(float duration = -1);
+    void NavigateTo(const rectf& bounds, bool zoomIn = false, float duration = -1);
+    void NavigateToObject(Object* object, bool zoomIn = false, float duration = -1) { NavigateTo(GetBounds(object), zoomIn, duration); }
+    template <typename T>
+    void NavigateToObjects(const std::vector<T*>& objects, bool zoomIn = false, float duration = -1)
+    {
+        NavigateTo(GetBounds(objects), zoomIn, duration);
+    }
+    void NavigateToContent(float duration = -1) { NavigateTo(GetBounds(Nodes), true, duration); }
+    void NavigateToSelection(bool zoomIn = false, float duration = -1) { NavigateToObjects(SelectedObjects, zoomIn, duration); }
 
 private:
     NodeSettings* FindNodeSettings(int id);
