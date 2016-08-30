@@ -1,4 +1,4 @@
-// dear imgui, v1.50 WIP
+﻿// dear imgui, v1.50 WIP
 // (main code and documentation)
 
 // See ImGui::ShowTestWindow() in imgui_demo.cpp for demo code.
@@ -9547,7 +9547,7 @@ static void CalculateLayoutAvailableSpace(ImGuiLayout* layout)
     {
         if (layout->Type == ImGuiLayoutType_Vertical)
         {
-            if (child->AvailableSize.x < new_extent)
+            if (child->AvailableSize.x != new_extent)
             {
                 child->AvailableSize.x = new_extent;
                 PropagateLayoutSpace(child, child->AvailableSize);
@@ -9555,7 +9555,7 @@ static void CalculateLayoutAvailableSpace(ImGuiLayout* layout)
         }
         else
         {
-            if (child->AvailableSize.y < new_extent)
+            if (child->AvailableSize.y != new_extent)
             {
                 child->AvailableSize.y = new_extent;
                 PropagateLayoutSpace(child, child->AvailableSize);
@@ -9728,6 +9728,8 @@ static void EndLayoutItem(ImGuiLayout* layout, bool is_closing)
     // End align group
     ImGui::EndGroup();
 
+    ImVec2 align_item_size = ImGui::GetItemRectSize();
+
     // Undo padding, layout will take care of proper spacing
     ImGuiWindow* window = ImGui::GetCurrentWindow();
     if (layout->Type == ImGuiLayoutType_Horizontal)
@@ -9752,9 +9754,32 @@ static void EndLayoutItem(ImGuiLayout* layout, bool is_closing)
     ImGuiLayoutItem& item = layout->Items[layout->NextItemIndex];
     if (item.Size.x != new_item_size.x || item.Size.y != new_item_size.y)
     {
-        item.Size = new_item_size;
+        // Item size may grow after applying alignment, ignore such change to prevent bouncing
+        // cycle grow -> shrink -> grow -> shrink...
+        bool item_size_changed = true;
+        //if (layout->Type == ImGuiLayoutType_Vertical)
+        //{
+        //    if (align_item_size.x == layout->Bounds.x && item.Size.y == new_item_size.y)
+        //    {
+        //        new_item_size.x = item.Size.x;
+        //        item_size_changed = false;
+        //    }
+        //}
+        //else if (layout->Type == ImGuiLayoutType_Vertical)
+        //{
+        //    if (align_item_size.y == layout->Bounds.y && item.Size.x == new_item_size.x)
+        //    {
+        //        new_item_size.y = item.Size.y;
+        //        item_size_changed = false;
+        //    }
+        //}
 
-        layout->Dirty |= ImGuiLayoutDirtyFlags_ItemSize;
+        if (item_size_changed)
+        {
+            item.Size = new_item_size;
+
+            layout->Dirty |= ImGuiLayoutDirtyFlags_ItemSize;
+        }
     }
 
     ++layout->NextItemIndex;
