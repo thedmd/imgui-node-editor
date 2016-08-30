@@ -227,13 +227,10 @@ ed::Context::Context(const ax::Editor::Config* config):
     SelectedObject(nullptr),
     SelectionChanged(false),
     LastActiveLink(nullptr),
-    CurrentPin(nullptr),
-    CurrentNode(nullptr),
     MousePosBackup(0, 0),
     MouseClickPosBackup(),
     Canvas(),
     IsSuspended(false),
-    NodeBuildStage(NodeStage::Invalid),
     NodeBuilder(this),
     CurrentAction(nullptr),
     ScrollAction(this),
@@ -264,30 +261,6 @@ ed::Context::~Context()
     for (auto link : Links) delete link;
     for (auto pin  : Pins)  delete pin;
     for (auto node : Nodes) delete node;
-}
-
-const char* ed::Context::GetStyleColorName(StyleColor colorIndex) const
-{
-    switch (colorIndex)
-    {
-        case StyleColor_Bg: return "Bg";
-        case StyleColor_Grid: return "Grid";
-        case StyleColor_NodeBg: return "NodeBg";
-        case StyleColor_NodeBorder: return "NodeBorder";
-        case StyleColor_HovNodeBorder: return "HoveredNodeBorder";
-        case StyleColor_SelNodeBorder: return "SelNodeBorder";
-        case StyleColor_NodeSelRect: return "NodeSelRect";
-        case StyleColor_NodeSelRectBorder: return "NodeSelRectBorder";
-        case StyleColor_HovLinkBorder: return "HoveredLinkBorder";
-        case StyleColor_SelLinkBorder: return "SelLinkBorder";
-        case StyleColor_LinkSelRect: return "LinkSelRect";
-        case StyleColor_LinkSelRectBorder: return "LinkSelRectBorder";
-        case StyleColor_HovPinRect: return "HovPinRect";
-        case StyleColor_HovPinRectBorder: return "HovPinRectBorder";
-    }
-
-    assert(0);
-    return "Unknown";
 }
 
 void ed::Context::Begin(const char* id, const ImVec2& size)
@@ -400,7 +373,7 @@ void ed::Context::End()
                     {
                         drawList->ChannelsSetCurrent(selectedNode->Channel + c_NodeBaseChannel);
 
-                        drawList->AddRect(rectMin, rectMax, nodeBorderColor, GetStyle().NodeRounding, 15, editorStyle.SelectedNodeBorderWidth);
+                        drawList->AddRect(rectMin, rectMax, nodeBorderColor, selectedNode->Rounding, 15, editorStyle.SelectedNodeBorderWidth);
                     }
                 }
                 else if (auto selectedLink = selectedObject->AsLink())
@@ -437,7 +410,7 @@ void ed::Context::End()
 
             drawList->ChannelsSetCurrent(hotNode->Channel + c_NodeBaseChannel);
 
-            drawList->AddRect(rectMin, rectMax, GetColor(StyleColor_HovNodeBorder), editorStyle.NodeRounding, 15, editorStyle.HoveredNodeBorderWidth);
+            drawList->AddRect(rectMin, rectMax, GetColor(StyleColor_HovNodeBorder), hotNode->Rounding, 15, editorStyle.HoveredNodeBorderWidth);
         }
 
         // Highlight hovered pin
@@ -605,179 +578,6 @@ void ed::Context::End()
         Settings.Dirty = false;
         SaveSettings();
     }
-}
-
-void ed::Context::BeginNode(int id)
-{
-    assert(nullptr == CurrentNode);
-
-    auto node = FindNode(id);
-    if (!node)
-        node = CreateNode(id);
-
-    SetCurrentNode(node);
-
-    // Position node on screen
-    ImGui::SetCursorScreenPos(to_imvec(node->Bounds.location));
-
-    node->IsLive  = true;
-    node->LastPin = nullptr;
-
-    auto drawList = ImGui::GetWindowDrawList();
-    node->Channel = drawList->_ChannelsCount;
-    ImDrawList_ChannelsGrow(drawList, drawList->_ChannelsCount + c_ChannelsPerNode);
-    drawList->ChannelsSetCurrent(node->Channel + c_NodeContentChannel);
-
-    ImGui::PushStyleVar(ImGuiStyleVar_Alpha, 1.0f);
-
-    SetNodeStage(NodeStage::Begin);
-}
-
-void ed::Context::EndNode()
-{
-    assert(nullptr != CurrentNode);
-
-    SetNodeStage(NodeStage::End);
-
-    if (CurrentNode->Bounds.size != NodeRect.size)
-    {
-        MarkSettingsDirty();
-
-        CurrentNode->Bounds.size = NodeRect.size;
-    }
-
-    // Draw background
-    if (ImGui::IsItemVisible())
-    {
-        auto alpha = static_cast<int>(255 * ImGui::GetStyle().Alpha);
-
-        auto drawList = ImGui::GetWindowDrawList();
-
-        auto drawListForegroundEnd = drawList->CmdBuffer.size();
-
-        drawList->ChannelsSetCurrent(CurrentNode->Channel + c_NodeBackgroundChannel);
-
-        drawList->AddRectFilled(
-            to_imvec(NodeRect.top_left()),
-            to_imvec(NodeRect.bottom_right()),
-            ImColor(32, 32, 32, (200 * alpha) / 255), GetStyle().NodeRounding);
-
-        auto headerColor = IM_COL32(0, 0, 0, alpha) | (HeaderColor & IM_COL32(255, 255, 255, 0));
-        if (!HeaderRect.is_empty())
-        {
-            const auto textureWidth  = ImGui_GetTextureWidth(HeaderTextureID);
-            const auto textureHeight = ImGui_GetTextureHeight(HeaderTextureID);
-
-            const auto uv = ImVec2(
-                HeaderRect.w / (float)(4.0f * textureWidth),
-                HeaderRect.h / (float)(4.0f * textureHeight));
-
-            drawList->AddImage(HeaderTextureID,
-                to_imvec(HeaderRect.top_left()),
-                to_imvec(HeaderRect.bottom_right()),
-                ImVec2(0.0f, 0.0f), uv,
-                headerColor, GetStyle().NodeRounding, 1 | 2);
-
-            //ax::Drawing::DrawHeader(drawList, HeaderTextureID,
-            //    to_imvec(HeaderRect.top_left()),
-            //    to_imvec(HeaderRect.bottom_right()),
-            //    headerColor, GetStyle().NodeRoundingc_NodeFrameRounding, 4.0f);
-        }
-
-        auto headerSeparatorRect      = ax::rect(HeaderRect.bottom_left(),  ContentRect.top_right());
-        auto footerSeparatorRect      = ax::rect(ContentRect.bottom_left(), NodeRect.bottom_right());
-        auto contentWithSeparatorRect = ax::rect::make_union(headerSeparatorRect, footerSeparatorRect);
-
-        //drawList->AddRectFilled(
-        //    to_imvec(contentWithSeparatorRect.top_left()),
-        //    to_imvec(contentWithSeparatorRect.bottom_right()),
-        //    ImColor(32, 32, 32, 200), GetStyle().NodeRounding, 4 | 8);
-
-        if (headerSeparatorRect.is_empty())
-        {
-            drawList->AddLine(
-                to_imvec(headerSeparatorRect.top_left() + point(1, -1)),
-                to_imvec(headerSeparatorRect.top_right() + point(-1, -1)),
-                ImColor(255, 255, 255, 96 * alpha / (3 * 255)), 1.0f);
-        }
-
-        drawList->AddRect(
-            to_imvec(NodeRect.top_left()),
-            to_imvec(NodeRect.bottom_right()),
-            ImColor(255, 255, 255, 96 * alpha / 255), GetStyle().NodeRounding, 15, 1.5f);
-    }
-
-    ImGui::PopStyleVar();
-
-    SetCurrentNode(nullptr);
-
-    SetNodeStage(NodeStage::Invalid);
-}
-
-void ed::Context::BeginHeader(ImU32 color)
-{
-    assert(nullptr != CurrentNode);
-
-    HeaderColor = color;
-    SetNodeStage(NodeStage::Header);
-}
-
-void ed::Context::EndHeader()
-{
-    assert(nullptr != CurrentNode);
-
-    SetNodeStage(NodeStage::Content);
-}
-
-void ed::Context::BeginInput(int id)
-{
-    assert(nullptr != CurrentNode);
-
-    if (NodeBuildStage == NodeStage::Begin)
-        SetNodeStage(NodeStage::Content);
-
-    SetNodeStage(NodeStage::Input);
-
-    BeginPin(id, PinKind::Target);
-
-    ImGui::Spring(0);
-    ImGui::BeginHorizontal(id);
-}
-
-void ed::Context::EndInput()
-{
-    ImGui::EndHorizontal();
-
-    EndPin();
-
-    ImGui::Spring(0, 0);
-}
-
-void ed::Context::BeginOutput(int id)
-{
-    assert(nullptr != CurrentNode);
-
-    if (NodeBuildStage == NodeStage::Begin)
-        SetNodeStage(NodeStage::Content);
-
-    if (NodeBuildStage == NodeStage::Begin)
-        SetNodeStage(NodeStage::Input);
-
-    SetNodeStage(NodeStage::Output);
-
-    BeginPin(id, PinKind::Source);
-
-    ImGui::Spring(0);
-    ImGui::BeginHorizontal(id);
-}
-
-void ed::Context::EndOutput()
-{
-    ImGui::EndHorizontal();
-
-    EndPin();
-
-    ImGui::Spring(0, 0);
 }
 
 bool ed::Context::DoLink(int id, int startPinId, int endPinId, ImU32 color, float thickness)
@@ -1082,99 +882,6 @@ ed::Node* ed::Context::GetNode(int id)
     return node;
 }
 
-void ed::Context::SetCurrentNode(Node* node)
-{
-    CurrentNode = node;
-}
-
-void ed::Context::SetCurrentPin(Pin* pin)
-{
-    CurrentPin = pin;
-
-    if (pin)
-        SetCurrentNode(pin->Node);
-}
-
-bool ed::Context::SetNodeStage(NodeStage stage)
-{
-    if (stage == NodeBuildStage)
-        return false;
-
-    auto oldStage = NodeBuildStage;
-    NodeBuildStage = stage;
-
-    ImVec2 cursor;
-    switch (oldStage)
-    {
-        case NodeStage::Begin:
-            break;
-
-        case NodeStage::Header:
-            ImGui::EndHorizontal();
-            HeaderRect = ImGui_GetItemRect();
-
-            // spacing between header and content
-            ImGui::Spring(0);
-
-            break;
-
-        case NodeStage::Content:
-            break;
-
-        case NodeStage::Input:
-            ImGui::Spring(1);
-            ImGui::EndVertical();
-            break;
-
-        case NodeStage::Output:
-            ImGui::Spring(1);
-            ImGui::EndVertical();
-            break;
-
-        case NodeStage::End:
-            break;
-    }
-
-    switch (stage)
-    {
-        case NodeStage::Begin:
-            ImGui::BeginVertical(CurrentNode->ID);
-            break;
-
-        case NodeStage::Header:
-            ImGui::BeginHorizontal("header");
-            break;
-
-        case NodeStage::Content:
-            ImGui::BeginHorizontal("content");
-            ImGui::Spring(0);
-            break;
-
-        case NodeStage::Input:
-            ImGui::BeginVertical("inputs", ImVec2(0,0), 0.0f);
-            break;
-
-        case NodeStage::Output:
-            ImGui::Spring(1);
-            ImGui::BeginVertical("outputs", ImVec2(0, 0), 1.0f);
-            break;
-
-        case NodeStage::End:
-            if (oldStage == NodeStage::Input)
-                ImGui::Spring(1);
-            ImGui::Spring(0);
-            ImGui::EndHorizontal();
-            ContentRect = ImGui_GetItemRect();
-
-            ImGui::Spring(0);
-            ImGui::EndVertical();
-            NodeRect = ImGui_GetItemRect();
-            break;
-    }
-
-    return true;
-}
-
 ed::Pin* ed::Context::GetPin(int id, PinKind kind)
 {
     if (auto pin = FindPin(id))
@@ -1184,31 +891,6 @@ ed::Pin* ed::Context::GetPin(int id, PinKind kind)
     }
     else
         return CreatePin(id, kind);
-}
-
-void ed::Context::BeginPin(int id, PinKind kind)
-{
-    auto pin = GetPin(id, kind);
-    pin->Node = CurrentNode;
-    SetCurrentPin(pin);
-
-    pin->PreviousPin     = CurrentNode->LastPin;
-    CurrentNode->LastPin = pin;
-    pin->IsLive = true;
-}
-
-void ed::Context::EndPin()
-{
-    auto pinRect = ImGui_GetItemRect();
-
-    CurrentPin->Bounds = pinRect;
-
-    if (CurrentPin->Kind == PinKind::Target)
-        CurrentPin->DragPoint = pointf(pinRect.left(), pinRect.center_y());
-    else
-        CurrentPin->DragPoint = pointf(pinRect.right(), pinRect.center_y());
-
-    SetCurrentPin(nullptr);
 }
 
 ed::Link* ed::Context::GetLink(int id)
@@ -1682,7 +1364,7 @@ ImVec2 ed::Canvas::ToClient(ImVec2 point)
 //------------------------------------------------------------------------------
 const float ed::ScrollAction::s_ZoomLevels[] =
 {
-    /*0.1f, 0.15f, */0.25f, 0.33f, 0.5f, 0.75f, 1.0f, 1.25f, 1.50f, 2.0f, 2.5f, 3.0f, 4.0f/*, 5.0f*/
+    /*0.1f, 0.15f, */0.20f, 0.25f, 0.33f, 0.5f, 0.75f, 1.0f, 1.25f, 1.50f, 2.0f, 2.5f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f
 };
 
 const int ed::ScrollAction::s_ZoomLevelCount = sizeof(s_ZoomLevels) / sizeof(*s_ZoomLevels);
@@ -2605,10 +2287,10 @@ void ed::NodeBuilder::Begin(int nodeId)
     ImGui::BeginGroup();
 
     // Apply frame padding. Begin inner group if necessary.
-    auto& style = Editor->GetStyle();
-    if (style.NodePadding.x != 0 || style.NodePadding.y != 0)
+    auto& editorStyle = Editor->GetStyle();
+    if (editorStyle.NodePadding.x != 0 || editorStyle.NodePadding.y != 0 || editorStyle.NodePadding.z != 0 || editorStyle.NodePadding.w != 0)
     {
-        ImGui::SetCursorPos(ImGui::GetCursorPos() + style.NodePadding);
+        ImGui::SetCursorPos(ImGui::GetCursorPos() + ImVec2(editorStyle.NodePadding.x, editorStyle.NodePadding.y));
         ImGui::BeginGroup();
     }
 }
@@ -2619,13 +2301,13 @@ void ed::NodeBuilder::End()
 
     // Apply frame padding. This must be done in this convoluted way if outer group
     // size must contain inner group padding.
-    auto& style = Editor->GetStyle();
-    if (style.NodePadding.x != 0 || style.NodePadding.y != 0)
+    auto& editorStyle = Editor->GetStyle();
+    if (editorStyle.NodePadding.x != 0 || editorStyle.NodePadding.y != 0 || editorStyle.NodePadding.z != 0 || editorStyle.NodePadding.w != 0)
     {
         ImGui::EndGroup();
-        ImGui::SameLine(0, style.NodePadding.x);
+        ImGui::SameLine(0, editorStyle.NodePadding.z);
         ImGui::Dummy(ImVec2(0, 0));
-        ImGui::SetCursorPosY(ImGui::GetCursorPosY() + style.NodePadding.y);
+        ImGui::SetCursorPosY(ImGui::GetCursorPosY() + editorStyle.NodePadding.w);
     }
 
     // End outer group.
@@ -2638,6 +2320,8 @@ void ed::NodeBuilder::End()
         Editor->MarkSettingsDirty();
         CurrentNode->Bounds.size = NodeRect.size;
     }
+
+    CurrentNode->Rounding = editorStyle.NodeRounding;
 
     if (ImGui::IsItemVisible())
         DrawBackground();
@@ -2679,6 +2363,23 @@ void ed::NodeBuilder::EndPin()
     CurrentPin = nullptr;
 }
 
+ImDrawList* ed::NodeBuilder::GetBackgroundDrawList() const
+{
+    return GetBackgroundDrawList(CurrentNode);
+}
+
+ImDrawList* ed::NodeBuilder::GetBackgroundDrawList(Node* node) const
+{
+    if (node && node->IsLive)
+    {
+        auto drawList = ImGui::GetWindowDrawList();
+        drawList->ChannelsSetCurrent(node->Channel + c_NodeBackgroundChannel);
+        return drawList;
+    }
+    else
+        return nullptr;
+}
+
 void ed::NodeBuilder::DrawBackground() const
 {
     // Draw background
@@ -2688,11 +2389,7 @@ void ed::NodeBuilder::DrawBackground() const
 
         const auto alpha = ImGui::GetStyle().Alpha;
 
-        auto drawList = ImGui::GetWindowDrawList();
-
-        auto drawListForegroundEnd = drawList->CmdBuffer.size();
-
-        drawList->ChannelsSetCurrent(CurrentNode->Channel + c_NodeBackgroundChannel);
+        auto drawList = GetBackgroundDrawList();
 
         drawList->AddRectFilled(
             to_imvec(NodeRect.top_left()),
@@ -2710,3 +2407,136 @@ void ed::NodeBuilder::DrawBackground() const
         }
     }
 }
+
+
+
+
+//------------------------------------------------------------------------------
+//
+// Style
+//
+//------------------------------------------------------------------------------
+void ed::Style::PushColor(StyleColor colorIndex, const ImVec4& color)
+{
+    ColorModifier modifier;
+    modifier.Index = colorIndex;
+    modifier.Value = Colors[colorIndex];
+    ColorStack.push_back(modifier);
+    Colors[colorIndex] = color;
+}
+
+void ed::Style::PopColor(int count)
+{
+    while (count > 0)
+    {
+        auto& modifier = ColorStack.back();
+        Colors[modifier.Index] = modifier.Value;
+        ColorStack.pop_back();
+        --count;
+    }
+}
+
+void ed::Style::PushVar(StyleVar varIndex, float value)
+{
+    auto* var = GetVarFloatAddr(varIndex);
+    assert(var != nullptr);
+    VarModifier modifier;
+    modifier.Index = varIndex;
+    modifier.Value = ImVec4(*var, 0, 0, 0);
+    *var = value;
+    VarStack.push_back(modifier);
+}
+
+void ed::Style::PushVar(StyleVar varIndex, const ImVec2& value)
+{
+    auto* var = GetVarVec2Addr(varIndex);
+    assert(var != nullptr);
+    VarModifier modifier;
+    modifier.Index = varIndex;
+    modifier.Value = ImVec4(var->x, var->y, 0, 0);
+    *var = value;
+    VarStack.push_back(modifier);
+}
+
+void ed::Style::PushVar(StyleVar varIndex, const ImVec4& value)
+{
+    auto* var = GetVarVec4Addr(varIndex);
+    assert(var != nullptr);
+    VarModifier modifier;
+    modifier.Index = varIndex;
+    modifier.Value = *var;
+    *var = value;
+    VarStack.push_back(modifier);
+}
+
+void ed::Style::PopVar(int count)
+{
+    while (count > 0)
+    {
+        auto& modifier = VarStack.back();
+        if (auto v = GetVarFloatAddr(modifier.Index))
+            *v = modifier.Value.x;
+        else if (auto v = GetVarVec2Addr(modifier.Index))
+            *v = ImVec2(modifier.Value.x, modifier.Value.y);
+        else if (auto v = GetVarVec4Addr(modifier.Index))
+            *v = modifier.Value;
+        VarStack.pop_back();
+        --count;
+    }
+}
+
+const char* ed::Style::GetColorName(StyleColor colorIndex) const
+{
+    switch (colorIndex)
+    {
+        case StyleColor_Bg: return "Bg";
+        case StyleColor_Grid: return "Grid";
+        case StyleColor_NodeBg: return "NodeBg";
+        case StyleColor_NodeBorder: return "NodeBorder";
+        case StyleColor_HovNodeBorder: return "HoveredNodeBorder";
+        case StyleColor_SelNodeBorder: return "SelNodeBorder";
+        case StyleColor_NodeSelRect: return "NodeSelRect";
+        case StyleColor_NodeSelRectBorder: return "NodeSelRectBorder";
+        case StyleColor_HovLinkBorder: return "HoveredLinkBorder";
+        case StyleColor_SelLinkBorder: return "SelLinkBorder";
+        case StyleColor_LinkSelRect: return "LinkSelRect";
+        case StyleColor_LinkSelRectBorder: return "LinkSelRectBorder";
+        case StyleColor_HovPinRect: return "HovPinRect";
+        case StyleColor_HovPinRectBorder: return "HovPinRectBorder";
+    }
+
+    assert(0);
+    return "Unknown";
+}
+
+float* ed::Style::GetVarFloatAddr(StyleVar idx)
+{
+    switch (idx)
+    {
+        case StyleVar_NodeRounding:             return &NodeRounding;
+        case StyleVar_NodeBorderWidth:          return &NodeBorderWidth;
+        case StyleVar_HoveredNodeBorderWidth:   return &HoveredNodeBorderWidth;
+        case StyleVar_SelectedNodeBorderWidth:  return &SelectedNodeBorderWidth;
+        case StyleVar_HoveredPinRounding:       return &HoveredPinRounding;
+        case StyleVar_HoveredPinBorderWidth:    return &HoveredPinBorderWidth;
+        case StyleVar_LinkStrength:             return &LinkStrength;
+    }
+
+    return nullptr;
+}
+
+ImVec2* ed::Style::GetVarVec2Addr(StyleVar idx)
+{
+    return nullptr;
+}
+
+ImVec4* ed::Style::GetVarVec4Addr(StyleVar idx)
+{
+    switch (idx)
+    {
+        case StyleVar_NodePadding:              return &NodePadding;
+    }
+
+    return nullptr;
+}
+

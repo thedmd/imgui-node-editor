@@ -56,9 +56,21 @@ enum StyleColor
     StyleColor_Count
 };
 
+enum StyleVar
+{
+    StyleVar_NodePadding,
+    StyleVar_NodeRounding,
+    StyleVar_NodeBorderWidth,
+    StyleVar_HoveredNodeBorderWidth,
+    StyleVar_SelectedNodeBorderWidth,
+    StyleVar_HoveredPinRounding,
+    StyleVar_HoveredPinBorderWidth,
+    StyleVar_LinkStrength
+};
+
 struct Style
 {
-    ImVec2  NodePadding;
+    ImVec4  NodePadding;
     float   NodeRounding;
     float   NodeBorderWidth;
     float   HoveredNodeBorderWidth;
@@ -70,7 +82,7 @@ struct Style
 
     Style()
     {
-        NodePadding             = ImVec2(8, 8);
+        NodePadding             = ImVec4(8, 8, 8, 8);
         NodeRounding            = 12.0f;
         NodeBorderWidth         = 1.5f;
         HoveredNodeBorderWidth  = 3.5f;
@@ -111,26 +123,24 @@ void DestroyEditor(Context* ctx);
 Style& GetStyle();
 const char* GetStyleColorName(StyleColor colorIndex);
 
+void PushStyleColor(StyleColor colorIndex, const ImVec4& color);
+void PopStyleColor(int count = 1);
+
+void PushStyleVar(StyleVar varIndex, float value);
+void PushStyleVar(StyleVar varIndex, const ImVec2& value);
+void PushStyleVar(StyleVar varIndex, const ImVec4& value);
+void PopStyleVar(int count = 1);
+
 void Begin(const char* id, const ImVec2& size = ImVec2(0, 0));
 void End();
 
-void BeginNode2(int id);
-void NodeHeader2(const ImVec4& color = ImVec4(1, 1, 1, 1));
-void BeginPin2(int id, PinKind kind, const ImVec2& pivot = ImVec2(0.5f, 0.5f));
-void EndPin2();
-void EndNode2();
-
 void BeginNode(int id);
+void BeginPin(int id, PinKind kind, const ImVec2& pivot = ImVec2(0.5f, 0.5f));
+void EndPin();
 void EndNode();
 
-void BeginHeader(const ImVec4& color = ImVec4(1, 1, 1, 1));
-void EndHeader();
-
-void BeginInput(int id);
-void EndInput();
-
-void BeginOutput(int id);
-void EndOutput();
+// TODO: Add a way to manage node background channels
+ImDrawList* GetNodeBackgroundDrawList(int nodeId);
 
 bool Link(int id, int startPinId, int endPinId, const ImVec4& color = ImVec4(1, 1, 1, 1), float thickness = 1.0f);
 

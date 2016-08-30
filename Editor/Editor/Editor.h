@@ -25,20 +25,9 @@ enum class ObjectType
     Node, Pin
 };
 
-enum class NodeStage
-{
-    Invalid,
-    Begin,
-    Header,
-    Content,
-    Input,
-    Output,
-    End
-};
-
 using ax::Editor::PinKind;
-using ax::Editor::Style;
 using ax::Editor::StyleColor;
+using ax::Editor::StyleVar;
 
 struct Node;
 struct Pin;
@@ -80,12 +69,15 @@ struct Node final: Object
     Pin*    LastPin;
     point   DragStart;
 
+    float   Rounding;
+
     Node(int id):
         Object(id),
         Bounds(point(0, 0), size()),
         Channel(0),
         LastPin(nullptr),
-        DragStart()
+        DragStart(),
+        Rounding(0)
     {
     }
 
@@ -443,8 +435,44 @@ struct NodeBuilder
     void BeginPin(int pinId, PinKind kind, const ImVec2& pivot);
     void EndPin();
 
+    ImDrawList* GetBackgroundDrawList() const;
+    ImDrawList* GetBackgroundDrawList(Node* node) const;
+
 private:
     void DrawBackground() const;
+};
+
+struct Style: ax::Editor::Style
+{
+    void PushColor(StyleColor colorIndex, const ImVec4& color);
+    void PopColor(int count = 1);
+
+    void PushVar(StyleVar varIndex, float value);
+    void PushVar(StyleVar varIndex, const ImVec2& value);
+    void PushVar(StyleVar varIndex, const ImVec4& value);
+    void PopVar(int count = 1);
+
+    const char* GetColorName(StyleColor colorIndex) const;
+
+private:
+    struct ColorModifier
+    {
+        StyleColor  Index;
+        ImVec4      Value;
+    };
+
+    struct VarModifier
+    {
+        StyleVar Index;
+        ImVec4   Value;
+    };
+
+    float* GetVarFloatAddr(StyleVar idx);
+    ImVec2* GetVarVec2Addr(StyleVar idx);
+    ImVec4* GetVarVec4Addr(StyleVar idx);
+
+    vector<ColorModifier>   ColorStack;
+    vector<VarModifier>     VarStack;
 };
 
 struct Context
@@ -453,22 +481,9 @@ struct Context
     ~Context();
 
     Style& GetStyle() { return Style; }
-    const char* GetStyleColorName(StyleColor colorIndex) const;
 
     void Begin(const char* id, const ImVec2& size = ImVec2(0, 0));
     void End();
-
-    void BeginNode(int id);
-    void EndNode();
-
-    void BeginHeader(ImU32 color);
-    void EndHeader();
-
-    void BeginInput(int id);
-    void EndInput();
-
-    void BeginOutput(int id);
-    void EndOutput();
 
     bool DoLink(int id, int startPinId, int endPinId, ImU32 color, float thickness);
 
@@ -519,11 +534,7 @@ struct Context
     Link* FindLink(int id);
 
     Node* GetNode(int id);
-
-    Pin* GetPin(int id, PinKind kind);
-    void BeginPin(int id, PinKind kind);
-    void EndPin();
-
+    Pin*  GetPin(int id, PinKind kind);
     Link* GetLink(int id);
 
     Link* FindLinkAt(const point& p);
@@ -532,11 +543,6 @@ struct Context
     ImU32 GetColor(StyleColor colorIndex, float alpha) const;
 
 private:
-    void SetCurrentNode(Node* node);
-    void SetCurrentPin(Pin* pin);
-
-    bool SetNodeStage(NodeStage stage);
-
     NodeSettings* FindNodeSettings(int id);
     NodeSettings* AddNodeSettings(int id);
     void          LoadSettings();
@@ -561,22 +567,12 @@ private:
 
     Link*               LastActiveLink;
 
-    Pin*                CurrentPin;
-    Node*               CurrentNode;
-
     ImVec2              MousePosBackup;
     ImVec2              MouseClickPosBackup[5];
 
     Canvas              Canvas;
 
     bool                IsSuspended;
-
-    // Node building
-    NodeStage           NodeBuildStage;
-    ImU32               HeaderColor;
-    rect                NodeRect;
-    rect                HeaderRect;
-    rect                ContentRect;
 
     NodeBuilder         NodeBuilder;
 

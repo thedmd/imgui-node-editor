@@ -39,7 +39,37 @@ ax::Editor::Style& ax::Editor::GetStyle()
 
 const char* ax::Editor::GetStyleColorName(StyleColor colorIndex)
 {
-    return s_Editor->GetStyleColorName(colorIndex);
+    return s_Editor->GetStyle().GetColorName(colorIndex);
+}
+
+void ax::Editor::PushStyleColor(StyleColor colorIndex, const ImVec4& color)
+{
+    s_Editor->GetStyle().PushColor(colorIndex, color);
+}
+
+void ax::Editor::PopStyleColor(int count)
+{
+    s_Editor->GetStyle().PopColor(count);
+}
+
+void ax::Editor::PushStyleVar(StyleVar varIndex, float value)
+{
+    s_Editor->GetStyle().PushVar(varIndex, value);
+}
+
+void ax::Editor::PushStyleVar(StyleVar varIndex, const ImVec2& value)
+{
+    s_Editor->GetStyle().PushVar(varIndex, value);
+}
+
+void ax::Editor::PushStyleVar(StyleVar varIndex, const ImVec4& value)
+{
+    s_Editor->GetStyle().PushVar(varIndex, value);
+}
+
+void ax::Editor::PopStyleVar(int count)
+{
+    s_Editor->GetStyle().PopVar(count);
 }
 
 void ax::Editor::Begin(const char* id, const ImVec2& size)
@@ -52,39 +82,33 @@ void ax::Editor::End()
     s_Editor->End();
 }
 
-void ax::Editor::BeginNode2(int id)
+void ax::Editor::BeginNode(int id)
 {
     s_Editor->GetNodeBuilder().Begin(id);
 }
 
-void ax::Editor::NodeHeader2(const ImVec4& color/* = ImVec4(1, 1, 1, 1)*/)
-{
-}
-
-void ax::Editor::BeginPin2(int id, PinKind kind, const ImVec2& pivot/* = ImVec2(0.5f, 0.5f)*/)
+void ax::Editor::BeginPin(int id, PinKind kind, const ImVec2& pivot/* = ImVec2(0.5f, 0.5f)*/)
 {
     s_Editor->GetNodeBuilder().BeginPin(id, kind, pivot);
 }
 
-void ax::Editor::EndPin2()
+void ax::Editor::EndPin()
 {
     s_Editor->GetNodeBuilder().EndPin();
 }
 
-void ax::Editor::EndNode2()
+void ax::Editor::EndNode()
 {
     s_Editor->GetNodeBuilder().End();
 }
 
-
-void ax::Editor::BeginNode(int id)                  { s_Editor->BeginNode(id);               }
-void ax::Editor::EndNode()                          { s_Editor->EndNode();                   }
-void ax::Editor::BeginHeader(const ImVec4& color)   { s_Editor->BeginHeader(ImColor(color)); }
-void ax::Editor::EndHeader()                        { s_Editor->EndHeader();                 }
-void ax::Editor::BeginInput(int id)                 { s_Editor->BeginInput(id);              }
-void ax::Editor::EndInput()                         { s_Editor->EndInput();                  }
-void ax::Editor::BeginOutput(int id)                { s_Editor->BeginOutput(id);             }
-void ax::Editor::EndOutput()                        { s_Editor->EndOutput();                 }
+ImDrawList* ax::Editor::GetNodeBackgroundDrawList(int nodeId)
+{
+    if (auto node = s_Editor->FindNode(nodeId))
+        return s_Editor->GetNodeBuilder().GetBackgroundDrawList(node);
+    else
+        return nullptr;
+}
 
 bool ax::Editor::Link(int id, int startPinId, int endPinId, const ImVec4& color/* = ImVec4(1, 1, 1, 1)*/, float thickness/* = 1.0f*/)
 {
