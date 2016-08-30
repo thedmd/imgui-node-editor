@@ -65,7 +65,8 @@ enum StyleVar
     StyleVar_SelectedNodeBorderWidth,
     StyleVar_HoveredPinRounding,
     StyleVar_HoveredPinBorderWidth,
-    StyleVar_LinkStrength
+    StyleVar_LinkStrength,
+    StyleVar_ScrollDuration
 };
 
 struct Style
@@ -78,6 +79,7 @@ struct Style
     float   HoveredPinRounding;
     float   HoveredPinBorderWidth;
     float   LinkStrength;
+    float   ScrollDuration;
     ImVec4  Colors[StyleColor_Count];
 
     Style()
@@ -90,6 +92,7 @@ struct Style
         HoveredPinRounding      = 4.0f;
         HoveredPinBorderWidth   = 0.0f;
         LinkStrength            = 100.0f;
+        ScrollDuration          = 0.35f;
 
         Colors[StyleColor_Bg]                 = ImColor( 60,  60,  70, 200);
         Colors[StyleColor_Grid]               = ImColor(120, 120, 120,  40);
@@ -177,6 +180,8 @@ void SelectNode(int nodeId, bool append = false);
 void SelectLink(int linkId, bool append = false);
 void DeselectNode(int nodeId);
 void DeselectLink(int linkId);
+
+void NavigateToSelection(float duration = -1);
 
 //------------------------------------------------------------------------------
 } // namespace Editor

@@ -236,20 +236,21 @@ struct basic_rect
             (p.x > right())  ? right()  : (p.x < left() ? left() : p.x),
             (p.y > bottom()) ? bottom() : (p.y < top()  ? top()  : p.y));
     }
-
-    static inline basic_rect make_union(const basic_rect& lhs, const basic_rect& rhs)
-    {
-        if (lhs.is_empty())
-            return rhs;
-        else if (rhs.is_empty())
-            return lhs;
-
-        const auto tl = lhs.top_left().cwise_min(rhs.top_left());
-        const auto br = lhs.bottom_right().cwise_max(rhs.bottom_right());
-
-        return basic_rect(tl, br);
-    }
 };
+
+template <typename T>
+static inline basic_rect<T> make_union(const basic_rect<T>& lhs, const basic_rect<T>& rhs)
+{
+    if (lhs.is_empty())
+        return rhs;
+    else if (rhs.is_empty())
+        return lhs;
+
+    const auto tl = lhs.top_left().cwise_min(rhs.top_left());
+    const auto br = lhs.bottom_right().cwise_max(rhs.bottom_right());
+
+    return basic_rect<T>(tl, br);
+}
 
 typedef basic_rect<int>   rect;
 typedef basic_rect<float> rectf;

@@ -224,7 +224,6 @@ ed::Context::Context(const ax::Editor::Config* config):
     Nodes(),
     Pins(),
     Links(),
-    SelectedObject(nullptr),
     SelectionChanged(false),
     LastActiveLink(nullptr),
     MousePosBackup(0, 0),
@@ -238,6 +237,7 @@ ed::Context::Context(const ax::Editor::Config* config):
     SelectAction(this),
     CreateItemAction(this),
     DeleteItemsAction(this),
+    ScrollAnimation(ScrollAction),
     IsInitialized(false),
     HeaderTextureID(nullptr),
     Settings(),
@@ -287,6 +287,8 @@ void ed::Context::Begin(const char* id, const ImVec2& size)
         ImGuiWindowFlags_NoMove |
         ImGuiWindowFlags_NoScrollbar |
         ImGuiWindowFlags_NoScrollWithMouse);
+
+    ScrollAnimation.Update();
 
     ScrollAction.SetWindow(ImGui::GetWindowPos(), ImGui::GetWindowSize());
 
@@ -455,6 +457,9 @@ void ed::Context::End()
         else if (DeleteItemsAction.Accept(control))
             CurrentAction = &DeleteItemsAction;
     }
+
+    if (CurrentAction)
+        ScrollAnimation.Stop();
 
     if (SelectAction.IsActive)
     {
@@ -626,13 +631,11 @@ void ed::Context::ClearSelection()
         SelectionChanged = true;
 
     SelectedObjects.clear();
-    SelectedObject = nullptr;
 }
 
 void ed::Context::SelectObject(Object* object)
 {
     SelectedObjects.push_back(object);
-    SelectedObject = SelectedObjects.front();
 
     SelectionChanged = true;
 }
@@ -643,11 +646,6 @@ void ed::Context::DeselectObject(Object* object)
     if (objectIt != SelectedObjects.end())
     {
         SelectedObjects.erase(objectIt);
-        if (!SelectedObjects.empty())
-            SelectedObject = SelectedObjects.front();
-        else
-            SelectedObject = nullptr;
-
         SelectionChanged = true;
     }
 }
@@ -1102,6 +1100,36 @@ ed::Link* ed::Context::FindLinkAt(const ax::point& p)
     return nullptr;
 }
 
+ax::rectf ed::Context::GetBounds(Object* object)
+{
+    if (object && object->IsLive)
+    {
+        if (auto node = object->AsNode())
+        {
+            return rectf(to_pointf(node->Bounds.top_left()), to_pointf(node->Bounds.bottom_right()));
+        }
+        else if (auto link = object->AsLink())
+        {
+            const auto startPoint = link->StartPin->DragPoint;
+            const auto endPoint   = link->EndPin->DragPoint;
+
+            return ax::Drawing::GetLinkBounds(to_imvec(startPoint), to_imvec(endPoint), GetStyle().LinkStrength);
+        }
+    }
+
+    return ax::rectf();
+}
+
+ax::rectf ed::Context::GetBounds(const std::vector<Object*>& objects)
+{
+    ax::rectf bounds;
+
+    for (auto object : objects)
+        bounds = make_union(bounds, GetBounds(object));
+
+    return bounds;
+}
+
 ImU32 ed::Context::GetColor(StyleColor colorIndex) const
 {
     return ImColor(Style.Colors[colorIndex]);
@@ -1111,6 +1139,21 @@ ImU32 ed::Context::GetColor(StyleColor colorIndex, float alpha) const
 {
     auto color = Style.Colors[colorIndex];
     return ImColor(color.x, color.y, color.z, color.w * alpha);
+}
+
+void ed::Context::NavigateToSelection(float duration)
+{
+    if (SelectedObjects.empty())
+        return;
+
+    const auto selectionBounds = GetBounds(SelectedObjects);
+    const auto visibleBounds   = Canvas.GetVisibleBounds();
+    const auto selectionCenter = to_imvec(selectionBounds.center());
+    const auto visibleCenter   = to_imvec(visibleBounds.center());
+
+    const auto offset = selectionCenter - visibleCenter;
+
+    ScrollAnimation.ScrollTo(ScrollAction.Scroll + offset * ScrollAction.Zoom, GetStyle().ScrollDuration);
 }
 
 ed::Control ed::Context::ComputeControl()
@@ -1324,6 +1367,13 @@ ed::Canvas::Canvas(ImVec2 position, ImVec2 size, ImVec2 zoom, ImVec2 origin):
         ClientSize.x *= InvZoom.x;
     if (InvZoom.y > 1.0f)
         ClientSize.y *= InvZoom.y;
+}
+
+ax::rectf ed::Canvas::GetVisibleBounds()
+{
+    return ax::rectf(
+        to_pointf(FromScreen(WindowScreenPos)),
+        to_pointf(FromScreen(WindowScreenPos + WindowScreenSize)));
 }
 
 ImVec2 ed::Canvas::FromScreen(ImVec2 point)
@@ -2520,6 +2570,7 @@ float* ed::Style::GetVarFloatAddr(StyleVar idx)
         case StyleVar_HoveredPinRounding:       return &HoveredPinRounding;
         case StyleVar_HoveredPinBorderWidth:    return &HoveredPinBorderWidth;
         case StyleVar_LinkStrength:             return &LinkStrength;
+        case StyleVar_ScrollDuration:           return &ScrollDuration;
     }
 
     return nullptr;

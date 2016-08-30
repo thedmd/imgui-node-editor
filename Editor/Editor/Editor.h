@@ -197,6 +197,8 @@ struct Canvas
     Canvas();
     Canvas(ImVec2 position, ImVec2 size, ImVec2 scale, ImVec2 origin);
 
+    ax::rectf GetVisibleBounds();
+
     ImVec2 FromScreen(ImVec2 point);
     ImVec2 ToScreen(ImVec2 point);
     ImVec2 FromClient(ImVec2 point);
@@ -475,6 +477,108 @@ private:
     vector<VarModifier>     VarStack;
 };
 
+struct Animation
+{
+    enum State
+    {
+        Playing,
+        Stopped
+    };
+
+    State State;
+    float Time;
+    float Duration;
+
+    Animation(): State(Stopped), Time(0.0f), Duration(0.0f) {}
+    virtual ~Animation() { Stop(); }
+
+    void Play(float duration)
+    {
+        if (State != Stopped)
+            Stop();
+
+        State = Playing;
+        if (duration < 0)
+            duration = 0.0f;
+
+        Time     = 0.0f;
+        Duration = duration;
+
+        OnPlay();
+
+        if (duration == 0.0f)
+            Stop();
+    }
+
+    void Stop()
+    {
+        if (State != Playing)
+            return;
+
+        State = Stopped;
+
+        OnStop();
+    }
+
+    void Update()
+    {
+        if (State != Playing)
+            return;
+
+        Time += std::max(0.0f, ImGui::GetIO().DeltaTime);
+        if (Time < Duration)
+        {
+            const float progress = Time / Duration;
+            OnUpdate(progress);
+        }
+        else
+        {
+            OnFinish();
+            Stop();
+        }
+    }
+
+protected:
+    virtual void OnPlay() {}
+    virtual void OnFinish() {}
+    virtual void OnStop() {}
+
+    virtual void OnUpdate(float progress) {}
+};
+
+struct ScrollAnimation final: Animation
+{
+    ScrollAction& Action;
+    ImVec2        Start;
+    ImVec2        Target;
+
+    ScrollAnimation(ScrollAction& scrollAction):
+        Action(scrollAction)
+    {
+    }
+
+    void ScrollTo(const ImVec2& target, float duration)
+    {
+        Start  = Action.Scroll;
+        Target = target;
+        Play(duration);
+    }
+
+private:
+    void OnUpdate(float progress) override final
+    {
+        // http://gizma.com/easing/#quint2
+        --progress;
+
+        Action.Scroll = Start + (Target - Start) * (progress * progress * progress * progress * progress + 1);
+    }
+
+    void OnFinish() override final
+    {
+        Action.Scroll = Target;
+    }
+};
+
 struct Context
 {
     Context(const Config* config = nullptr);
@@ -539,8 +643,13 @@ struct Context
 
     Link* FindLinkAt(const point& p);
 
+    ax::rectf GetBounds(Object* object);
+    ax::rectf GetBounds(const std::vector<Object*>& objects);
+
     ImU32 GetColor(StyleColor colorIndex) const;
     ImU32 GetColor(StyleColor colorIndex, float alpha) const;
+
+    void NavigateToSelection(float duration = -1);
 
 private:
     NodeSettings* FindNodeSettings(int id);
@@ -561,7 +670,6 @@ private:
     vector<Pin*>        Pins;
     vector<Link*>       Links;
 
-    Object*             SelectedObject;
     vector<Object*>     SelectedObjects;
     bool                SelectionChanged;
 
@@ -582,6 +690,8 @@ private:
     SelectAction        SelectAction;
     CreateItemAction    CreateItemAction;
     DeleteItemsAction   DeleteItemsAction;
+
+    ScrollAnimation     ScrollAnimation;
 
     bool                IsInitialized;
     ImTextureID         HeaderTextureID;

@@ -60,7 +60,7 @@ void util::BluepringNodeBuilder::End()
 
         auto headerSeparatorRect = ax::rect(HeaderRect.bottom_left(), ContentRect.top_right());
         auto footerSeparatorRect      = ax::rect(ContentRect.bottom_left(), NodeRect.bottom_right());
-        auto contentWithSeparatorRect = ax::rect::make_union(headerSeparatorRect, footerSeparatorRect);
+        auto contentWithSeparatorRect = ax::make_union(headerSeparatorRect, footerSeparatorRect);
 
         if (!headerSeparatorRect.is_empty())
         {

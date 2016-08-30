@@ -366,3 +366,8 @@ void ax::Editor::DeselectLink(int linkId)
     if (auto link = s_Editor->FindLink(linkId))
         s_Editor->DeselectObject(link);
 }
+
+void ax::Editor::NavigateToSelection(float duration)
+{
+    s_Editor->NavigateToSelection(duration);
+}
