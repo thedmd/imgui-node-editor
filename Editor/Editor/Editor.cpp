@@ -1146,14 +1146,30 @@ void ed::Context::NavigateToSelection(float duration)
     if (SelectedObjects.empty())
         return;
 
-    const auto selectionBounds = GetBounds(SelectedObjects);
-    const auto visibleBounds   = Canvas.GetVisibleBounds();
+    auto canvas = ScrollAction.GetCanvas(false);
+
+    const auto selectionBounds     = GetBounds(SelectedObjects);
+    const auto visibleBounds       = canvas.GetVisibleBounds();
+
+    const auto visibleBoundsMargin = 0.1f;
+    const auto targetVisibleSize   = static_cast<pointf>(visibleBounds.size) - static_cast<pointf>(visibleBounds.size) * visibleBoundsMargin;
+    const auto sourceSize          = static_cast<pointf>(selectionBounds.size);
+    const auto ratio               = sourceSize.cwise_safe_quotient(targetVisibleSize);
+    const auto maxRatio            = std::max(ratio.x, ratio.y);
+    const auto zoomChange          = 1.0f / std::max(maxRatio, 1.0f);
+
+    ed::ScrollAction action = ScrollAction;
+    action.Zoom *= zoomChange;
+
+    const auto targetBounds    = action.GetCanvas(false).GetVisibleBounds();
     const auto selectionCenter = to_imvec(selectionBounds.center());
-    const auto visibleCenter   = to_imvec(visibleBounds.center());
+    const auto targetCenter    = to_imvec(targetBounds.center());
+    const auto offset          = selectionCenter - targetCenter;
 
-    const auto offset = selectionCenter - visibleCenter;
-
-    ScrollAnimation.ScrollTo(ScrollAction.Scroll + offset * ScrollAction.Zoom, GetStyle().ScrollDuration);
+    ScrollAnimation.ScrollTo(
+        action.Scroll + offset * action.Zoom,
+        action.Zoom,
+        GetStyle().ScrollDuration);
 }
 
 ed::Control ed::Context::ComputeControl()
@@ -1513,11 +1529,14 @@ void ed::ScrollAction::SetWindow(ImVec2 position, ImVec2 size)
     WindowScreenSize = size;
 }
 
-ed::Canvas ed::ScrollAction::GetCanvas()
+ed::Canvas ed::ScrollAction::GetCanvas(bool alignToPixels)
 {
-    ImVec2 origin;
-    origin.x = floorf(-Scroll.x);
-    origin.y = floorf(-Scroll.y);
+    ImVec2 origin = -Scroll;
+    if (alignToPixels)
+    {
+        origin.x = floorf(origin.x);
+        origin.y = floorf(origin.y);
+    }
 
     return Canvas(WindowScreenPos, WindowScreenSize, ImVec2(Zoom, Zoom), origin);
 }

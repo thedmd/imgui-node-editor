@@ -252,7 +252,7 @@ struct ScrollAction final: EditorAction
 
     void SetWindow(ImVec2 position, ImVec2 size);
 
-    Canvas GetCanvas();
+    Canvas GetCanvas(bool alignToPixels = true);
 
 private:
     ImVec2 WindowScreenPos;
@@ -550,39 +550,42 @@ struct ScrollAnimation final: Animation
 {
     ScrollAction& Action;
     ImVec2        Start;
+    float         StartZoom;
     ImVec2        Target;
+    float         TargetZoom;
 
     ScrollAnimation(ScrollAction& scrollAction):
         Action(scrollAction)
     {
     }
 
-    void ScrollTo(const ImVec2& target, float duration)
+    void ScrollTo(const ImVec2& target, float targetZoom, float duration)
     {
-        Start  = Action.Scroll;
-        Target = target;
+        Start      = Action.Scroll;
+        StartZoom  = Action.Zoom;
+        Target     = target;
+        TargetZoom = targetZoom;
         Play(duration);
     }
 
 private:
+    // http://gizma.com/easing/#quint2
+    template <typename V, typename T>
+    V EaseOutQuad(V b, V c, T t)
+    {
+        return -c * t * (t - 2) + b;
+    }
+
     void OnUpdate(float progress) override final
     {
-        // http://gizma.com/easing/#quint2
-        const auto c = (Target - Start);
-        const auto b = Start;
-        const auto d = 1.0f;
-
-        auto easeOutQuad = [&c, &d, &b](float t)
-        {
-            return -c * t*(t - 2) + b;
-        };
-
-        Action.Scroll = easeOutQuad(progress);
+        Action.Scroll = EaseOutQuad(Start,     Target     - Start,     progress);
+        Action.Zoom   = EaseOutQuad(StartZoom, TargetZoom - StartZoom, progress);
     }
 
     void OnFinish() override final
     {
         Action.Scroll = Target;
+        Action.Zoom   = TargetZoom;
     }
 };
 

@@ -23,6 +23,7 @@ static inline sizef  to_sizef(const ImVec2& value)  { return sizef(value.x, valu
 static inline ImVec2 to_imvec(const point& value)   { return ImVec2(static_cast<float>(value.x), static_cast<float>(value.y)); }
 static inline ImVec2 to_imvec(const pointf& value)  { return ImVec2(value.x, value.y); }
 static inline ImVec2 to_imvec(const size& value)    { return ImVec2(static_cast<float>(value.w), static_cast<float>(value.h)); }
+static inline ImVec2 to_imvec(const sizef& value)   { return ImVec2(value.w, value.h); }
 static inline rect   ImGui_GetItemRect()            { return rect(to_point(ImGui::GetItemRectMin()), to_point(ImGui::GetItemRectMax())); }
 
 } // namespace ImGuiInterop
