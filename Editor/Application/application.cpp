@@ -489,6 +489,8 @@ void ShowLeftPane(float paneWidth)
             }
             else
                 ed::SelectNode(node.ID, false);
+
+            ed::NavigateToSelection();
         }
 
         auto id = std::string("(") + std::to_string(node.ID) + ")";
