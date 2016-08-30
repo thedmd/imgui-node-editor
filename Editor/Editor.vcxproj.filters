@@ -51,6 +51,9 @@
     <ClCompile Include="Application\application.cpp">
       <Filter>Application</Filter>
     </ClCompile>
+    <ClCompile Include="Editor\Builders.cpp">
+      <Filter>Editor</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="ImGui\imconfig.h">
@@ -100,6 +103,9 @@
     </ClInclude>
     <ClInclude Include="Application\application.h">
       <Filter>Application</Filter>
+    </ClInclude>
+    <ClInclude Include="Editor\Builders.h">
+      <Filter>Editor</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

@@ -176,6 +176,7 @@
   <ItemGroup>
     <ClCompile Include="..\External\DXSDK\src\dxerr.cpp" />
     <ClCompile Include="Application\imgui_impl_dx11.cpp" />
+    <ClCompile Include="Editor\Builders.cpp" />
     <ClCompile Include="Editor\Editor.cpp" />
     <ClCompile Include="Editor\Drawing.cpp" />
     <ClCompile Include="Editor\EditorApi.cpp" />
@@ -188,6 +189,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Application\imgui_impl_dx11.h" />
+    <ClInclude Include="Editor\Builders.h" />
     <ClInclude Include="Editor\Drawing.h" />
     <ClInclude Include="Editor\EditorApi.h" />
     <ClInclude Include="Editor\Editor.h" />
