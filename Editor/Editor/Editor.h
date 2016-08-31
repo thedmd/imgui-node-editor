@@ -370,7 +370,7 @@ private:
     ImVec2 ScrollStart;
 
     float MatchZoom(int steps, float fallbackZoom);
-    int MatchZoomIndex();
+    int MatchZoomIndex(int direction);
 
     static const float s_ZoomLevels[];
     static const int   s_ZoomLevelCount;

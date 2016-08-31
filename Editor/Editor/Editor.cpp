@@ -1696,7 +1696,7 @@ ed::Canvas ed::ScrollAction::GetCanvas(bool alignToPixels)
 
 float ed::ScrollAction::MatchZoom(int steps, float fallbackZoom)
 {
-    auto currentZoomIndex = MatchZoomIndex();
+    auto currentZoomIndex = MatchZoomIndex(steps);
     if (currentZoomIndex < 0)
         return fallbackZoom;
 
@@ -1711,7 +1711,7 @@ float ed::ScrollAction::MatchZoom(int steps, float fallbackZoom)
         return fallbackZoom;
 }
 
-int ed::ScrollAction::MatchZoomIndex()
+int ed::ScrollAction::MatchZoomIndex(int direction)
 {
     int   bestIndex    = -1;
     float bestDistance = 0.0f;
@@ -1724,6 +1724,14 @@ int ed::ScrollAction::MatchZoomIndex()
             bestDistance = distance;
             bestIndex    = i;
         }
+    }
+
+    if (bestDistance > 0.001f && direction > 0)
+    {
+        ++bestIndex;
+
+        if (bestIndex >= s_ZoomLevelCount)
+            bestIndex = s_ZoomLevelCount - 1;
     }
 
     return bestIndex;
