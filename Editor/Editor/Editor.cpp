@@ -1759,12 +1759,22 @@ int ed::ScrollAction::MatchZoomIndex(int direction)
         }
     }
 
-    if (bestDistance > 0.001f && direction > 0)
+    if (bestDistance > 0.001f)
     {
-        ++bestIndex;
+        if (direction > 0)
+        {
+            ++bestIndex;
 
-        if (bestIndex >= s_ZoomLevelCount)
-            bestIndex = s_ZoomLevelCount - 1;
+            if (bestIndex >= s_ZoomLevelCount)
+                bestIndex = s_ZoomLevelCount - 1;
+        }
+        else if (direction < 0)
+        {
+            --bestIndex;
+
+            if (bestIndex < 0)
+                bestIndex = 0;
+        }
     }
 
     return bestIndex;
