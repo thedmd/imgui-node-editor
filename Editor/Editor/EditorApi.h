@@ -50,8 +50,8 @@ enum StyleColor
     StyleColor_SelLinkBorder,
     StyleColor_LinkSelRect,
     StyleColor_LinkSelRectBorder,
-    StyleColor_HovPinRect,
-    StyleColor_HovPinRectBorder,
+    StyleColor_PinRect,
+    StyleColor_PinRectBorder,
 
     StyleColor_Count
 };
@@ -63,9 +63,11 @@ enum StyleVar
     StyleVar_NodeBorderWidth,
     StyleVar_HoveredNodeBorderWidth,
     StyleVar_SelectedNodeBorderWidth,
-    StyleVar_HoveredPinRounding,
-    StyleVar_HoveredPinBorderWidth,
+    StyleVar_PinRounding,
+    StyleVar_PinBorderWidth,
     StyleVar_LinkStrength,
+    StyleVar_SourceLinkDirection,
+    StyleVar_TargetLinkDirection,
     StyleVar_ScrollDuration
 };
 
@@ -76,9 +78,11 @@ struct Style
     float   NodeBorderWidth;
     float   HoveredNodeBorderWidth;
     float   SelectedNodeBorderWidth;
-    float   HoveredPinRounding;
-    float   HoveredPinBorderWidth;
+    float   PinRounding;
+    float   PinBorderWidth;
     float   LinkStrength;
+    ImVec2  SourceLinkDirection;
+    ImVec2  TargetLinkDirection;
     float   ScrollDuration;
     ImVec4  Colors[StyleColor_Count];
 
@@ -89,9 +93,11 @@ struct Style
         NodeBorderWidth         = 1.5f;
         HoveredNodeBorderWidth  = 3.5f;
         SelectedNodeBorderWidth = 3.5f;
-        HoveredPinRounding      = 4.0f;
-        HoveredPinBorderWidth   = 0.0f;
+        PinRounding             = 4.0f;
+        PinBorderWidth          = 0.0f;
         LinkStrength            = 100.0f;
+        SourceLinkDirection     = ImVec2(1.0f, 0.0f);
+        TargetLinkDirection     = ImVec2(-1.0f, 0.0f);
         ScrollDuration          = 0.35f;
 
         Colors[StyleColor_Bg]                 = ImColor( 60,  60,  70, 200);
@@ -106,8 +112,8 @@ struct Style
         Colors[StyleColor_SelLinkBorder]      = ImColor(255, 176,  50, 255);
         Colors[StyleColor_LinkSelRect]        = ImColor(  5, 130, 255,  64);
         Colors[StyleColor_LinkSelRectBorder]  = ImColor(  5, 130, 255, 128);
-        Colors[StyleColor_HovPinRect]         = ImColor( 60, 180, 255, 100);
-        Colors[StyleColor_HovPinRectBorder]   = ImColor( 60, 180, 255, 128);
+        Colors[StyleColor_PinRect]         = ImColor( 60, 180, 255, 100);
+        Colors[StyleColor_PinRectBorder]   = ImColor( 60, 180, 255, 128);
 
     }
 };

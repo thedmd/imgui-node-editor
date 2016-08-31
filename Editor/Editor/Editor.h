@@ -41,6 +41,30 @@ struct Object
     Object(int id): ID(id), IsLive(true) {}
     virtual ~Object() = default;
 
+    bool IsVisible() const
+    {
+        const auto bounds = GetBounds();
+
+        return ImGui::IsRectVisible(to_imvec(bounds.top_left()), to_imvec(bounds.bottom_right()));
+    }
+
+    virtual bool TestHit(const ImVec2& point, float extraThickness = 0.0f) const
+    {
+        auto bounds = GetBounds();
+        if (extraThickness > 0)
+            bounds.expand(extraThickness);
+
+        return bounds.contains(to_pointf(point));
+    }
+
+    virtual bool TestHit(const ax::rectf& rect) const
+    {
+        const auto bounds = GetBounds();
+        return !bounds.is_empty() && bounds.intersects(rect);
+    }
+
+    virtual ax::rectf GetBounds() const = 0;
+
     virtual Node* AsNode() { return nullptr; }
     virtual Pin*  AsPin()  { return nullptr; }
     virtual Link* AsLink() { return nullptr; }
@@ -53,11 +77,20 @@ struct Pin final: Object
     rect    Bounds;
     pointf  DragPoint;
     Pin*    PreviousPin;
+    ImU32   Color;
+    ImU32   BorderColor;
+    float   BorderWidth;
+    float   Rounding;
 
     Pin(int id, PinKind kind):
-        Object(id), Kind(kind), Node(nullptr), Bounds(), PreviousPin(nullptr)
+        Object(id), Kind(kind), Node(nullptr), Bounds(), PreviousPin(nullptr),
+        Color(IM_COL32_WHITE), BorderColor(IM_COL32_BLACK), BorderWidth(0), Rounding(0)
     {
     }
+
+    void Draw(ImDrawList* drawList);
+
+    virtual ax::rectf GetBounds() const override final { return static_cast<rectf>(Bounds); }
 
     virtual Pin* AsPin() override final { return this; }
 };
@@ -69,6 +102,9 @@ struct Node final: Object
     Pin*    LastPin;
     point   DragStart;
 
+    ImU32   Color;
+    ImU32   BorderColor;
+    float   BorderWidth;
     float   Rounding;
 
     Node(int id):
@@ -77,24 +113,43 @@ struct Node final: Object
         Channel(0),
         LastPin(nullptr),
         DragStart(),
+        Color(IM_COL32_WHITE),
+        BorderColor(IM_COL32_BLACK),
+        BorderWidth(0),
         Rounding(0)
     {
     }
+
+    void Draw(ImDrawList* drawList);
+    void DrawBorder(ImDrawList* drawList, ImU32 color, float thickness = 1.0f);
+
+    virtual ax::rectf GetBounds() const override final { return static_cast<rectf>(Bounds); }
 
     virtual Node* AsNode() override final { return this; }
 };
 
 struct Link final: Object
 {
-    Pin*  StartPin;
-    Pin*  EndPin;
-    ImU32 Color;
-    float Thickness;
+    Pin*   StartPin;
+    Pin*   EndPin;
+    ImU32  Color;
+    float  Thickness;
+    float  Strength;
+    ImVec2 StartDir;
+    ImVec2 EndDir;
 
     Link(int id):
-        Object(id), StartPin(nullptr), EndPin(nullptr), Color(IM_COL32_WHITE), Thickness(1.0f)
+        Object(id), StartPin(nullptr), EndPin(nullptr), Color(IM_COL32_WHITE), Thickness(1.0f), Strength(0.0f), StartDir(0, 0), EndDir(0, 0)
     {
     }
+
+    void Draw(ImDrawList* drawList, float extraThickness = 0.0f) const;
+    void Draw(ImDrawList* drawList, ImU32 color, float extraThickness = 0.0f) const;
+
+    virtual bool TestHit(const ImVec2& point, float extraThickness = 0.0f) const override final;
+    virtual bool TestHit(const ax::rectf& rect) const override final;
+
+    virtual ax::rectf GetBounds() const override final;
 
     virtual Link* AsLink() override final { return this; }
 };
@@ -494,9 +549,6 @@ struct NodeBuilder
 
     ImDrawList* GetBackgroundDrawList() const;
     ImDrawList* GetBackgroundDrawList(Node* node) const;
-
-private:
-    void DrawBackground() const;
 };
 
 struct Style: ax::Editor::Style
@@ -565,8 +617,8 @@ struct Context
     bool IsAnyLinkSelected();
     bool HasSelectionChanged();
 
-    void FindNodesInRect(ax::rect r, vector<Node*>& result);
-    void FindLinksInRect(ax::rect r, vector<Link*>& result);
+    void FindNodesInRect(const ax::rectf& r, vector<Node*>& result);
+    void FindLinksInRect(const ax::rectf& r, vector<Link*>& result);
 
     void FindLinksForNode(int nodeId, vector<Link*>& result, bool add = false);
 

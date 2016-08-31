@@ -52,6 +52,9 @@ struct basic_point
     basic_point(): x(0), y(0) {}
     basic_point(T x, T y): x(x), y(y) {}
 
+    template <typename P>
+    explicit basic_point(const basic_point<P>& p) { x = static_cast<T>(p.x); y = static_cast<T>(p.y); }
+
     basic_point(const basic_point&) = default;
     basic_point(basic_point&&) = default;
     basic_point& operator=(const basic_point&) = default;
@@ -101,6 +104,9 @@ struct basic_size
     basic_size(): w(0), h(0) {}
     basic_size(T w, T h): w(w), h(h) {}
 
+    template <typename P>
+    explicit basic_size(const basic_size<P>& p) { w = static_cast<T>(p.w); h = static_cast<T>(p.h); }
+
     basic_size(const basic_size&) = default;
     basic_size(basic_size&&) = default;
     basic_size& operator=(const basic_size&) = default;
@@ -137,10 +143,28 @@ struct basic_rect
     basic_rect(const point_t& l, const size_t& s): location(l), size(s) {}
     basic_rect(T x, T y, T w, T h): x(x), y(y), w(w), h(h) {}
 
+    template <typename P>
+    explicit basic_rect(const basic_rect<P>& r)
+    {
+        const auto tl = static_cast<basic_point<T>>(r.top_left());
+        const auto br = static_cast<basic_point<T>>(r.bottom_right());
+
+        location = tl;
+        size     = size_t(br - tl);
+    }
+
     basic_rect(const basic_rect&) = default;
     basic_rect(basic_rect&&) = default;
     basic_rect& operator=(const basic_rect&) = default;
     basic_rect& operator=(basic_rect&&) = default;
+
+    template <typename P>
+    explicit operator basic_rect<P>() const
+    {
+        return basic_rect<P>(
+            static_cast<basic_point<P>>(top_left()),
+            static_cast<basic_point<P>>(bottom_right()));
+    }
 
     friend inline bool operator == (const basic_rect& lhs, const basic_rect& rhs) { return lhs.location == rhs.location && lhs.size == rhs.size; }
     friend inline bool operator != (const basic_rect& lhs, const basic_rect& rhs) { return !(lhs == rhs); }

@@ -217,6 +217,118 @@ static void ImDrawList_TranslateAndClampClipRects(ImDrawList* drawList, int begi
 
 //------------------------------------------------------------------------------
 //
+// Pin
+//
+//------------------------------------------------------------------------------
+void ed::Pin::Draw(ImDrawList* drawList)
+{
+    drawList->AddRectFilled(to_imvec(Bounds.top_left()), to_imvec(Bounds.bottom_right()),
+        Color, Rounding);
+
+    if (BorderWidth > 0.0f)
+    {
+        drawList->AddRect(to_imvec(Bounds.top_left()), to_imvec(Bounds.bottom_right()),
+            BorderColor, Rounding, 15, BorderWidth);
+    }
+}
+
+
+
+
+//------------------------------------------------------------------------------
+//
+// Node
+//
+//------------------------------------------------------------------------------
+void ed::Node::Draw(ImDrawList* drawList)
+{
+    drawList->AddRectFilled(
+        to_imvec(Bounds.top_left()),
+        to_imvec(Bounds.bottom_right()),
+        Color, Rounding);
+
+    DrawBorder(drawList, BorderColor, BorderWidth);
+}
+
+void ed::Node::DrawBorder(ImDrawList* drawList, ImU32 color, float thickness)
+{
+    if (thickness > 0.0f)
+    {
+        drawList->AddRect(to_imvec(Bounds.top_left()), to_imvec(Bounds.bottom_right()),
+            color, Rounding, 15, thickness);
+    }
+}
+
+
+
+
+//------------------------------------------------------------------------------
+//
+// Link
+//
+//------------------------------------------------------------------------------
+void ed::Link::Draw(ImDrawList* drawList, float extraThickness) const
+{
+    Draw(drawList, Color, extraThickness);
+}
+
+void ed::Link::Draw(ImDrawList* drawList, ImU32 color, float extraThickness) const
+{
+    if (!IsLive)
+        return;
+
+    ax::Drawing::DrawLink(drawList, to_imvec(StartPin->DragPoint), to_imvec(EndPin->DragPoint),
+        color, Thickness + extraThickness, Strength, StartDir, EndDir);
+}
+
+bool ed::Link::TestHit(const ImVec2& point, float extraThickness) const
+{
+    auto bounds = GetBounds();
+    if (extraThickness > 0.0f)
+        bounds.expand(extraThickness);
+
+    if (!bounds.contains(to_pointf(point)))
+        return false;
+
+    const auto distance = ax::Drawing::LinkDistance(point,
+        to_imvec(StartPin->DragPoint), to_imvec(EndPin->DragPoint),
+        Strength, StartDir, EndDir);
+
+    return distance <= Thickness + extraThickness;
+}
+
+bool ed::Link::TestHit(const ax::rectf& rect) const
+{
+    const auto bounds = GetBounds();
+
+    if (rect.contains(bounds))
+        return true;
+
+    if (rect.intersects(bounds) && Drawing::CollideLinkWithRect(rect, to_imvec(StartPin->DragPoint), to_imvec(EndPin->DragPoint), Strength, StartDir, EndDir))
+        return true;
+
+    return false;
+}
+
+ax::rectf ed::Link::GetBounds() const
+{
+    if (IsLive)
+    {
+        const auto startPoint = StartPin->DragPoint;
+        const auto endPoint   = EndPin->DragPoint;
+
+        return ax::Drawing::GetLinkBounds(to_imvec(startPoint), to_imvec(endPoint), Strength, StartDir, EndDir);
+    }
+    else
+        return ax::rectf();
+}
+
+
+
+
+
+//------------------------------------------------------------------------------
+//
 // Editor Context
 //
 //------------------------------------------------------------------------------
@@ -335,21 +447,12 @@ void ed::Context::End()
     drawList->ChannelsSetCurrent(c_LinkStartChannel + 1);
     for (auto link : Links)
     {
-        if (!link->IsLive)
+        if (!link->IsLive || !link->IsVisible())
             continue;
 
-        const auto startPoint = to_imvec(link->StartPin->DragPoint);
-        const auto endPoint   = to_imvec(link->EndPin->DragPoint);
+        float extraThickness = !isSelecting && !IsSelected(link) && (control.HotLink == link || control.ActiveLink == link) ? 2.0f : 0.0f;
 
-        const auto bounds = ax::Drawing::GetLinkBounds(startPoint, endPoint, editorStyle.LinkStrength);
-
-        if (ImGui::IsRectVisible(to_imvec(bounds.top_left()), to_imvec(bounds.bottom_right())))
-        {
-            float extraThickness = !isSelecting && !IsSelected(link) && (control.HotLink == link || control.ActiveLink == link) ? 2.0f : 0.0f;
-
-            ax::Drawing::DrawLink(drawList, startPoint, endPoint,
-                link->Color, link->Thickness + extraThickness, editorStyle.LinkStrength);
-        }
+        link->Draw(drawList, extraThickness);
     }
 
     // Highlight selected objects
@@ -367,31 +470,20 @@ void ed::Context::End()
             {
                 if (auto selectedNode = selectedObject->AsNode())
                 {
-                    const auto rectMin = to_imvec(selectedNode->Bounds.top_left());
-                    const auto rectMax = to_imvec(selectedNode->Bounds.bottom_right());
-
-                    if (ImGui::IsRectVisible(rectMin, rectMax))
+                    if (selectedNode->IsVisible())
                     {
                         drawList->ChannelsSetCurrent(selectedNode->Channel + c_NodeBaseChannel);
 
-                        drawList->AddRect(rectMin, rectMax, nodeBorderColor, selectedNode->Rounding, 15, editorStyle.SelectedNodeBorderWidth);
+                        selectedNode->DrawBorder(drawList, nodeBorderColor, editorStyle.SelectedNodeBorderWidth);
                     }
                 }
                 else if (auto selectedLink = selectedObject->AsLink())
                 {
-                    const auto start  = to_imvec(selectedLink->StartPin->DragPoint);
-                    const auto end    = to_imvec(selectedLink->EndPin->DragPoint);
-
-                    const auto bounds = ax::Drawing::GetLinkBounds(start, end, editorStyle.LinkStrength);
-
-                    const auto rectMin = to_imvec(bounds.top_left());
-                    const auto rectMax = to_imvec(bounds.bottom_right());
-
-                    if (ImGui::IsRectVisible(rectMin, rectMax))
+                    if (selectedLink->IsVisible())
                     {
                         drawList->ChannelsSetCurrent(c_LinkStartChannel + 0);
 
-                        ax::Drawing::DrawLink(drawList, start, end, linkBorderColor, selectedLink->Thickness + 4.5f, editorStyle.LinkStrength);
+                        selectedLink->Draw(drawList, linkBorderColor, 4.5f);
                     }
                 }
             }
@@ -411,7 +503,7 @@ void ed::Context::End()
 
             drawList->ChannelsSetCurrent(hotNode->Channel + c_NodeBaseChannel);
 
-            drawList->AddRect(rectMin, rectMax, GetColor(StyleColor_HovNodeBorder), hotNode->Rounding, 15, editorStyle.HoveredNodeBorderWidth);
+            hotNode->DrawBorder(drawList, GetColor(StyleColor_HovNodeBorder), editorStyle.HoveredNodeBorderWidth);
         }
 
         // Highlight hovered pin
@@ -422,10 +514,7 @@ void ed::Context::End()
 
             drawList->ChannelsSetCurrent(hotPin->Node->Channel + c_NodeBackgroundChannel);
 
-            drawList->AddRectFilled(rectMin, rectMax, GetColor(StyleColor_HovPinRect), editorStyle.HoveredPinRounding);
-
-            if (editorStyle.HoveredPinBorderWidth > 0.0f)
-                drawList->AddRect(rectMin, rectMax, GetColor(StyleColor_HovPinRectBorder), editorStyle.HoveredPinRounding, 15, editorStyle.HoveredPinBorderWidth);
+            hotPin->Draw(drawList);
         }
 
         // Highlight hovered link
@@ -433,10 +522,7 @@ void ed::Context::End()
         {
             drawList->ChannelsSetCurrent(c_LinkStartChannel + 0);
 
-            ax::Drawing::DrawLink(drawList,
-                to_imvec(control.HotLink->StartPin->DragPoint),
-                to_imvec(control.HotLink->EndPin->DragPoint),
-                GetColor(StyleColor_HovLinkBorder), control.HotLink->Thickness + 4.5f, editorStyle.LinkStrength);
+            control.HotLink->Draw(drawList, GetColor(StyleColor_HovLinkBorder), 4.5f);
         }
     }
 
@@ -586,6 +672,8 @@ void ed::Context::End()
 
 bool ed::Context::DoLink(int id, int startPinId, int endPinId, ImU32 color, float thickness)
 {
+    auto& editorStyle = GetStyle();
+
     auto link     = GetLink(id);
     auto startPin = FindPin(startPinId);
     auto endPin   = FindPin(endPinId);
@@ -595,6 +683,9 @@ bool ed::Context::DoLink(int id, int startPinId, int endPinId, ImU32 color, floa
 
     link->Color     = color;
     link->Thickness = thickness;
+    link->Strength  = editorStyle.LinkStrength;
+    link->StartDir  = editorStyle.SourceLinkDirection;
+    link->EndDir    = editorStyle.TargetLinkDirection;
 
     link->IsLive =
         (startPin && startPin->IsLive) &&
@@ -696,7 +787,7 @@ bool ed::Context::HasSelectionChanged()
     return SelectionChanged;
 }
 
-void ed::Context::FindNodesInRect(ax::rect r, vector<Node*>& result)
+void ed::Context::FindNodesInRect(const ax::rectf& r, vector<Node*>& result)
 {
     result.clear();
 
@@ -704,22 +795,11 @@ void ed::Context::FindNodesInRect(ax::rect r, vector<Node*>& result)
         return;
 
     for (auto node : Nodes)
-    {
-        if (!node->IsLive)
-            continue;
-
-        //auto drawList = ImGui::GetWindowDrawList();
-        //drawList->AddRectFilled(
-        //    to_imvec(node->Bounds.top_left()),
-        //    to_imvec(node->Bounds.bottom_right()),
-        //    IM_COL32(255, 0, 0, 64));
-
-        if (!node->Bounds.is_empty() && r.intersects(node->Bounds))
+        if (node->TestHit(r))
             result.push_back(node);
-    }
 }
 
-void ed::Context::FindLinksInRect(ax::rect r, vector<Link*>& result)
+void ed::Context::FindLinksInRect(const ax::rectf& r, vector<Link*>& result)
 {
     using namespace ImGuiInterop;
 
@@ -728,34 +808,9 @@ void ed::Context::FindLinksInRect(ax::rect r, vector<Link*>& result)
     if (r.is_empty())
         return;
 
-    //r.location += to_point(Canvas.ClientToCanvas(ImVec2(0, 0)));
-
-    const auto linkStrength = GetStyle().LinkStrength;
-
     for (auto link : Links)
-    {
-        if (!link->IsLive)
-            continue;
-
-        auto a      = link->StartPin->DragPoint;
-        auto b      = link->EndPin->DragPoint;
-        auto bounds = Drawing::GetLinkBounds(to_imvec(a), to_imvec(b), linkStrength);
-
-        //auto drawList = ImGui::GetWindowDrawList();
-        //drawList->AddRectFilled(
-        //    to_imvec(bounds.top_left()),
-        //    to_imvec(bounds.bottom_right()),
-        //    IM_COL32(255, 0, 0, 64));
-
-        if (r.contains(bounds))
-        {
+        if (link->TestHit(r))
             result.push_back(link);
-        }
-        else if (r.intersects(bounds) && Drawing::CollideLinkWithRect(r, to_imvec(a), to_imvec(b), linkStrength))
-        {
-            result.push_back(link);
-        }
-    }
 }
 
 void ed::Context::FindLinksForNode(int nodeId, vector<Link*>& result, bool add)
@@ -1066,35 +1121,8 @@ void ed::Context::MarkSettingsDirty()
 ed::Link* ed::Context::FindLinkAt(const ax::point& p)
 {
     for (auto& link : Links)
-    {
-        if (!link->IsLive) continue;
-
-        // Live links are guarantee to have complete set of pins.
-        const auto startPoint = link->StartPin->DragPoint;
-        const auto endPoint   = link->EndPin->DragPoint;
-
-        // Build bounding rectangle of link.
-        const auto linkBounds = ax::Drawing::GetLinkBounds(to_imvec(startPoint), to_imvec(endPoint), GetStyle().LinkStrength);
-
-        // Calculate thickness of interactive area around curve.
-        // Making it slightly larger help user to click it.
-        const auto thickness = roundi(link->Thickness + c_LinkSelectThickness);
-
-        // Expand bounding rectangle corners by curve thickness.
-        const auto interactiveBounds = linkBounds.expanded(thickness);
-
-        // Ignore link if mouse is not hovering bounding rect.
-        if (!interactiveBounds.contains(p))
-            continue;
-
-        // Calculate distance from mouse position to link curve.
-        const auto distance = ax::Drawing::LinkDistance(to_imvec(p),
-            to_imvec(startPoint), to_imvec(endPoint), GetStyle().LinkStrength);
-
-        // If point is close enough link was found.
-        if (distance < thickness)
+        if (link->TestHit(to_imvec(p), c_LinkSelectThickness))
             return link;
-    }
 
     return nullptr;
 }
@@ -1874,7 +1902,7 @@ bool ed::SelectAction::Process(const Control& control)
 
         auto topLeft     = ImVec2(std::min(StartPoint.x, EndPoint.x), std::min(StartPoint.y, EndPoint.y));
         auto bottomRight = ImVec2(std::max(StartPoint.x, EndPoint.x), std::max(StartPoint.y, EndPoint.y));
-        auto rect        = ax::rect(to_point(topLeft), to_point(bottomRight));
+        auto rect        = ax::rectf(to_pointf(topLeft), to_pointf(bottomRight));
         if (rect.w <= 0)
             rect.w = 1;
         if (rect.h <= 0)
@@ -2464,8 +2492,16 @@ void ed::NodeBuilder::Begin(int nodeId)
     // Position node on screen
     ImGui::SetCursorScreenPos(to_imvec(CurrentNode->Bounds.location));
 
-    CurrentNode->IsLive  = true;
-    CurrentNode->LastPin = nullptr;
+    auto& editorStyle = Editor->GetStyle();
+
+    const auto alpha = ImGui::GetStyle().Alpha;
+
+    CurrentNode->IsLive      = true;
+    CurrentNode->LastPin     = nullptr;
+    CurrentNode->Color       = Editor->GetColor(StyleColor_NodeBg, alpha);
+    CurrentNode->BorderColor = Editor->GetColor(StyleColor_NodeBorder, alpha);
+    CurrentNode->BorderWidth = editorStyle.NodeBorderWidth;
+    CurrentNode->Rounding    = editorStyle.NodeRounding;
 
     // Grow channel list and select user channel
     if (auto drawList = ImGui::GetWindowDrawList())
@@ -2481,7 +2517,6 @@ void ed::NodeBuilder::Begin(int nodeId)
     ImGui::BeginGroup();
 
     // Apply frame padding. Begin inner group if necessary.
-    auto& editorStyle = Editor->GetStyle();
     if (editorStyle.NodePadding.x != 0 || editorStyle.NodePadding.y != 0 || editorStyle.NodePadding.z != 0 || editorStyle.NodePadding.w != 0)
     {
         ImGui::SetCursorPos(ImGui::GetCursorPos() + ImVec2(editorStyle.NodePadding.x, editorStyle.NodePadding.y));
@@ -2515,10 +2550,8 @@ void ed::NodeBuilder::End()
         CurrentNode->Bounds.size = NodeRect.size;
     }
 
-    CurrentNode->Rounding = editorStyle.NodeRounding;
-
-    if (ImGui::IsItemVisible())
-        DrawBackground();
+    if (CurrentNode->IsVisible())
+        CurrentNode->Draw(GetBackgroundDrawList());
 
     ImGui::PopStyleVar();
 
@@ -2533,9 +2566,12 @@ void ed::NodeBuilder::BeginPin(int pinId, PinKind kind, const ImVec2& pivot)
     CurrentPin->Node = CurrentNode;
 
     // Save pivot in drag point, it will be converted to actuall point in EndPin()
-    CurrentPin->DragPoint = to_pointf(pivot);
-
-    CurrentPin->IsLive = true;
+    CurrentPin->DragPoint   = to_pointf(pivot);
+    CurrentPin->IsLive      = true;
+    CurrentPin->Color       = Editor->GetColor(StyleColor_PinRect);
+    CurrentPin->BorderColor = Editor->GetColor(StyleColor_PinRectBorder);
+    CurrentPin->BorderWidth = GetStyle().PinBorderWidth;
+    CurrentPin->Rounding    = GetStyle().PinRounding;
 
     CurrentPin->PreviousPin = CurrentNode->LastPin;
     CurrentNode->LastPin    = CurrentPin;
@@ -2572,34 +2608,6 @@ ImDrawList* ed::NodeBuilder::GetBackgroundDrawList(Node* node) const
     }
     else
         return nullptr;
-}
-
-void ed::NodeBuilder::DrawBackground() const
-{
-    // Draw background
-    if (ImGui::IsItemVisible())
-    {
-        auto& style = Editor->GetStyle();
-
-        const auto alpha = ImGui::GetStyle().Alpha;
-
-        auto drawList = GetBackgroundDrawList();
-
-        drawList->AddRectFilled(
-            to_imvec(NodeRect.top_left()),
-            to_imvec(NodeRect.bottom_right()),
-            Editor->GetColor(StyleColor_NodeBg, alpha),
-            style.NodeRounding);
-
-        if (style.NodeBorderWidth > 0.0f)
-        {
-            drawList->AddRect(
-                to_imvec(NodeRect.top_left()),
-                to_imvec(NodeRect.bottom_right()),
-                Editor->GetColor(StyleColor_NodeBorder, alpha),
-                style.NodeRounding, 15, style.NodeBorderWidth);
-        }
-    }
 }
 
 
@@ -2695,8 +2703,8 @@ const char* ed::Style::GetColorName(StyleColor colorIndex) const
         case StyleColor_SelLinkBorder: return "SelLinkBorder";
         case StyleColor_LinkSelRect: return "LinkSelRect";
         case StyleColor_LinkSelRectBorder: return "LinkSelRectBorder";
-        case StyleColor_HovPinRect: return "HovPinRect";
-        case StyleColor_HovPinRectBorder: return "HovPinRectBorder";
+        case StyleColor_PinRect: return "PinRect";
+        case StyleColor_PinRectBorder: return "PinRectBorder";
     }
 
     assert(0);
@@ -2711,8 +2719,8 @@ float* ed::Style::GetVarFloatAddr(StyleVar idx)
         case StyleVar_NodeBorderWidth:          return &NodeBorderWidth;
         case StyleVar_HoveredNodeBorderWidth:   return &HoveredNodeBorderWidth;
         case StyleVar_SelectedNodeBorderWidth:  return &SelectedNodeBorderWidth;
-        case StyleVar_HoveredPinRounding:       return &HoveredPinRounding;
-        case StyleVar_HoveredPinBorderWidth:    return &HoveredPinBorderWidth;
+        case StyleVar_PinRounding:              return &PinRounding;
+        case StyleVar_PinBorderWidth:           return &PinBorderWidth;
         case StyleVar_LinkStrength:             return &LinkStrength;
         case StyleVar_ScrollDuration:           return &ScrollDuration;
     }
@@ -2722,6 +2730,12 @@ float* ed::Style::GetVarFloatAddr(StyleVar idx)
 
 ImVec2* ed::Style::GetVarVec2Addr(StyleVar idx)
 {
+    switch (idx)
+    {
+        case StyleVar_SourceLinkDirection: return &SourceLinkDirection;
+        case StyleVar_TargetLinkDirection: return &TargetLinkDirection;
+    }
+
     return nullptr;
 }
 
