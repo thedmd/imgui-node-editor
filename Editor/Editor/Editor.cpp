@@ -27,9 +27,9 @@ static const int c_NodeBaseChannel        = 0;
 static const int c_NodeBackgroundChannel  = 1;
 static const int c_NodeContentChannel     = 2;
 
-//static const float c_NodeFrameRounding    = 12.0f;
-//static const float c_LinkStrength         = 100.0f;
-static const float c_LinkSelectThickness  = 5.0f;
+static const float c_LinkSelectThickness  = 5.0f;  // canvas pixels
+static const float c_NavigationZoomMargin = 0.1f;  // percentage of visible bounds
+static const float c_MouseZoomDuration    = 0.15f; // seconds
 
 
 //------------------------------------------------------------------------------
@@ -1611,7 +1611,7 @@ bool ax::Editor::Detail::ScrollAction::Accept(const Control& control)
         Scroll = savedScroll;
         Zoom   = savedZoom;
 
-        NavigateTo(targetScroll, newZoom, 0.15f, NavigationReason::MouseZoom);
+        NavigateTo(targetScroll, newZoom, c_MouseZoomDuration, NavigationReason::MouseZoom);
 
         return true;
     }
@@ -1659,7 +1659,7 @@ void ed::ScrollAction::NavigateTo(const ax::rectf& bounds, bool zoomIn, float du
     const auto selectionBounds     = bounds;
     const auto visibleBounds       = canvas.GetVisibleBounds();
 
-    const auto visibleBoundsMargin = 0.1f;
+    const auto visibleBoundsMargin = c_NavigationZoomMargin;
     const auto targetVisibleSize   = static_cast<pointf>(visibleBounds.size) - static_cast<pointf>(visibleBounds.size) * visibleBoundsMargin;
     const auto sourceSize          = static_cast<pointf>(selectionBounds.size);
     const auto ratio               = sourceSize.cwise_safe_quotient(targetVisibleSize);
