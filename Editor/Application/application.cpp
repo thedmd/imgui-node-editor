@@ -393,8 +393,8 @@ void ShowStyleEditor(bool* show = nullptr)
     ImGui::DragFloat("Node Border Width", &editorStyle.NodeBorderWidth, 0.1f, 0.0f, 15.0f);
     ImGui::DragFloat("Hovered Node Border Width", &editorStyle.HoveredNodeBorderWidth, 0.1f, 0.0f, 15.0f);
     ImGui::DragFloat("Selected Node Border Width", &editorStyle.SelectedNodeBorderWidth, 0.1f, 0.0f, 15.0f);
-    ImGui::DragFloat("Pin Rounding", &editorStyle.HoveredPinRounding, 0.1f, 0.0f, 40.0f);
-    ImGui::DragFloat("Pin Border Width", &editorStyle.HoveredPinBorderWidth, 0.1f, 0.0f, 15.0f);
+    ImGui::DragFloat("Pin Rounding", &editorStyle.PinRounding, 0.1f, 0.0f, 40.0f);
+    ImGui::DragFloat("Pin Border Width", &editorStyle.PinBorderWidth, 0.1f, 0.0f, 15.0f);
     ImGui::DragFloat("Link Strength", &editorStyle.LinkStrength, 1.0f, 0.0f, 500.0f);
 
     ImGui::Separator();
