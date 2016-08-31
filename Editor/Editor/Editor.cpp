@@ -14,7 +14,7 @@ namespace ed = ax::Editor::Detail;
 
 //------------------------------------------------------------------------------
 static const int c_BackgroundChannelCount = 2;
-static const int c_LinkChannelCount       = 3;
+static const int c_LinkChannelCount       = 4; // select/hot, links, flow, new link
 static const int c_UserLayersCount        = 1;
 
 static const int c_UserLayerChannelStart  = 0;
@@ -281,6 +281,11 @@ void ed::Link::Draw(ImDrawList* drawList, ImU32 color, float extraThickness) con
         color, Thickness + extraThickness, Strength, StartDir, EndDir);
 }
 
+ax::bezier_t ed::Link::GetBezier() const
+{
+    return ax::Drawing::GetLinkBezier(to_imvec(StartPin->DragPoint), to_imvec(EndPin->DragPoint), Strength, StartDir, EndDir);
+}
+
 bool ed::Link::TestHit(const ImVec2& point, float extraThickness) const
 {
     auto bounds = GetBounds();
@@ -399,8 +404,6 @@ void ed::Context::Begin(const char* id, const ImVec2& size)
         ImGuiWindowFlags_NoScrollbar |
         ImGuiWindowFlags_NoScrollWithMouse);
 
-    UpdateAnimations();
-
     ScrollAction.SetWindow(ImGui::GetWindowPos(), ImGui::GetWindowSize());
 
     Canvas = ScrollAction.GetCanvas();
@@ -443,6 +446,12 @@ void ed::Context::End()
     auto  control     = ComputeControl();
     auto  drawList    = ImGui::GetWindowDrawList();
     auto& editorStyle = GetStyle();
+
+    if (ImGui::IsKeyReleased(ImGui::GetKeyIndex(ImGuiKey_Z)))
+    {
+        for (auto link : Links)
+            ShowFlow(link);
+    }
 
     bool isSelecting = CurrentAction && CurrentAction->AsSelect() != nullptr;
 
@@ -526,6 +535,26 @@ void ed::Context::End()
             drawList->ChannelsSetCurrent(c_LinkStartChannel + 0);
 
             control.HotLink->Draw(drawList, GetColor(StyleColor_HovLinkBorder), 4.5f);
+        }
+    }
+
+    if (!FlowAnimations.empty())
+    {
+        drawList->ChannelsSetCurrent(c_LinkStartChannel + 2);
+
+        for (auto it = FlowAnimations.begin(); it != FlowAnimations.end();)
+        {
+            auto animation = *it;
+            if (animation->IsPlaying())
+            {
+                animation->Draw(drawList);
+                ++it;
+            }
+            else
+            {
+                it = FlowAnimations.erase(it);
+                delete animation;
+            }
         }
     }
 
@@ -646,6 +675,8 @@ void ed::Context::End()
         //for (float y = 0; y < Canvas.WindowScreenSize.y; y += 100)
         //    drawList->AddLine(ImVec2(0.0f, y) + Canvas.WindowScreenPos, ImVec2(Canvas.WindowScreenSize.x, y) + Canvas.WindowScreenPos, IM_COL32(255, 0, 0, 128));
     }
+
+    UpdateAnimations();
 
     drawList->ChannelsMerge();
 
@@ -1158,6 +1189,24 @@ void ed::Context::UpdateAnimations()
     }
 }
 
+void ed::Context::ShowFlow(Link* link)
+{
+    if (!link || !link->IsLive)
+        return;
+
+    const auto begin = FlowAnimations.begin();
+    const auto end   = FlowAnimations.end();
+
+    auto animation = std::find_if(begin, end, [link](FlowAnimation* animation) { return animation->Link == link; });
+    if (animation == end)
+    {
+        FlowAnimations.emplace_back(new FlowAnimation(this));
+        animation = FlowAnimations.end() - 1;
+    }
+
+    (*animation)->Flow(link, 30.0f, 250.0f, 2.0f);
+}
+
 ed::Control ed::Context::ComputeControl()
 {
     if (!ImGui::IsWindowHovered())
@@ -1439,9 +1488,9 @@ void ed::Animation::Play(float duration)
     Time     = 0.0f;
     Duration = duration;
 
-    Editor->RegisterAnimation(this);
-
     OnPlay();
+
+    Editor->RegisterAnimation(this);
 
     if (duration == 0.0f)
         Stop();
@@ -1477,7 +1526,7 @@ void ed::Animation::Update()
     Time += std::max(0.0f, ImGui::GetIO().DeltaTime);
     if (Time < Duration)
     {
-        const float progress = Time / Duration;
+        const float progress = GetProgress();
         OnUpdate(progress);
     }
     else
@@ -1540,40 +1589,109 @@ void ed::ScrollAnimation::OnFinish()
 // Flow Animation
 //
 //------------------------------------------------------------------------------
-ed::FlowAnimation::FlowAnimation(Context* editor, Link* link):
+ed::FlowAnimation::FlowAnimation(Context* editor):
     Animation(editor),
-    Owner(*link),
+    Link(nullptr),
+    Offset(0.0f),
     PathLength(0.0f)
 {
 }
 
-void ed::FlowAnimation::Touch(float markerDistance, float speed, float duration)
+void ed::FlowAnimation::Flow(ed::Link* link, float markerDistance, float speed, float duration)
 {
     Stop();
 
     MarkerDistance = markerDistance;
     Speed          = speed;
+    Link           = link;
 
     Play(duration);
 }
 
+void ed::FlowAnimation::Draw(ImDrawList* drawList)
+{
+    if (!IsPlaying())
+        return;
+
+    if (IsPathInvalidated())
+        UpdatePath();
+
+    Offset = fmodf(Offset, MarkerDistance);
+
+    const auto progress = GetProgress();
+
+    float radius = 4.0f * (1.0f - progress) + 2.0f;
+
+    int alpha = (int)(255 * (1.0f - progress * progress));
+
+    auto bezier = Link->GetBezier();
+    drawList->AddBezierCurve(to_imvec(bezier.p0), to_imvec(bezier.p1), to_imvec(bezier.p2), to_imvec(bezier.p3),
+        IM_COL32(255, 128, 64, alpha), 4.0f);
+
+    for (float d = 0.0f; d < PathLength; d += MarkerDistance)
+    {
+        auto point = SamplePath(d + Offset);
+
+        drawList->AddCircleFilled(point, radius, IM_COL32(255, 128, 64, alpha), 12);
+    }
+}
+
 bool ed::FlowAnimation::IsPathInvalidated() const
 {
-    return !Owner.IsLive ||
+    return !Link || !Link->IsLive ||
         Path.empty() ||
         PathLength <= 0.0f ||
-        to_imvec(Owner.StartPin->DragPoint) != LastStart ||
-        to_imvec(Owner.EndPin->DragPoint) != LastEnd;
+        to_imvec(Link->StartPin->DragPoint) != LastStart ||
+        to_imvec(Link->EndPin->DragPoint) != LastEnd;
 }
 
 void ed::FlowAnimation::UpdatePath()
 {
-    if (!Owner.IsLive)
+    if (!Link || !Link->IsLive)
     {
-        vector<pointf>().swap(Path);
-        PathLength = 0.0f;
+        ClearPath();
         return;
     }
+
+    const auto curve  = Link->GetBezier();
+
+    LastStart  = to_imvec(Link->StartPin->DragPoint);
+    LastEnd    = to_imvec(Link->EndPin->DragPoint);
+    PathLength = bezier_length(curve.p0, curve.p1, curve.p2, curve.p3);
+
+    Path.resize(0);
+
+    auto callback = [](bezier_fixed_step_result_t& result, void* userPointer)
+    {
+        auto self = reinterpret_cast<FlowAnimation*>(userPointer);
+        self->Path.push_back(CurvePoint{ result.length, to_imvec(result.point) });
+    };
+
+    bezier_fixed_step(callback, this, curve.p0, curve.p1, curve.p2, curve.p3, 10.0f, true);
+}
+
+void ed::FlowAnimation::ClearPath()
+{
+    vector<CurvePoint>().swap(Path);
+    PathLength = 0.0f;
+}
+
+ImVec2 ed::FlowAnimation::SamplePath(float distance)
+{
+    if (Path.empty())
+        return ImVec2(0, 0);
+
+    distance = std::max(0.0f, std::min(distance, PathLength));
+
+    auto endPointIt = std::find_if(Path.begin(), Path.end(), [distance](const CurvePoint& p) { return distance < p.Distance; });
+    if (endPointIt == Path.end() || endPointIt == Path.begin())
+        return ImVec2(0, 0);
+
+    const auto& start = endPointIt[-1];
+    const auto& end   = *endPointIt;
+    const auto  t     = (distance - start.Distance) / (end.Distance - start.Distance);
+
+    return start.Point + (end.Point - start.Point) * t;
 }
 
 void ed::FlowAnimation::OnUpdate(float progress)
@@ -1582,10 +1700,14 @@ void ed::FlowAnimation::OnUpdate(float progress)
         UpdatePath();
 
 
+    Offset += Speed * ImGui::GetIO().DeltaTime;
 }
 
 void ed::FlowAnimation::OnStop()
 {
+    Link = nullptr;
+
+    UpdatePath();
 }
 
 void ed::FlowAnimation::OnFinish()
@@ -2169,7 +2291,7 @@ bool ed::CreateItemAction::Process(const Control& control)
             if (DraggedPin->Kind == PinKind::Target)
                 std::swap(startPoint, endPoint);
 
-            drawList->ChannelsSetCurrent(c_LinkStartChannel + 2);
+            drawList->ChannelsSetCurrent(c_LinkStartChannel + 3);
 
             ax::Drawing::DrawLink(drawList, startPoint, endPoint, LinkColor, LinkThickness, GetStyle().LinkStrength);
         }

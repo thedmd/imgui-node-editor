@@ -146,6 +146,8 @@ struct Link final: Object
     void Draw(ImDrawList* drawList, float extraThickness = 0.0f) const;
     void Draw(ImDrawList* drawList, ImU32 color, float extraThickness = 0.0f) const;
 
+    bezier_t GetBezier() const;
+
     virtual bool TestHit(const ImVec2& point, float extraThickness = 0.0f) const override final;
     virtual bool TestHit(const ax::rectf& rect) const override final;
 
@@ -275,7 +277,7 @@ struct Animation
         Stopped
     };
 
-    Context* const  Editor;
+    Context*        Editor;
     State           State;
     float           Time;
     float           Duration;
@@ -289,6 +291,8 @@ struct Animation
     void Update();
 
     bool IsPlaying() const { return State == Playing; }
+
+    float GetProgress() const { return Time / Duration; }
 
 protected:
     virtual void OnPlay() {}
@@ -325,22 +329,37 @@ private:
 
 struct FlowAnimation final: Animation
 {
-    Link& Owner;
+    Link* Link;
     float Speed;
     float MarkerDistance;
+    float Offset;
 
-    FlowAnimation(Context* editor, Link* link);
+    FlowAnimation(Context* editor);
 
-    void Touch(float markerDistance, float speed, float duration);
+    FlowAnimation(FlowAnimation&&) = default;
+    FlowAnimation& operator=(FlowAnimation&&) = default;
+
+    void Flow(ax::Editor::Detail::Link* link, float markerDistance, float speed, float duration);
+
+    void Draw(ImDrawList* drawList);
 
 private:
-    ImVec2         LastStart;
-    ImVec2         LastEnd;
-    vector<pointf> Path;
-    float          PathLength;
+    struct CurvePoint
+    {
+        float  Distance;
+        ImVec2 Point;
+    };
+
+    ImVec2 LastStart;
+    ImVec2 LastEnd;
+    float  PathLength;
+    vector<CurvePoint> Path;
 
     bool IsPathInvalidated() const;
     void UpdatePath();
+    void ClearPath();
+
+    ImVec2 SamplePath(float distance);
 
     void OnUpdate(float progress) override final;
     void OnStop() override final;
@@ -716,6 +735,8 @@ struct Context
     void RegisterAnimation(Animation* animation);
     void UnregisterAnimation(Animation* animation);
 
+    void ShowFlow(Link* link);
+
 private:
     NodeSettings* FindNodeSettings(int id);
     NodeSettings* AddNodeSettings(int id);
@@ -747,6 +768,7 @@ private:
 
     vector<Animation*>  LiveAnimations;
     vector<Animation*>  LastLiveAnimations;
+    vector<FlowAnimation*> FlowAnimations;
 
     ImVec2              MousePosBackup;
     ImVec2              MouseClickPosBackup[5];
