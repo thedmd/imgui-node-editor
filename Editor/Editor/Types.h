@@ -13,6 +13,8 @@
 //------------------------------------------------------------------------------
 # include <algorithm>
 # include <type_traits>
+# include <vector>
+# include <map>
 
 
 //------------------------------------------------------------------------------
@@ -446,6 +448,20 @@ inline P bezier_dt(const P& p0, const P& p1, const P& p2, const P& p3, T t)
 
 
 //------------------------------------------------------------------------------
+struct bezier_t
+{
+    pointf p0;
+    pointf p1;
+    pointf p2;
+    pointf p3;
+};
+
+struct bezier_split_t
+{
+    bezier_t left;
+    bezier_t right;
+};
+
 struct bezier_project_result
 {
     float position;
@@ -657,6 +673,223 @@ inline rectf bezier_bounding_rect(const pointf& p0, const pointf& p1, const poin
 
     return rectf(tl, rb);
 }
+
+inline float bezier_length(const pointf& p0, const pointf& p1, const pointf& p2, const pointf& p3)
+{
+    // Legendre-Gauss abscissae with n=24 (x_i values, defined at i=n as the roots of the nth order Legendre polynomial Pn(x))
+    static const float t_values[] =
+    {
+        -0.0640568928626056260850430826247450385909f,
+         0.0640568928626056260850430826247450385909f,
+        -0.1911188674736163091586398207570696318404f,
+         0.1911188674736163091586398207570696318404f,
+        -0.3150426796961633743867932913198102407864f,
+         0.3150426796961633743867932913198102407864f,
+        -0.4337935076260451384870842319133497124524f,
+         0.4337935076260451384870842319133497124524f,
+        -0.5454214713888395356583756172183723700107f,
+         0.5454214713888395356583756172183723700107f,
+        -0.6480936519369755692524957869107476266696f,
+         0.6480936519369755692524957869107476266696f,
+        -0.7401241915785543642438281030999784255232f,
+         0.7401241915785543642438281030999784255232f,
+        -0.8200019859739029219539498726697452080761f,
+         0.8200019859739029219539498726697452080761f,
+        -0.8864155270044010342131543419821967550873f,
+         0.8864155270044010342131543419821967550873f,
+        -0.9382745520027327585236490017087214496548f,
+         0.9382745520027327585236490017087214496548f,
+        -0.9747285559713094981983919930081690617411f,
+         0.9747285559713094981983919930081690617411f,
+        -0.9951872199970213601799974097007368118745f,
+         0.9951872199970213601799974097007368118745f
+    };
+
+    // Legendre-Gauss weights with n=24 (w_i values, defined by a function linked to in the Bezier primer article)
+    static const float c_values[] =
+    {
+        0.1279381953467521569740561652246953718517f,
+        0.1279381953467521569740561652246953718517f,
+        0.1258374563468282961213753825111836887264f,
+        0.1258374563468282961213753825111836887264f,
+        0.1216704729278033912044631534762624256070f,
+        0.1216704729278033912044631534762624256070f,
+        0.1155056680537256013533444839067835598622f,
+        0.1155056680537256013533444839067835598622f,
+        0.1074442701159656347825773424466062227946f,
+        0.1074442701159656347825773424466062227946f,
+        0.0976186521041138882698806644642471544279f,
+        0.0976186521041138882698806644642471544279f,
+        0.0861901615319532759171852029837426671850f,
+        0.0861901615319532759171852029837426671850f,
+        0.0733464814110803057340336152531165181193f,
+        0.0733464814110803057340336152531165181193f,
+        0.0592985849154367807463677585001085845412f,
+        0.0592985849154367807463677585001085845412f,
+        0.0442774388174198061686027482113382288593f,
+        0.0442774388174198061686027482113382288593f,
+        0.0285313886289336631813078159518782864491f,
+        0.0285313886289336631813078159518782864491f,
+        0.0123412297999871995468056670700372915759f,
+        0.0123412297999871995468056670700372915759f
+    };
+
+    static_assert(sizeof(t_values) / sizeof(*t_values) == sizeof(c_values) / sizeof(*c_values), "");
+
+    auto arc = [p0, p1, p2, p3](float t)
+    {
+        const auto p = bezier_dt(p0, p1, p2, p3, t);
+        const auto l = p.x * p.x + p.y * p.y;
+        return sqrtf(l);
+    };
+
+    const auto z = 0.5f;
+    const auto n = sizeof(t_values) / sizeof(*t_values);
+
+    auto accumulator = 0.0f;
+    for (size_t i = 0; i < n; ++i)
+    {
+        const auto t = z * t_values[i] + z;
+        accumulator += c_values[i] * arc(t);
+    }
+
+    return z * accumulator;
+}
+
+inline bezier_split_t bezier_split(const pointf& p0, const pointf& p1, const pointf& p2, const pointf& p3, float t)
+{
+    const auto z1 = t;
+    const auto z2 = z1 * z1;
+    const auto z3 = z1 * z1 * z1;
+    const auto s1 = z1 - 1;
+    const auto s2 = s1 * s1;
+    const auto s3 = s1 * s1 * s1;
+
+    return bezier_split_t
+    {
+        bezier_t
+        {
+                                                                 p0,
+                                             z1      * p1 - s1 * p0,
+                          z2      * p2 - 2 * z1 * s1 * p1 + s2 * p0,
+            z3 * p3 - 3 * z2 * s1 * p2 + 3 * z1 * s2 * p1 - s3 * p0
+        },
+        bezier_t
+        {
+            z3 * p0 - 3 * z2 * s1 * p1 + 3 * z1 * s2 * p2 - s3 * p3,
+                          z2      * p1 - 2 * z1 * s1 * p2 + s2 * p3,
+                                             z1      * p2 - s1 * p3,
+                                                                 p3,
+        }
+    };
+};
+
+struct bezier_fixed_step_result_t
+{
+    float  t;
+    float  length;
+    pointf point;
+    bool   break_search;
+
+    bezier_fixed_step_result_t(): t(0), length(0), point(), break_search(false) {}
+};
+
+typedef void(*bezier_fixed_step_callback_t)(bezier_fixed_step_result_t& result, void* userPointer);
+
+inline void bezier_fixed_step(bezier_fixed_step_callback_t callback, void* userPointer, const pointf& p0, const pointf& p1, const pointf& p2, const pointf& p3, float step, bool overshoot = false)
+{
+    if (step <= 0.0f || !callback)
+        return;
+
+    bezier_fixed_step_result_t result;
+    result.point        = p0;
+
+    callback(result, userPointer);
+    if (result.break_search)
+        return;
+
+    const auto max_error    = 0.001f;
+    const auto max_t_error  = 0.00001f;
+    const auto length       = bezier_length(p0, p1, p2, p3);
+    const auto point_count  = static_cast<int>(length / step) + (overshoot ? 2 : 1);
+    const auto t_min        = 0.0f;
+    const auto t_max        = overshoot ? 2.0f : 1.0f;
+    const auto t_0          = (t_min + t_max) * 0.5f;
+
+    std::map<float, float> cache;
+    for (int point_index = 1; point_index < point_count; ++point_index)
+    {
+        const auto targetLength = point_index * step;
+
+        float t_start = t_min;
+        float t_end   = t_max;
+        float t       = t_0;
+
+        float t_best     = t;
+        float error_best = length;
+
+        while (true)
+        {
+            auto cacheIt = cache.find(t);
+            if (cacheIt == cache.end())
+            {
+                const auto front    = bezier_split(p0, p1, p2, p3, t).left;
+                const auto length   = bezier_length(front.p0, front.p1, front.p2, front.p3);
+
+                cacheIt = cache.emplace(t, length).first;
+            }
+
+            const auto length   = cacheIt->second;
+            const auto error    = targetLength - length;
+
+            if (error < error_best)
+            {
+                error_best = error;
+                t_best     = t;
+            }
+
+            if (fabsf(error) <= max_error || fabsf(t_start - t_end) <= max_t_error)
+            {
+                result.t      = t;
+                result.length = length;
+                result.point  = bezier(p0, p1, p2, p3, t);
+
+                callback(result, userPointer);
+                if (result.break_search)
+                    return;
+
+                break;
+            }
+            else if (error < 0.0f)
+                t_end = t;
+            else // if (error > 0.0f)
+                t_start = t;
+
+            t = (t_start + t_end) * 0.5f;
+        }
+    }
+}
+
+inline void bezier_fixed_step(std::vector<pointf>& points, const pointf& p0, const pointf& p1, const pointf& p2, const pointf& p3, float step, bool overshoot = false)
+{
+    points.resize(0);
+
+    auto callback = [](bezier_fixed_step_result_t& result, void* userPointer)
+    {
+        auto& points = *reinterpret_cast<std::vector<pointf>*>(userPointer);
+        points.push_back(result.point);
+    };
+
+    bezier_fixed_step(callback, &points, p0, p1, p2, p3, step, overshoot);
+}
+
+inline std::vector<pointf> bezier_fixed_step(const pointf& p0, const pointf& p1, const pointf& p2, const pointf& p3, float step, bool overshoot = false)
+{
+    std::vector<pointf> result;
+    bezier_fixed_step(result, p0, p1, p2, p3, step, overshoot);
+    return result;
+}
+
 
 
 //------------------------------------------------------------------------------
