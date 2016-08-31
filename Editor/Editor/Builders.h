@@ -10,9 +10,9 @@ namespace Utilities {
 
 
 //------------------------------------------------------------------------------
-struct BluepringNodeBuilder
+struct BlueprintNodeBuilder
 {
-    BluepringNodeBuilder(ImTextureID texture = nullptr, int textureWidth = 0, int textureHeight = 0);
+    BlueprintNodeBuilder(ImTextureID texture = nullptr, int textureWidth = 0, int textureHeight = 0);
 
     void Begin(int id);
     void End();

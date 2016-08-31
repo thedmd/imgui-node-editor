@@ -7,7 +7,7 @@
 namespace ed   = ax::Editor;
 namespace util = ax::Editor::Utilities;
 
-util::BluepringNodeBuilder::BluepringNodeBuilder(ImTextureID texture, int textureWidth, int textureHeight):
+util::BlueprintNodeBuilder::BlueprintNodeBuilder(ImTextureID texture, int textureWidth, int textureHeight):
     HeaderTextureId(texture),
     HeaderTextureWidth(textureWidth),
     HeaderTextureHeight(textureHeight),
@@ -16,7 +16,7 @@ util::BluepringNodeBuilder::BluepringNodeBuilder(ImTextureID texture, int textur
 {
 }
 
-void util::BluepringNodeBuilder::Begin(int id)
+void util::BlueprintNodeBuilder::Begin(int id)
 {
     ed::PushStyleVar(StyleVar_NodePadding, ImVec4(8, 4, 8, 8));
 
@@ -28,7 +28,7 @@ void util::BluepringNodeBuilder::Begin(int id)
     SetStage(Stage::Begin);
 }
 
-void util::BluepringNodeBuilder::End()
+void util::BlueprintNodeBuilder::End()
 {
     using namespace ImGuiInterop;
 
@@ -84,18 +84,18 @@ void util::BluepringNodeBuilder::End()
     SetStage(Stage::Invalid);
 }
 
-void util::BluepringNodeBuilder::Header(const ImVec4& color)
+void util::BlueprintNodeBuilder::Header(const ImVec4& color)
 {
     HeaderColor = ImColor(color);
     SetStage(Stage::Header);
 }
 
-void util::BluepringNodeBuilder::EndHeader()
+void util::BlueprintNodeBuilder::EndHeader()
 {
     SetStage(Stage::Content);
 }
 
-void util::BluepringNodeBuilder::Input(int id)
+void util::BlueprintNodeBuilder::Input(int id)
 {
     if (CurrentStage == Stage::Begin)
         SetStage(Stage::Content);
@@ -112,14 +112,14 @@ void util::BluepringNodeBuilder::Input(int id)
     ImGui::BeginHorizontal(id);
 }
 
-void util::BluepringNodeBuilder::EndInput()
+void util::BlueprintNodeBuilder::EndInput()
 {
     ImGui::EndHorizontal();
 
     EndPin();
 }
 
-void util::BluepringNodeBuilder::Output(int id)
+void util::BlueprintNodeBuilder::Output(int id)
 {
     if (CurrentStage == Stage::Begin)
         SetStage(Stage::Content);
@@ -139,14 +139,14 @@ void util::BluepringNodeBuilder::Output(int id)
     ImGui::BeginHorizontal(id);
 }
 
-void util::BluepringNodeBuilder::EndOutput()
+void util::BlueprintNodeBuilder::EndOutput()
 {
     ImGui::EndHorizontal();
 
     EndPin();
 }
 
-bool util::BluepringNodeBuilder::SetStage(Stage stage)
+bool util::BlueprintNodeBuilder::SetStage(Stage stage)
 {
     using namespace ImGuiInterop;
 
@@ -227,14 +227,14 @@ bool util::BluepringNodeBuilder::SetStage(Stage stage)
     return true;
 }
 
-void util::BluepringNodeBuilder::Pin(int id, ed::PinKind kind)
+void util::BlueprintNodeBuilder::Pin(int id, ed::PinKind kind)
 {
     const ImVec2 pivot = kind == ed::PinKind::Source ? ImVec2(1.0f, 0.5f) : ImVec2(0.0f, 0.5f);
 
     ed::BeginPin(id, kind, pivot);
 }
 
-void util::BluepringNodeBuilder::EndPin()
+void util::BlueprintNodeBuilder::EndPin()
 {
     ed::EndPin();
 }
