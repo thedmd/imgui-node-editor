@@ -1,4 +1,4 @@
-#include "application.h"
+﻿#include "application.h"
 #include <string>
 #include <vector>
 #include <map>
@@ -553,6 +553,8 @@ void Application_Frame()
     {
         auto cursorTopLeft = ImGui::GetCursorScreenPos();
 
+        util::BlueprintNodeBuilder builder(s_HeaderBackground, ImGui_GetTextureWidth(s_HeaderBackground), ImGui_GetTextureHeight(s_HeaderBackground));
+
         for (auto& node : s_Nodes)
         {
             bool hasOutputDelegates = false;
@@ -560,7 +562,6 @@ void Application_Frame()
                 if (output.Type == PinType::Delegate)
                     hasOutputDelegates = true;
 
-            util::BluepringNodeBuilder builder(s_HeaderBackground, ImGui_GetTextureWidth(s_HeaderBackground), ImGui_GetTextureHeight(s_HeaderBackground));
             builder.Begin(node.ID);
                 builder.Header(node.Color);
                     ImGui::Spring(0);
