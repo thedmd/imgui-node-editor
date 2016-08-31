@@ -1129,22 +1129,7 @@ ed::Link* ed::Context::FindLinkAt(const ax::point& p)
 
 ax::rectf ed::Context::GetBounds(Object* object)
 {
-    if (object && object->IsLive)
-    {
-        if (auto node = object->AsNode())
-        {
-            return rectf(to_pointf(node->Bounds.top_left()), to_pointf(node->Bounds.bottom_right()));
-        }
-        else if (auto link = object->AsLink())
-        {
-            const auto startPoint = link->StartPin->DragPoint;
-            const auto endPoint   = link->EndPin->DragPoint;
-
-            return ax::Drawing::GetLinkBounds(to_imvec(startPoint), to_imvec(endPoint), GetStyle().LinkStrength);
-        }
-    }
-
-    return ax::rectf();
+    return object->GetBounds();
 }
 
 ImU32 ed::Context::GetColor(StyleColor colorIndex) const
@@ -1603,8 +1588,9 @@ bool ax::Editor::Detail::ScrollAction::Accept(const Control& control)
 
     if (ImGui::IsKeyPressed(ImGui::GetKeyIndex(ImGuiKey_F)))
     {
-        auto& selection = Editor->GetSelectedObjects();
-        if (!selection.empty())
+        if (control.HotObject)
+            Editor->NavigateToObject(control.HotObject->AsPin() ? control.HotObject->AsPin()->Node : control.HotObject, io.KeyShift);
+        else if (!Editor->GetSelectedObjects().empty())
             Editor->NavigateToSelection(io.KeyShift);
         else
             Editor->NavigateToContent();
