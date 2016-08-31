@@ -275,11 +275,12 @@ struct Animation
         Stopped
     };
 
-    State State;
-    float Time;
-    float Duration;
+    Context* const  Editor;
+    State           State;
+    float           Time;
+    float           Duration;
 
-    Animation();
+    Animation(Context* editor);
     virtual ~Animation();
 
     void Play(float duration);
@@ -297,7 +298,6 @@ protected:
 
 struct ScrollAnimation final: Animation
 {
-    Context*      Editor;
     ScrollAction& Action;
     ImVec2        Start;
     float         StartZoom;
@@ -371,8 +371,6 @@ struct ScrollAction final: EditorAction
     void NavigateTo(const ax::rectf& bounds, bool zoomIn, float duration = -1.0f, NavigationReason reason = NavigationReason::Unknown);
     void StopNavigation();
     void FinishNavigation();
-
-    void Update();
 
     void SetWindow(ImVec2 position, ImVec2 size);
 
@@ -689,6 +687,9 @@ struct Context
 
     void NavigateTo(const rectf& bounds, bool zoomIn = false, float duration = -1) { ScrollAction.NavigateTo(bounds, zoomIn, duration); }
 
+    void RegisterAnimation(Animation* animation);
+    void UnregisterAnimation(Animation* animation);
+
 private:
     NodeSettings* FindNodeSettings(int id);
     NodeSettings* AddNodeSettings(int id);
@@ -701,6 +702,8 @@ private:
 
     void CaptureMouse();
     void ReleaseMouse();
+
+    void UpdateAnimations();
 
     Style               Style;
 
@@ -715,6 +718,9 @@ private:
     bool                SelectionChanged;
 
     Link*               LastActiveLink;
+
+    vector<Animation*>  LiveAnimations;
+    vector<Animation*>  LastLiveAnimations;
 
     ImVec2              MousePosBackup;
     ImVec2              MouseClickPosBackup[5];

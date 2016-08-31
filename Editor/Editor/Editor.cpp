@@ -399,7 +399,7 @@ void ed::Context::Begin(const char* id, const ImVec2& size)
         ImGuiWindowFlags_NoScrollbar |
         ImGuiWindowFlags_NoScrollWithMouse);
 
-    ScrollAction.Update();
+    UpdateAnimations();
 
     ScrollAction.SetWindow(ImGui::GetWindowPos(), ImGui::GetWindowSize());
 
@@ -1133,6 +1133,31 @@ ImU32 ed::Context::GetColor(StyleColor colorIndex, float alpha) const
     return ImColor(color.x, color.y, color.z, color.w * alpha);
 }
 
+void ed::Context::RegisterAnimation(Animation* animation)
+{
+    LiveAnimations.push_back(animation);
+}
+
+void ed::Context::UnregisterAnimation(Animation* animation)
+{
+    auto it = std::find(LiveAnimations.begin(), LiveAnimations.end(), animation);
+    if (it != LiveAnimations.end())
+        LiveAnimations.erase(it);
+}
+
+void ed::Context::UpdateAnimations()
+{
+    LastLiveAnimations = LiveAnimations;
+
+    for (auto animation : LastLiveAnimations)
+    {
+        const bool isLive = (std::find(LiveAnimations.begin(), LiveAnimations.end(), animation) != LiveAnimations.end());
+
+        if (isLive)
+            animation->Update();
+    }
+}
+
 ed::Control ed::Context::ComputeControl()
 {
     if (!ImGui::IsWindowHovered())
@@ -1389,7 +1414,8 @@ ImVec2 ed::Canvas::ToClient(ImVec2 point)
 // Animation
 //
 //------------------------------------------------------------------------------
-ed::Animation::Animation():
+ed::Animation::Animation(Context* editor):
+    Editor(editor),
     State(Stopped),
     Time(0.0f),
     Duration(0.0f)
@@ -1413,6 +1439,8 @@ void ed::Animation::Play(float duration)
     Time     = 0.0f;
     Duration = duration;
 
+    Editor->RegisterAnimation(this);
+
     OnPlay();
 
     if (duration == 0.0f)
@@ -1425,6 +1453,8 @@ void ed::Animation::Stop()
         return;
 
     State = Stopped;
+
+    Editor->UnregisterAnimation(this);
 
     OnStop();
 }
@@ -1466,7 +1496,7 @@ void ed::Animation::Update()
 //
 //------------------------------------------------------------------------------
 ed::ScrollAnimation::ScrollAnimation(Context* editor, ScrollAction& scrollAction):
-    Editor(editor),
+    Animation(editor),
     Action(scrollAction)
 {
 }
@@ -1702,11 +1732,6 @@ void ed::ScrollAction::StopNavigation()
 void ed::ScrollAction::FinishNavigation()
 {
     Animation.Finish();
-}
-
-void ed::ScrollAction::Update()
-{
-    Animation.Update();
 }
 
 void ed::ScrollAction::SetWindow(ImVec2 position, ImVec2 size)
