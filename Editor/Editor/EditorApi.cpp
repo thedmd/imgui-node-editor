@@ -369,10 +369,10 @@ void ax::Editor::DeselectLink(int linkId)
 
 void ax::Editor::NavigateToContent(float duration)
 {
-    s_Editor->NavigateToContent(duration);
+    s_Editor->NavigateTo(s_Editor->GetContentBounds(), true, duration);
 }
 
 void ax::Editor::NavigateToSelection(bool zoomIn, float duration)
 {
-    s_Editor->NavigateToSelection(zoomIn, duration);
+    s_Editor->NavigateTo(s_Editor->GetSelectionBounds(), zoomIn, duration);
 }

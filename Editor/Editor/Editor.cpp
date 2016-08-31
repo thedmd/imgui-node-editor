@@ -336,7 +336,7 @@ ed::Context::Context(const ax::Editor::Config* config):
     Nodes(),
     Pins(),
     Links(),
-    SelectionChanged(false),
+    SelectionId(1),
     LastActiveLink(nullptr),
     MousePosBackup(0, 0),
     MouseClickPosBackup(),
@@ -399,7 +399,7 @@ void ed::Context::Begin(const char* id, const ImVec2& size)
         ImGuiWindowFlags_NoScrollbar |
         ImGuiWindowFlags_NoScrollWithMouse);
 
-    ScrollAction.Animation.Update();
+    ScrollAction.Update();
 
     ScrollAction.SetWindow(ImGui::GetWindowPos(), ImGui::GetWindowSize());
 
@@ -431,7 +431,10 @@ void ed::Context::Begin(const char* id, const ImVec2& size)
     auto drawList = ImGui::GetWindowDrawList();
     ImDrawList_ChannelsGrow(drawList, c_NodeStartChannel);
 
-    SelectionChanged = false;
+    if (HasSelectionChanged())
+        ++SelectionId;
+
+    LastSelectedObjects = SelectedObjects;
 }
 
 void ed::Context::End()
@@ -530,7 +533,7 @@ void ed::Context::End()
         CurrentAction = nullptr;
 
     if (CurrentAction || io.MouseDown[0] || io.MouseDown[1] || io.MouseDown[2])
-        ScrollAction.Animation.Stop();
+        ScrollAction.StopNavigation();
 
     if (nullptr == CurrentAction)
     {
@@ -717,27 +720,19 @@ ImVec2 ed::Context::GetNodePosition(int nodeId)
 
 void ed::Context::ClearSelection()
 {
-    if (!SelectedObjects.empty())
-        SelectionChanged = true;
-
     SelectedObjects.clear();
 }
 
 void ed::Context::SelectObject(Object* object)
 {
     SelectedObjects.push_back(object);
-
-    SelectionChanged = true;
 }
 
 void ed::Context::DeselectObject(Object* object)
 {
     auto objectIt = std::find(SelectedObjects.begin(), SelectedObjects.end(), object);
     if (objectIt != SelectedObjects.end())
-    {
         SelectedObjects.erase(objectIt);
-        SelectionChanged = true;
-    }
 }
 
 void ed::Context::SetSelectedObject(Object* object)
@@ -784,7 +779,7 @@ bool ed::Context::IsAnyLinkSelected()
 
 bool ed::Context::HasSelectionChanged()
 {
-    return SelectionChanged;
+    return LastSelectedObjects != SelectedObjects;
 }
 
 void ed::Context::FindNodesInRect(const ax::rectf& r, vector<Node*>& result)
@@ -1127,11 +1122,6 @@ ed::Link* ed::Context::FindLinkAt(const ax::point& p)
     return nullptr;
 }
 
-ax::rectf ed::Context::GetBounds(Object* object)
-{
-    return object->GetBounds();
-}
-
 ImU32 ed::Context::GetColor(StyleColor colorIndex) const
 {
     return ImColor(Style.Colors[colorIndex]);
@@ -1141,37 +1131,6 @@ ImU32 ed::Context::GetColor(StyleColor colorIndex, float alpha) const
 {
     auto color = Style.Colors[colorIndex];
     return ImColor(color.x, color.y, color.z, color.w * alpha);
-}
-
-void ed::Context::NavigateTo(const ax::rectf& bounds, bool zoomIn, float duration)
-{
-    if (bounds.is_empty())
-        return;
-
-    auto canvas = ScrollAction.GetCanvas(false);
-
-    const auto selectionBounds     = bounds;
-    const auto visibleBounds       = canvas.GetVisibleBounds();
-
-    const auto visibleBoundsMargin = 0.1f;
-    const auto targetVisibleSize   = static_cast<pointf>(visibleBounds.size) - static_cast<pointf>(visibleBounds.size) * visibleBoundsMargin;
-    const auto sourceSize          = static_cast<pointf>(selectionBounds.size);
-    const auto ratio               = sourceSize.cwise_safe_quotient(targetVisibleSize);
-    const auto maxRatio            = std::max(ratio.x, ratio.y);
-    const auto zoomChange          = maxRatio ? 1.0f / (zoomIn ? maxRatio : std::max(maxRatio, 1.0f)) : 1.0f;
-
-    ed::ScrollAction action = ScrollAction;
-    action.Zoom *= zoomChange;
-
-    const auto targetBounds    = action.GetCanvas(false).GetVisibleBounds();
-    const auto selectionCenter = to_imvec(selectionBounds.center());
-    const auto targetCenter    = to_imvec(targetBounds.center());
-    const auto offset          = selectionCenter - targetCenter;
-
-    ScrollAction.Animation.ScrollTo(
-        action.Scroll + offset * action.Zoom,
-        action.Zoom,
-        GetStyle().ScrollDuration);
 }
 
 ed::Control ed::Context::ComputeControl()
@@ -1512,7 +1471,7 @@ ed::ScrollAnimation::ScrollAnimation(Context* editor, ScrollAction& scrollAction
 {
 }
 
-void ed::ScrollAnimation::ScrollTo(const ImVec2& target, float targetZoom, float duration)
+void ed::ScrollAnimation::NavigateTo(const ImVec2& target, float targetZoom, float duration)
 {
     Stop();
 
@@ -1566,7 +1525,10 @@ ed::ScrollAction::ScrollAction(Context* editor):
     Animation(editor, *this),
     WindowScreenPos(0, 0),
     WindowScreenSize(0, 0),
-    ScrollStart(0, 0)
+    ScrollStart(0, 0),
+    Reason(NavigationReason::Unknown),
+    LastSelectionId(0),
+    LastObject(nullptr)
 {
 }
 
@@ -1588,12 +1550,37 @@ bool ax::Editor::Detail::ScrollAction::Accept(const Control& control)
 
     if (ImGui::IsKeyPressed(ImGui::GetKeyIndex(ImGuiKey_F)))
     {
-        if (control.HotObject)
-            Editor->NavigateToObject(control.HotObject->AsPin() ? control.HotObject->AsPin()->Node : control.HotObject, io.KeyShift);
-        else if (!Editor->GetSelectedObjects().empty())
-            Editor->NavigateToSelection(io.KeyShift);
+        const auto  allowZoomIn = io.KeyShift;
+
+        bool navigateToContent = false;
+        if (!Editor->GetSelectedObjects().empty())
+        {
+            if (Reason != NavigationReason::Selection || LastSelectionId != Editor->GetSelectionId())
+            {
+                LastSelectionId = Editor->GetSelectionId();
+                NavigateTo(Editor->GetSelectionBounds(), allowZoomIn, -1.0f, NavigationReason::Selection);
+            }
+            else
+                navigateToContent = true;
+        }
+        else if(control.HotObject)
+        {
+            auto object = control.HotObject->AsPin() ? control.HotObject->AsPin()->Node : control.HotObject;
+
+            if (Reason != NavigationReason::Object || LastObject != object)
+            {
+                LastObject = object;
+                auto bounds = (control.HotObject->AsPin() ? control.HotObject->AsPin()->Node : control.HotObject)->GetBounds();
+                NavigateTo(bounds, allowZoomIn, -1.0f, NavigationReason::Object);
+            }
+            else
+                navigateToContent = true;
+        }
         else
-            Editor->NavigateToContent();
+            navigateToContent = true;
+
+        if (navigateToContent)
+            NavigateTo(Editor->GetContentBounds(), true, -1.0f, NavigationReason::Content);
     }
 
     // // #debug
@@ -1624,7 +1611,7 @@ bool ax::Editor::Detail::ScrollAction::Accept(const Control& control)
         Scroll = savedScroll;
         Zoom   = savedZoom;
 
-        Animation.ScrollTo(targetScroll, newZoom, 0.15f);
+        NavigateTo(targetScroll, newZoom, 0.15f, NavigationReason::MouseZoom);
 
         return true;
     }
@@ -1660,6 +1647,66 @@ void ed::ScrollAction::ShowMetrics()
     ImGui::Text("    Active: %s", IsActive ? "yes" : "no");
     ImGui::Text("    Scroll: { x=%g y=%g }", Scroll.x, Scroll.y);
     ImGui::Text("    Zoom: %g", Zoom);
+}
+
+void ed::ScrollAction::NavigateTo(const ax::rectf& bounds, bool zoomIn, float duration, NavigationReason reason)
+{
+    if (bounds.is_empty())
+        return;
+
+    auto canvas = GetCanvas(false);
+
+    const auto selectionBounds     = bounds;
+    const auto visibleBounds       = canvas.GetVisibleBounds();
+
+    const auto visibleBoundsMargin = 0.1f;
+    const auto targetVisibleSize   = static_cast<pointf>(visibleBounds.size) - static_cast<pointf>(visibleBounds.size) * visibleBoundsMargin;
+    const auto sourceSize          = static_cast<pointf>(selectionBounds.size);
+    const auto ratio               = sourceSize.cwise_safe_quotient(targetVisibleSize);
+    const auto maxRatio            = std::max(ratio.x, ratio.y);
+    const auto zoomChange          = maxRatio ? 1.0f / (zoomIn ? maxRatio : std::max(maxRatio, 1.0f)) : 1.0f;
+
+    auto action = *this;
+    action.Zoom *= zoomChange;
+
+    const auto targetBounds    = action.GetCanvas(false).GetVisibleBounds();
+    const auto selectionCenter = to_imvec(selectionBounds.center());
+    const auto targetCenter    = to_imvec(targetBounds.center());
+    const auto offset          = selectionCenter - targetCenter;
+
+    action.Scroll = action.Scroll + offset * action.Zoom;
+
+    const auto scrollOffset = action.Scroll - Scroll;
+    const auto zoomOffset   = action.Zoom   - Zoom;
+
+    const auto epsilon = 1e-4f;
+
+    if (fabsf(scrollOffset.x) < epsilon && fabsf(scrollOffset.y) < epsilon && fabsf(zoomOffset) < epsilon)
+        NavigateTo(action.Scroll, action.Zoom, 0, reason);
+    else
+        NavigateTo(action.Scroll, action.Zoom, GetStyle().ScrollDuration, reason);
+}
+
+void ed::ScrollAction::NavigateTo(const ImVec2& target, float targetZoom, float duration, NavigationReason reason)
+{
+    Reason = reason;
+
+    Animation.NavigateTo(target, targetZoom, duration);
+}
+
+void ed::ScrollAction::StopNavigation()
+{
+    Animation.Stop();
+}
+
+void ed::ScrollAction::FinishNavigation()
+{
+    Animation.Finish();
+}
+
+void ed::ScrollAction::Update()
+{
+    Animation.Update();
 }
 
 void ed::ScrollAction::SetWindow(ImVec2 position, ImVec2 size)

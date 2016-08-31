@@ -306,7 +306,7 @@ struct ScrollAnimation final: Animation
 
     ScrollAnimation(Context* editor, ScrollAction& scrollAction);
 
-    void ScrollTo(const ImVec2& target, float targetZoom, float duration);
+    void NavigateTo(const ImVec2& target, float targetZoom, float duration);
 
 private:
     // http://gizma.com/easing/#quint2
@@ -344,10 +344,18 @@ struct EditorAction
 
 struct ScrollAction final: EditorAction
 {
+    enum class NavigationReason
+    {
+        Unknown,
+        MouseZoom,
+        Selection,
+        Object,
+        Content
+    };
+
     bool            IsActive;
     float           Zoom;
     ImVec2          Scroll;
-    ScrollAnimation Animation;
 
     ScrollAction(Context* editor);
 
@@ -360,6 +368,12 @@ struct ScrollAction final: EditorAction
 
     virtual ScrollAction* AsScroll() override final { return this; }
 
+    void NavigateTo(const ax::rectf& bounds, bool zoomIn, float duration = -1.0f, NavigationReason reason = NavigationReason::Unknown);
+    void StopNavigation();
+    void FinishNavigation();
+
+    void Update();
+
     void SetWindow(ImVec2 position, ImVec2 size);
 
     Canvas GetCanvas(bool alignToPixels = true);
@@ -368,6 +382,13 @@ private:
     ImVec2 WindowScreenPos;
     ImVec2 WindowScreenSize;
     ImVec2 ScrollStart;
+
+    ScrollAnimation  Animation;
+    NavigationReason Reason;
+    uint64_t         LastSelectionId;
+    Object*          LastObject;
+
+    void NavigateTo(const ImVec2& target, float targetZoom, float duration = -1.0f, NavigationReason reason = NavigationReason::Unknown);
 
     float MatchZoom(int steps, float fallbackZoom);
     int MatchZoomIndex(int direction);
@@ -616,6 +637,7 @@ struct Context
     bool IsAnyNodeSelected();
     bool IsAnyLinkSelected();
     bool HasSelectionChanged();
+    uint64_t GetSelectionId() const { return SelectionId; }
 
     void FindNodesInRect(const ax::rectf& r, vector<Node*>& result);
     void FindLinksInRect(const ax::rectf& r, vector<Link*>& result);
@@ -648,30 +670,24 @@ struct Context
 
     Link* FindLinkAt(const point& p);
 
-    ax::rectf GetBounds(Object* object);
     template <typename T>
     ax::rectf GetBounds(const std::vector<T*>& objects)
     {
         ax::rectf bounds;
 
         for (auto object : objects)
-            bounds = make_union(bounds, GetBounds(object));
+            bounds = make_union(bounds, object->GetBounds());
 
         return bounds;
     }
 
+    ax::rectf GetSelectionBounds() { return GetBounds(SelectedObjects); }
+    ax::rectf GetContentBounds() { return GetBounds(Nodes); }
+
     ImU32 GetColor(StyleColor colorIndex) const;
     ImU32 GetColor(StyleColor colorIndex, float alpha) const;
 
-    void NavigateTo(const rectf& bounds, bool zoomIn = false, float duration = -1);
-    void NavigateToObject(Object* object, bool zoomIn = false, float duration = -1) { NavigateTo(GetBounds(object), zoomIn, duration); }
-    template <typename T>
-    void NavigateToObjects(const std::vector<T*>& objects, bool zoomIn = false, float duration = -1)
-    {
-        NavigateTo(GetBounds(objects), zoomIn, duration);
-    }
-    void NavigateToContent(float duration = -1) { NavigateTo(GetBounds(Nodes), true, duration); }
-    void NavigateToSelection(bool zoomIn = false, float duration = -1) { NavigateToObjects(SelectedObjects, zoomIn, duration); }
+    void NavigateTo(const rectf& bounds, bool zoomIn = false, float duration = -1) { ScrollAction.NavigateTo(bounds, zoomIn, duration); }
 
 private:
     NodeSettings* FindNodeSettings(int id);
@@ -693,6 +709,9 @@ private:
     vector<Link*>       Links;
 
     vector<Object*>     SelectedObjects;
+
+    vector<Object*>     LastSelectedObjects;
+    uint64_t            SelectionId;
     bool                SelectionChanged;
 
     Link*               LastActiveLink;
