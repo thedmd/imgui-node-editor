@@ -235,34 +235,15 @@ void ax::Drawing::DrawHeader(ImDrawList* drawList, ImTextureID textureId, const 
     }
 }
 
-static float EaseLinkStrength(const ImVec2& a, const ImVec2& b, float strength)
-{
-    const auto distanceX    = b.x - a.x;
-    const auto distanceY    = b.y - a.y;
-    const auto distance     = sqrtf(distanceX * distanceX + distanceY * distanceY);
-    const auto halfDistance = distance * 0.5f;
-
-    if (halfDistance < strength)
-        strength = strength * sinf(ax::AX_PI * 0.5f * halfDistance / strength);
-
-    return strength;
-}
-
 void ax::Drawing::DrawLink(ImDrawList* drawList, const ImVec2& a, const ImVec2& b, ImU32 color, float thickness/* = 1.0f*/, float strength/* = 1.0f*/, const ImVec2& a_dir/* = ImVec2(1, 0)*/, const ImVec2& b_dir/* = ImVec2(1, 0)*/)
 {
     using namespace ImGuiInterop;
 
     if (strength != 0.0f)
     {
-        strength = EaseLinkStrength(a, b, strength);
+        const auto bezier = GetLinkBezier(a, b, strength, a_dir, b_dir);
 
-        ImVec2 cp0 = a + a_dir * strength;
-        ImVec2 cp1 = b + b_dir * strength;
-
-        //drawList->AddCircleFilled(cp0, 4.0f, 0xFFFF00FF);
-        //drawList->AddCircleFilled(cp1, 4.0f, 0xFFFF00FF);
-
-        drawList->AddBezierCurve(a, cp0, cp1, b, color, thickness);
+        drawList->AddBezierCurve(to_imvec(bezier.p0), to_imvec(bezier.p1), to_imvec(bezier.p2), to_imvec(bezier.p3), color, thickness);
     }
     else
         drawList->AddLine(a, b, color, thickness);
@@ -272,13 +253,9 @@ float ax::Drawing::LinkDistance(const ImVec2& p, const ImVec2& a, const ImVec2& 
 {
     using namespace ImGuiInterop;
 
-    strength = EaseLinkStrength(a, b, strength);
+    const auto bezier = GetLinkBezier(a, b, strength, a_dir, b_dir);
 
-    ImVec2 cp0 = a + a_dir * strength;
-    ImVec2 cp1 = b + b_dir * strength;
-
-    auto result = bezier_project_point(to_pointf(p),
-        to_pointf(a), to_pointf(cp0), to_pointf(cp1), to_pointf(b), 50);
+    auto result = bezier_project_point(to_pointf(p), bezier.p0, bezier.p1, bezier.p2, bezier.p3, 50);
 
     return result.distance;
 }
@@ -289,12 +266,9 @@ ax::rectf ax::Drawing::GetLinkBounds(const ImVec2& a, const ImVec2& b, float str
 
     if (strength != 0.0f)
     {
-        strength = EaseLinkStrength(a, b, strength);
+        const auto bezier = GetLinkBezier(a, b, strength, a_dir, b_dir);
 
-        ImVec2 cp0 = a + a_dir * strength;
-        ImVec2 cp1 = b + b_dir * strength;
-
-        return bezier_bounding_rect(to_pointf(a), to_pointf(cp0), to_pointf(cp1), to_pointf(b));
+        return bezier_bounding_rect(bezier.p0, bezier.p1, bezier.p2, bezier.p3);
     }
     else
     {
@@ -306,25 +280,47 @@ bool ax::Drawing::CollideLinkWithRect(const ax::rectf& r, const ImVec2& a, const
 {
     using namespace ImGuiInterop;
 
-    strength = EaseLinkStrength(a, b, strength);
+    const auto bezier = GetLinkBezier(a, b, strength, a_dir, b_dir);
 
-    ImVec2 cp0 = a + a_dir * strength;
-    ImVec2 cp1 = b + b_dir * strength;
-
-    auto p0 = r.top_left();
-    auto p1 = r.top_right();
-    auto p2 = r.bottom_right();
-    auto p3 = r.bottom_left();
+    const auto p0 = r.top_left();
+    const auto p1 = r.top_right();
+    const auto p2 = r.bottom_right();
+    const auto p3 = r.bottom_left();
 
     pointf points[3];
-    if (bezier_line_intersect(to_pointf(a), to_pointf(cp0), to_pointf(cp1), to_pointf(b), p0, p1, points) > 0)
+    if (bezier_line_intersect(bezier.p0, bezier.p1, bezier.p2, bezier.p3, p0, p1, points) > 0)
         return true;
-    if (bezier_line_intersect(to_pointf(a), to_pointf(cp0), to_pointf(cp1), to_pointf(b), p1, p2, points) > 0)
+    if (bezier_line_intersect(bezier.p0, bezier.p1, bezier.p2, bezier.p3, p1, p2, points) > 0)
         return true;
-    if (bezier_line_intersect(to_pointf(a), to_pointf(cp0), to_pointf(cp1), to_pointf(b), p2, p3, points) > 0)
+    if (bezier_line_intersect(bezier.p0, bezier.p1, bezier.p2, bezier.p3, p2, p3, points) > 0)
         return true;
-    if (bezier_line_intersect(to_pointf(a), to_pointf(cp0), to_pointf(cp1), to_pointf(b), p3, p0, points) > 0)
+    if (bezier_line_intersect(bezier.p0, bezier.p1, bezier.p2, bezier.p3, p3, p0, points) > 0)
         return true;
 
     return false;
+}
+
+ax::bezier_t ax::Drawing::GetLinkBezier(const ImVec2& a, const ImVec2& b, float strength/* = 1.0f*/, const ImVec2& a_dir/* = ImVec2(1, 0)*/, const ImVec2& b_dir/* = ImVec2(-1, 0)*/)
+{
+    using namespace ImGuiInterop;
+
+    auto easeLinkStrength = [](const ImVec2& a, const ImVec2& b, float strength)
+    {
+        const auto distanceX    = b.x - a.x;
+        const auto distanceY    = b.y - a.y;
+        const auto distance     = sqrtf(distanceX * distanceX + distanceY * distanceY);
+        const auto halfDistance = distance * 0.5f;
+
+        if (halfDistance < strength)
+            strength = strength * sinf(ax::AX_PI * 0.5f * halfDistance / strength);
+
+        return strength;
+    };
+
+    strength = easeLinkStrength(a, b, strength);
+
+    pointf cp0 = to_pointf(a) + to_pointf(a_dir) * strength;
+    pointf cp1 = to_pointf(b) + to_pointf(b_dir) * strength;
+
+    return ax::bezier_t { to_pointf(a), cp0, cp1, to_pointf(b) };
 }

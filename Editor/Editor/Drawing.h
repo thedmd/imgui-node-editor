@@ -17,6 +17,7 @@ void DrawLink(ImDrawList* drawList, const ImVec2& a, const ImVec2& b, ImU32 colo
 float LinkDistance(const ImVec2& p, const ImVec2& a, const ImVec2& b, float strength = 1.0f, const ImVec2& a_dir = ImVec2(1, 0), const ImVec2& b_dir = ImVec2(-1, 0));
 ax::rectf GetLinkBounds(const ImVec2& a, const ImVec2& b, float strength = 1.0f, const ImVec2& a_dir = ImVec2(1, 0), const ImVec2& b_dir = ImVec2(-1, 0));
 bool CollideLinkWithRect(const ax::rectf& r, const ImVec2& a, const ImVec2& b, float strength = 1.0f, const ImVec2& a_dir = ImVec2(1, 0), const ImVec2& b_dir = ImVec2(-1, 0));
+ax::bezier_t GetLinkBezier(const ImVec2& a, const ImVec2& b, float strength = 1.0f, const ImVec2& a_dir = ImVec2(1, 0), const ImVec2& b_dir = ImVec2(-1, 0));
 
 } // namespace Drawing
 } // namespace ax
