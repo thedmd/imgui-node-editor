@@ -288,6 +288,8 @@ struct Animation
     void Finish();
     void Update();
 
+    bool IsPlaying() const { return State == Playing; }
+
 protected:
     virtual void OnPlay() {}
     virtual void OnFinish() {}
@@ -315,6 +317,30 @@ private:
     {
         return -c * t * (t - 2) + b;
     }
+
+    void OnUpdate(float progress) override final;
+    void OnStop() override final;
+    void OnFinish() override final;
+};
+
+struct FlowAnimation final: Animation
+{
+    Link& Owner;
+    float Speed;
+    float MarkerDistance;
+
+    FlowAnimation(Context* editor, Link* link);
+
+    void Touch(float markerDistance, float speed, float duration);
+
+private:
+    ImVec2         LastStart;
+    ImVec2         LastEnd;
+    vector<pointf> Path;
+    float          PathLength;
+
+    bool IsPathInvalidated() const;
+    void UpdatePath();
 
     void OnUpdate(float progress) override final;
     void OnStop() override final;

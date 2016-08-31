@@ -1429,7 +1429,7 @@ ed::Animation::~Animation()
 
 void ed::Animation::Play(float duration)
 {
-    if (State != Stopped)
+    if (IsPlaying())
         Stop();
 
     State = Playing;
@@ -1449,7 +1449,7 @@ void ed::Animation::Play(float duration)
 
 void ed::Animation::Stop()
 {
-    if (State != Playing)
+    if (!IsPlaying())
         return;
 
     State = Stopped;
@@ -1461,7 +1461,7 @@ void ed::Animation::Stop()
 
 void ed::Animation::Finish()
 {
-    if (State != Playing)
+    if (!IsPlaying())
         return;
 
     OnFinish();
@@ -1471,7 +1471,7 @@ void ed::Animation::Finish()
 
 void ed::Animation::Update()
 {
-    if (State != Playing)
+    if (!IsPlaying())
         return;
 
     Time += std::max(0.0f, ImGui::GetIO().DeltaTime);
@@ -1530,6 +1530,66 @@ void ed::ScrollAnimation::OnFinish()
     Action.Zoom = TargetZoom;
 
     Editor->MarkSettingsDirty();
+}
+
+
+
+
+//------------------------------------------------------------------------------
+//
+// Flow Animation
+//
+//------------------------------------------------------------------------------
+ed::FlowAnimation::FlowAnimation(Context* editor, Link* link):
+    Animation(editor),
+    Owner(*link),
+    PathLength(0.0f)
+{
+}
+
+void ed::FlowAnimation::Touch(float markerDistance, float speed, float duration)
+{
+    Stop();
+
+    MarkerDistance = markerDistance;
+    Speed          = speed;
+
+    Play(duration);
+}
+
+bool ed::FlowAnimation::IsPathInvalidated() const
+{
+    return !Owner.IsLive ||
+        Path.empty() ||
+        PathLength <= 0.0f ||
+        to_imvec(Owner.StartPin->DragPoint) != LastStart ||
+        to_imvec(Owner.EndPin->DragPoint) != LastEnd;
+}
+
+void ed::FlowAnimation::UpdatePath()
+{
+    if (!Owner.IsLive)
+    {
+        vector<pointf>().swap(Path);
+        PathLength = 0.0f;
+        return;
+    }
+}
+
+void ed::FlowAnimation::OnUpdate(float progress)
+{
+    if (IsPathInvalidated())
+        UpdatePath();
+
+
+}
+
+void ed::FlowAnimation::OnStop()
+{
+}
+
+void ed::FlowAnimation::OnFinish()
+{
 }
 
 
