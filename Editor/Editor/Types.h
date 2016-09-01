@@ -73,6 +73,7 @@ struct basic_point
     inline basic_point cwise_quotient(const basic_point& rhs) const { return basic_point(x / rhs.x, y / rhs.y); }
     inline basic_point cwise_safe_quotient(const basic_point& rhs, const basic_point& alt = basic_point()) const { return basic_point(rhs.x ? x / rhs.x : alt.x, rhs.y ? y / rhs.y : alt.x); }
     inline basic_point cwise_sqrt() const { return basic_point(sqrtf(x), sqrtf(y)); }
+    //inline basic_point cwise_floor() const { return basic_point(floorf(x), floorf(y)); }
 
     friend inline bool operator == (const basic_point& lhs, const basic_point& rhs) { return lhs.x == rhs.x && lhs.y == rhs.y; }
     friend inline bool operator != (const basic_point& lhs, const basic_point& rhs) { return !(lhs == rhs); }

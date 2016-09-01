@@ -74,8 +74,8 @@ struct Pin final: Object
 {
     PinKind Kind;
     Node*   Node;
-    rectf   Bounds;
-    rectf   Pivot;
+    rect    Bounds;
+    rect    Pivot;
     Pin*    PreviousPin;
     ImU32   Color;
     ImU32   BorderColor;
@@ -97,10 +97,10 @@ struct Pin final: Object
 
 struct Node final: Object
 {
-    rectf   Bounds;
+    rect    Bounds;
     int     Channel;
     Pin*    LastPin;
-    pointf  DragStart;
+    point   DragStart;
 
     ImU32   Color;
     ImU32   BorderColor;
@@ -126,12 +126,6 @@ struct Node final: Object
     virtual ax::rectf GetBounds() const override final { return static_cast<rectf>(Bounds); }
 
     virtual Node* AsNode() override final { return this; }
-};
-
-struct LinkPoints
-{
-    ImVec2 Start;
-    ImVec2 End;
 };
 
 struct Link final: Object
@@ -630,7 +624,7 @@ struct NodeBuilder
     Node* CurrentNode;
     Pin*  CurrentPin;
 
-    rectf  NodeRect;
+    rect   NodeRect;
 
     ImVec2 PivotAlignment;
     ImVec2 PivotSize;

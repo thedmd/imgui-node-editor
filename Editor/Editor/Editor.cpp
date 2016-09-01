@@ -701,7 +701,7 @@ void ed::Context::SetNodePosition(int nodeId, const ImVec2& position)
         node->IsLive = false;
     }
 
-    node->Bounds.location = to_pointf(position);
+    node->Bounds.location = to_point(position);
 }
 
 ImVec2 ed::Context::GetNodePosition(int nodeId)
@@ -860,7 +860,7 @@ ed::Node* ed::Context::CreateNode(int id)
     if (!settings)
         settings = AddNodeSettings(id);
     else
-        node->Bounds.location = to_pointf(settings->Location);
+        node->Bounds.location = to_point(settings->Location);
 
     settings->WasUsed = true;
 
@@ -1170,7 +1170,7 @@ ed::Control ed::Context::ComputeControl()
     Object* clickedObject = nullptr;
 
     // Emits invisible button and returns true if it is clicked.
-    auto emitInteractiveArea = [this](int id, const rectf& rect)
+    auto emitInteractiveArea = [this](int id, const rect& rect)
     {
         char idString[33]; // itoa can output 33 bytes maximum
         _itoa(id, idString, 16);
@@ -1189,7 +1189,7 @@ ed::Control ed::Context::ComputeControl()
     };
 
     // Check input interactions over area.
-    auto checkInteractionsInArea = [&emitInteractiveArea, &hotObject, &activeObject, &clickedObject](int id, const rectf& rect, Object* object)
+    auto checkInteractionsInArea = [&emitInteractiveArea, &hotObject, &activeObject, &clickedObject](int id, const rect& rect, Object* object)
     {
         if (emitInteractiveArea(id, rect))
             clickedObject = object;
@@ -1232,7 +1232,7 @@ ed::Control ed::Context::ComputeControl()
     if (nullptr == hotObject)
         hotObject = FindLinkAt(mousePos);
 
-    const auto editorRect = rectf(to_pointf(Canvas.FromClient(ImVec2(0, 0))), to_sizef(Canvas.ClientSize));
+    const auto editorRect = rect(to_point(Canvas.FromClient(ImVec2(0, 0))), to_size(Canvas.ClientSize));
 
     // Check for interaction with background.
     auto backgroundClicked  = emitInteractiveArea(0, editorRect);
@@ -2065,10 +2065,10 @@ bool ed::DragAction::Process(const Control& control)
         {
             for (auto selectedObject : Editor->GetSelectedObjects())
                 if (auto selectedNode = selectedObject->AsNode())
-                    selectedNode->Bounds.location = selectedNode->DragStart + to_pointf(dragOffset);
+                    selectedNode->Bounds.location = selectedNode->DragStart + to_point(dragOffset);
         }
         else
-            control.ActiveNode->Bounds.location = control.ActiveNode->DragStart + to_pointf(dragOffset);
+            control.ActiveNode->Bounds.location = control.ActiveNode->DragStart + to_point(dragOffset);
     }
     else if (!control.ActiveNode)
     {
@@ -2295,7 +2295,7 @@ bool ed::CreateItemAction::Process(const Control& control)
         if (control.ActivePin == DraggedPin && (CurrentStage == Possible))
         {
             ImVec2 endPoint   = ImGui::GetMousePos();
-            ImVec2 startPoint = to_imvec(DraggedPin->Pivot.get_closest_point(to_pointf(endPoint), true));
+            ImVec2 startPoint = to_imvec(DraggedPin->Pivot.get_closest_point(to_point(endPoint), true));
 
             if (control.HotPin)
             {
@@ -2883,8 +2883,8 @@ void ed::NodeBuilder::EndPin()
         if (PivotSize.y < 0)
             PivotSize.y = static_cast<float>(pinRect.size.h);
 
-        CurrentPin->Pivot.location = static_cast<pointf>(pinRect.top_left() + static_cast<pointf>(pinRect.size).cwise_product(to_pointf(PivotAlignment)));
-        CurrentPin->Pivot.size     = static_cast<sizef>((to_pointf(PivotSize).cwise_product(to_pointf(PivotScale))));
+        CurrentPin->Pivot.location = static_cast<point>(to_pointf(pinRect.top_left()) + static_cast<pointf>(pinRect.size).cwise_product(to_pointf(PivotAlignment)));
+        CurrentPin->Pivot.size     = static_cast<size>((to_pointf(PivotSize).cwise_product(to_pointf(PivotScale))));
     }
 
     CurrentPin = nullptr;
@@ -2894,7 +2894,7 @@ void ed::NodeBuilder::PinPivotRect(const ImVec2& a, const ImVec2& b)
 {
     assert(nullptr != CurrentPin);
 
-    CurrentPin->Pivot = rectf(to_pointf(a), to_pointf(b));
+    CurrentPin->Pivot = rect(to_point(a), to_size(a + b));
     ResolvePivot      = false;
 }
 

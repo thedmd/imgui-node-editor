@@ -57,8 +57,8 @@ void util::BlueprintNodeBuilder::End()
                 ImVec2(0.0f, 0.0f), uv,
                 headerColor, GetStyle().NodeRounding, 1 | 2);
 
-            auto headerSeparatorRect      = ax::rectf(HeaderRect.bottom_left(), ContentRect.top_right());
-            auto footerSeparatorRect      = ax::rectf(ContentRect.bottom_left(), NodeRect.bottom_right());
+            auto headerSeparatorRect      = ax::rect(HeaderRect.bottom_left(), ContentRect.top_right());
+            auto footerSeparatorRect      = ax::rect(ContentRect.bottom_left(), NodeRect.bottom_right());
             auto contentWithSeparatorRect = ax::make_union(headerSeparatorRect, footerSeparatorRect);
 
             if (!headerSeparatorRect.is_empty())
