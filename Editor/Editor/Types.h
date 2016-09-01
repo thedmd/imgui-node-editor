@@ -796,9 +796,9 @@ struct bezier_fixed_step_result_t
 
 typedef void(*bezier_fixed_step_callback_t)(bezier_fixed_step_result_t& result, void* userPointer);
 
-inline void bezier_fixed_step(bezier_fixed_step_callback_t callback, void* userPointer, const pointf& p0, const pointf& p1, const pointf& p2, const pointf& p3, float step, bool overshoot = false)
+inline void bezier_fixed_step(bezier_fixed_step_callback_t callback, void* userPointer, const pointf& p0, const pointf& p1, const pointf& p2, const pointf& p3, float step, bool overshoot = false, float max_value_error = 1e-3f, float max_t_error = 1e-5f)
 {
-    if (step <= 0.0f || !callback)
+    if (step <= 0.0f || !callback || max_value_error <= 0 || max_t_error <= 0)
         return;
 
     bezier_fixed_step_result_t result;
@@ -808,8 +808,6 @@ inline void bezier_fixed_step(bezier_fixed_step_callback_t callback, void* userP
     if (result.break_search)
         return;
 
-    const auto max_error    = 0.001f;
-    const auto max_t_error  = 0.00001f;
     const auto length       = bezier_length(p0, p1, p2, p3);
     const auto point_count  = static_cast<int>(length / step) + (overshoot ? 2 : 1);
     const auto t_min        = 0.0f;
@@ -848,7 +846,7 @@ inline void bezier_fixed_step(bezier_fixed_step_callback_t callback, void* userP
                 t_best     = t;
             }
 
-            if (fabsf(error) <= max_error || fabsf(t_start - t_end) <= max_t_error)
+            if (fabsf(error) <= max_value_error || fabsf(t_start - t_end) <= max_t_error)
             {
                 result.t      = t;
                 result.length = length;
@@ -870,7 +868,19 @@ inline void bezier_fixed_step(bezier_fixed_step_callback_t callback, void* userP
     }
 }
 
-inline void bezier_fixed_step(std::vector<pointf>& points, const pointf& p0, const pointf& p1, const pointf& p2, const pointf& p3, float step, bool overshoot = false)
+template <typename F>
+inline void bezier_fixed_step(F& callback, const pointf& p0, const pointf& p1, const pointf& p2, const pointf& p3, float step, bool overshoot = false, float max_value_error = 1e-3f, float max_t_error = 1e-5f)
+{
+    auto wrapper = [](bezier_fixed_step_result_t& result, void* userPointer)
+    {
+        F& callback = *reinterpret_cast<F*>(userPointer);
+        callback(result);
+    };
+
+    bezier_fixed_step(wrapper, &callback, p0, p1, p2, p3, step, overshoot, max_value_error, max_t_error);
+}
+
+inline void bezier_fixed_step(std::vector<pointf>& points, const pointf& p0, const pointf& p1, const pointf& p2, const pointf& p3, float step, bool overshoot = false, float max_value_error = 1e-3f, float max_t_error = 1e-5f)
 {
     points.resize(0);
 
@@ -880,13 +890,13 @@ inline void bezier_fixed_step(std::vector<pointf>& points, const pointf& p0, con
         points.push_back(result.point);
     };
 
-    bezier_fixed_step(callback, &points, p0, p1, p2, p3, step, overshoot);
+    bezier_fixed_step(callback, &points, p0, p1, p2, p3, step, overshoot, max_value_error, max_t_error);
 }
 
-inline std::vector<pointf> bezier_fixed_step(const pointf& p0, const pointf& p1, const pointf& p2, const pointf& p3, float step, bool overshoot = false)
+inline std::vector<pointf> bezier_fixed_step(const pointf& p0, const pointf& p1, const pointf& p2, const pointf& p3, float step, bool overshoot = false, float max_value_error = 1e-3f, float max_t_error = 1e-5f)
 {
     std::vector<pointf> result;
-    bezier_fixed_step(result, p0, p1, p2, p3, step, overshoot);
+    bezier_fixed_step(result, p0, p1, p2, p3, step, overshoot, max_value_error, max_t_error);
     return result;
 }
 

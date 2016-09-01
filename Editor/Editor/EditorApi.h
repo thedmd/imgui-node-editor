@@ -52,6 +52,8 @@ enum StyleColor
     StyleColor_LinkSelRectBorder,
     StyleColor_PinRect,
     StyleColor_PinRectBorder,
+    StyleColor_Flow,
+    StyleColor_FlowMarker,
 
     StyleColor_Count
 };
@@ -68,7 +70,10 @@ enum StyleVar
     StyleVar_LinkStrength,
     StyleVar_SourceLinkDirection,
     StyleVar_TargetLinkDirection,
-    StyleVar_ScrollDuration
+    StyleVar_ScrollDuration,
+    StyleVar_FlowMarkerDistance,
+    StyleVar_FlowSpeed,
+    StyleVar_FlowDuration,
 };
 
 struct Style
@@ -84,6 +89,9 @@ struct Style
     ImVec2  SourceLinkDirection;
     ImVec2  TargetLinkDirection;
     float   ScrollDuration;
+    float   FlowMarkerDistance;
+    float   FlowSpeed;
+    float   FlowDuration;
     ImVec4  Colors[StyleColor_Count];
 
     Style()
@@ -99,6 +107,9 @@ struct Style
         SourceLinkDirection     = ImVec2(1.0f, 0.0f);
         TargetLinkDirection     = ImVec2(-1.0f, 0.0f);
         ScrollDuration          = 0.35f;
+        FlowMarkerDistance      = 30.0f;
+        FlowSpeed               = 250.0f;
+        FlowDuration            = 2.0f;
 
         Colors[StyleColor_Bg]                 = ImColor( 60,  60,  70, 200);
         Colors[StyleColor_Grid]               = ImColor(120, 120, 120,  40);
@@ -112,9 +123,10 @@ struct Style
         Colors[StyleColor_SelLinkBorder]      = ImColor(255, 176,  50, 255);
         Colors[StyleColor_LinkSelRect]        = ImColor(  5, 130, 255,  64);
         Colors[StyleColor_LinkSelRectBorder]  = ImColor(  5, 130, 255, 128);
-        Colors[StyleColor_PinRect]         = ImColor( 60, 180, 255, 100);
-        Colors[StyleColor_PinRectBorder]   = ImColor( 60, 180, 255, 128);
-
+        Colors[StyleColor_PinRect]            = ImColor( 60, 180, 255, 100);
+        Colors[StyleColor_PinRectBorder]      = ImColor( 60, 180, 255, 128);
+        Colors[StyleColor_Flow]               = ImColor(255, 128,  64, 255);
+        Colors[StyleColor_FlowMarker]         = ImColor(255, 128,  64, 255);
     }
 };
 
@@ -152,6 +164,8 @@ void EndNode();
 ImDrawList* GetNodeBackgroundDrawList(int nodeId);
 
 bool Link(int id, int startPinId, int endPinId, const ImVec4& color = ImVec4(1, 1, 1, 1), float thickness = 1.0f);
+
+void Flow(int linkId);
 
 bool BeginCreate(const ImVec4& color = ImVec4(1, 1, 1, 1), float thickness = 1.0f);
 bool QueryNewLink(int* startId, int* endId);

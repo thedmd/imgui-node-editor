@@ -75,7 +75,7 @@ struct Pin final: Object
     PinKind Kind;
     Node*   Node;
     rect    Bounds;
-    pointf  DragPoint;
+    ImVec2  DragPoint;
     Pin*    PreviousPin;
     ImU32   Color;
     ImU32   BorderColor;
@@ -268,6 +268,7 @@ struct DragAction;
 struct SelectAction;
 struct CreateItemAction;
 struct DeleteItemsAction;
+struct FlowAnimationController;
 
 struct Animation
 {
@@ -329,15 +330,13 @@ private:
 
 struct FlowAnimation final: Animation
 {
+    FlowAnimationController* Controller;
     Link* Link;
     float Speed;
     float MarkerDistance;
     float Offset;
 
-    FlowAnimation(Context* editor);
-
-    FlowAnimation(FlowAnimation&&) = default;
-    FlowAnimation& operator=(FlowAnimation&&) = default;
+    FlowAnimation(FlowAnimationController* controller);
 
     void Flow(ax::Editor::Detail::Link* link, float markerDistance, float speed, float duration);
 
@@ -355,7 +354,8 @@ private:
     float  PathLength;
     vector<CurvePoint> Path;
 
-    bool IsPathInvalidated() const;
+    bool IsLinkValid() const;
+    bool IsPathValid() const;
     void UpdatePath();
     void ClearPath();
 
@@ -363,7 +363,26 @@ private:
 
     void OnUpdate(float progress) override final;
     void OnStop() override final;
-    void OnFinish() override final;
+};
+
+struct FlowAnimationController
+{
+    Context* Editor;
+
+    FlowAnimationController(Context* editor);
+    ~FlowAnimationController();
+
+    void Flow(Link* link);
+
+    void Draw(ImDrawList* drawList);
+
+    void Release(FlowAnimation* animation);
+
+private:
+    FlowAnimation* GetOrCreate(Link* link);
+
+    vector<FlowAnimation*> Animations;
+    vector<FlowAnimation*> FreePool;
 };
 
 struct EditorAction
@@ -735,7 +754,7 @@ struct Context
     void RegisterAnimation(Animation* animation);
     void UnregisterAnimation(Animation* animation);
 
-    void ShowFlow(Link* link);
+    void Flow(Link* link);
 
 private:
     NodeSettings* FindNodeSettings(int id);
@@ -768,7 +787,8 @@ private:
 
     vector<Animation*>  LiveAnimations;
     vector<Animation*>  LastLiveAnimations;
-    vector<FlowAnimation*> FlowAnimations;
+
+    FlowAnimationController FlowAnimationController;
 
     ImVec2              MousePosBackup;
     ImVec2              MouseClickPosBackup[5];
@@ -787,7 +807,6 @@ private:
     DeleteItemsAction   DeleteItemsAction;
 
     bool                IsInitialized;
-    ImTextureID         HeaderTextureID;
     Settings            Settings;
 
     Config              Config;

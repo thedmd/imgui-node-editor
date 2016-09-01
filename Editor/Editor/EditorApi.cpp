@@ -115,6 +115,12 @@ bool ax::Editor::Link(int id, int startPinId, int endPinId, const ImVec4& color/
     return s_Editor->DoLink(id, startPinId, endPinId, ImColor(color), thickness);
 }
 
+void ax::Editor::Flow(int linkId)
+{
+    if (auto link = s_Editor->FindLink(linkId))
+        s_Editor->Flow(link);
+}
+
 bool ax::Editor::BeginCreate(const ImVec4& color, float thickness)
 {
     auto& context = s_Editor->GetItemCreator();

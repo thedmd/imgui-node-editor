@@ -277,13 +277,13 @@ void ed::Link::Draw(ImDrawList* drawList, ImU32 color, float extraThickness) con
     if (!IsLive)
         return;
 
-    ax::Drawing::DrawLink(drawList, to_imvec(StartPin->DragPoint), to_imvec(EndPin->DragPoint),
+    ax::Drawing::DrawLink(drawList, StartPin->DragPoint, EndPin->DragPoint,
         color, Thickness + extraThickness, Strength, StartDir, EndDir);
 }
 
 ax::bezier_t ed::Link::GetBezier() const
 {
-    return ax::Drawing::GetLinkBezier(to_imvec(StartPin->DragPoint), to_imvec(EndPin->DragPoint), Strength, StartDir, EndDir);
+    return ax::Drawing::GetLinkBezier(StartPin->DragPoint, EndPin->DragPoint, Strength, StartDir, EndDir);
 }
 
 bool ed::Link::TestHit(const ImVec2& point, float extraThickness) const
@@ -296,8 +296,7 @@ bool ed::Link::TestHit(const ImVec2& point, float extraThickness) const
         return false;
 
     const auto distance = ax::Drawing::LinkDistance(point,
-        to_imvec(StartPin->DragPoint), to_imvec(EndPin->DragPoint),
-        Strength, StartDir, EndDir);
+        StartPin->DragPoint, EndPin->DragPoint, Strength, StartDir, EndDir);
 
     return distance <= Thickness + extraThickness;
 }
@@ -309,7 +308,7 @@ bool ed::Link::TestHit(const ax::rectf& rect) const
     if (rect.contains(bounds))
         return true;
 
-    if (rect.intersects(bounds) && Drawing::CollideLinkWithRect(rect, to_imvec(StartPin->DragPoint), to_imvec(EndPin->DragPoint), Strength, StartDir, EndDir))
+    if (rect.intersects(bounds) && Drawing::CollideLinkWithRect(rect, StartPin->DragPoint, EndPin->DragPoint, Strength, StartDir, EndDir))
         return true;
 
     return false;
@@ -322,7 +321,7 @@ ax::rectf ed::Link::GetBounds() const
         const auto startPoint = StartPin->DragPoint;
         const auto endPoint   = EndPin->DragPoint;
 
-        return ax::Drawing::GetLinkBounds(to_imvec(startPoint), to_imvec(endPoint), Strength, StartDir, EndDir);
+        return ax::Drawing::GetLinkBounds(startPoint, endPoint, Strength, StartDir, EndDir);
     }
     else
         return ax::rectf();
@@ -343,6 +342,7 @@ ed::Context::Context(const ax::Editor::Config* config):
     Links(),
     SelectionId(1),
     LastActiveLink(nullptr),
+    FlowAnimationController(this),
     MousePosBackup(0, 0),
     MouseClickPosBackup(),
     Canvas(),
@@ -355,7 +355,6 @@ ed::Context::Context(const ax::Editor::Config* config):
     CreateItemAction(this),
     DeleteItemsAction(this),
     IsInitialized(false),
-    HeaderTextureID(nullptr),
     Settings(),
     Config(config ? *config : ax::Editor::Config())
 {
@@ -364,15 +363,7 @@ ed::Context::Context(const ax::Editor::Config* config):
 ed::Context::~Context()
 {
     if (IsInitialized)
-    {
-        if (HeaderTextureID)
-        {
-            ImGui_DestroyTexture(HeaderTextureID);
-            HeaderTextureID = nullptr;
-        }
-
         SaveSettings();
-    }
 
     for (auto link : Links) delete link;
     for (auto pin  : Pins)  delete pin;
@@ -384,9 +375,6 @@ void ed::Context::Begin(const char* id, const ImVec2& size)
     if (!IsInitialized)
     {
         LoadSettings();
-
-        HeaderTextureID = ImGui_LoadTexture("../Data/BlueprintBackground.png");
-
         IsInitialized = true;
     }
 
@@ -446,12 +434,6 @@ void ed::Context::End()
     auto  control     = ComputeControl();
     auto  drawList    = ImGui::GetWindowDrawList();
     auto& editorStyle = GetStyle();
-
-    if (ImGui::IsKeyReleased(ImGui::GetKeyIndex(ImGuiKey_Z)))
-    {
-        for (auto link : Links)
-            ShowFlow(link);
-    }
 
     bool isSelecting = CurrentAction && CurrentAction->AsSelect() != nullptr;
 
@@ -538,25 +520,7 @@ void ed::Context::End()
         }
     }
 
-    if (!FlowAnimations.empty())
-    {
-        drawList->ChannelsSetCurrent(c_LinkStartChannel + 2);
-
-        for (auto it = FlowAnimations.begin(); it != FlowAnimations.end();)
-        {
-            auto animation = *it;
-            if (animation->IsPlaying())
-            {
-                animation->Draw(drawList);
-                ++it;
-            }
-            else
-            {
-                it = FlowAnimations.erase(it);
-                delete animation;
-            }
-        }
-    }
+    FlowAnimationController.Draw(drawList);
 
     if (CurrentAction && !CurrentAction->Process(control))
         CurrentAction = nullptr;
@@ -1189,22 +1153,9 @@ void ed::Context::UpdateAnimations()
     }
 }
 
-void ed::Context::ShowFlow(Link* link)
+void ed::Context::Flow(Link* link)
 {
-    if (!link || !link->IsLive)
-        return;
-
-    const auto begin = FlowAnimations.begin();
-    const auto end   = FlowAnimations.end();
-
-    auto animation = std::find_if(begin, end, [link](FlowAnimation* animation) { return animation->Link == link; });
-    if (animation == end)
-    {
-        FlowAnimations.emplace_back(new FlowAnimation(this));
-        animation = FlowAnimations.end() - 1;
-    }
-
-    (*animation)->Flow(link, 30.0f, 250.0f, 2.0f);
+    FlowAnimationController.Flow(link);
 }
 
 ed::Control ed::Context::ComputeControl()
@@ -1589,8 +1540,9 @@ void ed::ScrollAnimation::OnFinish()
 // Flow Animation
 //
 //------------------------------------------------------------------------------
-ed::FlowAnimation::FlowAnimation(Context* editor):
-    Animation(editor),
+ed::FlowAnimation::FlowAnimation(FlowAnimationController* controller):
+    Animation(controller->Editor),
+    Controller(controller),
     Link(nullptr),
     Offset(0.0f),
     PathLength(0.0f)
@@ -1601,6 +1553,15 @@ void ed::FlowAnimation::Flow(ed::Link* link, float markerDistance, float speed, 
 {
     Stop();
 
+    if (Link != link)
+    {
+        Offset = 0.0f;
+        ClearPath();
+    }
+
+    if (MarkerDistance != markerDistance)
+        ClearPath();
+
     MarkerDistance = markerDistance;
     Speed          = speed;
     Link           = link;
@@ -1610,44 +1571,49 @@ void ed::FlowAnimation::Flow(ed::Link* link, float markerDistance, float speed, 
 
 void ed::FlowAnimation::Draw(ImDrawList* drawList)
 {
-    if (!IsPlaying())
+    if (!IsPlaying() || !IsLinkValid())
         return;
 
-    if (IsPathInvalidated())
+    if (!IsPathValid())
         UpdatePath();
 
     Offset = fmodf(Offset, MarkerDistance);
 
-    const auto progress = GetProgress();
+    const auto progress    = GetProgress();
 
-    float radius = 4.0f * (1.0f - progress) + 2.0f;
+    const auto flowAlpha = 1.0f - progress * progress;
+    const auto flowColor = Editor->GetColor(StyleColor_Flow, flowAlpha);
+    const auto flowPath  = Link->GetBezier();
+    drawList->AddBezierCurve(to_imvec(flowPath.p0), to_imvec(flowPath.p1), to_imvec(flowPath.p2), to_imvec(flowPath.p3), flowColor, 4.0f);
 
-    int alpha = (int)(255 * (1.0f - progress * progress));
-
-    auto bezier = Link->GetBezier();
-    drawList->AddBezierCurve(to_imvec(bezier.p0), to_imvec(bezier.p1), to_imvec(bezier.p2), to_imvec(bezier.p3),
-        IM_COL32(255, 128, 64, alpha), 4.0f);
-
-    for (float d = 0.0f; d < PathLength; d += MarkerDistance)
+    if (IsPathValid())
     {
-        auto point = SamplePath(d + Offset);
+        const auto markerAlpha  = powf(1.0f - progress, 0.5f);
+        const auto markerRadius = 4.0f * (1.0f - progress) + 2.0f;
+        const auto markerColor  = Editor->GetColor(StyleColor_FlowMarker, markerAlpha);
 
-        drawList->AddCircleFilled(point, radius, IM_COL32(255, 128, 64, alpha), 12);
+        for (float d = 0.0f; d < PathLength; d += MarkerDistance)
+        {
+            auto point = SamplePath(d + Offset);
+
+            drawList->AddCircleFilled(point, markerRadius, markerColor);
+        }
     }
 }
 
-bool ed::FlowAnimation::IsPathInvalidated() const
+bool ed::FlowAnimation::IsLinkValid() const
 {
-    return !Link || !Link->IsLive ||
-        Path.empty() ||
-        PathLength <= 0.0f ||
-        to_imvec(Link->StartPin->DragPoint) != LastStart ||
-        to_imvec(Link->EndPin->DragPoint) != LastEnd;
+    return Link && Link->IsLive;
+}
+
+bool ed::FlowAnimation::IsPathValid() const
+{
+    return !Path.empty() && PathLength > 0.0f && Link->StartPin->DragPoint == LastStart && Link->EndPin->DragPoint == LastEnd;
 }
 
 void ed::FlowAnimation::UpdatePath()
 {
-    if (!Link || !Link->IsLive)
+    if (!IsLinkValid())
     {
         ClearPath();
         return;
@@ -1655,19 +1621,19 @@ void ed::FlowAnimation::UpdatePath()
 
     const auto curve  = Link->GetBezier();
 
-    LastStart  = to_imvec(Link->StartPin->DragPoint);
-    LastEnd    = to_imvec(Link->EndPin->DragPoint);
+    LastStart  = Link->StartPin->DragPoint;
+    LastEnd    = Link->EndPin->DragPoint;
     PathLength = bezier_length(curve.p0, curve.p1, curve.p2, curve.p3);
 
-    Path.resize(0);
-
-    auto callback = [](bezier_fixed_step_result_t& result, void* userPointer)
+    auto collectPointsCallback = [this](bezier_fixed_step_result_t& result)
     {
-        auto self = reinterpret_cast<FlowAnimation*>(userPointer);
-        self->Path.push_back(CurvePoint{ result.length, to_imvec(result.point) });
+        Path.push_back(CurvePoint{ result.length, to_imvec(result.point) });
     };
 
-    bezier_fixed_step(callback, this, curve.p0, curve.p1, curve.p2, curve.p3, 10.0f, true);
+    const auto step = std::max(MarkerDistance * 0.5f, 15.0f);
+
+    Path.resize(0);
+    bezier_fixed_step(collectPointsCallback, curve.p0, curve.p1, curve.p2, curve.p3, step, true, 0.5f, 0.001f);
 }
 
 void ed::FlowAnimation::ClearPath()
@@ -1678,9 +1644,6 @@ void ed::FlowAnimation::ClearPath()
 
 ImVec2 ed::FlowAnimation::SamplePath(float distance)
 {
-    if (Path.empty())
-        return ImVec2(0, 0);
-
     distance = std::max(0.0f, std::min(distance, PathLength));
 
     auto endPointIt = std::find_if(Path.begin(), Path.end(), [distance](const CurvePoint& p) { return distance < p.Distance; });
@@ -1696,21 +1659,81 @@ ImVec2 ed::FlowAnimation::SamplePath(float distance)
 
 void ed::FlowAnimation::OnUpdate(float progress)
 {
-    if (IsPathInvalidated())
-        UpdatePath();
-
-
     Offset += Speed * ImGui::GetIO().DeltaTime;
 }
 
 void ed::FlowAnimation::OnStop()
 {
-    Link = nullptr;
-
-    UpdatePath();
+    Controller->Release(this);
 }
 
-void ed::FlowAnimation::OnFinish()
+
+
+
+//------------------------------------------------------------------------------
+//
+// Flow Animation Controller
+//
+//------------------------------------------------------------------------------
+ed::FlowAnimationController::FlowAnimationController(Context* editor):
+    Editor(editor)
+{
+}
+
+ed::FlowAnimationController::~FlowAnimationController()
+{
+    for (auto animation : Animations)
+        delete animation;
+}
+
+void ed::FlowAnimationController::Flow(Link* link)
+{
+    if (!link || !link->IsLive)
+        return;
+
+    auto& editorStyle = GetStyle();
+
+    auto animation = GetOrCreate(link);
+
+    animation->Flow(link, editorStyle.FlowMarkerDistance, editorStyle.FlowSpeed, editorStyle.FlowDuration);
+}
+
+void ed::FlowAnimationController::Draw(ImDrawList* drawList)
+{
+    if (Animations.empty())
+        return;
+
+    drawList->ChannelsSetCurrent(c_LinkStartChannel + 2);
+
+    for (auto animation : Animations)
+        animation->Draw(drawList);
+}
+
+ed::FlowAnimation* ed::FlowAnimationController::GetOrCreate(Link* link)
+{
+    // Return live animation which match target link
+    {
+        auto animationIt = std::find_if(Animations.begin(), Animations.end(), [link](FlowAnimation* animation) { return animation->Link == link; });
+        if (animationIt != Animations.end())
+            return *animationIt;
+    }
+
+    // There are no live animations for target link, try to reuse inactive old one
+    if (!FreePool.empty())
+    {
+        auto animation = FreePool.back();
+        FreePool.pop_back();
+        return animation;
+    }
+
+    // Cache miss, allocate new one
+    auto animation = new FlowAnimation(this);
+    Animations.push_back(animation);
+
+    return animation;
+}
+
+void ed::FlowAnimationController::Release(FlowAnimation* animation)
 {
 }
 
@@ -2271,15 +2294,15 @@ bool ed::CreateItemAction::Process(const Control& control)
     {
         if (control.ActivePin == DraggedPin && (CurrentStage == Possible))
         {
-            ImVec2 startPoint = to_imvec(DraggedPin->DragPoint);
-            ImVec2 endPoint = ImGui::GetMousePos();
+            ImVec2 startPoint = DraggedPin->DragPoint;
+            ImVec2 endPoint   = ImGui::GetMousePos();
 
             if (control.HotPin)
             {
                 DropPin(control.HotPin);
 
                 if (UserAction == UserAccept)
-                    endPoint = to_imvec(control.HotPin->DragPoint);
+                    endPoint = control.HotPin->DragPoint;
             }
             else if (control.BackgroundHot)
                 DropNode();
@@ -2824,7 +2847,7 @@ void ed::NodeBuilder::BeginPin(int pinId, PinKind kind, const ImVec2& pivot)
     CurrentPin->Node = CurrentNode;
 
     // Save pivot in drag point, it will be converted to actuall point in EndPin()
-    CurrentPin->DragPoint   = to_pointf(pivot);
+    CurrentPin->DragPoint   = pivot;
     CurrentPin->IsLive      = true;
     CurrentPin->Color       = Editor->GetColor(StyleColor_PinRect);
     CurrentPin->BorderColor = Editor->GetColor(StyleColor_PinRectBorder);
@@ -2846,7 +2869,9 @@ void ed::NodeBuilder::EndPin()
     auto pinRect = ImGui_GetItemRect();
 
     CurrentPin->Bounds    = pinRect;
-    CurrentPin->DragPoint = to_pointf(pinRect.top_left()) + CurrentPin->DragPoint.cwise_product(static_cast<pointf>(pinRect.size));
+    CurrentPin->DragPoint = ImVec2(
+        pinRect.x + CurrentPin->DragPoint.x * pinRect.w,
+        pinRect.y + CurrentPin->DragPoint.y * pinRect.h);
 
     CurrentPin = nullptr;
 }
@@ -2981,6 +3006,9 @@ float* ed::Style::GetVarFloatAddr(StyleVar idx)
         case StyleVar_PinBorderWidth:           return &PinBorderWidth;
         case StyleVar_LinkStrength:             return &LinkStrength;
         case StyleVar_ScrollDuration:           return &ScrollDuration;
+        case StyleVar_FlowMarkerDistance:       return &FlowMarkerDistance;
+        case StyleVar_FlowSpeed:                return &FlowSpeed;
+        case StyleVar_FlowDuration:             return &FlowDuration;
     }
 
     return nullptr;
