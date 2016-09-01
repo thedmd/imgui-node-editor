@@ -223,12 +223,12 @@ static void ImDrawList_TranslateAndClampClipRects(ImDrawList* drawList, int begi
 void ed::Pin::Draw(ImDrawList* drawList)
 {
     drawList->AddRectFilled(to_imvec(Bounds.top_left()), to_imvec(Bounds.bottom_right()),
-        Color, Rounding);
+        Color, Rounding, Corners);
 
     if (BorderWidth > 0.0f)
     {
         drawList->AddRect(to_imvec(Bounds.top_left()), to_imvec(Bounds.bottom_right()),
-            BorderColor, Rounding, 15, BorderWidth);
+            BorderColor, Rounding, Corners, BorderWidth);
     }
 }
 
@@ -277,17 +277,40 @@ void ed::Link::Draw(ImDrawList* drawList, ImU32 color, float extraThickness) con
     if (!IsLive)
         return;
 
-    ax::Drawing::DrawLink(drawList, Start, End,
-        color, Thickness + extraThickness, Strength, StartDir, EndDir);
+    const auto bezier = GetBezier();
+
+    drawList->AddBezierCurve(to_imvec(bezier.p0), to_imvec(bezier.p1), to_imvec(bezier.p2), to_imvec(bezier.p3), color, Thickness + extraThickness);
 }
 
 ax::bezier_t ed::Link::GetBezier() const
 {
-    return ax::Drawing::GetLinkBezier(Start, End, Strength, StartDir, EndDir);
+    auto easeLinkStrength = [](const ImVec2& a, const ImVec2& b, float strength)
+    {
+        const auto distanceX    = b.x - a.x;
+        const auto distanceY    = b.y - a.y;
+        const auto distance     = sqrtf(distanceX * distanceX + distanceY * distanceY);
+        const auto halfDistance = distance * 0.5f;
+
+        if (halfDistance < strength)
+            strength = strength * sinf(ax::AX_PI * 0.5f * halfDistance / strength);
+
+        return strength;
+    };
+
+    auto startStrength = easeLinkStrength(Start, End, StartStrength);
+    auto   endStrength = easeLinkStrength(Start, End, EndStrength);
+
+    pointf cp0 = to_pointf(Start) + to_pointf(StartDir) * startStrength;
+    pointf cp1 = to_pointf(End)   + to_pointf(EndDir)   * endStrength;
+
+    return ax::bezier_t { to_pointf(Start), cp0, cp1, to_pointf(End) };
 }
 
 bool ed::Link::TestHit(const ImVec2& point, float extraThickness) const
 {
+    if (!IsLive)
+        return false;
+
     auto bounds = GetBounds();
     if (extraThickness > 0.0f)
         bounds.expand(extraThickness);
@@ -295,20 +318,40 @@ bool ed::Link::TestHit(const ImVec2& point, float extraThickness) const
     if (!bounds.contains(to_pointf(point)))
         return false;
 
-    const auto distance = ax::Drawing::LinkDistance(point,
-        Start, End, Strength, StartDir, EndDir);
+    const auto bezier = GetBezier();
+    const auto result = bezier_project_point(to_pointf(point), bezier.p0, bezier.p1, bezier.p2, bezier.p3, 50);
 
-    return distance <= Thickness + extraThickness;
+    return result.distance <= Thickness + extraThickness;
 }
 
 bool ed::Link::TestHit(const ax::rectf& rect) const
 {
+    if (!IsLive)
+        return false;
+
     const auto bounds = GetBounds();
 
     if (rect.contains(bounds))
         return true;
 
-    if (rect.intersects(bounds) && Drawing::CollideLinkWithRect(rect, Start, End, Strength, StartDir, EndDir))
+    if (!rect.intersects(bounds))
+        return true;
+
+    const auto bezier = GetBezier();
+
+    const auto p0 = rect.top_left();
+    const auto p1 = rect.top_right();
+    const auto p2 = rect.bottom_right();
+    const auto p3 = rect.bottom_left();
+
+    pointf points[3];
+    if (bezier_line_intersect(bezier.p0, bezier.p1, bezier.p2, bezier.p3, p0, p1, points) > 0)
+        return true;
+    if (bezier_line_intersect(bezier.p0, bezier.p1, bezier.p2, bezier.p3, p1, p2, points) > 0)
+        return true;
+    if (bezier_line_intersect(bezier.p0, bezier.p1, bezier.p2, bezier.p3, p2, p3, points) > 0)
+        return true;
+    if (bezier_line_intersect(bezier.p0, bezier.p1, bezier.p2, bezier.p3, p3, p0, points) > 0)
         return true;
 
     return false;
@@ -317,11 +360,13 @@ bool ed::Link::TestHit(const ax::rectf& rect) const
 ax::rectf ed::Link::GetBounds() const
 {
     if (IsLive)
-        return ax::Drawing::GetLinkBounds(Start, End, Strength, StartDir, EndDir);
+    {
+        const auto bezier = GetBezier();
+        return bezier_bounding_rect(bezier.p0, bezier.p1, bezier.p2, bezier.p3);
+    }
     else
         return ax::rectf();
 }
-
 
 
 
@@ -677,12 +722,13 @@ bool ed::Context::DoLink(int id, int startPinId, int endPinId, ImU32 color, floa
     link->StartPin = startPin;
     link->EndPin   = endPin;
 
-    link->Color     = color;
-    link->Thickness = thickness;
-    link->Strength  = editorStyle.LinkStrength;
-    link->StartDir  = editorStyle.SourceLinkDirection;
-    link->EndDir    = editorStyle.TargetLinkDirection;
-    link->IsLive    = true;
+    link->Color         = color;
+    link->Thickness     = thickness;
+    link->StartDir      = startPin->Dir;
+    link->EndDir        = endPin->Dir;
+    link->StartStrength = startPin->Strength;
+    link->EndStrength   = endPin->Strength;
+    link->IsLive        = true;
 
     const auto line = startPin->Pivot.get_closest_line(endPin->Pivot);
 
@@ -1790,7 +1836,7 @@ bool ax::Editor::Detail::ScrollAction::Accept(const Control& control)
         bool navigateToContent = false;
         if (!Editor->GetSelectedObjects().empty())
         {
-            if (Reason != NavigationReason::Selection || LastSelectionId != Editor->GetSelectionId())
+            if (Reason != NavigationReason::Selection || LastSelectionId != Editor->GetSelectionId() || allowZoomIn)
             {
                 LastSelectionId = Editor->GetSelectionId();
                 NavigateTo(Editor->GetSelectionBounds(), allowZoomIn, -1.0f, NavigationReason::Selection);
@@ -1802,7 +1848,7 @@ bool ax::Editor::Detail::ScrollAction::Accept(const Control& control)
         {
             auto object = control.HotObject->AsPin() ? control.HotObject->AsPin()->Node : control.HotObject;
 
-            if (Reason != NavigationReason::Object || LastObject != object)
+            if (Reason != NavigationReason::Object || LastObject != object || allowZoomIn)
             {
                 LastObject = object;
                 auto bounds = (control.HotObject->AsPin() ? control.HotObject->AsPin()->Node : control.HotObject)->GetBounds();
@@ -2294,15 +2340,26 @@ bool ed::CreateItemAction::Process(const Control& control)
     {
         if (control.ActivePin == DraggedPin && (CurrentStage == Possible))
         {
-            ImVec2 endPoint   = ImGui::GetMousePos();
-            ImVec2 startPoint = to_imvec(DraggedPin->Pivot.get_closest_point(to_point(endPoint), true));
+            ed::Link candidate(0);
+
+            candidate.End           = ImGui::GetMousePos();
+            candidate.Start         = to_imvec(DraggedPin->Pivot.get_closest_point(to_point(candidate.End), true));
+            candidate.StartDir      =  DraggedPin->Dir;
+            candidate.EndDir        = -DraggedPin->Dir;
+            candidate.StartStrength =  DraggedPin->Strength;
+            candidate.EndStrength   =  DraggedPin->Strength;
+            candidate.Color         = LinkColor;
 
             if (control.HotPin)
             {
                 DropPin(control.HotPin);
 
                 if (UserAction == UserAccept)
-                    endPoint = to_imvec(control.HotPin->Pivot.centerf());
+                {
+                    candidate.End         = to_imvec(DraggedPin->Pivot.get_closest_line(control.HotPin->Pivot).b);
+                    candidate.EndDir      = control.HotPin->Dir;
+                    candidate.EndStrength = control.HotPin->Strength;
+                }
             }
             else if (control.BackgroundHot)
                 DropNode();
@@ -2312,11 +2369,16 @@ bool ed::CreateItemAction::Process(const Control& control)
             auto  drawList = ImGui::GetWindowDrawList();
 
             if (DraggedPin->Kind == PinKind::Target)
-                std::swap(startPoint, endPoint);
+            {
+                std::swap(candidate.Start, candidate.End);
+                std::swap(candidate.StartDir, candidate.EndDir);
+                std::swap(candidate.StartStrength, candidate.EndStrength);
+            }
 
             drawList->ChannelsSetCurrent(c_LinkStartChannel + 3);
 
-            ax::Drawing::DrawLink(drawList, startPoint, endPoint, LinkColor, LinkThickness, GetStyle().LinkStrength);
+            candidate.Draw(drawList, LinkThickness);
+            //ax::Drawing::DrawLink(drawList, startPoint, endPoint, LinkColor, LinkThickness, GetStyle().LinkStrength, startDir, endDir);
         }
         else if (!control.ActivePin)
         {
@@ -2853,6 +2915,9 @@ void ed::NodeBuilder::BeginPin(int pinId, PinKind kind)
     CurrentPin->BorderColor = Editor->GetColor(StyleColor_PinRectBorder);
     CurrentPin->BorderWidth = GetStyle().PinBorderWidth;
     CurrentPin->Rounding    = GetStyle().PinRounding;
+    CurrentPin->Corners     = static_cast<int>(GetStyle().PinCorners);
+    CurrentPin->Dir         = kind == PinKind::Source ? editorStyle.SourceDirection : editorStyle.TargetDirection;
+    CurrentPin->Strength    = editorStyle.LinkStrength;
 
     CurrentPin->PreviousPin = CurrentNode->LastPin;
     CurrentNode->LastPin    = CurrentPin;
@@ -2861,6 +2926,7 @@ void ed::NodeBuilder::BeginPin(int pinId, PinKind kind)
     PivotAlignment          = editorStyle.PivotAlignment;
     PivotSize               = editorStyle.PivotSize;
     PivotScale              = editorStyle.PivotScale;
+    ResolvePinRect          = true;
     ResolvePivot            = true;
 
     ImGui::BeginGroup();
@@ -2872,12 +2938,13 @@ void ed::NodeBuilder::EndPin()
 
     ImGui::EndGroup();
 
-    auto pinRect = ImGui_GetItemRect();
-
-    CurrentPin->Bounds = pinRect;
+    if (ResolvePinRect)
+        CurrentPin->Bounds = ImGui_GetItemRect();
 
     if (ResolvePivot)
     {
+        auto& pinRect = CurrentPin->Bounds;
+
         if (PivotSize.x < 0)
             PivotSize.x = static_cast<float>(pinRect.size.w);
         if (PivotSize.y < 0)
@@ -2890,11 +2957,19 @@ void ed::NodeBuilder::EndPin()
     CurrentPin = nullptr;
 }
 
+void ed::NodeBuilder::PinRect(const ImVec2& a, const ImVec2& b)
+{
+    assert(nullptr != CurrentPin);
+
+    CurrentPin->Bounds = rect(to_point(a), to_size(b - a));
+    ResolvePinRect     = false;
+}
+
 void ed::NodeBuilder::PinPivotRect(const ImVec2& a, const ImVec2& b)
 {
     assert(nullptr != CurrentPin);
 
-    CurrentPin->Pivot = rect(to_point(a), to_size(a + b));
+    CurrentPin->Pivot = rect(to_point(a), to_size(b - a));
     ResolvePivot      = false;
 }
 
@@ -3055,6 +3130,7 @@ float* ed::Style::GetVarFloatAddr(StyleVar idx)
         case StyleVar_FlowMarkerDistance:       return &FlowMarkerDistance;
         case StyleVar_FlowSpeed:                return &FlowSpeed;
         case StyleVar_FlowDuration:             return &FlowDuration;
+        case StyleVar_PinCorners:               return &PinCorners;
     }
 
     return nullptr;
@@ -3064,8 +3140,8 @@ ImVec2* ed::Style::GetVarVec2Addr(StyleVar idx)
 {
     switch (idx)
     {
-        case StyleVar_SourceLinkDirection: return &SourceLinkDirection;
-        case StyleVar_TargetLinkDirection: return &TargetLinkDirection;
+        case StyleVar_SourceDirection: return &SourceDirection;
+        case StyleVar_TargetDirection: return &TargetDirection;
         case StyleVar_PivotAlignment:      return &PivotAlignment;
         case StyleVar_PivotSize:           return &PivotSize;
         case StyleVar_PivotScale:          return &PivotScale;

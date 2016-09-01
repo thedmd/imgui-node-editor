@@ -71,13 +71,13 @@ inline ax::basic_line<T> ax::basic_rect<T>::get_closest_line(const basic_rect& r
         }
         else if (aw < bw)
         {
-            b = a0 + aw - aw * (b - b0) / bw;
-            a = a;
+            a = a0 + aw - aw * (b - b0) / bw;
+            b = a;
         }
     };
 
-    distribute(a.x, b.x, left(), right(),  r.left(), r.right());
-    distribute(a.y, b.y, top(),  bottom(), r.top(),  r.bottom());
+    distribute(a.x, b.x, left(), right(), r.left(), r.right());
+    distribute(a.y, b.y, top(), bottom(), r.top(), r.bottom());
 
     return basic_line<T>(a, b);
 }

@@ -92,6 +92,11 @@ void ax::Editor::BeginPin(int id, PinKind kind)
     s_Editor->GetNodeBuilder().BeginPin(id, kind);
 }
 
+void ax::Editor::PinRect(const ImVec2& a, const ImVec2& b)
+{
+    s_Editor->GetNodeBuilder().PinRect(a, b);
+}
+
 void ax::Editor::PinPivotRect(const ImVec2& a, const ImVec2& b)
 {
     s_Editor->GetNodeBuilder().PinPivotRect(a, b);

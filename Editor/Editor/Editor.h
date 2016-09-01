@@ -81,10 +81,14 @@ struct Pin final: Object
     ImU32   BorderColor;
     float   BorderWidth;
     float   Rounding;
+    int     Corners;
+    ImVec2  Dir;
+    float   Strength;
 
     Pin(int id, PinKind kind):
         Object(id), Kind(kind), Node(nullptr), Bounds(), PreviousPin(nullptr),
-        Color(IM_COL32_WHITE), BorderColor(IM_COL32_BLACK), BorderWidth(0), Rounding(0)
+        Color(IM_COL32_WHITE), BorderColor(IM_COL32_BLACK), BorderWidth(0), Rounding(0),
+        Corners(0), Dir(0, 0), Strength(0)
     {
     }
 
@@ -134,16 +138,17 @@ struct Link final: Object
     Pin*   EndPin;
     ImU32  Color;
     float  Thickness;
-    float  Strength;
 
     ImVec2 Start;
     ImVec2 End;
     ImVec2 StartDir;
     ImVec2 EndDir;
+    float  StartStrength;
+    float  EndStrength;
 
     Link(int id):
-        Object(id), StartPin(nullptr), EndPin(nullptr), Color(IM_COL32_WHITE), Thickness(1.0f), Strength(0.0f),
-        Start(0, 0), End(0, 0), StartDir(0, 0), EndDir(0, 0)
+        Object(id), StartPin(nullptr), EndPin(nullptr), Color(IM_COL32_WHITE), Thickness(1.0f),
+        Start(0, 0), End(0, 0), StartDir(0, 0), EndDir(0, 0), StartStrength(0.0f), EndStrength(0.0f)
     {
     }
 
@@ -626,9 +631,11 @@ struct NodeBuilder
 
     rect   NodeRect;
 
+    rect   PivotRect;
     ImVec2 PivotAlignment;
     ImVec2 PivotSize;
     ImVec2 PivotScale;
+    bool   ResolvePinRect;
     bool   ResolvePivot;
 
     NodeBuilder(Context* editor);
@@ -639,6 +646,7 @@ struct NodeBuilder
     void BeginPin(int pinId, PinKind kind);
     void EndPin();
 
+    void PinRect(const ImVec2& a, const ImVec2& b);
     void PinPivotRect(const ImVec2& a, const ImVec2& b);
     void PinPivotSize(const ImVec2& size);
     void PinPivotScale(const ImVec2& scale);

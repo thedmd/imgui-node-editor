@@ -68,15 +68,16 @@ enum StyleVar
     StyleVar_PinRounding,
     StyleVar_PinBorderWidth,
     StyleVar_LinkStrength,
-    StyleVar_SourceLinkDirection,
-    StyleVar_TargetLinkDirection,
+    StyleVar_SourceDirection,
+    StyleVar_TargetDirection,
     StyleVar_ScrollDuration,
     StyleVar_FlowMarkerDistance,
     StyleVar_FlowSpeed,
     StyleVar_FlowDuration,
     StyleVar_PivotAlignment,
     StyleVar_PivotSize,
-    StyleVar_PivotScale
+    StyleVar_PivotScale,
+    StyleVar_PinCorners
 };
 
 struct Style
@@ -89,8 +90,8 @@ struct Style
     float   PinRounding;
     float   PinBorderWidth;
     float   LinkStrength;
-    ImVec2  SourceLinkDirection;
-    ImVec2  TargetLinkDirection;
+    ImVec2  SourceDirection;
+    ImVec2  TargetDirection;
     float   ScrollDuration;
     float   FlowMarkerDistance;
     float   FlowSpeed;
@@ -98,6 +99,7 @@ struct Style
     ImVec2  PivotAlignment;
     ImVec2  PivotSize;
     ImVec2  PivotScale;
+    float   PinCorners;
     ImVec4  Colors[StyleColor_Count];
 
     Style()
@@ -110,8 +112,8 @@ struct Style
         PinRounding             = 4.0f;
         PinBorderWidth          = 0.0f;
         LinkStrength            = 100.0f;
-        SourceLinkDirection     = ImVec2(1.0f, 0.0f);
-        TargetLinkDirection     = ImVec2(-1.0f, 0.0f);
+        SourceDirection         = ImVec2(1.0f, 0.0f);
+        TargetDirection         = ImVec2(-1.0f, 0.0f);
         ScrollDuration          = 0.35f;
         FlowMarkerDistance      = 30.0f;
         FlowSpeed               = 250.0f;
@@ -119,6 +121,7 @@ struct Style
         PivotAlignment          = ImVec2(0.5f, 0.5f);
         PivotSize               = ImVec2(-1, -1);
         PivotScale              = ImVec2(1, 1);
+        PinCorners              = 15;
 
         Colors[StyleColor_Bg]                 = ImColor( 60,  60,  70, 200);
         Colors[StyleColor_Grid]               = ImColor(120, 120, 120,  40);
@@ -166,6 +169,7 @@ void End();
 
 void BeginNode(int id);
 void BeginPin(int id, PinKind kind);
+void PinRect(const ImVec2& a, const ImVec2& b);
 void PinPivotRect(const ImVec2& a, const ImVec2& b);
 void PinPivotSize(const ImVec2& size);
 void PinPivotScale(const ImVec2& scale);
