@@ -51,6 +51,12 @@ enum class PinKind
     Target
 };
 
+enum class NodeType
+{
+    Blueprint,
+    Tree
+};
+
 struct Node;
 
 struct Pin
@@ -67,6 +73,7 @@ struct Pin
     }
 };
 
+
 struct Node
 {
     int ID;
@@ -74,9 +81,10 @@ struct Node
     std::vector<Pin> Inputs;
     std::vector<Pin> Outputs;
     ImColor Color;
+    NodeType Type;
 
     Node(int id, const char* name, ImColor color = ImColor(255, 255, 255)):
-        ID(id), Name(name), Color(color)
+        ID(id), Name(name), Color(color), Type(NodeType::Blueprint)
     {
     }
 };
@@ -264,6 +272,40 @@ static Node* SpawnTraceByChannelNode()
     return &s_Nodes.back();
 }
 
+static Node* SpawnTreeSequenceNode()
+{
+    s_Nodes.emplace_back(GetNextId(), "Sequence");
+    s_Nodes.back().Type = NodeType::Tree;
+    s_Nodes.back().Inputs.emplace_back(GetNextId(), "", PinType::Flow);
+    s_Nodes.back().Outputs.emplace_back(GetNextId(), "", PinType::Flow);
+
+    BuildNode(&s_Nodes.back());
+
+    return &s_Nodes.back();
+}
+
+static Node* SpawnTreeTaskNode()
+{
+    s_Nodes.emplace_back(GetNextId(), "Move To");
+    s_Nodes.back().Type = NodeType::Tree;
+    s_Nodes.back().Inputs.emplace_back(GetNextId(), "", PinType::Flow);
+
+    BuildNode(&s_Nodes.back());
+
+    return &s_Nodes.back();
+}
+
+static Node* SpawnTreeTask2Node()
+{
+    s_Nodes.emplace_back(GetNextId(), "Random Wait");
+    s_Nodes.back().Type = NodeType::Tree;
+    s_Nodes.back().Inputs.emplace_back(GetNextId(), "", PinType::Flow);
+
+    BuildNode(&s_Nodes.back());
+
+    return &s_Nodes.back();
+}
+
 void Application_Initialize()
 {
     m_Editor = ed::CreateEditor();
@@ -274,7 +316,11 @@ void Application_Initialize()
     SpawnOutputActionNode();
     SpawnSetTimerNode();
 
-    s_Links.push_back(Link(GetNextId(), s_Nodes[0].Outputs[1].ID, s_Nodes[1].Inputs[0].ID));
+    SpawnTreeSequenceNode();
+    SpawnTreeTaskNode();
+    SpawnTreeTask2Node();
+
+    //s_Links.push_back(Link(GetNextId(), s_Nodes[0].Outputs[1].ID, s_Nodes[1].Inputs[0].ID));
 
     s_HeaderBackground = ImGui_LoadTexture("../Data/BlueprintBackground.png");
     s_SampleImage = ImGui_LoadTexture("../Data/Lena512.png");
@@ -562,6 +608,9 @@ void Application_Frame()
 
         for (auto& node : s_Nodes)
         {
+            if (node.Type != NodeType::Blueprint)
+                continue;
+
             bool hasOutputDelegates = false;
             for (auto& output : node.Outputs)
                 if (output.Type == PinType::Delegate)
@@ -659,6 +708,116 @@ void Application_Frame()
                 }
 
             builder.End();
+        }
+
+        {
+            for (auto& node : s_Nodes)
+            {
+                if (node.Type != NodeType::Tree)
+                    continue;
+
+                const float rounding = 5.0f;
+                const float padding  = 12.0f;
+
+                const auto pinBackground = ed::GetStyle().Colors[ed::StyleColor_NodeBg];
+
+                ed::PushStyleColor(ed::StyleColor_NodeBg,     ImColor(128, 128, 128, 200));
+                ed::PushStyleColor(ed::StyleColor_NodeBorder, ImColor( 32,  32,  32, 200));
+                ed::PushStyleColor(ed::StyleColor_PinRect,    ImColor( 60, 180, 255, 150));
+
+                ed::PushStyleVar(ed::StyleVar_NodePadding,  ImVec4(0, 0, 0, 0));
+                ed::PushStyleVar(ed::StyleVar_NodeRounding, rounding);
+                ed::PushStyleVar(ed::StyleVar_SourceDirection, ImVec2(0.0f,  1.0f));
+                ed::PushStyleVar(ed::StyleVar_TargetDirection, ImVec2(0.0f, -1.0f));
+                ed::PushStyleVar(ed::StyleVar_LinkStrength, 0.0f);
+                ed::BeginNode(node.ID);
+
+                ImGui::BeginVertical(node.ID);
+                ImGui::BeginHorizontal("inputs");
+                ImGui::Spring(0, padding * 2);
+
+                rect inputsRect;
+                int inputAlpha = 200;
+                if (!node.Inputs.empty())
+                {
+                     auto& pin = node.Inputs[0];
+                     ImGui::Dummy(ImVec2(0, padding));
+                     ImGui::Spring(1, 0);
+                     inputsRect = ImGui_GetItemRect();
+
+                     ed::PushStyleVar(ed::StyleVar_PinCorners, 12);
+                     ed::BeginPin(pin.ID, ed::PinKind::Target);
+                     ed::PinPivotRect(to_imvec(inputsRect.top_left()), to_imvec(inputsRect.bottom_right()));
+                     ed::PinRect(to_imvec(inputsRect.top_left()), to_imvec(inputsRect.bottom_right()));
+                     ed::EndPin();
+                     ed::PopStyleVar();
+
+                     if (newLinkPin && !CanCreateLink(newLinkPin, &pin) && &pin != newLinkPin)
+                         inputAlpha = (int)(255 * ImGui::GetStyle().Alpha * (48.0f / 255.0f));
+                }
+                else
+                    ImGui::Dummy(ImVec2(0, padding));
+
+                ImGui::Spring(0, padding * 2);
+                ImGui::EndHorizontal();
+
+                ImGui::BeginHorizontal("content_frame");
+                ImGui::Spring(1, padding);
+
+                ImGui::BeginVertical("content", ImVec2(0.0f, 0.0f));
+                ImGui::Dummy(ImVec2(160, 0));
+                ImGui::Spring(1);
+                ImGui::TextUnformatted(node.Name.c_str());
+                ImGui::Spring(1);
+                ImGui::EndVertical();
+                auto contentRect = ImGui_GetItemRect();
+
+                ImGui::Spring(1, padding);
+                ImGui::EndHorizontal();
+
+                ImGui::BeginHorizontal("outputs");
+                ImGui::Spring(0, padding * 2);
+
+                rect outputsRect;
+                int outputAlpha = 200;
+                if (!node.Outputs.empty())
+                {
+                    auto& pin = node.Outputs[0];
+                    ImGui::Dummy(ImVec2(0, padding));
+                    ImGui::Spring(1, 0);
+                    outputsRect = ImGui_GetItemRect();
+
+                    ed::PushStyleVar(ed::StyleVar_PinCorners, 3);
+                    ed::BeginPin(pin.ID, ed::PinKind::Source);
+                    ed::PinPivotRect(to_imvec(outputsRect.top_left()), to_imvec(outputsRect.bottom_right()));
+                    ed::PinRect(to_imvec(outputsRect.top_left()), to_imvec(outputsRect.bottom_right()));
+                    ed::EndPin();
+                    ed::PopStyleVar();
+
+                    if (newLinkPin && !CanCreateLink(newLinkPin, &pin) && &pin != newLinkPin)
+                        outputAlpha = (int)(255 * ImGui::GetStyle().Alpha * (48.0f / 255.0f));
+                }
+                else
+                    ImGui::Dummy(ImVec2(0, padding));
+
+                ImGui::Spring(0, padding * 2);
+                ImGui::EndHorizontal();
+
+                ImGui::EndVertical();
+
+                ed::EndNode();
+                ed::PopStyleVar(5);
+                ed::PopStyleColor(3);
+
+                auto drawList = ed::GetNodeBackgroundDrawList(node.ID);
+
+                drawList->AddRectFilled(to_imvec(inputsRect.top_left()), to_imvec(inputsRect.bottom_right()),
+                    IM_COL32((int)(255 * pinBackground.x), (int)(255 * pinBackground.y), (int)(255 * pinBackground.z), inputAlpha), 4.0f, 12);
+                drawList->AddRectFilled(to_imvec(outputsRect.top_left()), to_imvec(outputsRect.bottom_right()),
+                    IM_COL32((int)(255 * pinBackground.x), (int)(255 * pinBackground.y), (int)(255 * pinBackground.z), outputAlpha), 4.0f, 3);
+                drawList->AddRectFilled(to_imvec(contentRect.top_left()), to_imvec(contentRect.bottom_right()), IM_COL32(24, 64, 128, 255), 0.0f);
+                drawList->AddRect(to_imvec(contentRect.top_left()), to_imvec(contentRect.bottom_right()), IM_COL32(2, 16, 64, 64), 0.0f);
+            }
         }
 
         for (auto& link : s_Links)
@@ -810,6 +969,13 @@ void Application_Frame()
             node = SpawnSetTimerNode();
         if (ImGui::MenuItem("Trace by Channel"))
             node = SpawnTraceByChannelNode();
+        ImGui::Separator();
+        if (ImGui::MenuItem("Sequence"))
+            SpawnTreeSequenceNode();
+        if (ImGui::MenuItem("Move To"))
+            SpawnTreeTaskNode();
+        if (ImGui::MenuItem("Random Wait"))
+            SpawnTreeTask2Node();
 
         if (node)
         {
