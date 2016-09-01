@@ -74,6 +74,9 @@ enum StyleVar
     StyleVar_FlowMarkerDistance,
     StyleVar_FlowSpeed,
     StyleVar_FlowDuration,
+    StyleVar_PivotAlignment,
+    StyleVar_PivotSize,
+    StyleVar_PivotScale
 };
 
 struct Style
@@ -92,6 +95,9 @@ struct Style
     float   FlowMarkerDistance;
     float   FlowSpeed;
     float   FlowDuration;
+    ImVec2  PivotAlignment;
+    ImVec2  PivotSize;
+    ImVec2  PivotScale;
     ImVec4  Colors[StyleColor_Count];
 
     Style()
@@ -110,6 +116,9 @@ struct Style
         FlowMarkerDistance      = 30.0f;
         FlowSpeed               = 250.0f;
         FlowDuration            = 2.0f;
+        PivotAlignment          = ImVec2(0.5f, 0.5f);
+        PivotSize               = ImVec2(-1, -1);
+        PivotScale              = ImVec2(1, 1);
 
         Colors[StyleColor_Bg]                 = ImColor( 60,  60,  70, 200);
         Colors[StyleColor_Grid]               = ImColor(120, 120, 120,  40);
@@ -156,7 +165,11 @@ void Begin(const char* id, const ImVec2& size = ImVec2(0, 0));
 void End();
 
 void BeginNode(int id);
-void BeginPin(int id, PinKind kind, const ImVec2& pivot = ImVec2(0.5f, 0.5f));
+void BeginPin(int id, PinKind kind);
+void PinPivotRect(const ImVec2& a, const ImVec2& b);
+void PinPivotSize(const ImVec2& size);
+void PinPivotScale(const ImVec2& scale);
+void PinPivotAlignment(const ImVec2& alignment);
 void EndPin();
 void EndNode();
 

@@ -277,13 +277,13 @@ void ed::Link::Draw(ImDrawList* drawList, ImU32 color, float extraThickness) con
     if (!IsLive)
         return;
 
-    ax::Drawing::DrawLink(drawList, StartPin->DragPoint, EndPin->DragPoint,
+    ax::Drawing::DrawLink(drawList, Start, End,
         color, Thickness + extraThickness, Strength, StartDir, EndDir);
 }
 
 ax::bezier_t ed::Link::GetBezier() const
 {
-    return ax::Drawing::GetLinkBezier(StartPin->DragPoint, EndPin->DragPoint, Strength, StartDir, EndDir);
+    return ax::Drawing::GetLinkBezier(Start, End, Strength, StartDir, EndDir);
 }
 
 bool ed::Link::TestHit(const ImVec2& point, float extraThickness) const
@@ -296,7 +296,7 @@ bool ed::Link::TestHit(const ImVec2& point, float extraThickness) const
         return false;
 
     const auto distance = ax::Drawing::LinkDistance(point,
-        StartPin->DragPoint, EndPin->DragPoint, Strength, StartDir, EndDir);
+        Start, End, Strength, StartDir, EndDir);
 
     return distance <= Thickness + extraThickness;
 }
@@ -308,7 +308,7 @@ bool ed::Link::TestHit(const ax::rectf& rect) const
     if (rect.contains(bounds))
         return true;
 
-    if (rect.intersects(bounds) && Drawing::CollideLinkWithRect(rect, StartPin->DragPoint, EndPin->DragPoint, Strength, StartDir, EndDir))
+    if (rect.intersects(bounds) && Drawing::CollideLinkWithRect(rect, Start, End, Strength, StartDir, EndDir))
         return true;
 
     return false;
@@ -317,12 +317,7 @@ bool ed::Link::TestHit(const ax::rectf& rect) const
 ax::rectf ed::Link::GetBounds() const
 {
     if (IsLive)
-    {
-        const auto startPoint = StartPin->DragPoint;
-        const auto endPoint   = EndPin->DragPoint;
-
-        return ax::Drawing::GetLinkBounds(startPoint, endPoint, Strength, StartDir, EndDir);
-    }
+        return ax::Drawing::GetLinkBounds(Start, End, Strength, StartDir, EndDir);
     else
         return ax::rectf();
 }
@@ -676,6 +671,9 @@ bool ed::Context::DoLink(int id, int startPinId, int endPinId, ImU32 color, floa
     auto startPin = FindPin(startPinId);
     auto endPin   = FindPin(endPinId);
 
+    if (!startPin || !startPin->IsLive || !endPin || !endPin->IsLive)
+        return false;
+
     link->StartPin = startPin;
     link->EndPin   = endPin;
 
@@ -684,12 +682,14 @@ bool ed::Context::DoLink(int id, int startPinId, int endPinId, ImU32 color, floa
     link->Strength  = editorStyle.LinkStrength;
     link->StartDir  = editorStyle.SourceLinkDirection;
     link->EndDir    = editorStyle.TargetLinkDirection;
+    link->IsLive    = true;
 
-    link->IsLive =
-        (startPin && startPin->IsLive) &&
-        (endPin   && endPin->IsLive);
+    const auto line = startPin->Pivot.get_closest_line(endPin->Pivot);
 
-    return link->IsLive;
+    link->Start     = to_imvec(line.a);
+    link->End       = to_imvec(line.b);
+
+    return true;
 }
 
 void ed::Context::SetNodePosition(int nodeId, const ImVec2& position)
@@ -701,7 +701,7 @@ void ed::Context::SetNodePosition(int nodeId, const ImVec2& position)
         node->IsLive = false;
     }
 
-    node->Bounds.location = to_point(position);
+    node->Bounds.location = to_pointf(position);
 }
 
 ImVec2 ed::Context::GetNodePosition(int nodeId)
@@ -860,7 +860,7 @@ ed::Node* ed::Context::CreateNode(int id)
     if (!settings)
         settings = AddNodeSettings(id);
     else
-        node->Bounds.location = to_point(settings->Location);
+        node->Bounds.location = to_pointf(settings->Location);
 
     settings->WasUsed = true;
 
@@ -1170,7 +1170,7 @@ ed::Control ed::Context::ComputeControl()
     Object* clickedObject = nullptr;
 
     // Emits invisible button and returns true if it is clicked.
-    auto emitInteractiveArea = [this](int id, const rect& rect)
+    auto emitInteractiveArea = [this](int id, const rectf& rect)
     {
         char idString[33]; // itoa can output 33 bytes maximum
         _itoa(id, idString, 16);
@@ -1189,7 +1189,7 @@ ed::Control ed::Context::ComputeControl()
     };
 
     // Check input interactions over area.
-    auto checkInteractionsInArea = [&emitInteractiveArea, &hotObject, &activeObject, &clickedObject](int id, const rect& rect, Object* object)
+    auto checkInteractionsInArea = [&emitInteractiveArea, &hotObject, &activeObject, &clickedObject](int id, const rectf& rect, Object* object)
     {
         if (emitInteractiveArea(id, rect))
             clickedObject = object;
@@ -1232,7 +1232,7 @@ ed::Control ed::Context::ComputeControl()
     if (nullptr == hotObject)
         hotObject = FindLinkAt(mousePos);
 
-    const auto editorRect = rect(to_point(Canvas.FromClient(ImVec2(0, 0))), to_size(Canvas.ClientSize));
+    const auto editorRect = rectf(to_pointf(Canvas.FromClient(ImVec2(0, 0))), to_sizef(Canvas.ClientSize));
 
     // Check for interaction with background.
     auto backgroundClicked  = emitInteractiveArea(0, editorRect);
@@ -1608,7 +1608,7 @@ bool ed::FlowAnimation::IsLinkValid() const
 
 bool ed::FlowAnimation::IsPathValid() const
 {
-    return !Path.empty() && PathLength > 0.0f && Link->StartPin->DragPoint == LastStart && Link->EndPin->DragPoint == LastEnd;
+    return !Path.empty() && PathLength > 0.0f && Link->Start == LastStart && Link->End == LastEnd;
 }
 
 void ed::FlowAnimation::UpdatePath()
@@ -1621,8 +1621,8 @@ void ed::FlowAnimation::UpdatePath()
 
     const auto curve  = Link->GetBezier();
 
-    LastStart  = Link->StartPin->DragPoint;
-    LastEnd    = Link->EndPin->DragPoint;
+    LastStart  = Link->Start;
+    LastEnd    = Link->End;
     PathLength = bezier_length(curve.p0, curve.p1, curve.p2, curve.p3);
 
     auto collectPointsCallback = [this](bezier_fixed_step_result_t& result)
@@ -2065,10 +2065,10 @@ bool ed::DragAction::Process(const Control& control)
         {
             for (auto selectedObject : Editor->GetSelectedObjects())
                 if (auto selectedNode = selectedObject->AsNode())
-                    selectedNode->Bounds.location = selectedNode->DragStart + to_point(dragOffset);
+                    selectedNode->Bounds.location = selectedNode->DragStart + to_pointf(dragOffset);
         }
         else
-            control.ActiveNode->Bounds.location = control.ActiveNode->DragStart + to_point(dragOffset);
+            control.ActiveNode->Bounds.location = control.ActiveNode->DragStart + to_pointf(dragOffset);
     }
     else if (!control.ActiveNode)
     {
@@ -2294,15 +2294,15 @@ bool ed::CreateItemAction::Process(const Control& control)
     {
         if (control.ActivePin == DraggedPin && (CurrentStage == Possible))
         {
-            ImVec2 startPoint = DraggedPin->DragPoint;
             ImVec2 endPoint   = ImGui::GetMousePos();
+            ImVec2 startPoint = to_imvec(DraggedPin->Pivot.get_closest_point(to_pointf(endPoint), true));
 
             if (control.HotPin)
             {
                 DropPin(control.HotPin);
 
                 if (UserAction == UserAccept)
-                    endPoint = control.HotPin->DragPoint;
+                    endPoint = to_imvec(control.HotPin->Pivot.centerf());
             }
             else if (control.BackgroundHot)
                 DropNode();
@@ -2839,15 +2839,15 @@ void ed::NodeBuilder::End()
     CurrentNode = nullptr;
 }
 
-void ed::NodeBuilder::BeginPin(int pinId, PinKind kind, const ImVec2& pivot)
+void ed::NodeBuilder::BeginPin(int pinId, PinKind kind)
 {
     assert(nullptr == CurrentPin);
+
+    auto& editorStyle = Editor->GetStyle();
 
     CurrentPin = Editor->GetPin(pinId, kind);
     CurrentPin->Node = CurrentNode;
 
-    // Save pivot in drag point, it will be converted to actuall point in EndPin()
-    CurrentPin->DragPoint   = pivot;
     CurrentPin->IsLive      = true;
     CurrentPin->Color       = Editor->GetColor(StyleColor_PinRect);
     CurrentPin->BorderColor = Editor->GetColor(StyleColor_PinRectBorder);
@@ -2856,6 +2856,12 @@ void ed::NodeBuilder::BeginPin(int pinId, PinKind kind, const ImVec2& pivot)
 
     CurrentPin->PreviousPin = CurrentNode->LastPin;
     CurrentNode->LastPin    = CurrentPin;
+
+
+    PivotAlignment          = editorStyle.PivotAlignment;
+    PivotSize               = editorStyle.PivotSize;
+    PivotScale              = editorStyle.PivotScale;
+    ResolvePivot            = true;
 
     ImGui::BeginGroup();
 }
@@ -2868,12 +2874,52 @@ void ed::NodeBuilder::EndPin()
 
     auto pinRect = ImGui_GetItemRect();
 
-    CurrentPin->Bounds    = pinRect;
-    CurrentPin->DragPoint = ImVec2(
-        pinRect.x + CurrentPin->DragPoint.x * pinRect.w,
-        pinRect.y + CurrentPin->DragPoint.y * pinRect.h);
+    CurrentPin->Bounds = pinRect;
+
+    if (ResolvePivot)
+    {
+        if (PivotSize.x < 0)
+            PivotSize.x = static_cast<float>(pinRect.size.w);
+        if (PivotSize.y < 0)
+            PivotSize.y = static_cast<float>(pinRect.size.h);
+
+        CurrentPin->Pivot.location = static_cast<pointf>(pinRect.top_left() + static_cast<pointf>(pinRect.size).cwise_product(to_pointf(PivotAlignment)));
+        CurrentPin->Pivot.size     = static_cast<sizef>((to_pointf(PivotSize).cwise_product(to_pointf(PivotScale))));
+    }
 
     CurrentPin = nullptr;
+}
+
+void ed::NodeBuilder::PinPivotRect(const ImVec2& a, const ImVec2& b)
+{
+    assert(nullptr != CurrentPin);
+
+    CurrentPin->Pivot = rectf(to_pointf(a), to_pointf(b));
+    ResolvePivot      = false;
+}
+
+void ed::NodeBuilder::PinPivotSize(const ImVec2& size)
+{
+    assert(nullptr != CurrentPin);
+
+    PivotSize    = size;
+    ResolvePivot = true;
+}
+
+void ed::NodeBuilder::PinPivotScale(const ImVec2& scale)
+{
+    assert(nullptr != CurrentPin);
+
+    PivotScale   = scale;
+    ResolvePivot = true;
+}
+
+void ed::NodeBuilder::PinPivotAlignment(const ImVec2& alignment)
+{
+    assert(nullptr != CurrentPin);
+
+    PivotAlignment = alignment;
+    ResolvePivot   = true;
 }
 
 ImDrawList* ed::NodeBuilder::GetBackgroundDrawList() const
@@ -3020,6 +3066,9 @@ ImVec2* ed::Style::GetVarVec2Addr(StyleVar idx)
     {
         case StyleVar_SourceLinkDirection: return &SourceLinkDirection;
         case StyleVar_TargetLinkDirection: return &TargetLinkDirection;
+        case StyleVar_PivotAlignment:      return &PivotAlignment;
+        case StyleVar_PivotSize:           return &PivotSize;
+        case StyleVar_PivotScale:          return &PivotScale;
     }
 
     return nullptr;
@@ -3029,7 +3078,7 @@ ImVec4* ed::Style::GetVarVec4Addr(StyleVar idx)
 {
     switch (idx)
     {
-        case StyleVar_NodePadding:              return &NodePadding;
+        case StyleVar_NodePadding: return &NodePadding;
     }
 
     return nullptr;

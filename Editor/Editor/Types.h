@@ -86,6 +86,9 @@ struct basic_point
     friend inline basic_point operator + (const basic_point& lhs, const basic_point& rhs) { return basic_point(lhs.x + rhs.x, lhs.y + rhs.y); }
     friend inline basic_point operator - (const basic_point& lhs, const basic_point& rhs) { return basic_point(lhs.x - rhs.x, lhs.y - rhs.y); }
 
+    template <typename P> friend basic_point operator + (const basic_size<P>& lhs, const basic_point&   rhs);
+    template <typename P> friend basic_point operator - (const basic_point&   lhs, const basic_size<P>& rhs);
+
     friend inline basic_point operator * (T lhs, const basic_point& rhs) { return basic_point(lhs * rhs.x, lhs * rhs.y); }
     friend inline basic_point operator * (const basic_point& lhs, T rhs) { return basic_point(lhs.x * rhs, lhs.y * rhs); }
 
@@ -125,6 +128,48 @@ struct basic_size
 
 typedef basic_size<int>    size;
 typedef basic_size<float>  sizef;
+
+
+//------------------------------------------------------------------------------
+template <typename T>
+struct basic_line
+{
+    typedef typename basic_point<T> point_t;
+
+    union
+    {
+        struct { point_t a; point_t b; };
+        struct { T x0, y0, x1, y1; };
+    };
+
+    basic_line(): x0(0), y0(0), x1(0), y1(0) {}
+    basic_line(const point_t& a, const point_t& b): a(a), b(b) {}
+    basic_line(const point_t& p, const size_t& s): a(p), b(p + s) {}
+    basic_line(T x0, T y0, T x1, T y1): x0(x0), y0(y0), x1(x1), y1(y1) {}
+
+    template <typename P>
+    explicit basic_line(const basic_line<P>& l)
+    {
+        a = static_cast<basic_point<T>>(l.a);
+        b = static_cast<basic_point<T>>(l.b);
+    }
+
+    basic_line(const basic_line&) = default;
+    basic_line(basic_line&&) = default;
+    basic_line& operator=(const basic_line&) = default;
+    basic_line& operator=(basic_line&&) = default;
+
+    template <typename P>
+    explicit operator basic_line<P>() const
+    {
+        return basic_line<P>(
+            static_cast<basic_point<T>>(l.a),
+            static_cast<basic_point<T>>(l.b));
+    }
+};
+
+typedef basic_line<int>   line;
+typedef basic_line<float> line_f;
 
 
 //------------------------------------------------------------------------------
@@ -263,7 +308,25 @@ struct basic_rect
             (p.x > right())  ? right()  : (p.x < left() ? left() : p.x),
             (p.y > bottom()) ? bottom() : (p.y < top()  ? top()  : p.y));
     }
+
+    point_t get_closest_point(const basic_rect& r) const;
+
+    basic_line<T> get_closest_line(const basic_rect& r) const;
 };
+
+template <typename T>
+static inline basic_rect<T> make_intersection(const basic_rect<T>& lhs, const basic_rect<T>& rhs)
+{
+    if (lhs.is_empty())
+        return lhs;
+    else if (rhs.is_empty())
+        return rhs;
+
+    const auto tl = lhs.top_left().cwise_max(rhs.top_left());
+    const auto br = lhs.bottom_right().cwise_min(rhs.bottom_right());
+
+    return basic_rect<T>(tl, br);
+}
 
 template <typename T>
 static inline basic_rect<T> make_union(const basic_rect<T>& lhs, const basic_rect<T>& rhs)

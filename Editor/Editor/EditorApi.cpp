@@ -87,9 +87,29 @@ void ax::Editor::BeginNode(int id)
     s_Editor->GetNodeBuilder().Begin(id);
 }
 
-void ax::Editor::BeginPin(int id, PinKind kind, const ImVec2& pivot/* = ImVec2(0.5f, 0.5f)*/)
+void ax::Editor::BeginPin(int id, PinKind kind)
 {
-    s_Editor->GetNodeBuilder().BeginPin(id, kind, pivot);
+    s_Editor->GetNodeBuilder().BeginPin(id, kind);
+}
+
+void ax::Editor::PinPivotRect(const ImVec2& a, const ImVec2& b)
+{
+    s_Editor->GetNodeBuilder().PinPivotRect(a, b);
+}
+
+void ax::Editor::PinPivotSize(const ImVec2& size)
+{
+    s_Editor->GetNodeBuilder().PinPivotSize(size);
+}
+
+void ax::Editor::PinPivotScale(const ImVec2& scale)
+{
+    s_Editor->GetNodeBuilder().PinPivotScale(scale);
+}
+
+void ax::Editor::PinPivotAlignment(const ImVec2& alignment)
+{
+    s_Editor->GetNodeBuilder().PinPivotAlignment(alignment);
 }
 
 void ax::Editor::EndPin()

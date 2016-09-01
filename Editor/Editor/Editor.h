@@ -74,8 +74,8 @@ struct Pin final: Object
 {
     PinKind Kind;
     Node*   Node;
-    rect    Bounds;
-    ImVec2  DragPoint;
+    rectf   Bounds;
+    rectf   Pivot;
     Pin*    PreviousPin;
     ImU32   Color;
     ImU32   BorderColor;
@@ -97,10 +97,10 @@ struct Pin final: Object
 
 struct Node final: Object
 {
-    rect    Bounds;
+    rectf   Bounds;
     int     Channel;
     Pin*    LastPin;
-    point   DragStart;
+    pointf  DragStart;
 
     ImU32   Color;
     ImU32   BorderColor;
@@ -109,7 +109,7 @@ struct Node final: Object
 
     Node(int id):
         Object(id),
-        Bounds(point(0, 0), size()),
+        Bounds(),
         Channel(0),
         LastPin(nullptr),
         DragStart(),
@@ -128,6 +128,12 @@ struct Node final: Object
     virtual Node* AsNode() override final { return this; }
 };
 
+struct LinkPoints
+{
+    ImVec2 Start;
+    ImVec2 End;
+};
+
 struct Link final: Object
 {
     Pin*   StartPin;
@@ -135,11 +141,15 @@ struct Link final: Object
     ImU32  Color;
     float  Thickness;
     float  Strength;
+
+    ImVec2 Start;
+    ImVec2 End;
     ImVec2 StartDir;
     ImVec2 EndDir;
 
     Link(int id):
-        Object(id), StartPin(nullptr), EndPin(nullptr), Color(IM_COL32_WHITE), Thickness(1.0f), Strength(0.0f), StartDir(0, 0), EndDir(0, 0)
+        Object(id), StartPin(nullptr), EndPin(nullptr), Color(IM_COL32_WHITE), Thickness(1.0f), Strength(0.0f),
+        Start(0, 0), End(0, 0), StartDir(0, 0), EndDir(0, 0)
     {
     }
 
@@ -620,15 +630,25 @@ struct NodeBuilder
     Node* CurrentNode;
     Pin*  CurrentPin;
 
-    rect NodeRect;
+    rectf  NodeRect;
+
+    ImVec2 PivotAlignment;
+    ImVec2 PivotSize;
+    ImVec2 PivotScale;
+    bool   ResolvePivot;
 
     NodeBuilder(Context* editor);
 
     void Begin(int nodeId);
     void End();
 
-    void BeginPin(int pinId, PinKind kind, const ImVec2& pivot);
+    void BeginPin(int pinId, PinKind kind);
     void EndPin();
+
+    void PinPivotRect(const ImVec2& a, const ImVec2& b);
+    void PinPivotSize(const ImVec2& size);
+    void PinPivotScale(const ImVec2& scale);
+    void PinPivotAlignment(const ImVec2& alignment);
 
     ImDrawList* GetBackgroundDrawList() const;
     ImDrawList* GetBackgroundDrawList(Node* node) const;

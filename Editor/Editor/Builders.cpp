@@ -56,18 +56,18 @@ void util::BlueprintNodeBuilder::End()
                 to_imvec(HeaderRect.bottom_right()) + ImVec2(8 - halfBorderWidth, 0),
                 ImVec2(0.0f, 0.0f), uv,
                 headerColor, GetStyle().NodeRounding, 1 | 2);
-        }
 
-        auto headerSeparatorRect = ax::rect(HeaderRect.bottom_left(), ContentRect.top_right());
-        auto footerSeparatorRect      = ax::rect(ContentRect.bottom_left(), NodeRect.bottom_right());
-        auto contentWithSeparatorRect = ax::make_union(headerSeparatorRect, footerSeparatorRect);
+            auto headerSeparatorRect      = ax::rectf(HeaderRect.bottom_left(), ContentRect.top_right());
+            auto footerSeparatorRect      = ax::rectf(ContentRect.bottom_left(), NodeRect.bottom_right());
+            auto contentWithSeparatorRect = ax::make_union(headerSeparatorRect, footerSeparatorRect);
 
-        if (!headerSeparatorRect.is_empty())
-        {
-            drawList->AddLine(
-                to_imvec(headerSeparatorRect.top_left())  + ImVec2(-(8 - halfBorderWidth), -1),
-                to_imvec(headerSeparatorRect.top_right()) + ImVec2( (8 - halfBorderWidth), -1),
-                ImColor(255, 255, 255, 96 * alpha / (3 * 255)), 1.0f);
+            if (!headerSeparatorRect.is_empty())
+            {
+                drawList->AddLine(
+                    to_imvec(headerSeparatorRect.top_left())  + ImVec2(-(8 - halfBorderWidth), -1),
+                    to_imvec(headerSeparatorRect.top_right()) + ImVec2( (8 - halfBorderWidth), -1),
+                    ImColor(255, 255, 255, 96 * alpha / (3 * 255)), 1.0f);
+            }
         }
 
         //drawList->AddRect(to_imvec(NodeRect.top_left()), to_imvec(NodeRect.bottom_right()), IM_COL32(255, 0, 0, 255));
@@ -175,11 +175,15 @@ bool util::BlueprintNodeBuilder::SetStage(Stage stage)
             break;
 
         case Stage::Input:
+            ed::PopStyleVar(2);
+
             ImGui::Spring(1, 0);
             ImGui::EndVertical();
             break;
 
         case Stage::Output:
+            ed::PopStyleVar(2);
+
             ImGui::Spring(1);
             ImGui::EndVertical();
             break;
@@ -205,11 +209,17 @@ bool util::BlueprintNodeBuilder::SetStage(Stage stage)
 
         case Stage::Input:
             ImGui::BeginVertical("inputs", ImVec2(0, 0), 0.0f);
+
+            ed::PushStyleVar(ed::StyleVar_PivotAlignment, ImVec2(0, 0.5f));
+            ed::PushStyleVar(ed::StyleVar_PivotSize, ImVec2(0, 0));
             break;
 
         case Stage::Output:
             ImGui::Spring(1);
             ImGui::BeginVertical("outputs", ImVec2(0, 0), 1.0f);
+
+            ed::PushStyleVar(ed::StyleVar_PivotAlignment, ImVec2(1.0f, 0.5f));
+            ed::PushStyleVar(ed::StyleVar_PivotSize, ImVec2(0, 0));
             break;
 
         case Stage::End:
@@ -229,9 +239,7 @@ bool util::BlueprintNodeBuilder::SetStage(Stage stage)
 
 void util::BlueprintNodeBuilder::Pin(int id, ed::PinKind kind)
 {
-    const ImVec2 pivot = kind == ed::PinKind::Source ? ImVec2(1.0f, 0.5f) : ImVec2(0.0f, 0.5f);
-
-    ed::BeginPin(id, kind, pivot);
+    ed::BeginPin(id, kind);
 }
 
 void util::BlueprintNodeBuilder::EndPin()

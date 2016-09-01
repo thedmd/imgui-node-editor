@@ -49,9 +49,9 @@ private:
     int         CurrentNodeId;
     Stage       CurrentStage;
     ImU32       HeaderColor;
-    rect        NodeRect;
-    rect        HeaderRect;
-    rect        ContentRect;
+    rectf       NodeRect;
+    rectf       HeaderRect;
+    rectf       ContentRect;
 };
 
 

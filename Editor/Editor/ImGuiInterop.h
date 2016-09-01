@@ -5,10 +5,10 @@
 namespace ax {
 namespace ImGuiInterop {
 
-static inline ImVec2 operator+(const ImVec2& lhs) { return ImVec2( lhs.x,  lhs.y); }
-static inline ImVec2 operator-(const ImVec2& lhs) { return ImVec2(-lhs.x, -lhs.y); }
 static inline bool operator==(const ImVec2& lhs, const ImVec2& rhs) { return lhs.x == rhs.x && lhs.y == rhs.y; }
 static inline bool operator!=(const ImVec2& lhs, const ImVec2& rhs) { return lhs.x != rhs.x || lhs.y != rhs.y; }
+static inline ImVec2 operator+(const ImVec2& lhs) { return ImVec2( lhs.x,  lhs.y); }
+static inline ImVec2 operator-(const ImVec2& lhs) { return ImVec2(-lhs.x, -lhs.y); }
 static inline ImVec2 operator+(const ImVec2& lhs, const ImVec2& rhs) { return ImVec2(lhs.x+rhs.x, lhs.y+rhs.y); }
 static inline ImVec2 operator-(const ImVec2& lhs, const ImVec2& rhs) { return ImVec2(lhs.x-rhs.x, lhs.y-rhs.y); }
 static inline ImVec2 operator*(const ImVec2& lhs, float rhs)         { return ImVec2(lhs.x * rhs,   lhs.y * rhs); }
@@ -24,7 +24,7 @@ static inline ImVec2 to_imvec(const point& value)   { return ImVec2(static_cast<
 static inline ImVec2 to_imvec(const pointf& value)  { return ImVec2(value.x, value.y); }
 static inline ImVec2 to_imvec(const size& value)    { return ImVec2(static_cast<float>(value.w), static_cast<float>(value.h)); }
 static inline ImVec2 to_imvec(const sizef& value)   { return ImVec2(value.w, value.h); }
-static inline rect   ImGui_GetItemRect()            { return rect(to_point(ImGui::GetItemRectMin()), to_point(ImGui::GetItemRectMax())); }
+static inline rectf  ImGui_GetItemRect()            { return rectf(to_pointf(ImGui::GetItemRectMin()), to_pointf(ImGui::GetItemRectMax())); }
 
 } // namespace ImGuiInterop
 } // namespace ax

@@ -15,6 +15,75 @@
 
 
 //------------------------------------------------------------------------------
+template <typename T, typename P>
+inline ax::basic_point<T> operator + (const ax::basic_size<P>& lhs, const ax::basic_point<T>& rhs)
+{
+    return static_cast<basic_point<T>>(lhs) + rhs;
+}
+
+template <typename T, typename P>
+inline ax::basic_point<T> operator + (const ax::basic_point<T>& lhs, const ax::basic_size<P>& rhs)
+{
+    return lhs + static_cast<basic_point<T>>(rhs);
+}
+
+
+//------------------------------------------------------------------------------
+template <typename T>
+inline typename ax::basic_rect<T>::point_t ax::basic_rect<T>::get_closest_point(const basic_rect& r) const
+{
+    point_t result;
+    if (r.left() >= right())
+        result.x = right();
+    else if (r.right() <= left())
+        result.x = left();
+    else
+        result.x = (std::max(left(), r.left()) + std::min(right(), r.right())) / 2;
+
+    if (r.top() >= bottom())
+        result.y = bottom();
+    else if (r.bottom() <= top())
+        result.y = top();
+    else
+        result.y = (std::max(top(), r.top()) + std::min(bottom(), r.bottom())) / 2;
+
+    return result;
+}
+
+template <typename T>
+inline ax::basic_line<T> ax::basic_rect<T>::get_closest_line(const basic_rect& r) const
+{
+    auto a = get_closest_point(r);
+    auto b = r.get_closest_point(*this);
+
+    auto distribute = [](T& a, T& b, T a0, T a1, T b0, T b1)
+    {
+        if (a0 >= b1 || a1 <= b0)
+            return;
+
+        const auto aw = a1 - a0;
+        const auto bw = b1 - b0;
+
+        if (aw > bw)
+        {
+            b = b0 + bw - bw * (a - a0) / aw;
+            a = b;
+        }
+        else if (aw < bw)
+        {
+            b = a0 + aw - aw * (b - b0) / bw;
+            a = a;
+        }
+    };
+
+    distribute(a.x, b.x, left(), right(),  r.left(), r.right());
+    distribute(a.y, b.y, top(),  bottom(), r.top(),  r.bottom());
+
+    return basic_line<T>(a, b);
+}
+
+
+//------------------------------------------------------------------------------
 inline void ax::matrix::zero()
 {
     *this = matrix(0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f);
