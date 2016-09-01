@@ -77,7 +77,8 @@ enum StyleVar
     StyleVar_PivotAlignment,
     StyleVar_PivotSize,
     StyleVar_PivotScale,
-    StyleVar_PinCorners
+    StyleVar_PinCorners,
+    StyleVar_PinRadius
 };
 
 struct Style
@@ -100,6 +101,7 @@ struct Style
     ImVec2  PivotSize;
     ImVec2  PivotScale;
     float   PinCorners;
+    float   PinRadius;
     ImVec4  Colors[StyleColor_Count];
 
     Style()
@@ -122,6 +124,7 @@ struct Style
         PivotSize               = ImVec2(-1, -1);
         PivotScale              = ImVec2(1, 1);
         PinCorners              = 15;
+        PinRadius               = 0.0f;
 
         Colors[StyleColor_Bg]                 = ImColor( 60,  60,  70, 200);
         Colors[StyleColor_Grid]               = ImColor(120, 120, 120,  40);

@@ -310,9 +310,13 @@ struct basic_rect
             (p.y > bottom()) ? bottom() : (p.y < top()  ? top()  : p.y));
     }
 
+    point_t get_closest_point(const point_t& p, bool on_edge, float radius) const;
+
     point_t get_closest_point(const basic_rect& r) const;
 
     basic_line<T> get_closest_line(const basic_rect& r) const;
+    basic_line<T> get_closest_line(const basic_rect& r, T radius) const;
+    basic_line<T> get_closest_line(const basic_rect& r, T radius_a, T radius_b) const;
 };
 
 template <typename T>

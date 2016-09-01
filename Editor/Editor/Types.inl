@@ -30,6 +30,21 @@ inline ax::basic_point<T> operator + (const ax::basic_point<T>& lhs, const ax::b
 
 //------------------------------------------------------------------------------
 template <typename T>
+inline typename ax::basic_rect<T>::point_t ax::basic_rect<T>::get_closest_point(const point_t& p, bool on_edge, float radius) const
+{
+    auto point = get_closest_point(p, on_edge);
+
+    const auto offset = p - point;
+    const auto distance_sq = offset.x * offset.x + offset.y * offset.y;
+    if (distance_sq <= 0)
+        return point;
+
+    const auto distance = sqrtf(static_cast<float>(distance_sq));
+
+    return point + static_cast<basic_point<T>>(std::min(distance, static_cast<float>(radius)) * static_cast<basic_point<float>>(offset) * (1.0f / distance));
+}
+
+template <typename T>
 inline typename ax::basic_rect<T>::point_t ax::basic_rect<T>::get_closest_point(const basic_rect& r) const
 {
     point_t result;
@@ -80,6 +95,51 @@ inline ax::basic_line<T> ax::basic_rect<T>::get_closest_line(const basic_rect& r
     distribute(a.y, b.y, top(), bottom(), r.top(), r.bottom());
 
     return basic_line<T>(a, b);
+}
+
+template <typename T>
+inline ax::basic_line<T> ax::basic_rect<T>::get_closest_line(const basic_rect& r, T radius) const
+{
+    return get_closest_line(r, radius, radius);
+}
+
+template <typename T>
+inline ax::basic_line<T> ax::basic_rect<T>::get_closest_line(const basic_rect& r, T radius_a, T radius_b) const
+{
+    auto line = get_closest_line(r);
+    if (radius_a < 0)
+        radius_a = 0;
+    if (radius_b < 0)
+        radius_b = 0;
+
+    if (radius_a == 0 && radius_b == 0)
+        return line;
+
+    const auto offset      = line.b - line.a;
+    const auto length_sq   = offset.x * offset.x + offset.y * offset.y;
+    const auto radius_a_sq = radius_a * radius_a;
+    const auto radius_b_sq = radius_b * radius_b;
+
+    if (length_sq <= 0)
+        return line;
+
+    const auto length    = sqrtf(static_cast<float>(length_sq));
+    const auto direction = ax::basic_point<float>(offset.x / length, offset.y / length);
+
+    const auto total_radius_sq = radius_a_sq + radius_b_sq;
+    float radius_a_f = static_cast<float>(radius_a);
+    float radius_b_f = static_cast<float>(radius_b);
+    if (total_radius_sq > length_sq)
+    {
+        const auto scale = length / (radius_a_f + radius_b_f);
+        radius_a_f *= scale;
+        radius_b_f *= scale;
+    }
+
+    line.a = line.a + static_cast<point_t>(direction * radius_a_f);
+    line.b = line.b - static_cast<point_t>(direction * radius_b_f);
+
+    return line;
 }
 
 

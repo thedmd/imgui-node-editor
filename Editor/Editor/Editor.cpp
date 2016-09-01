@@ -730,7 +730,7 @@ bool ed::Context::DoLink(int id, int startPinId, int endPinId, ImU32 color, floa
     link->EndStrength   = endPin->Strength;
     link->IsLive        = true;
 
-    const auto line = startPin->Pivot.get_closest_line(endPin->Pivot);
+    const auto line = startPin->Pivot.get_closest_line(endPin->Pivot, static_cast<int>(startPin->Radius), static_cast<int>(endPin->Radius));
 
     link->Start     = to_imvec(line.a);
     link->End       = to_imvec(line.b);
@@ -2343,7 +2343,7 @@ bool ed::CreateItemAction::Process(const Control& control)
             ed::Link candidate(0);
 
             candidate.End           = ImGui::GetMousePos();
-            candidate.Start         = to_imvec(DraggedPin->Pivot.get_closest_point(to_point(candidate.End), true));
+            candidate.Start         = to_imvec(DraggedPin->Pivot.get_closest_point(to_point(candidate.End), true, DraggedPin->Radius));
             candidate.StartDir      =  DraggedPin->Dir;
             candidate.EndDir        = -DraggedPin->Dir;
             candidate.StartStrength =  DraggedPin->Strength;
@@ -2356,7 +2356,11 @@ bool ed::CreateItemAction::Process(const Control& control)
 
                 if (UserAction == UserAccept)
                 {
-                    candidate.End         = to_imvec(DraggedPin->Pivot.get_closest_line(control.HotPin->Pivot).b);
+                    const auto line = DraggedPin->Pivot.get_closest_line(control.HotPin->Pivot,
+                        static_cast<int>(DraggedPin->Radius), static_cast<int>(control.HotPin->Radius));
+
+                    candidate.Start       = to_imvec(line.a);
+                    candidate.End         = to_imvec(line.b);
                     candidate.EndDir      = control.HotPin->Dir;
                     candidate.EndStrength = control.HotPin->Strength;
                 }
@@ -2378,7 +2382,6 @@ bool ed::CreateItemAction::Process(const Control& control)
             drawList->ChannelsSetCurrent(c_LinkStartChannel + 3);
 
             candidate.Draw(drawList, LinkThickness);
-            //ax::Drawing::DrawLink(drawList, startPoint, endPoint, LinkColor, LinkThickness, GetStyle().LinkStrength, startDir, endDir);
         }
         else if (!control.ActivePin)
         {
@@ -2916,6 +2919,7 @@ void ed::NodeBuilder::BeginPin(int pinId, PinKind kind)
     CurrentPin->BorderWidth = GetStyle().PinBorderWidth;
     CurrentPin->Rounding    = GetStyle().PinRounding;
     CurrentPin->Corners     = static_cast<int>(GetStyle().PinCorners);
+    CurrentPin->Radius      = GetStyle().PinRadius;
     CurrentPin->Dir         = kind == PinKind::Source ? editorStyle.SourceDirection : editorStyle.TargetDirection;
     CurrentPin->Strength    = editorStyle.LinkStrength;
 
@@ -3131,6 +3135,7 @@ float* ed::Style::GetVarFloatAddr(StyleVar idx)
         case StyleVar_FlowSpeed:                return &FlowSpeed;
         case StyleVar_FlowDuration:             return &FlowDuration;
         case StyleVar_PinCorners:               return &PinCorners;
+        case StyleVar_PinRadius:                return &PinRadius;
     }
 
     return nullptr;

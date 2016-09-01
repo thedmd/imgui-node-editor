@@ -84,11 +84,12 @@ struct Pin final: Object
     int     Corners;
     ImVec2  Dir;
     float   Strength;
+    float   Radius;
 
     Pin(int id, PinKind kind):
         Object(id), Kind(kind), Node(nullptr), Bounds(), PreviousPin(nullptr),
         Color(IM_COL32_WHITE), BorderColor(IM_COL32_BLACK), BorderWidth(0), Rounding(0),
-        Corners(0), Dir(0, 0), Strength(0)
+        Corners(0), Dir(0, 0), Strength(0), Radius(0)
     {
     }
 
