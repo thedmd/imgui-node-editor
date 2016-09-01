@@ -438,7 +438,6 @@ void ShowLeftPane(float paneWidth)
 
     paneWidth = ImGui::GetContentRegionAvailWidth();
 
-
     ImGui::GetWindowDrawList()->AddRectFilled(
         ImGui::GetCursorScreenPos(),
         ImGui::GetCursorScreenPos() + ImVec2(paneWidth, ImGui::GetTextLineHeight()),
@@ -520,6 +519,10 @@ void ShowLeftPane(float paneWidth)
     for (int i = 0; i < nodeCount; ++i) ImGui::Text("Node (%d)", selectedNodes[i]);
     for (int i = 0; i < linkCount; ++i) ImGui::Text("Link (%d)", selectedLinks[i]);
     ImGui::Unindent();
+
+    if (ImGui::IsKeyPressed(ImGui::GetKeyIndex(ImGuiKey_Z)))
+        for (auto& link : s_Links)
+            ed::Flow(link.ID);
 
     if (ed::HasSelectionChanged())
         ++changeCount;
