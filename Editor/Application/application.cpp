@@ -274,6 +274,8 @@ void Application_Initialize()
     SpawnOutputActionNode();
     SpawnSetTimerNode();
 
+    s_Links.push_back(Link(GetNextId(), s_Nodes[0].Outputs[1].ID, s_Nodes[1].Inputs[0].ID));
+
     s_HeaderBackground = ImGui_LoadTexture("../Data/BlueprintBackground.png");
     s_SampleImage = ImGui_LoadTexture("../Data/Lena512.png");
 }
@@ -584,7 +586,9 @@ void Application_Frame()
                             if (newLinkPin && !CanCreateLink(newLinkPin, &output) && &output != newLinkPin)
                                 alpha = alpha * (48.0f / 255.0f);
 
-                            ed::BeginPin(output.ID, ed::PinKind::Source, ImVec2(1.0f, 0.5f));
+                            ed::BeginPin(output.ID, ed::PinKind::Source);
+                            ed::PinPivotAlignment(ImVec2(1.0f, 0.5f));
+                            ed::PinPivotSize(ImVec2(0, 0));
                             ImGui::BeginHorizontal(output.ID);
                             ImGui::PushStyleVar(ImGuiStyleVar_Alpha, alpha);
                             if (!output.Name.empty())
