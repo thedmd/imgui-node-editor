@@ -67,6 +67,28 @@ struct basic_point
 
     friend inline value_type dot(const basic_point& lhs, const basic_point& rhs) { return lhs.x * rhs.x + lhs.y * rhs.y; }
 
+    inline T length_sq() const
+    {
+        return dot(*this, *this);
+    }
+
+    inline T length() const
+    {
+        return static_cast<T>(sqrtf(static_cast<float>(length_sq())));
+    }
+
+    inline basic_point normalized() const
+    {
+        const auto self      = static_cast<basic_point<float>>(*this);
+        const auto lenght_sq = dot(self, self);
+        if (lenght_sq == 1) return *this;
+        if (lenght_sq == 0) return basic_point(0, 0);
+        const auto inv_length_sq = 1.0f / sqrtf(lenght_sq);
+        return static_cast<basic_point>(self * inv_length_sq);
+    }
+
+    inline basic_point normalize() { *this = normalized(); }
+
     inline basic_point cwise_min(const basic_point& rhs) const { return basic_point(std::min(x, rhs.x), std::min(y, rhs.y)); }
     inline basic_point cwise_max(const basic_point& rhs) const { return basic_point(std::max(x, rhs.x), std::max(y, rhs.y)); }
     inline basic_point cwise_product(const basic_point& rhs) const { return basic_point(x * rhs.x, y * rhs.y); }
@@ -494,7 +516,37 @@ inline void transform_v(basic_point<T>* point, size_t n, const M& matrix)
 
 //------------------------------------------------------------------------------
 template <typename P, typename T>
-inline P bezier(const P& p0, const P& p1, const P& p2, const P& p3, T t)
+inline P linear_bezier(const P& p0, const P& p1, T t)
+{
+    return p0 + t * (p1 - p0);
+}
+
+template <typename P, typename T>
+inline P linear_bezier_dt(const P& p0, const P& p1, T t)
+{
+    return p1 - p0;
+}
+
+
+//------------------------------------------------------------------------------
+template <typename P, typename T>
+inline P quadratic_bezier(const P& p0, const P& p1, const P& p2, T t)
+{
+    const auto a = 1 - t;
+
+    return a * a * p0 + 2 * t * a * p1 + t * t * p2;
+}
+
+template <typename P, typename T>
+inline P quadratic_bezier_dt(const P& p0, const P& p1, const P& p2, T t)
+{
+    return 2 * (1 - t) * (p1 - p0) + 2 * t * (p2 - p1);
+}
+
+
+//------------------------------------------------------------------------------
+template <typename P, typename T>
+inline P cubic_bezier(const P& p0, const P& p1, const P& p2, const P& p3, T t)
 {
     const auto a = 1 - t;
     const auto b = a * a * a;
@@ -504,7 +556,7 @@ inline P bezier(const P& p0, const P& p1, const P& p2, const P& p3, T t)
 }
 
 template <typename P, typename T>
-inline P bezier_dt(const P& p0, const P& p1, const P& p2, const P& p3, T t)
+inline P cubic_bezier_dt(const P& p0, const P& p1, const P& p2, const P& p3, T t)
 {
     const auto a = 1 - t;
     const auto b = a * a;
@@ -516,27 +568,63 @@ inline P bezier_dt(const P& p0, const P& p1, const P& p2, const P& p3, T t)
 
 
 //------------------------------------------------------------------------------
-struct bezier_t
+struct cubic_bezier_t
 {
     pointf p0;
     pointf p1;
     pointf p2;
     pointf p3;
+
+    inline pointf sample(float t) const
+    {
+        const auto cp0_zero = (p1 - p0).length_sq() < 0.0001f;
+        const auto cp1_zero = (p3 - p2).length_sq() < 0.0001f;
+
+        if (cp0_zero && cp1_zero)
+            return linear_bezier(p0, p3, t);
+        else if (cp0_zero)
+            return quadratic_bezier(p0, p2, p3, t);
+        else if (cp1_zero)
+            return quadratic_bezier(p0, p1, p3, t);
+        else
+            return cubic_bezier(p0, p1, p2, p3, t);
+    }
+
+    inline pointf tangent(float t) const
+    {
+        const auto cp0_zero = (p1 - p0).length_sq() < 0.0001f;
+        const auto cp1_zero = (p3 - p2).length_sq() < 0.0001f;
+
+        if (cp0_zero && cp1_zero)
+            return linear_bezier_dt(p0, p3, t);
+        else if (cp0_zero)
+            return quadratic_bezier_dt(p0, p2, p3, t);
+        else if (cp1_zero)
+            return quadratic_bezier_dt(p0, p1, p3, t);
+        else
+            return cubic_bezier_dt(p0, p1, p2, p3, t);
+    }
+
+    inline pointf normal(float t) const
+    {
+        const auto tangent = this->tangent(t);
+        return pointf(-tangent.y, tangent.x);
+    }
 };
 
-struct bezier_split_t
+struct cubic_bezier_split_t
 {
-    bezier_t left;
-    bezier_t right;
+    cubic_bezier_t left;
+    cubic_bezier_t right;
 };
 
-struct bezier_project_result
+struct cubic_bezier_project_result
 {
     float position;
     float distance;
 };
 
-inline bezier_project_result bezier_project_point(const pointf& f, const pointf& p0, const pointf& p1, const pointf& p2, const pointf& p3, const int subdivisions = 100)
+inline cubic_bezier_project_result cubic_bezier_project_point(const pointf& f, const pointf& p0, const pointf& p1, const pointf& p2, const pointf& p3, const int subdivisions = 100)
 {
     // http://pomax.github.io/bezierinfo/#projections
 
@@ -550,7 +638,7 @@ inline bezier_project_result bezier_project_point(const pointf& f, const pointf&
     for (int i = 0; i < subdivisions; ++i)
     {
         auto t = i * fixed_step;
-        auto p = bezier(p0, p1, p2, p3, t);
+        auto p = cubic_bezier(p0, p1, p2, p3, t);
         auto s = f - p;
         auto d = dot(s, s);
 
@@ -562,7 +650,7 @@ inline bezier_project_result bezier_project_point(const pointf& f, const pointf&
     }
 
     if (position == 0.0f || fabsf(position - 1.0f) <= epsilon)
-        return bezier_project_result{position, sqrtf(distance)};
+        return cubic_bezier_project_result{position, sqrtf(distance)};
 
     // Step 2: Fine check
     auto left = position - fixed_step;
@@ -571,7 +659,7 @@ inline bezier_project_result bezier_project_point(const pointf& f, const pointf&
 
     for (auto t = left; t < right + step; t += step)
     {
-        auto p = bezier(p0, p1, p2, p3, t);
+        auto p = cubic_bezier(p0, p1, p2, p3, t);
         auto s = f - p;
         auto d = dot(s, s);
 
@@ -582,10 +670,10 @@ inline bezier_project_result bezier_project_point(const pointf& f, const pointf&
         }
     }
 
-    return bezier_project_result{ position, sqrtf(distance) };
+    return cubic_bezier_project_result{ position, sqrtf(distance) };
 }
 
-inline int bezier_line_intersect(const pointf& p0, const pointf& p1, const pointf& p2, const pointf& p3, const pointf& a0, const pointf& a1, pointf results[3])
+inline int cubic_bezier_line_intersect(const pointf& p0, const pointf& p1, const pointf& p2, const pointf& p3, const pointf& a0, const pointf& a1, pointf results[3])
 {
     auto cubic_roots = [](float a, float b, float c, float d, float* roots) -> int
     {
@@ -680,7 +768,7 @@ inline int bezier_line_intersect(const pointf& p0, const pointf& p1, const point
         {
             // We're within the Bezier curve
             // Find point on Bezier
-            auto p = bezier(p0, p1, p2, p3, root);
+            auto p = cubic_bezier(p0, p1, p2, p3, root);
 
             // See if point is on line segment
             // Had to make special cases for vertical and horizontal lines due
@@ -705,7 +793,7 @@ inline int bezier_line_intersect(const pointf& p0, const pointf& p1, const point
     return result - results;
 }
 
-inline rectf bezier_bounding_rect(const pointf& p0, const pointf& p1, const pointf& p2, const pointf& p3)
+inline rectf cubic_bezier_bounding_rect(const pointf& p0, const pointf& p1, const pointf& p2, const pointf& p3)
 {
     auto a = 3 * p3 - 9 * p2 + 9 * p1 - 3 * p0;
     auto b = 6 * p0 - 12 * p1 + 6 * p2;
@@ -724,7 +812,7 @@ inline rectf bezier_bounding_rect(const pointf& p0, const pointf& p1, const poin
             auto t0 = (-b[i] + delta) / (2 * a[i]);
             if (t0 > 0 && t0 < 1)
             {
-                auto p = bezier(p0[i], p1[i], p2[i], p3[i], t0);
+                auto p = cubic_bezier(p0[i], p1[i], p2[i], p3[i], t0);
                 tl[i] = std::min(tl[i], p);
                 rb[i] = std::max(rb[i], p);
             }
@@ -732,7 +820,7 @@ inline rectf bezier_bounding_rect(const pointf& p0, const pointf& p1, const poin
             auto t1 = (-b[i] - delta) / (2 * a[i]);
             if (t1 > 0 && t1 < 1)
             {
-                auto p = bezier(p0[i], p1[i], p2[i], p3[i], t1);
+                auto p = cubic_bezier(p0[i], p1[i], p2[i], p3[i], t1);
                 tl[i] = std::min(tl[i], p);
                 rb[i] = std::max(rb[i], p);
             }
@@ -742,7 +830,7 @@ inline rectf bezier_bounding_rect(const pointf& p0, const pointf& p1, const poin
     return rectf(tl, rb);
 }
 
-inline float bezier_length(const pointf& p0, const pointf& p1, const pointf& p2, const pointf& p3)
+inline float cubic_bezier_length(const pointf& p0, const pointf& p1, const pointf& p2, const pointf& p3)
 {
     // Legendre-Gauss abscissae with n=24 (x_i values, defined at i=n as the roots of the nth order Legendre polynomial Pn(x))
     static const float t_values[] =
@@ -806,7 +894,7 @@ inline float bezier_length(const pointf& p0, const pointf& p1, const pointf& p2,
 
     auto arc = [p0, p1, p2, p3](float t)
     {
-        const auto p = bezier_dt(p0, p1, p2, p3, t);
+        const auto p = cubic_bezier_dt(p0, p1, p2, p3, t);
         const auto l = p.x * p.x + p.y * p.y;
         return sqrtf(l);
     };
@@ -824,7 +912,7 @@ inline float bezier_length(const pointf& p0, const pointf& p1, const pointf& p2,
     return z * accumulator;
 }
 
-inline bezier_split_t bezier_split(const pointf& p0, const pointf& p1, const pointf& p2, const pointf& p3, float t)
+inline cubic_bezier_split_t cubic_bezier_split(const pointf& p0, const pointf& p1, const pointf& p2, const pointf& p3, float t)
 {
     const auto z1 = t;
     const auto z2 = z1 * z1;
@@ -833,16 +921,16 @@ inline bezier_split_t bezier_split(const pointf& p0, const pointf& p1, const poi
     const auto s2 = s1 * s1;
     const auto s3 = s1 * s1 * s1;
 
-    return bezier_split_t
+    return cubic_bezier_split_t
     {
-        bezier_t
+        cubic_bezier_t
         {
                                                                  p0,
                                              z1      * p1 - s1 * p0,
                           z2      * p2 - 2 * z1 * s1 * p1 + s2 * p0,
             z3 * p3 - 3 * z2 * s1 * p2 + 3 * z1 * s2 * p1 - s3 * p0
         },
-        bezier_t
+        cubic_bezier_t
         {
             z3 * p0 - 3 * z2 * s1 * p1 + 3 * z1 * s2 * p2 - s3 * p3,
                           z2      * p1 - 2 * z1 * s1 * p2 + s2 * p3,
@@ -864,7 +952,7 @@ struct bezier_fixed_step_result_t
 
 typedef void(*bezier_fixed_step_callback_t)(bezier_fixed_step_result_t& result, void* userPointer);
 
-inline void bezier_fixed_step(bezier_fixed_step_callback_t callback, void* userPointer, const pointf& p0, const pointf& p1, const pointf& p2, const pointf& p3, float step, bool overshoot = false, float max_value_error = 1e-3f, float max_t_error = 1e-5f)
+inline void cubic_bezier_fixed_step(bezier_fixed_step_callback_t callback, void* userPointer, const pointf& p0, const pointf& p1, const pointf& p2, const pointf& p3, float step, bool overshoot = false, float max_value_error = 1e-3f, float max_t_error = 1e-5f)
 {
     if (step <= 0.0f || !callback || max_value_error <= 0 || max_t_error <= 0)
         return;
@@ -876,7 +964,7 @@ inline void bezier_fixed_step(bezier_fixed_step_callback_t callback, void* userP
     if (result.break_search)
         return;
 
-    const auto length       = bezier_length(p0, p1, p2, p3);
+    const auto length       = cubic_bezier_length(p0, p1, p2, p3);
     const auto point_count  = static_cast<int>(length / step) + (overshoot ? 2 : 1);
     const auto t_min        = 0.0f;
     const auto t_max        = overshoot ? 2.0f : 1.0f;
@@ -899,8 +987,8 @@ inline void bezier_fixed_step(bezier_fixed_step_callback_t callback, void* userP
             auto cacheIt = cache.find(t);
             if (cacheIt == cache.end())
             {
-                const auto front    = bezier_split(p0, p1, p2, p3, t).left;
-                const auto length   = bezier_length(front.p0, front.p1, front.p2, front.p3);
+                const auto front    = cubic_bezier_split(p0, p1, p2, p3, t).left;
+                const auto length   = cubic_bezier_length(front.p0, front.p1, front.p2, front.p3);
 
                 cacheIt = cache.emplace(t, length).first;
             }
@@ -918,7 +1006,7 @@ inline void bezier_fixed_step(bezier_fixed_step_callback_t callback, void* userP
             {
                 result.t      = t;
                 result.length = length;
-                result.point  = bezier(p0, p1, p2, p3, t);
+                result.point  = cubic_bezier(p0, p1, p2, p3, t);
 
                 callback(result, userPointer);
                 if (result.break_search)
@@ -937,7 +1025,7 @@ inline void bezier_fixed_step(bezier_fixed_step_callback_t callback, void* userP
 }
 
 template <typename F>
-inline void bezier_fixed_step(F& callback, const pointf& p0, const pointf& p1, const pointf& p2, const pointf& p3, float step, bool overshoot = false, float max_value_error = 1e-3f, float max_t_error = 1e-5f)
+inline void cubic_bezier_fixed_step(F& callback, const pointf& p0, const pointf& p1, const pointf& p2, const pointf& p3, float step, bool overshoot = false, float max_value_error = 1e-3f, float max_t_error = 1e-5f)
 {
     auto wrapper = [](bezier_fixed_step_result_t& result, void* userPointer)
     {
@@ -945,10 +1033,10 @@ inline void bezier_fixed_step(F& callback, const pointf& p0, const pointf& p1, c
         callback(result);
     };
 
-    bezier_fixed_step(wrapper, &callback, p0, p1, p2, p3, step, overshoot, max_value_error, max_t_error);
+    cubic_bezier_fixed_step(wrapper, &callback, p0, p1, p2, p3, step, overshoot, max_value_error, max_t_error);
 }
 
-inline void bezier_fixed_step(std::vector<pointf>& points, const pointf& p0, const pointf& p1, const pointf& p2, const pointf& p3, float step, bool overshoot = false, float max_value_error = 1e-3f, float max_t_error = 1e-5f)
+inline void cubic_bezier_fixed_step(std::vector<pointf>& points, const pointf& p0, const pointf& p1, const pointf& p2, const pointf& p3, float step, bool overshoot = false, float max_value_error = 1e-3f, float max_t_error = 1e-5f)
 {
     points.resize(0);
 
@@ -958,13 +1046,13 @@ inline void bezier_fixed_step(std::vector<pointf>& points, const pointf& p0, con
         points.push_back(result.point);
     };
 
-    bezier_fixed_step(callback, &points, p0, p1, p2, p3, step, overshoot, max_value_error, max_t_error);
+    cubic_bezier_fixed_step(callback, &points, p0, p1, p2, p3, step, overshoot, max_value_error, max_t_error);
 }
 
-inline std::vector<pointf> bezier_fixed_step(const pointf& p0, const pointf& p1, const pointf& p2, const pointf& p3, float step, bool overshoot = false, float max_value_error = 1e-3f, float max_t_error = 1e-5f)
+inline std::vector<pointf> cubic_bezier_fixed_step(const pointf& p0, const pointf& p1, const pointf& p2, const pointf& p3, float step, bool overshoot = false, float max_value_error = 1e-3f, float max_t_error = 1e-5f)
 {
     std::vector<pointf> result;
-    bezier_fixed_step(result, p0, p1, p2, p3, step, overshoot, max_value_error, max_t_error);
+    cubic_bezier_fixed_step(result, p0, p1, p2, p3, step, overshoot, max_value_error, max_t_error);
     return result;
 }
 

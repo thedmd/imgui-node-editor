@@ -75,7 +75,7 @@ struct Pin final: Object
     PinKind Kind;
     Node*   Node;
     rect    Bounds;
-    rect    Pivot;
+    rectf   Pivot;
     Pin*    PreviousPin;
     ImU32   Color;
     ImU32   BorderColor;
@@ -85,15 +85,20 @@ struct Pin final: Object
     ImVec2  Dir;
     float   Strength;
     float   Radius;
+    float   ArrowSize;
+    float   ArrowWidth;
 
     Pin(int id, PinKind kind):
         Object(id), Kind(kind), Node(nullptr), Bounds(), PreviousPin(nullptr),
         Color(IM_COL32_WHITE), BorderColor(IM_COL32_BLACK), BorderWidth(0), Rounding(0),
-        Corners(0), Dir(0, 0), Strength(0), Radius(0)
+        Corners(0), Dir(0, 0), Strength(0), Radius(0), ArrowSize(0), ArrowWidth(0)
     {
     }
 
     void Draw(ImDrawList* drawList);
+
+    ImVec2 GetClosestPoint(const ImVec2& p) const;
+    line_f GetClosestLine(const Pin* pin) const;
 
     virtual ax::rectf GetBounds() const override final { return static_cast<rectf>(Bounds); }
 
@@ -139,24 +144,20 @@ struct Link final: Object
     Pin*   EndPin;
     ImU32  Color;
     float  Thickness;
-
     ImVec2 Start;
     ImVec2 End;
-    ImVec2 StartDir;
-    ImVec2 EndDir;
-    float  StartStrength;
-    float  EndStrength;
 
     Link(int id):
-        Object(id), StartPin(nullptr), EndPin(nullptr), Color(IM_COL32_WHITE), Thickness(1.0f),
-        Start(0, 0), End(0, 0), StartDir(0, 0), EndDir(0, 0), StartStrength(0.0f), EndStrength(0.0f)
+        Object(id), StartPin(nullptr), EndPin(nullptr), Color(IM_COL32_WHITE), Thickness(1.0f)
     {
     }
 
     void Draw(ImDrawList* drawList, float extraThickness = 0.0f) const;
     void Draw(ImDrawList* drawList, ImU32 color, float extraThickness = 0.0f) const;
 
-    bezier_t GetBezier() const;
+    void UpdateEndpoints();
+
+    cubic_bezier_t GetCurve() const;
 
     virtual bool TestHit(const ImVec2& point, float extraThickness = 0.0f) const override final;
     virtual bool TestHit(const ax::rectf& rect) const override final;

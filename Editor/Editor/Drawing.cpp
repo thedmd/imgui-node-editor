@@ -255,7 +255,7 @@ float ax::Drawing::LinkDistance(const ImVec2& p, const ImVec2& a, const ImVec2& 
 
     const auto bezier = GetLinkBezier(a, b, strength, a_dir, b_dir);
 
-    auto result = bezier_project_point(to_pointf(p), bezier.p0, bezier.p1, bezier.p2, bezier.p3, 50);
+    auto result = cubic_bezier_project_point(to_pointf(p), bezier.p0, bezier.p1, bezier.p2, bezier.p3, 50);
 
     return result.distance;
 }
@@ -268,7 +268,7 @@ ax::rectf ax::Drawing::GetLinkBounds(const ImVec2& a, const ImVec2& b, float str
     {
         const auto bezier = GetLinkBezier(a, b, strength, a_dir, b_dir);
 
-        return bezier_bounding_rect(bezier.p0, bezier.p1, bezier.p2, bezier.p3);
+        return cubic_bezier_bounding_rect(bezier.p0, bezier.p1, bezier.p2, bezier.p3);
     }
     else
     {
@@ -288,19 +288,19 @@ bool ax::Drawing::CollideLinkWithRect(const ax::rectf& r, const ImVec2& a, const
     const auto p3 = r.bottom_left();
 
     pointf points[3];
-    if (bezier_line_intersect(bezier.p0, bezier.p1, bezier.p2, bezier.p3, p0, p1, points) > 0)
+    if (cubic_bezier_line_intersect(bezier.p0, bezier.p1, bezier.p2, bezier.p3, p0, p1, points) > 0)
         return true;
-    if (bezier_line_intersect(bezier.p0, bezier.p1, bezier.p2, bezier.p3, p1, p2, points) > 0)
+    if (cubic_bezier_line_intersect(bezier.p0, bezier.p1, bezier.p2, bezier.p3, p1, p2, points) > 0)
         return true;
-    if (bezier_line_intersect(bezier.p0, bezier.p1, bezier.p2, bezier.p3, p2, p3, points) > 0)
+    if (cubic_bezier_line_intersect(bezier.p0, bezier.p1, bezier.p2, bezier.p3, p2, p3, points) > 0)
         return true;
-    if (bezier_line_intersect(bezier.p0, bezier.p1, bezier.p2, bezier.p3, p3, p0, points) > 0)
+    if (cubic_bezier_line_intersect(bezier.p0, bezier.p1, bezier.p2, bezier.p3, p3, p0, points) > 0)
         return true;
 
     return false;
 }
 
-ax::bezier_t ax::Drawing::GetLinkBezier(const ImVec2& a, const ImVec2& b, float strength/* = 1.0f*/, const ImVec2& a_dir/* = ImVec2(1, 0)*/, const ImVec2& b_dir/* = ImVec2(-1, 0)*/)
+ax::cubic_bezier_t ax::Drawing::GetLinkBezier(const ImVec2& a, const ImVec2& b, float strength/* = 1.0f*/, const ImVec2& a_dir/* = ImVec2(1, 0)*/, const ImVec2& b_dir/* = ImVec2(-1, 0)*/)
 {
     using namespace ImGuiInterop;
 
@@ -322,5 +322,5 @@ ax::bezier_t ax::Drawing::GetLinkBezier(const ImVec2& a, const ImVec2& b, float 
     pointf cp0 = to_pointf(a) + to_pointf(a_dir) * strength;
     pointf cp1 = to_pointf(b) + to_pointf(b_dir) * strength;
 
-    return ax::bezier_t { to_pointf(a), cp0, cp1, to_pointf(b) };
+    return ax::cubic_bezier_t { to_pointf(a), cp0, cp1, to_pointf(b) };
 }
