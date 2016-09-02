@@ -364,7 +364,7 @@ static void DrawSplitter(int split_vertically, float thickness, float* size0, fl
     ImGui::Button("##Splitter", ImVec2(!split_vertically ? thickness : -1.0f, split_vertically ? thickness : -1.0f));
     ImGui::PopStyleColor(3);
 
-    ImGui::SetItemAllowOverlap(); // This is to allow having other buttons OVER our splitter. 
+    ImGui::SetItemAllowOverlap(); // This is to allow having other buttons OVER our splitter.
 
     if (ImGui::IsItemActive())
     {
@@ -793,14 +793,12 @@ void Application_Frame()
                     ImGui::Spring(1, 0);
                     outputsRect = ImGui_GetItemRect();
 
-                    ed::PushStyleVar(ed::StyleVar_PinArrowSize, 10.0f);
-                    ed::PushStyleVar(ed::StyleVar_PinArrowWidth, 10.0f);
                     ed::PushStyleVar(ed::StyleVar_PinCorners, 3);
                     ed::BeginPin(pin.ID, ed::PinKind::Source);
                     ed::PinPivotRect(to_imvec(outputsRect.top_left()), to_imvec(outputsRect.bottom_right()));
                     ed::PinRect(to_imvec(outputsRect.top_left()), to_imvec(outputsRect.bottom_right()));
                     ed::EndPin();
-                    ed::PopStyleVar(3);
+                    ed::PopStyleVar();
 
                     if (newLinkPin && !CanCreateLink(newLinkPin, &pin) && &pin != newLinkPin)
                         outputAlpha = (int)(255 * ImGui::GetStyle().Alpha * (48.0f / 255.0f));
@@ -1024,14 +1022,38 @@ void Application_Frame()
     ed::Resume();
 
 //     static float rounding = 5.0f;
-// 
+//
 //     auto drawList = ImGui::GetWindowDrawList();
 //     drawList->AddRectFilled(ImVec2(100, 100), ImVec2(100, 100) + ImVec2(512, 512), IM_COL32(255, 255, 255, 255), 30.0f, 7);
 //     drawList->AddImage(s_SampleImage, ImVec2(100, 100), ImVec2(100, 100) + ImVec2(512, 512), ImVec2(0, 0), ImVec2(1, 1), IM_COL32(255, 255, 255, 255), rounding, 7);
-// 
+//
 //     ImGui::SliderFloat("Rounding", &rounding, 0.0f, 50.0f);
 
     // ImGui_PushGizmo()
+
+/*
+    cubic_bezier_t c;
+    c.p0 = pointf(100, 600);
+    c.p1 = pointf(300, 1200);
+    c.p2 = pointf(500, 100);
+    c.p3 = pointf(900, 600);
+
+    auto drawList = ImGui::GetWindowDrawList();
+    auto offset_radius = 15.0f;
+    auto acceptPoint = [drawList, offset_radius](const bezier_subdivide_result_t& r)
+    {
+        drawList->AddCircle(to_imvec(r.point), 4.0f, IM_COL32(255, 0, 255, 255));
+
+        auto nt = r.tangent.normalized();
+        nt = pointf(-nt.y, nt.x);
+
+        drawList->AddLine(to_imvec(r.point), to_imvec(r.point + nt * offset_radius), IM_COL32(255, 0, 0, 255), 1.0f);
+    };
+
+    drawList->AddBezierCurve(to_imvec(c.p0), to_imvec(c.p1), to_imvec(c.p2), to_imvec(c.p3), IM_COL32(255, 255, 255, 255), 1.0f);
+    cubic_bezier_subdivide(acceptPoint, c);
+*/
+
 
     ed::End();
 
