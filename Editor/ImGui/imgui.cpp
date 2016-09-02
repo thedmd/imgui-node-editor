@@ -764,6 +764,7 @@ ImGuiStyle::ImGuiStyle()
     DisplaySafeAreaPadding  = ImVec2(4,4);      // If you cannot see the edge of your screen (e.g. on a TV) increase the safe area padding. Covers popups/tooltips as well regular windows.
     AntiAliasedLines        = true;             // Enable anti-aliasing on lines/borders. Disable if you are really short on CPU/GPU.
     AntiAliasedShapes       = true;             // Enable anti-aliasing on filled shapes (rounded rectangles, circles, etc.)
+    AntiAliasFringeScale    = 1.0f;             // Fringe around anti-aliased geometry is scaled by this value. Enable geometry to stay sharp while zoomed.
     CurveTessellationTol    = 1.25f;            // Tessellation tolerance. Decrease for highly tessellated curves (higher quality, more polygons), increase to reduce quality.
 
     Colors[ImGuiCol_Text]                   = ImVec4(0.90f, 0.90f, 0.90f, 1.00f);
@@ -4736,6 +4737,7 @@ static float* GetStyleVarFloatAddr(ImGuiStyleVar idx)
     case ImGuiStyleVar_IndentSpacing: return &g.Style.IndentSpacing;
     case ImGuiStyleVar_GrabMinSize: return &g.Style.GrabMinSize;
     case ImGuiStyleVar_LayoutAlign: return &g.Style.LayoutAlign;
+    case ImGuiStyleVar_AntiAliasFringeScale: return &g.Style.AntiAliasFringeScale;
     }
     return NULL;
 }

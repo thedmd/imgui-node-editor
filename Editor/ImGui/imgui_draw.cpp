@@ -450,7 +450,7 @@ void ImDrawList::AddPolyline(const ImVec2* points, const int points_count, ImU32
     if (anti_aliased)
     {
         // Anti-aliased stroke
-        const float AA_SIZE = 1.0f;
+        const float AA_SIZE = 1.0f * GImGui->Style.AntiAliasFringeScale;
         const ImU32 col_trans = col & IM_COL32(255,255,255,0);
 
         const int idx_count = thick_line ? count*18 : count*12;
@@ -623,7 +623,7 @@ void ImDrawList::AddConvexPolyFilled(const ImVec2* points, const int points_coun
     if (anti_aliased)
     {
         // Anti-aliased Fill
-        const float AA_SIZE = 1.0f;
+        const float AA_SIZE = 1.0f * GImGui->Style.AntiAliasFringeScale;
         const ImU32 col_trans = col & IM_COL32(255, 255, 255, 0);
         const int idx_count = (points_count-2)*3 + points_count*6;
         const int vtx_count = (points_count*2);

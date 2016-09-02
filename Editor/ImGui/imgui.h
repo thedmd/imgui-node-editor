@@ -660,7 +660,8 @@ enum ImGuiStyleVar_
     ImGuiStyleVar_ItemInnerSpacing,    // ImVec2
     ImGuiStyleVar_IndentSpacing,       // float
     ImGuiStyleVar_GrabMinSize,         // float
-    ImGuiStyleVar_LayoutAlign          // float
+    ImGuiStyleVar_LayoutAlign,         // float
+    ImGuiStyleVar_AntiAliasFringeScale // float
 };
 
 enum ImGuiAlign_
@@ -731,6 +732,7 @@ struct ImGuiStyle
     ImVec2      DisplaySafeAreaPadding;     // If you cannot see the edge of your screen (e.g. on a TV) increase the safe area padding. Covers popups/tooltips as well regular windows.
     bool        AntiAliasedLines;           // Enable anti-aliasing on lines/borders. Disable if you are really tight on CPU/GPU.
     bool        AntiAliasedShapes;          // Enable anti-aliasing on filled shapes (rounded rectangles, circles, etc.)
+    float       AntiAliasFringeScale;       // Fringe around anti-aliased geometry is scaled by this value. Enable geometry to stay sharp while zoomed.
     float       CurveTessellationTol;       // Tessellation tolerance. Decrease for highly tessellated curves (higher quality, more polygons), increase to reduce quality.
     ImVec4      Colors[ImGuiCol_COUNT];
 
