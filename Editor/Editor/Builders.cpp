@@ -64,8 +64,8 @@ void util::BlueprintNodeBuilder::End()
             if (!headerSeparatorRect.is_empty())
             {
                 drawList->AddLine(
-                    to_imvec(headerSeparatorRect.top_left())  + ImVec2(-(8 - halfBorderWidth), -1),
-                    to_imvec(headerSeparatorRect.top_right()) + ImVec2( (8 - halfBorderWidth), -1),
+                    to_imvec(headerSeparatorRect.top_left())  + ImVec2(-(8 - halfBorderWidth), -0.5f),
+                    to_imvec(headerSeparatorRect.top_right()) + ImVec2( (8 - halfBorderWidth), -0.5f),
                     ImColor(255, 255, 255, 96 * alpha / (3 * 255)), 1.0f);
             }
         }

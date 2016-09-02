@@ -661,6 +661,8 @@ void ed::Context::Begin(const char* id, const ImVec2& size)
 
     Canvas = ScrollAction.GetCanvas();
 
+    ImGui::PushStyleVar(ImGuiStyleVar_AntiAliasFringeScale, std::min(std::max(Canvas.InvZoom.x, Canvas.InvZoom.y), 1.0f));
+
     auto& io = ImGui::GetIO();
     MousePosBackup = io.MousePos;
     for (int i = 0; i < 5; ++i)
@@ -919,6 +921,9 @@ void ed::Context::End()
     }
 
     // ShowMetrics(control);
+
+    // fringe scale
+    ImGui::PopStyleVar();
 
     ImGui::EndChild();
     ImGui::PopStyleColor();

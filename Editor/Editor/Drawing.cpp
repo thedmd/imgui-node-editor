@@ -19,7 +19,7 @@ void ax::Drawing::DrawIcon(ImDrawList* drawList, const ImVec2& a, const ImVec2& 
         const auto offset_x  = 1.0f * origin_scale;
         const auto offset_y  = 0.0f * origin_scale;
         const auto margin     = (filled ? 2.0f : 2.0f) * origin_scale;
-        const auto rounding   = 2.0f * origin_scale;
+        const auto rounding   = 0.1f * origin_scale;
         const auto tip_round  = 0.7f; // percentage of triangle edge (for tip)
         const auto edge_round = 0.7f; // percentage of triangle edge (for corner)
         const auto canvas = rectf(
@@ -52,7 +52,10 @@ void ax::Drawing::DrawIcon(ImDrawList* drawList, const ImVec2& a, const ImVec2& 
             tip_bottom + (tip_right - tip_bottom) * tip_round);
         drawList->PathLineTo(tip_bottom);
         drawList->PathLineTo(ImVec2(left, bottom) + ImVec2(rounding, 0));
-        drawList->PathBezierCurveTo(ImVec2(left, bottom), ImVec2(left, bottom), ImVec2(left, bottom) - ImVec2(0, rounding));
+        drawList->PathBezierCurveTo(
+            ImVec2(left, bottom),
+            ImVec2(left, bottom),
+            ImVec2(left, bottom) - ImVec2(0, rounding));
 
         if (!filled)
         {
@@ -198,8 +201,8 @@ void ax::Drawing::DrawIcon(ImDrawList* drawList, const ImVec2& a, const ImVec2& 
 
             drawList->AddTriangleFilled(
                 ImVec2(ceilf(triangleTip), rect.top() + rect.h * 0.5f),
-                ImVec2(triangleStart, rect.center_y() - 0.15f * rect.h),
                 ImVec2(triangleStart, rect.center_y() + 0.15f * rect.h),
+                ImVec2(triangleStart, rect.center_y() - 0.15f * rect.h),
                 color);
         }
     }
