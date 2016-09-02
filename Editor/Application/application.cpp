@@ -320,7 +320,8 @@ void Application_Initialize()
     SpawnTreeTaskNode();
     SpawnTreeTask2Node();
 
-    //s_Links.push_back(Link(GetNextId(), s_Nodes[0].Outputs[1].ID, s_Nodes[1].Inputs[0].ID));
+    s_Links.push_back(Link(GetNextId(), s_Nodes[5].Outputs[0].ID, s_Nodes[6].Inputs[0].ID));
+    s_Links.push_back(Link(GetNextId(), s_Nodes[5].Outputs[0].ID, s_Nodes[7].Inputs[0].ID));
 
     s_HeaderBackground = ImGui_LoadTexture("../Data/BlueprintBackground.png");
     s_SampleImage = ImGui_LoadTexture("../Data/Lena512.png");
@@ -600,7 +601,7 @@ void Application_Frame()
 
     ImGui::SameLine();
 
-    ed::Begin("Node editor", ImVec2(0, 0));
+    ed::Begin("Node editor");
     {
         auto cursorTopLeft = ImGui::GetCursorScreenPos();
 
@@ -721,15 +722,18 @@ void Application_Frame()
 
                 const auto pinBackground = ed::GetStyle().Colors[ed::StyleColor_NodeBg];
 
-                ed::PushStyleColor(ed::StyleColor_NodeBg,     ImColor(128, 128, 128, 200));
-                ed::PushStyleColor(ed::StyleColor_NodeBorder, ImColor( 32,  32,  32, 200));
-                ed::PushStyleColor(ed::StyleColor_PinRect,    ImColor( 60, 180, 255, 150));
+                ed::PushStyleColor(ed::StyleColor_NodeBg,        ImColor(128, 128, 128, 200));
+                ed::PushStyleColor(ed::StyleColor_NodeBorder,    ImColor( 32,  32,  32, 200));
+                ed::PushStyleColor(ed::StyleColor_PinRect,       ImColor( 60, 180, 255, 150));
+                ed::PushStyleColor(ed::StyleColor_PinRectBorder, ImColor( 60, 180, 255, 150));
 
                 ed::PushStyleVar(ed::StyleVar_NodePadding,  ImVec4(0, 0, 0, 0));
                 ed::PushStyleVar(ed::StyleVar_NodeRounding, rounding);
                 ed::PushStyleVar(ed::StyleVar_SourceDirection, ImVec2(0.0f,  1.0f));
                 ed::PushStyleVar(ed::StyleVar_TargetDirection, ImVec2(0.0f, -1.0f));
                 ed::PushStyleVar(ed::StyleVar_LinkStrength, 0.0f);
+                ed::PushStyleVar(ed::StyleVar_PinBorderWidth, 1.0f);
+                ed::PushStyleVar(ed::StyleVar_PinRadius, 5.0f);
                 ed::BeginNode(node.ID);
 
                 ImGui::BeginVertical(node.ID);
@@ -745,12 +749,14 @@ void Application_Frame()
                      ImGui::Spring(1, 0);
                      inputsRect = ImGui_GetItemRect();
 
+                     ed::PushStyleVar(ed::StyleVar_PinArrowSize, 10.0f);
+                     ed::PushStyleVar(ed::StyleVar_PinArrowWidth, 10.0f);
                      ed::PushStyleVar(ed::StyleVar_PinCorners, 12);
                      ed::BeginPin(pin.ID, ed::PinKind::Target);
                      ed::PinPivotRect(to_imvec(inputsRect.top_left()), to_imvec(inputsRect.bottom_right()));
                      ed::PinRect(to_imvec(inputsRect.top_left()), to_imvec(inputsRect.bottom_right()));
                      ed::EndPin();
-                     ed::PopStyleVar();
+                     ed::PopStyleVar(3);
 
                      if (newLinkPin && !CanCreateLink(newLinkPin, &pin) && &pin != newLinkPin)
                          inputAlpha = (int)(255 * ImGui::GetStyle().Alpha * (48.0f / 255.0f));
@@ -787,12 +793,14 @@ void Application_Frame()
                     ImGui::Spring(1, 0);
                     outputsRect = ImGui_GetItemRect();
 
+                    ed::PushStyleVar(ed::StyleVar_PinArrowSize, 10.0f);
+                    ed::PushStyleVar(ed::StyleVar_PinArrowWidth, 10.0f);
                     ed::PushStyleVar(ed::StyleVar_PinCorners, 3);
                     ed::BeginPin(pin.ID, ed::PinKind::Source);
                     ed::PinPivotRect(to_imvec(outputsRect.top_left()), to_imvec(outputsRect.bottom_right()));
                     ed::PinRect(to_imvec(outputsRect.top_left()), to_imvec(outputsRect.bottom_right()));
                     ed::EndPin();
-                    ed::PopStyleVar();
+                    ed::PopStyleVar(3);
 
                     if (newLinkPin && !CanCreateLink(newLinkPin, &pin) && &pin != newLinkPin)
                         outputAlpha = (int)(255 * ImGui::GetStyle().Alpha * (48.0f / 255.0f));
@@ -806,17 +814,21 @@ void Application_Frame()
                 ImGui::EndVertical();
 
                 ed::EndNode();
-                ed::PopStyleVar(5);
-                ed::PopStyleColor(3);
+                ed::PopStyleVar(7);
+                ed::PopStyleColor(4);
 
                 auto drawList = ed::GetNodeBackgroundDrawList(node.ID);
 
-                drawList->AddRectFilled(to_imvec(inputsRect.top_left()), to_imvec(inputsRect.bottom_right()),
+                drawList->AddRectFilled(to_imvec(inputsRect.top_left()) + ImVec2(0, 1), to_imvec(inputsRect.bottom_right()),
                     IM_COL32((int)(255 * pinBackground.x), (int)(255 * pinBackground.y), (int)(255 * pinBackground.z), inputAlpha), 4.0f, 12);
-                drawList->AddRectFilled(to_imvec(outputsRect.top_left()), to_imvec(outputsRect.bottom_right()),
+                drawList->AddRect(to_imvec(inputsRect.top_left()) + ImVec2(0, 1), to_imvec(inputsRect.bottom_right()),
+                    IM_COL32((int)(255 * pinBackground.x), (int)(255 * pinBackground.y), (int)(255 * pinBackground.z), inputAlpha), 4.0f, 12);
+                drawList->AddRectFilled(to_imvec(outputsRect.top_left()), to_imvec(outputsRect.bottom_right()) - ImVec2(0, 1),
                     IM_COL32((int)(255 * pinBackground.x), (int)(255 * pinBackground.y), (int)(255 * pinBackground.z), outputAlpha), 4.0f, 3);
-                drawList->AddRectFilled(to_imvec(contentRect.top_left()), to_imvec(contentRect.bottom_right()), IM_COL32(24, 64, 128, 255), 0.0f);
-                drawList->AddRect(to_imvec(contentRect.top_left()), to_imvec(contentRect.bottom_right()), IM_COL32(2, 16, 64, 64), 0.0f);
+                drawList->AddRect(to_imvec(outputsRect.top_left()), to_imvec(outputsRect.bottom_right()) - ImVec2(0, 1),
+                    IM_COL32((int)(255 * pinBackground.x), (int)(255 * pinBackground.y), (int)(255 * pinBackground.z), outputAlpha), 4.0f, 3);
+                drawList->AddRectFilled(to_imvec(contentRect.top_left()), to_imvec(contentRect.bottom_right()), IM_COL32(24, 64, 128, 200), 0.0f);
+                drawList->AddRect(to_imvec(contentRect.top_left()), to_imvec(contentRect.bottom_right()), IM_COL32(48, 128, 255, 100), 0.0f);
             }
         }
 
