@@ -119,7 +119,7 @@ static ImFont* ImGui_LoadFont(ImGuiIO& io, const char* name, float size, const I
 
     ImFontConfig config;
     config.OversampleH = 4;
-    config.OversampleV = 2;
+    config.OversampleV = 4;
     config.PixelSnapH  = false;
 
     auto path = std::string(windir) + "\\Fonts\\" + name;

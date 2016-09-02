@@ -320,8 +320,8 @@ void Application_Initialize()
     SpawnTreeTaskNode();
     SpawnTreeTask2Node();
 
-    s_Links.push_back(Link(GetNextId(), s_Nodes[5].Outputs[0].ID, s_Nodes[6].Inputs[0].ID));
-    s_Links.push_back(Link(GetNextId(), s_Nodes[5].Outputs[0].ID, s_Nodes[7].Inputs[0].ID));
+//     s_Links.push_back(Link(GetNextId(), s_Nodes[5].Outputs[0].ID, s_Nodes[6].Inputs[0].ID));
+//     s_Links.push_back(Link(GetNextId(), s_Nodes[5].Outputs[0].ID, s_Nodes[7].Inputs[0].ID));
 
     s_HeaderBackground = ImGui_LoadTexture("../Data/BlueprintBackground.png");
     s_SampleImage = ImGui_LoadTexture("../Data/Lena512.png");
@@ -1056,6 +1056,9 @@ void Application_Frame()
 
 
     ed::End();
+
+
+    // ImGui::ShowTestWindow();
 
     //Sleep(16);
 }
