@@ -950,9 +950,9 @@ struct bezier_fixed_step_result_t
     bezier_fixed_step_result_t(): t(0), length(0), point(), break_search(false) {}
 };
 
-typedef void(*bezier_fixed_step_callback_t)(bezier_fixed_step_result_t& result, void* userPointer);
+typedef void(*bezier_fixed_step_callback_t)(bezier_fixed_step_result_t& result, void* user_pointer);
 
-inline void cubic_bezier_fixed_step(bezier_fixed_step_callback_t callback, void* userPointer, const pointf& p0, const pointf& p1, const pointf& p2, const pointf& p3, float step, bool overshoot = false, float max_value_error = 1e-3f, float max_t_error = 1e-5f)
+inline void cubic_bezier_fixed_step(bezier_fixed_step_callback_t callback, void* user_pointer, const pointf& p0, const pointf& p1, const pointf& p2, const pointf& p3, float step, bool overshoot = false, float max_value_error = 1e-3f, float max_t_error = 1e-5f)
 {
     if (step <= 0.0f || !callback || max_value_error <= 0 || max_t_error <= 0)
         return;
@@ -960,7 +960,7 @@ inline void cubic_bezier_fixed_step(bezier_fixed_step_callback_t callback, void*
     bezier_fixed_step_result_t result;
     result.point        = p0;
 
-    callback(result, userPointer);
+    callback(result, user_pointer);
     if (result.break_search)
         return;
 
@@ -1008,7 +1008,7 @@ inline void cubic_bezier_fixed_step(bezier_fixed_step_callback_t callback, void*
                 result.length = length;
                 result.point  = cubic_bezier(p0, p1, p2, p3, t);
 
-                callback(result, userPointer);
+                callback(result, user_pointer);
                 if (result.break_search)
                     return;
 
@@ -1027,9 +1027,9 @@ inline void cubic_bezier_fixed_step(bezier_fixed_step_callback_t callback, void*
 template <typename F>
 inline void cubic_bezier_fixed_step(F& callback, const pointf& p0, const pointf& p1, const pointf& p2, const pointf& p3, float step, bool overshoot = false, float max_value_error = 1e-3f, float max_t_error = 1e-5f)
 {
-    auto wrapper = [](bezier_fixed_step_result_t& result, void* userPointer)
+    auto wrapper = [](bezier_fixed_step_result_t& result, void* user_pointer)
     {
-        F& callback = *reinterpret_cast<F*>(userPointer);
+        F& callback = *reinterpret_cast<F*>(user_pointer);
         callback(result);
     };
 
@@ -1040,9 +1040,9 @@ inline void cubic_bezier_fixed_step(std::vector<pointf>& points, const pointf& p
 {
     points.resize(0);
 
-    auto callback = [](bezier_fixed_step_result_t& result, void* userPointer)
+    auto callback = [](bezier_fixed_step_result_t& result, void* user_pointer)
     {
-        auto& points = *reinterpret_cast<std::vector<pointf>*>(userPointer);
+        auto& points = *reinterpret_cast<std::vector<pointf>*>(user_pointer);
         points.push_back(result.point);
     };
 
@@ -1056,6 +1056,97 @@ inline std::vector<pointf> cubic_bezier_fixed_step(const pointf& p0, const point
     return result;
 }
 
+enum bezier_subdivide_flags_t
+{
+    bezier_subdivide_flags_none         = 0,
+    bezier_subdivide_flags_skip_first   = 1
+};
+
+struct bezier_subdivide_result_t
+{
+    pointf point;
+    pointf tangent;
+};
+
+typedef void(*bezier_subdivide_callback_t)(const bezier_subdivide_result_t& p, void* user_pointer);
+
+namespace detail {
+struct bezier_subdivide_context_impl_t: bezier_subdivide_result_t
+{
+    bezier_subdivide_callback_t callback;
+    void*                       user_pointer;
+    float                       tesselation_tollerance;
+    bezier_subdivide_flags_t    flags;
+
+    void commit(const pointf& p, const pointf& t)
+    {
+        point   = p;
+        tangent = t;
+        callback(*this, user_pointer);
+    }
+};
+
+inline void cubic_bezier_subdivide_impl(bezier_subdivide_context_impl_t& context, const cubic_bezier_t& curve, int level = 0)
+{
+    float dx = curve.p3.x - curve.p0.x;
+    float dy = curve.p3.y - curve.p0.y;
+    float d2 = ((curve.p1.x - curve.p3.x) * dy - (curve.p1.y - curve.p3.y) * dx);
+    float d3 = ((curve.p2.x - curve.p3.x) * dy - (curve.p2.y - curve.p3.y) * dx);
+    d2 = (d2 >= 0) ? d2 : -d2;
+    d3 = (d3 >= 0) ? d3 : -d3;
+    if ((d2 + d3) * (d2 + d3) < context.tesselation_tollerance * (dx * dx + dy * dy))
+    {
+        context.commit(curve.p3, curve.tangent(1.0f));
+    }
+    else if (level < 10)
+    {
+        const auto p12 = (curve.p0 + curve.p1) * 0.5f;
+        const auto p23 = (curve.p1 + curve.p2) * 0.5f;
+        const auto p34 = (curve.p2 + curve.p3) * 0.5f;
+        const auto p123 = (p12 + p23) * 0.5f;
+        const auto p234 = (p23 + p34) * 0.5f;
+        const auto p1234 = (p123 + p234) * 0.5f;
+
+        cubic_bezier_subdivide_impl(context, cubic_bezier_t { curve.p0, p12, p123, p1234 }, level + 1);
+        cubic_bezier_subdivide_impl(context, cubic_bezier_t { p1234, p234, p34, curve.p3 }, level + 1);
+    }
+}
+} // namespace detail
+
+inline void cubic_bezier_subdivide(bezier_subdivide_callback_t callback, void* user_pointer, const cubic_bezier_t& curve, float tess_tol = -1.0f, bezier_subdivide_flags_t flags = bezier_subdivide_flags_none)
+{
+    if (tess_tol < 0)
+        tess_tol = 1.118f; // sqrtf(1.25f)
+
+    detail::bezier_subdivide_context_impl_t context;
+    context.callback               = callback;
+    context.user_pointer           = user_pointer;
+    context.tesselation_tollerance = tess_tol * tess_tol;
+    context.flags                  = flags;
+
+    if (!(context.flags & bezier_subdivide_flags_skip_first))
+        context.commit(curve.p0, curve.tangent(0));
+
+    detail::cubic_bezier_subdivide_impl(context, curve, 0);
+}
+
+template <typename F>
+inline void cubic_bezier_subdivide(F& callback, const cubic_bezier_t& curve, float tess_tol = -1.0f, bezier_subdivide_flags_t flags = bezier_subdivide_flags_none)
+{
+    auto wrapper = [](const bezier_subdivide_result_t& r, void* user_pointer)
+    {
+        F& callback = *reinterpret_cast<F*>(user_pointer);
+        callback(r);
+    };
+
+    cubic_bezier_subdivide(wrapper, &callback, curve, tess_tol, flags);
+}
+
+template <typename F>
+inline void cubic_bezier_subdivide(F& callback, const pointf& p0, const pointf& p1, const pointf& p2, const pointf& p3, float tess_tol = -1.0f, bezier_subdivide_flags_t flags = bezier_subdivide_flags_none)
+{
+    cubic_bezier_subdivide(callback, cubic_bezier_t { p0, p1, p2, p3 }, tess_tol, flags);
+}
 
 
 //------------------------------------------------------------------------------

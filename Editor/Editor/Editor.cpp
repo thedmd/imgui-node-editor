@@ -212,35 +212,206 @@ static void ImDrawList_TranslateAndClampClipRects(ImDrawList* drawList, int begi
         drawList->ChannelsSetCurrent(lastCurrentChannel);
 }
 
-static void ImDrawList_PathArrow(ImDrawList* drawList, const ImVec2& a, const ImVec2& b, float width, float gap, bool reverse = false, bool skip_first = false)
+static void ImDrawList_PathBezierOffset(ImDrawList* drawList, float offset, const ImVec2& p0, const ImVec2& p1, const ImVec2& p2, const ImVec2& p3)
 {
+    using namespace ax;
     using namespace ax::ImGuiInterop;
 
-    const auto direction  = to_imvec(to_pointf(b - a).normalized());
-    const auto normal     = ImVec2(-direction.y, direction.x) * (reverse ? -1.0f : 1.0f);
-    const auto half_width = width * 0.5f;
-    const auto half_gap   = gap * 0.5f;
-    const auto has_gap    = gap > 0.0f;
+    auto acceptPoint = [drawList, offset](const bezier_subdivide_result_t& r)
+    {
+        drawList->PathLineTo(to_imvec(r.point + ax::pointf(-r.tangent.y, r.tangent.x).normalized() * offset));
+    };
 
-    if (has_gap && !skip_first)
-        drawList->PathLineTo(a - normal * half_gap);
-    if (has_gap || !skip_first)
-        drawList->PathLineTo(a - normal * half_width);
-    drawList->PathLineTo(b);
-    drawList->PathLineTo(a + normal * half_width);
-    if (has_gap)
-        drawList->PathLineTo(a + normal * half_gap);
+    cubic_bezier_subdivide(acceptPoint, to_pointf(p0), to_pointf(p1), to_pointf(p2), to_pointf(p3));
 }
 
-static void ImDrawList_AddArrow(ImDrawList* drawList, const ImVec2& a, const ImVec2& b, ImU32 color, float width)
+static void ImDrawList_PolyFillScanFlood(ImDrawList *draw, std::vector<ImVec2>* poly, ImColor color, int gap = 1, float strokeWidth = 1.0f)
 {
+    std::vector<ImVec2> scanHits;
+    ImVec2 min, max; // polygon min/max points
+    auto io = ImGui::GetIO();
+    float y;
+    bool isMinMaxDone = false;
+    unsigned int polysize = poly->size();
+
+    // find the orthagonal bounding box
+    // probably can put this as a predefined
+    if (!isMinMaxDone)
+    {
+        min.x = min.y = FLT_MAX;
+        max.x = max.y = FLT_MIN;
+        for (auto p : *poly)
+        {
+            if (p.x < min.x) min.x = p.x;
+            if (p.y < min.y) min.y = p.y;
+            if (p.x > max.x) max.x = p.x;
+            if (p.y > max.y) max.y = p.y;
+        }
+        isMinMaxDone = true;
+    }
+
+    // Bounds check
+    if ((max.x < 0) || (min.x > io.DisplaySize.x) || (max.y < 0) || (min.y > io.DisplaySize.y)) return;
+
+    // Vertically clip
+    if (min.y < 0) min.y = 0;
+    if (max.y > io.DisplaySize.y) max.y = io.DisplaySize.y;
+
+    // so we know we start on the outside of the object we step out by 1.
+    min.x -= 1;
+    max.x += 1;
+
+    // Initialise our starting conditions
+    y = min.y;
+
+    // Go through each scan line iteratively, jumping by 'gap' pixels each time
+    while (y < max.y)
+    {
+        scanHits.clear();
+
+        {
+            int jump = 1;
+            ImVec2 fp = poly->at(0);
+
+            for (size_t i = 0; i < polysize - 1; i++)
+            {
+                ImVec2 pa = poly->at(i);
+                ImVec2 pb = poly->at(i + 1);
+
+                // jump double/dud points
+                if (pa.x == pb.x && pa.y == pb.y) continue;
+
+                // if we encounter our hull/poly start point, then we've now created the
+                // closed
+                // hull, jump the next segment and reset the first-point
+                if ((!jump) && (fp.x == pb.x) && (fp.y == pb.y))
+                {
+                    if (i < polysize - 2)
+                    {
+                        fp = poly->at(i + 2);
+                        jump = 1;
+                        i++;
+                    }
+                }
+                else
+                {
+                    jump = 0;
+                }
+
+                // test to see if this segment makes the scan-cut.
+                if ((pa.y > pb.y && y < pa.y && y > pb.y) || (pa.y < pb.y && y > pa.y && y < pb.y))
+                {
+                    ImVec2 intersect;
+
+                    intersect.y = y;
+                    if (pa.x == pb.x)
+                    {
+                        intersect.x = pa.x;
+                    }
+                    else
+                    {
+                        intersect.x = (pb.x - pa.x) / (pb.y - pa.y) * (y - pa.y) + pa.x;
+                    }
+                    scanHits.push_back(intersect);
+                }
+            }
+
+            // Sort the scan hits by X, so we have a proper left->right ordering
+            sort(scanHits.begin(), scanHits.end(), [](ImVec2 const &a, ImVec2 const &b) { return a.x < b.x; });
+
+            // generate the line segments.
+            {
+                int i = 0;
+                int l = scanHits.size() - 1; // we need pairs of points, this prevents segfault.
+                for (i = 0; i < l; i += 2)
+                {
+                    draw->AddLine(scanHits[i], scanHits[i + 1], color, strokeWidth);
+                }
+            }
+        }
+        y += gap;
+    } // for each scan line
+    scanHits.clear();
+}
+
+static void ImDrawList_AddBezierWithArrows(ImDrawList* drawList, const ax::cubic_bezier_t& curve, float thickness,
+    float startArrowSize, float startArrowWidth, float endArrowSize, float endArrowWidth,
+    bool fill, ImU32 color, float strokeThickness)
+{
+    using namespace ax;
     using namespace ax::ImGuiInterop;
 
     if ((color >> 24) == 0)
         return;
 
-    ImDrawList_PathArrow(drawList, a, b, width, 0.0f);
-    drawList->PathFill(color);
+    const auto half_thickness = thickness * 0.5f;
+
+    if (fill)
+    {
+        drawList->AddBezierCurve(to_imvec(curve.p0), to_imvec(curve.p1), to_imvec(curve.p2), to_imvec(curve.p3), color, thickness);
+
+        if (startArrowSize > 0.0f)
+        {
+            const auto start_dir  = curve.tangent(0.0f).normalized();
+            const auto start_n    = pointf(-start_dir.y, start_dir.x);
+            const auto half_width = startArrowWidth * 0.5f;
+            const auto tip        = curve.p0 - start_dir * startArrowSize;
+
+            drawList->PathLineTo(to_imvec(curve.p0 - start_n * std::max(half_width, half_thickness)));
+            drawList->PathLineTo(to_imvec(curve.p0 + start_n * std::max(half_width, half_thickness)));
+            drawList->PathLineTo(to_imvec(tip));
+            drawList->PathFill(color);
+        }
+
+        if (endArrowSize > 0.0f)
+        {
+            const auto    end_dir = curve.tangent(1.0f).normalized();
+            const auto    end_n   = pointf(  -end_dir.y,   end_dir.x);
+            const auto half_width = endArrowWidth * 0.5f;
+            const auto tip        = curve.p3 + end_dir * endArrowSize;
+
+            drawList->PathLineTo(to_imvec(curve.p3 + end_n * std::max(half_width, half_thickness)));
+            drawList->PathLineTo(to_imvec(curve.p3 - end_n * std::max(half_width, half_thickness)));
+            drawList->PathLineTo(to_imvec(tip));
+            drawList->PathFill(color);
+        }
+    }
+    else
+    {
+        if (startArrowSize > 0.0f)
+        {
+            const auto start_dir  = curve.tangent(0.0f).normalized();
+            const auto start_n    = pointf(-start_dir.y, start_dir.x);
+            const auto half_width = startArrowWidth * 0.5f;
+            const auto tip        = curve.p0 - start_dir * startArrowSize;
+
+            if (half_width > half_thickness)
+                drawList->PathLineTo(to_imvec(curve.p0 - start_n * half_width));
+            drawList->PathLineTo(to_imvec(tip));
+            if (half_width > half_thickness)
+                drawList->PathLineTo(to_imvec(curve.p0 + start_n * half_width));
+        }
+
+        ImDrawList_PathBezierOffset(drawList, half_thickness, to_imvec(curve.p0), to_imvec(curve.p1), to_imvec(curve.p2), to_imvec(curve.p3));
+
+        if (endArrowSize > 0.0f)
+        {
+            const auto    end_dir = curve.tangent(1.0f).normalized();
+            const auto    end_n   = pointf(  -end_dir.y,   end_dir.x);
+            const auto half_width = endArrowWidth * 0.5f;
+            const auto tip        = curve.p3 + end_dir * endArrowSize;
+
+            if (half_width > half_thickness)
+                drawList->PathLineTo(to_imvec(curve.p3 + end_n * half_width));
+            drawList->PathLineTo(to_imvec(tip));
+            if (half_width > half_thickness)
+                drawList->PathLineTo(to_imvec(curve.p3 - end_n * half_width));
+        }
+
+        ImDrawList_PathBezierOffset(drawList, half_thickness, to_imvec(curve.p3), to_imvec(curve.p2), to_imvec(curve.p1), to_imvec(curve.p0));
+
+        drawList->PathStroke(color, true, strokeThickness);
+    }
 }
 
 
@@ -320,85 +491,14 @@ void ed::Link::Draw(ImDrawList* drawList, ImU32 color, float extraThickness) con
     if (!IsLive)
         return;
 
-    const auto thickness      = Thickness + extraThickness;
-    const auto half_thickness = thickness * 0.5f;
-    const auto curve          = GetCurve();
-    const auto start_dir      = curve.tangent(0.0f).normalized();
-    const auto start_n        = pointf(-start_dir.y, start_dir.x);
-    const auto   end_dir      = curve.tangent(1.0f).normalized();
-    const auto   end_n        = pointf(-end_dir.y, end_dir.x);
+    const auto curve = GetCurve();
 
-//     for (int i = 0; i < 13; ++i)
-//     {
-//         const float t = i / (12.0f);
-//
-//         const auto p = curve.sample(t);
-//         const auto n = curve.normal(t).normalized();
-//         const auto d = curve.tangent(t).normalized();
-//
-//         drawList->AddLine(to_imvec(p), to_imvec(p + n * 10), IM_COL32(0, 0, 255, 255));
-//         drawList->AddLine(to_imvec(p), to_imvec(p + d * 10), IM_COL32(255, 0, 0, 255));
-//     }
-
-    ImGui::GetStyle().AntiAliasedShapes = false;
-    ImGui::GetStyle().AntiAliasedLines = false;
-
-    if (StartPin && StartPin->ArrowSize > 0.0f && StartPin->ArrowWidth > 0.0f)
-    {
-        const auto half_width = StartPin->ArrowWidth * 0.5f + half_thickness;
-        const auto tip        = to_imvec(curve.p0 - start_dir * StartPin->ArrowSize);
-
-        drawList->PathLineTo(to_imvec(curve.p0 - start_n * half_thickness));
-        drawList->PathLineTo(to_imvec(curve.p0 - start_n * half_width));
-        drawList->PathLineTo(tip);
-        drawList->PathLineTo(to_imvec(curve.p0 + start_n * half_width));
-    }
-    drawList->PathLineTo(to_imvec(curve.p0 + start_n * half_thickness));
-
-    drawList->PathBezierCurveTo(
-        to_imvec(curve.p1 + (end_n * 0.25f + start_n * 0.75f).normalized() * half_thickness),
-        to_imvec(curve.p2 + (end_n * 0.75f + start_n * 0.25f).normalized() * half_thickness),
-        to_imvec(curve.p3 +  end_n * half_thickness), 3);
-
-    if (EndPin && EndPin->ArrowSize > 0.0f && EndPin->ArrowWidth > 0.0f)
-    {
-        const auto half_width = EndPin->ArrowWidth * 0.5f + half_thickness;
-        const auto tip        = to_imvec(curve.p3 + start_dir * EndPin->ArrowSize);
-
-        drawList->PathLineTo(to_imvec(curve.p3 + end_n * half_width));
-        drawList->PathLineTo(tip);
-        drawList->PathLineTo(to_imvec(curve.p3 - end_n * half_width));
-    }
-    drawList->PathLineTo(to_imvec(curve.p3 - end_n * half_thickness));
-//     else
-    drawList->PathFill(color);
-/*
-    drawList->PathLineTo(to_imvec(bezier.p3 + end_n * half_thickness));
-    drawList->PathBezierCurveTo(
-        to_imvec(bezier.p2 + (end_n * 0.75f + start_n * 0.25f).normalized() * half_thickness),
-        to_imvec(bezier.p1 + (end_n * 0.25f + start_n * 0.75f).normalized() * half_thickness),
-        to_imvec(bezier.p0 +                  start_n * half_thickness), 3);
-
-    //drawList->PathStroke(IM_COL32(255, 0, 255, 255), false, 1.0f);
-    drawList->PathFill(color);
-*/
-    //drawList->AddBezierCurve(to_imvec(bezier.p0), to_imvec(bezier.p1), to_imvec(bezier.p2), to_imvec(bezier.p3), color, Thickness + extraThickness);
-
-    //if (StartPin && StartPin->ArrowSize > 0.0f && StartPin->ArrowWidth > 0.0f)
-    //{
-    //    const auto dir  = to_imvec(bezier.dt(0.0f).normalized());
-    //    const auto size = StartPin->ArrowSize;
-
-    //    ImDrawList_AddArrow(drawList, to_imvec(bezier.p0) - dir * size, to_imvec(bezier.p0), color, StartPin->ArrowWidth);
-    //}
-
-    //if (EndPin && EndPin->ArrowSize > 0.0f && EndPin->ArrowWidth > 0.0f)
-    //{
-    //    const auto dir  = to_imvec(bezier.dt(1.0f).normalized());
-    //    const auto size = EndPin->ArrowSize;
-
-    //    ImDrawList_AddArrow(drawList, to_imvec(bezier.p3) + dir * size, to_imvec(bezier.p3), color, EndPin->ArrowWidth);
-    //}
+    ImDrawList_AddBezierWithArrows(drawList, curve, Thickness + extraThickness,
+        StartPin && StartPin->ArrowSize  > 0.0f ? StartPin->ArrowSize  + extraThickness : 0.0f,
+        StartPin && StartPin->ArrowWidth > 0.0f ? StartPin->ArrowWidth + extraThickness : 0.0f,
+          EndPin &&   EndPin->ArrowSize  > 0.0f ?   EndPin->ArrowSize  + extraThickness : 0.0f,
+          EndPin &&   EndPin->ArrowWidth > 0.0f ?   EndPin->ArrowWidth + extraThickness : 0.0f,
+        true, color, 1.0f);
 }
 
 void ed::Link::UpdateEndpoints()
