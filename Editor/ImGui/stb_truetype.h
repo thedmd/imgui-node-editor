@@ -2936,15 +2936,15 @@ STBTT_DEF int stbtt_PackFontRangesRenderIntoRects(stbtt_pack_context *spc, stbtt
                                           0,0,
                                           glyph);
 
-            if (spc->h_oversample > 1)
-               stbtt__h_prefilter(spc->pixels + r->x + r->y*spc->stride_in_bytes,
-                                  r->w, r->h, spc->stride_in_bytes,
-                                  spc->h_oversample);
-
-            if (spc->v_oversample > 1)
-               stbtt__v_prefilter(spc->pixels + r->x + r->y*spc->stride_in_bytes,
-                                  r->w, r->h, spc->stride_in_bytes,
-                                  spc->v_oversample);
+//             if (spc->h_oversample > 1)
+//                stbtt__h_prefilter(spc->pixels + r->x + r->y*spc->stride_in_bytes,
+//                                   r->w, r->h, spc->stride_in_bytes,
+//                                   spc->h_oversample);
+//
+//             if (spc->v_oversample > 1)
+//                stbtt__v_prefilter(spc->pixels + r->x + r->y*spc->stride_in_bytes,
+//                                   r->w, r->h, spc->stride_in_bytes,
+//                                   spc->v_oversample);
 
             bc->x0       = (stbtt_int16)  r->x;
             bc->y0       = (stbtt_int16)  r->y;
