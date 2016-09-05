@@ -14,7 +14,7 @@ namespace ed = ax::Editor::Detail;
 
 //------------------------------------------------------------------------------
 static const int c_BackgroundChannelCount = 2;
-static const int c_LinkChannelCount       = 4; // select/hot, links, flow, new link
+static const int c_LinkChannelCount       = 4;
 static const int c_UserLayersCount        = 1;
 
 static const int c_UserLayerChannelStart  = 0;
@@ -22,14 +22,23 @@ static const int c_BackgroundChannelStart = c_UserLayerChannelStart  + c_UserLay
 static const int c_LinkStartChannel       = c_BackgroundChannelStart + c_BackgroundChannelCount;
 static const int c_NodeStartChannel       = c_LinkStartChannel       + c_LinkChannelCount;
 
+static const int c_BackgroundChannel_Grid          = c_BackgroundChannelStart + 0;
+static const int c_BackgroundChannel_SelectionRect = c_BackgroundChannelStart + 1;
+
+static const int c_LinkChannel_Selection  = c_LinkStartChannel + 0;
+static const int c_LinkChannel_Links      = c_LinkStartChannel + 1;
+static const int c_LinkChannel_Flow       = c_LinkStartChannel + 2;
+static const int c_LinkChannel_NewLink    = c_LinkStartChannel + 3;
+
 static const int c_ChannelsPerNode        = 3;
 static const int c_NodeBaseChannel        = 0;
 static const int c_NodeBackgroundChannel  = 1;
 static const int c_NodeContentChannel     = 2;
 
-static const float c_LinkSelectThickness  = 5.0f;  // canvas pixels
-static const float c_NavigationZoomMargin = 0.1f;  // percentage of visible bounds
-static const float c_MouseZoomDuration    = 0.15f; // seconds
+static const float c_LinkSelectThickness        = 5.0f;  // canvas pixels
+static const float c_NavigationZoomMargin       = 0.1f;  // percentage of visible bounds
+static const float c_MouseZoomDuration          = 0.15f; // seconds
+static const float c_SelectionFadeOutDuration   = 0.15f; // seconds
 
 
 //------------------------------------------------------------------------------
@@ -643,7 +652,6 @@ ed::Context::Context(const ax::Editor::Config* config):
     Links(),
     SelectionId(1),
     LastActiveLink(nullptr),
-    FlowAnimationController(this),
     MousePosBackup(0, 0),
     MouseClickPosBackup(),
     Canvas(),
@@ -655,6 +663,8 @@ ed::Context::Context(const ax::Editor::Config* config):
     SelectAction(this),
     CreateItemAction(this),
     DeleteItemsAction(this),
+    AnimationControllers{ &FlowAnimationController },
+    FlowAnimationController(this),
     IsInitialized(false),
     Settings(),
     Config(config ? *config : ax::Editor::Config())
@@ -741,7 +751,7 @@ void ed::Context::End()
     bool isSelecting = CurrentAction && CurrentAction->AsSelect() != nullptr;
 
     // Draw links
-    drawList->ChannelsSetCurrent(c_LinkStartChannel + 1);
+    drawList->ChannelsSetCurrent(c_LinkChannel_Links);
     for (auto link : Links)
     {
         if (!link->IsLive || !link->IsVisible())
@@ -778,7 +788,7 @@ void ed::Context::End()
                 {
                     if (selectedLink->IsVisible())
                     {
-                        drawList->ChannelsSetCurrent(c_LinkStartChannel + 0);
+                        drawList->ChannelsSetCurrent(c_LinkChannel_Selection);
 
                         selectedLink->Draw(drawList, linkBorderColor, 4.5f);
                     }
@@ -817,13 +827,14 @@ void ed::Context::End()
         // Highlight hovered link
         if (control.HotLink && !IsSelected(control.HotLink))
         {
-            drawList->ChannelsSetCurrent(c_LinkStartChannel + 0);
+            drawList->ChannelsSetCurrent(c_LinkChannel_Selection);
 
             control.HotLink->Draw(drawList, GetColor(StyleColor_HovLinkBorder), 4.5f);
         }
     }
 
-    FlowAnimationController.Draw(drawList);
+    for (auto controller : AnimationControllers)
+        controller->Draw(drawList);
 
     if (CurrentAction && !CurrentAction->Process(control))
         CurrentAction = nullptr;
@@ -845,24 +856,7 @@ void ed::Context::End()
             CurrentAction = &DeleteItemsAction;
     }
 
-    if (SelectAction.IsActive)
-    {
-        const auto fillColor    = GetColor(SelectAction.SelectLinkMode ? StyleColor_LinkSelRect       : StyleColor_NodeSelRect);
-        const auto outlineColor = GetColor(SelectAction.SelectLinkMode ? StyleColor_LinkSelRectBorder : StyleColor_NodeSelRectBorder);
-
-        drawList->ChannelsSetCurrent(c_BackgroundChannelStart + 1);
-
-        auto from = SelectAction.StartPoint;
-        auto to   = ImGui::GetMousePos();
-
-        auto min  = ImVec2(std::min(from.x, to.x), std::min(from.y, to.y));
-        auto max  = ImVec2(std::max(from.x, to.x), std::max(from.y, to.y));
-
-        drawList->AddRectFilled(min, max, fillColor);
-        ImGui::PushStyleVar(ImGuiStyleVar_AntiAliasFringeScale, 1.0f);
-        drawList->AddRect(min, max, outlineColor);
-        ImGui::PopStyleVar();
-    }
+    SelectAction.Draw(drawList);
 
     // Bring active node to front
     std::stable_sort(Nodes.begin(), Nodes.end(), [&control](Node* lhs, Node* rhs)
@@ -898,7 +892,7 @@ void ed::Context::End()
 
     // Draw grid
     {
-        drawList->ChannelsSetCurrent(c_BackgroundChannelStart + 0);
+        drawList->ChannelsSetCurrent(c_BackgroundChannel_Grid);
 
         ImGui::PushClipRect(Canvas.WindowScreenPos + ImVec2(1, 1), Canvas.WindowScreenPos + Canvas.WindowScreenSize - ImVec2(1, 1), false);
 
@@ -929,13 +923,13 @@ void ed::Context::End()
         auto postOffset = Canvas.WindowScreenPos + Canvas.ClientOrigin;
         auto scale      = Canvas.Zoom;
 
-        ImDrawList_TransformChannels(drawList,                            0, c_BackgroundChannelStart, preOffset, scale, postOffset);
-        ImDrawList_TransformChannels(drawList, c_BackgroundChannelStart + 1, drawList->_ChannelsCount, preOffset, scale, postOffset);
+        ImDrawList_TransformChannels(drawList,                                 0, c_BackgroundChannel_Grid, preOffset, scale, postOffset);
+        ImDrawList_TransformChannels(drawList, c_BackgroundChannel_SelectionRect, drawList->_ChannelsCount, preOffset, scale, postOffset);
 
         auto clipTranslation = Canvas.WindowScreenPos - Canvas.FromScreen(Canvas.WindowScreenPos);
         ImGui::PushClipRect(Canvas.WindowScreenPos + ImVec2(1, 1), Canvas.WindowScreenPos + Canvas.WindowScreenSize - ImVec2(1, 1), false);
-        ImDrawList_TranslateAndClampClipRects(drawList,                            0, c_BackgroundChannelStart, clipTranslation);
-        ImDrawList_TranslateAndClampClipRects(drawList, c_BackgroundChannelStart + 1, drawList->_ChannelsCount, clipTranslation);
+        ImDrawList_TranslateAndClampClipRects(drawList,                                 0, c_BackgroundChannel_Grid, clipTranslation);
+        ImDrawList_TranslateAndClampClipRects(drawList, c_BackgroundChannel_SelectionRect, drawList->_ChannelsCount, clipTranslation);
         ImGui::PopClipRect();
 
         // #debug: Static grid in local space
@@ -1821,8 +1815,8 @@ void ed::ScrollAnimation::NavigateTo(const ImVec2& target, float targetZoom, flo
 
 void ed::ScrollAnimation::OnUpdate(float progress)
 {
-    Action.Scroll = EaseOutQuad(Start, Target - Start, progress);
-    Action.Zoom   = EaseOutQuad(StartZoom, TargetZoom - StartZoom, progress);
+    Action.Scroll = easing::ease_out_quad(Start,     Target     - Start,     progress);
+    Action.Zoom   = easing::ease_out_quad(StartZoom, TargetZoom - StartZoom, progress);
 }
 
 void ed::ScrollAnimation::OnStop()
@@ -1975,14 +1969,13 @@ void ed::FlowAnimation::OnStop()
 
 
 
-
 //------------------------------------------------------------------------------
 //
 // Flow Animation Controller
 //
 //------------------------------------------------------------------------------
 ed::FlowAnimationController::FlowAnimationController(Context* editor):
-    Editor(editor)
+    AnimationController(editor)
 {
 }
 
@@ -2009,7 +2002,7 @@ void ed::FlowAnimationController::Draw(ImDrawList* drawList)
     if (Animations.empty())
         return;
 
-    drawList->ChannelsSetCurrent(c_LinkStartChannel + 2);
+    drawList->ChannelsSetCurrent(c_LinkChannel_Flow);
 
     for (auto animation : Animations)
         animation->Draw(drawList);
@@ -2042,7 +2035,6 @@ ed::FlowAnimation* ed::FlowAnimationController::GetOrCreate(Link* link)
 void ed::FlowAnimationController::Release(FlowAnimation* animation)
 {
 }
-
 
 
 
@@ -2417,7 +2409,8 @@ ed::SelectAction::SelectAction(Context* editor):
     EditorAction(editor),
     IsActive(false),
     SelectLinkMode(false),
-    StartPoint()
+    StartPoint(),
+    Animation(editor)
 {
 }
 
@@ -2473,6 +2466,9 @@ bool ed::SelectAction::Accept(const Control& control)
         }
     }
 
+    if (IsActive)
+        Animation.Stop();
+
     return IsActive;
 }
 
@@ -2523,6 +2519,8 @@ bool ed::SelectAction::Process(const Control& control)
 
         IsActive = false;
 
+        Animation.Play(c_SelectionFadeOutDuration);
+
         return true;
     }
 
@@ -2535,6 +2533,27 @@ void ed::SelectAction::ShowMetrics()
 
     ImGui::Text("%s:", GetName());
     ImGui::Text("    Active: %s", IsActive ? "yes" : "no");
+}
+
+void ed::SelectAction::Draw(ImDrawList* drawList)
+{
+    if (!IsActive && !Animation.IsPlaying())
+        return;
+
+    const auto alpha = Animation.IsPlaying() ? easing::ease_out_quad(1.0f, -1.0f, Animation.GetProgress()) : 1.0f;
+
+    const auto fillColor    = Editor->GetColor(SelectLinkMode ? StyleColor_LinkSelRect       : StyleColor_NodeSelRect, alpha);
+    const auto outlineColor = Editor->GetColor(SelectLinkMode ? StyleColor_LinkSelRectBorder : StyleColor_NodeSelRectBorder, alpha);
+
+    drawList->ChannelsSetCurrent(c_BackgroundChannel_SelectionRect);
+
+    auto min  = ImVec2(std::min(StartPoint.x, EndPoint.x), std::min(StartPoint.y, EndPoint.y));
+    auto max  = ImVec2(std::max(StartPoint.x, EndPoint.x), std::max(StartPoint.y, EndPoint.y));
+
+    drawList->AddRectFilled(min, max, fillColor);
+    ImGui::PushStyleVar(ImGuiStyleVar_AntiAliasFringeScale, 1.0f);
+    drawList->AddRect(min, max, outlineColor);
+    ImGui::PopStyleVar();
 }
 
 
@@ -2627,7 +2646,7 @@ bool ed::CreateItemAction::Process(const Control& control)
                 DropNothing();
 
             auto drawList = ImGui::GetWindowDrawList();
-            drawList->ChannelsSetCurrent(c_LinkStartChannel + 3);
+            drawList->ChannelsSetCurrent(c_LinkChannel_NewLink);
 
             candidate.UpdateEndpoints();
             candidate.Draw(drawList, LinkThickness);

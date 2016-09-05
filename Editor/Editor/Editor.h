@@ -1,6 +1,7 @@
 #pragma once
-#include "Types.h"
 #include "ImGuiInterop.h"
+namespace ax { using namespace ImGuiInterop; }
+#include "Types.h"
 #include "EditorApi.h"
 #define PICOJSON_USE_LOCALE 0
 #include "picojson.h"
@@ -10,7 +11,6 @@ namespace ax {
 namespace Editor {
 namespace Detail {
 
-using namespace ImGuiInterop;
 using std::vector;
 using std::string;
 
@@ -327,13 +327,6 @@ struct ScrollAnimation final: Animation
     void NavigateTo(const ImVec2& target, float targetZoom, float duration);
 
 private:
-    // http://gizma.com/easing/#quint2
-    template <typename V, typename T>
-    V EaseOutQuad(V b, V c, T t)
-    {
-        return -c * t * (t - 2) + b;
-    }
-
     void OnUpdate(float progress) override final;
     void OnStop() override final;
     void OnFinish() override final;
@@ -376,16 +369,32 @@ private:
     void OnStop() override final;
 };
 
-struct FlowAnimationController
+struct AnimationController
 {
     Context* Editor;
 
+    AnimationController(Context* editor):
+        Editor(editor)
+    {
+    }
+
+    virtual ~AnimationController()
+    {
+    }
+
+    virtual void Draw(ImDrawList* drawList)
+    {
+    }
+};
+
+struct FlowAnimationController final : AnimationController
+{
     FlowAnimationController(Context* editor);
-    ~FlowAnimationController();
+    virtual ~FlowAnimationController();
 
     void Flow(Link* link);
 
-    void Draw(ImDrawList* drawList);
+    virtual void Draw(ImDrawList* drawList) override final;
 
     void Release(FlowAnimation* animation);
 
@@ -497,6 +506,8 @@ struct SelectAction final: EditorAction
     vector<Object*> CandidateObjects;
     vector<Object*> SelectedObjectsAtStart;
 
+    Animation       Animation;
+
     SelectAction(Context* editor);
 
     virtual const char* GetName() const override final { return "Select"; }
@@ -507,6 +518,8 @@ struct SelectAction final: EditorAction
     virtual void ShowMetrics() override final;
 
     virtual SelectAction* AsSelect() override final { return this; }
+
+    void Draw(ImDrawList* drawList);
 };
 
 struct CreateItemAction final : EditorAction
@@ -812,8 +825,6 @@ private:
     vector<Animation*>  LiveAnimations;
     vector<Animation*>  LastLiveAnimations;
 
-    FlowAnimationController FlowAnimationController;
-
     ImVec2              MousePosBackup;
     ImVec2              MouseClickPosBackup[5];
 
@@ -829,6 +840,9 @@ private:
     SelectAction        SelectAction;
     CreateItemAction    CreateItemAction;
     DeleteItemsAction   DeleteItemsAction;
+
+    vector<AnimationController*> AnimationControllers;
+    FlowAnimationController      FlowAnimationController;
 
     bool                IsInitialized;
     Settings            Settings;

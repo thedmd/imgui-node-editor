@@ -1150,6 +1150,28 @@ inline void cubic_bezier_subdivide(F& callback, const pointf& p0, const pointf& 
 
 
 //------------------------------------------------------------------------------
+namespace easing {
+
+
+//------------------------------------------------------------------------------
+// http://gizma.com/easing/#quint2
+//
+// t - current time
+// b - start value
+// c - change in value
+
+template <typename V, typename T>
+inline V ease_out_quad(V b, V c, T t)
+{
+    return b - c * t * (t - 2);
+}
+
+
+//------------------------------------------------------------------------------
+} // namespace easing
+
+
+//------------------------------------------------------------------------------
 } // namespace ax
 
 
