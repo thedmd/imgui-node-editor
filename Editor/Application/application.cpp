@@ -1092,11 +1092,11 @@ void Application_Frame()
             node = SpawnTraceByChannelNode();
         ImGui::Separator();
         if (ImGui::MenuItem("Sequence"))
-            SpawnTreeSequenceNode();
+            node = SpawnTreeSequenceNode();
         if (ImGui::MenuItem("Move To"))
-            SpawnTreeTaskNode();
+            node = SpawnTreeTaskNode();
         if (ImGui::MenuItem("Random Wait"))
-            SpawnTreeTask2Node();
+            node = SpawnTreeTask2Node();
 
         if (node)
         {
