@@ -2728,11 +2728,6 @@ bool ed::CreateItemAction::Accept(const Control& control)
 
         Editor->ClearSelection();
     }
-    else if (control.BackgroundHot && ImGui::IsMouseClicked(1))
-    {
-        DragStart(nullptr);
-        DropNode();
-    }
     else
         return false;
 
@@ -2784,13 +2779,10 @@ bool ed::CreateItemAction::Process(const Control& control)
             candidate.UpdateEndpoints();
             candidate.Draw(drawList, LinkThickness);
         }
-        else if (!control.ActivePin)
+        else if (!ImGui::IsWindowHovered())
         {
             DraggedPin = nullptr;
-
-            if (!ImGui::IsWindowHovered())
-                DropNothing();
-
+            DropNothing();
             DragEnd();
             IsActive = false;
         }
