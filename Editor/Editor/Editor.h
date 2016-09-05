@@ -44,6 +44,9 @@ struct Object
 
     bool IsVisible() const
     {
+        if (!IsLive)
+            return false;
+
         const auto bounds = GetBounds();
 
         return ImGui::IsRectVisible(to_imvec(bounds.top_left()), to_imvec(bounds.bottom_right()));
@@ -51,6 +54,9 @@ struct Object
 
     virtual bool TestHit(const ImVec2& point, float extraThickness = 0.0f) const
     {
+        if (!IsLive)
+            return false;
+
         auto bounds = GetBounds();
         if (extraThickness > 0)
             bounds.expand(extraThickness);
@@ -60,6 +66,9 @@ struct Object
 
     virtual bool TestHit(const ax::rectf& rect) const
     {
+        if (!IsLive)
+            return false;
+
         const auto bounds = GetBounds();
         return !bounds.is_empty() && bounds.intersects(rect);
     }

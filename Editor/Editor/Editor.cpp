@@ -1168,6 +1168,8 @@ ed::Node* ed::Context::CreateNode(int id)
 
     settings->WasUsed = true;
 
+    node->IsLive = false;
+
     return node;
 }
 
@@ -2743,57 +2745,50 @@ bool ed::CreateItemAction::Process(const Control& control)
     if (!IsActive)
         return false;
 
-    if (DraggedPin)
+    if (DraggedPin && control.ActivePin == DraggedPin && (CurrentStage == Possible))
     {
-        if (control.ActivePin == DraggedPin && (CurrentStage == Possible))
+        const auto draggingFromSource = (DraggedPin->Kind == PinKind::Source);
+
+        ed::Pin cursorPin(0, draggingFromSource ? PinKind::Target : PinKind::Source);
+        cursorPin.Pivot    = ax::rectf(to_pointf(ImGui::GetMousePos()), sizef(0, 0));
+        cursorPin.Dir      = -DraggedPin->Dir;
+        cursorPin.Strength =  DraggedPin->Strength;
+
+        ed::Link candidate(0);
+        candidate.Color    = LinkColor;
+        candidate.StartPin = draggingFromSource ? DraggedPin : &cursorPin;
+        candidate.EndPin   = draggingFromSource ? &cursorPin : DraggedPin;
+
+        ed::Pin*& freePin  = draggingFromSource ? candidate.EndPin : candidate.StartPin;
+
+        if (control.HotPin)
         {
-            const auto draggingFromSource = (DraggedPin->Kind == PinKind::Source);
+            DropPin(control.HotPin);
 
-            ed::Pin cursorPin(0, draggingFromSource ? PinKind::Target : PinKind::Source);
-            cursorPin.Pivot    = ax::rectf(to_pointf(ImGui::GetMousePos()), sizef(0, 0));
-            cursorPin.Dir      = -DraggedPin->Dir;
-            cursorPin.Strength =  DraggedPin->Strength;
-
-            ed::Link candidate(0);
-            candidate.Color    = LinkColor;
-            candidate.StartPin = draggingFromSource ? DraggedPin : &cursorPin;
-            candidate.EndPin   = draggingFromSource ? &cursorPin : DraggedPin;
-
-            ed::Pin*& freePin  = draggingFromSource ? candidate.EndPin : candidate.StartPin;
-
-            if (control.HotPin)
-            {
-                DropPin(control.HotPin);
-
-                if (UserAction == UserAccept)
-                    freePin = control.HotPin;
-            }
-            else if (control.BackgroundHot)
-                DropNode();
-            else
-                DropNothing();
-
-            auto drawList = ImGui::GetWindowDrawList();
-            drawList->ChannelsSetCurrent(c_LinkChannel_NewLink);
-
-            candidate.UpdateEndpoints();
-            candidate.Draw(drawList, LinkThickness);
+            if (UserAction == UserAccept)
+                freePin = control.HotPin;
         }
-        else if (!ImGui::IsWindowHovered())
+        else if (control.BackgroundHot)
+            DropNode();
+        else
+            DropNothing();
+
+        auto drawList = ImGui::GetWindowDrawList();
+        drawList->ChannelsSetCurrent(c_LinkChannel_NewLink);
+
+        candidate.UpdateEndpoints();
+        candidate.Draw(drawList, LinkThickness);
+    }
+    else if (CurrentStage == Possible)
+    {
+        if (!ImGui::IsWindowHovered())
         {
             DraggedPin = nullptr;
             DropNothing();
-            DragEnd();
-            IsActive = false;
         }
-    }
-    else
-    {
-        if (CurrentStage == Possible)
-        {
-            DragEnd();
-            IsActive = false;
-        }
+
+        DragEnd();
+        IsActive = false;
     }
 
     return IsActive;
