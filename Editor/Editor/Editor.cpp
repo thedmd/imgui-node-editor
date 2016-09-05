@@ -2592,6 +2592,8 @@ bool ed::CreateItemAction::Accept(const Control& control)
     {
         DraggedPin = control.ActivePin;
         DragStart(DraggedPin);
+
+        Editor->ClearSelection();
     }
     else if (control.BackgroundHot && ImGui::IsMouseClicked(1))
     {
@@ -2600,8 +2602,6 @@ bool ed::CreateItemAction::Accept(const Control& control)
     }
     else
         return false;
-
-    Editor->ClearSelection();
 
     IsActive = true;
 
