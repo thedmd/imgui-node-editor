@@ -1,4 +1,4 @@
-#include "Editor.h"
+﻿#include "Editor.h"
 #include "Application/imgui_impl_dx11.h"
 #include "Drawing.h"
 #include "ImGuiInterop.h"
@@ -586,8 +586,42 @@ ax::rectf ed::Link::GetBounds() const
 {
     if (IsLive)
     {
-        const auto bezier = GetCurve();
-        return cubic_bezier_bounding_rect(bezier.p0, bezier.p1, bezier.p2, bezier.p3);
+        const auto curve = GetCurve();
+        auto bounds = cubic_bezier_bounding_rect(curve.p0, curve.p1, curve.p2, curve.p3);
+
+        if (bounds.w == 0.0f)
+        {
+            bounds.x -= 0.5f;
+            bounds.w  = 1.0f;
+        }
+
+        if (bounds.h == 0.0f)
+        {
+            bounds.y -= 0.5f;
+            bounds.h = 1.0f;
+        }
+
+        if (StartPin->ArrowSize)
+        {
+            const auto start_dir = curve.tangent(0.0f).normalized();
+            const auto p0 = curve.p0;
+            const auto p1 = curve.p0 - start_dir * StartPin->ArrowSize;
+            const auto min = p0.cwise_min(p1);
+            const auto max = p0.cwise_max(p1);
+            bounds = make_union(bounds, rectf(min, max));
+        }
+
+        if (EndPin->ArrowSize)
+        {
+            const auto end_dir = curve.tangent(0.0f).normalized();
+            const auto p0 = curve.p3;
+            const auto p1 = curve.p3 + end_dir * EndPin->ArrowSize;
+            const auto min = p0.cwise_min(p1);
+            const auto max = p0.cwise_max(p1);
+            bounds = make_union(bounds, rectf(min, max));
+        }
+
+        return bounds;
     }
     else
         return ax::rectf();
