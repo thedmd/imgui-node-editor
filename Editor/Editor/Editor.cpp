@@ -1,4 +1,4 @@
-﻿#include "Editor.h"
+#include "Editor.h"
 #include "Application/imgui_impl_dx11.h"
 #include "Drawing.h"
 #include "ImGuiInterop.h"
@@ -429,8 +429,10 @@ void ed::Pin::Draw(ImDrawList* drawList)
 
     if (BorderWidth > 0.0f)
     {
+        ImGui::PushStyleVar(ImGuiStyleVar_AntiAliasFringeScale, 1.0f);
         drawList->AddRect(to_imvec(Bounds.top_left()), to_imvec(Bounds.bottom_right()),
             BorderColor, Rounding, Corners, BorderWidth);
+        ImGui::PopStyleVar();
     }
 }
 
@@ -857,7 +859,9 @@ void ed::Context::End()
         auto max  = ImVec2(std::max(from.x, to.x), std::max(from.y, to.y));
 
         drawList->AddRectFilled(min, max, fillColor);
+        ImGui::PushStyleVar(ImGuiStyleVar_AntiAliasFringeScale, 1.0f);
         drawList->AddRect(min, max, outlineColor);
+        ImGui::PopStyleVar();
     }
 
     // Bring active node to front
