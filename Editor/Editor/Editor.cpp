@@ -661,6 +661,7 @@ ed::Context::Context(const ax::Editor::Config* config):
     ScrollAction(this),
     DragAction(this),
     SelectAction(this),
+    ContextMenuAction(this),
     CreateItemAction(this),
     DeleteItemsAction(this),
     AnimationControllers{ &FlowAnimationController },
@@ -850,6 +851,8 @@ void ed::Context::End()
             CurrentAction = &DragAction;
         else if (SelectAction.Accept(control))
             CurrentAction = &SelectAction;
+        else if (ContextMenuAction.Accept(control))
+            CurrentAction = &ContextMenuAction;
         else if (CreateItemAction.Accept(control))
             CurrentAction = &CreateItemAction;
         else if (DeleteItemsAction.Accept(control))
@@ -1460,6 +1463,21 @@ void ed::Context::Flow(Link* link)
     FlowAnimationController.Flow(link);
 }
 
+void ed::Context::SetUserContext()
+{
+    const auto mousePos = ImGui::GetMousePos();
+
+    // Move drawing cursor to mouse location and prepare layer for
+    // content added by user.
+    ImGui::SetCursorScreenPos(ImVec2(floorf(mousePos.x), floorf(mousePos.y)));
+
+    auto drawList = ImGui::GetWindowDrawList();
+    drawList->ChannelsSetCurrent(c_UserLayerChannelStart);
+
+    // #debug
+    //drawList->AddCircleFilled(ImGui::GetMousePos(), 4, IM_COL32(0, 255, 0, 255));
+}
+
 ed::Control ed::Context::ComputeControl()
 {
     if (!ImGui::IsWindowHovered())
@@ -1613,6 +1631,7 @@ void ed::Context::ShowMetrics(const Control& control)
     ScrollAction.ShowMetrics();
     DragAction.ShowMetrics();
     SelectAction.ShowMetrics();
+    ContextMenuAction.ShowMetrics();
     CreateItemAction.ShowMetrics();
     DeleteItemsAction.ShowMetrics();
     ImGui::EndGroup();
@@ -2563,6 +2582,118 @@ void ed::SelectAction::Draw(ImDrawList* drawList)
 
 //------------------------------------------------------------------------------
 //
+// Context Menu Action
+//
+//------------------------------------------------------------------------------
+ed::ContextMenuAction::ContextMenuAction(Context* editor):
+    EditorAction(editor),
+    CurrentMenu(Menu::None),
+    ContextId(0)
+{
+}
+
+bool ed::ContextMenuAction::Accept(const Control& control)
+{
+    if (!ImGui::IsMouseClicked(1))
+        return false;
+
+    if (auto hotObejct = control.HotObject)
+    {
+        if (hotObejct->AsNode())
+            CurrentMenu = Node;
+        else if (hotObejct->AsPin())
+            CurrentMenu = Pin;
+        else if (hotObejct->AsLink())
+            CurrentMenu = Link;
+
+        if (CurrentMenu != None)
+        {
+            ContextId = hotObejct->ID;
+            return true;
+        }
+    }
+    else if (control.BackgroundHot)
+    {
+        CurrentMenu = Background;
+        return true;
+    }
+
+    return false;
+}
+
+bool ed::ContextMenuAction::Process(const Control& control)
+{
+    CurrentMenu = None;
+    ContextId   = 0;
+    return false;
+}
+
+void ed::ContextMenuAction::ShowMetrics()
+{
+    EditorAction::ShowMetrics();
+
+    auto getMenuName = [](Menu menu)
+    {
+        switch (menu)
+        {
+            default:
+            case None:        return "None";
+            case Node:        return "Node";
+            case Pin:         return "Pin";
+            case Link:        return "Link";
+            case Background:  return "Background";
+        }
+    };
+
+
+    ImGui::Text("%s:", GetName());
+    ImGui::Text("    Menu: %s", getMenuName(CurrentMenu));
+}
+
+bool ed::ContextMenuAction::ShowNodeContextMenu(int* nodeId)
+{
+    if (CurrentMenu != Node)
+        return false;
+
+    *nodeId = ContextId;
+    Editor->SetUserContext();
+    return true;
+}
+
+bool ed::ContextMenuAction::ShowPinContextMenu(int* pinId)
+{
+    if (CurrentMenu != Pin)
+        return false;
+
+    *pinId = ContextId;
+    Editor->SetUserContext();
+    return true;
+}
+
+bool ed::ContextMenuAction::ShowLinkContextMenu(int* linkId)
+{
+    if (CurrentMenu != Link)
+        return false;
+
+    *linkId = ContextId;
+    Editor->SetUserContext();
+    return true;
+}
+
+bool ed::ContextMenuAction::ShowBackgroundContextMenu()
+{
+    if (CurrentMenu != Background)
+        return false;
+
+    Editor->SetUserContext();
+    return true;
+}
+
+
+
+
+//------------------------------------------------------------------------------
+//
 // Create Item Action
 //
 //------------------------------------------------------------------------------
@@ -2844,7 +2975,7 @@ ed::CreateItemAction::Result ed::CreateItemAction::QueryLink(int* startId, int* 
     *startId = linkStartId;
     *endId   = linkEndId;
 
-    SetUserContext();
+    Editor->SetUserContext();
 
     return True;
 }
@@ -2858,24 +2989,9 @@ ed::CreateItemAction::Result ed::CreateItemAction::QueryNode(int* pinId)
 
     *pinId = LinkStart ? LinkStart->ID : 0;
 
-    SetUserContext();
+    Editor->SetUserContext();
 
     return True;
-}
-
-void ed::CreateItemAction::SetUserContext()
-{
-    const auto mousePos = ImGui::GetMousePos();
-
-    // Move drawing cursor to mouse location and prepare layer for
-    // content added by user.
-    ImGui::SetCursorScreenPos(ImVec2(floorf(mousePos.x), floorf(mousePos.y)));
-
-    auto drawList = ImGui::GetWindowDrawList();
-    drawList->ChannelsSetCurrent(c_UserLayerChannelStart);
-
-    // #debug
-    //drawList->AddCircleFilled(ImGui::GetMousePos(), 4, IM_COL32(0, 255, 0, 255));
 }
 
 

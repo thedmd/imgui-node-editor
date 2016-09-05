@@ -281,6 +281,9 @@ struct DragAction;
 struct SelectAction;
 struct CreateItemAction;
 struct DeleteItemsAction;
+struct ContextMenuAction;
+
+struct AnimationController;
 struct FlowAnimationController;
 
 struct Animation
@@ -424,6 +427,7 @@ struct EditorAction
     virtual SelectAction*      AsSelect()      { return nullptr; }
     virtual CreateItemAction*  AsCreateItem()  { return nullptr; }
     virtual DeleteItemsAction* AsDeleteItems() { return nullptr; }
+    virtual ContextMenuAction* AsContextMenu() { return nullptr; }
 
     Context* Editor;
 };
@@ -524,6 +528,30 @@ struct SelectAction final: EditorAction
     void Draw(ImDrawList* drawList);
 };
 
+struct ContextMenuAction final: EditorAction
+{
+    enum Menu { None, Node, Pin, Link, Background };
+
+    Menu CurrentMenu;
+    int  ContextId;
+
+    ContextMenuAction(Context* editor);
+
+    virtual const char* GetName() const override final { return "Context Menu"; }
+
+    virtual bool Accept(const Control& control) override final;
+    virtual bool Process(const Control& control) override final;
+
+    virtual void ShowMetrics() override final;
+
+    virtual ContextMenuAction* AsContextMenu() override final { return this; }
+
+    bool ShowNodeContextMenu(int* nodeId);
+    bool ShowPinContextMenu(int* pinId);
+    bool ShowLinkContextMenu(int* linkId);
+    bool ShowBackgroundContextMenu();
+};
+
 struct CreateItemAction final : EditorAction
 {
     enum Stage
@@ -597,8 +625,6 @@ private:
     void DropPin(Pin* endPin);
     void DropNode();
     void DropNothing();
-
-    void SetUserContext();
 };
 
 struct DeleteItemsAction final: EditorAction
@@ -724,6 +750,7 @@ struct Context
 
     CreateItemAction& GetItemCreator() { return CreateItemAction; }
     DeleteItemsAction& GetItemDeleter() { return DeleteItemsAction; }
+    ContextMenuAction& GetContextMenu() { return ContextMenuAction; }
 
     void SetNodePosition(int nodeId, const ImVec2& screenPosition);
     ImVec2 GetNodePosition(int nodeId);
@@ -795,6 +822,8 @@ struct Context
 
     void Flow(Link* link);
 
+    void SetUserContext();
+
 private:
     NodeSettings* FindNodeSettings(int id);
     NodeSettings* AddNodeSettings(int id);
@@ -840,6 +869,7 @@ private:
     ScrollAction        ScrollAction;
     DragAction          DragAction;
     SelectAction        SelectAction;
+    ContextMenuAction   ContextMenuAction;
     CreateItemAction    CreateItemAction;
     DeleteItemsAction   DeleteItemsAction;
 

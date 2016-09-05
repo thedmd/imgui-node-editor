@@ -407,3 +407,23 @@ void ax::Editor::NavigateToSelection(bool zoomIn, float duration)
 {
     s_Editor->NavigateTo(s_Editor->GetSelectionBounds(), zoomIn, duration);
 }
+
+bool ax::Editor::ShowNodeContextMenu(int* nodeId)
+{
+    return s_Editor->GetContextMenu().ShowNodeContextMenu(nodeId);
+}
+
+bool ax::Editor::ShowPinContextMenu(int* pinId)
+{
+    return s_Editor->GetContextMenu().ShowPinContextMenu(pinId);
+}
+
+bool ax::Editor::ShowLinkContextMenu(int* linkId)
+{
+    return s_Editor->GetContextMenu().ShowLinkContextMenu(linkId);
+}
+
+bool ax::Editor::ShowBackgroundContextMenu()
+{
+    return s_Editor->GetContextMenu().ShowBackgroundContextMenu();
+}

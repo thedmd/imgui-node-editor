@@ -240,6 +240,11 @@ void DeselectLink(int linkId);
 void NavigateToContent(float duration = -1);
 void NavigateToSelection(bool zoomIn = false, float duration = -1);
 
+bool ShowNodeContextMenu(int* nodeId);
+bool ShowPinContextMenu(int* pinId);
+bool ShowLinkContextMenu(int* linkId);
+bool ShowBackgroundContextMenu();
+
 //------------------------------------------------------------------------------
 } // namespace Editor
 } // namespace ax
