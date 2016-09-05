@@ -28,6 +28,7 @@ enum class ObjectType
 using ax::Editor::PinKind;
 using ax::Editor::StyleColor;
 using ax::Editor::StyleVar;
+using ax::Editor::SaveReasonFlags;
 
 struct Node;
 struct Pin;
@@ -178,13 +179,14 @@ struct NodeSettings
 
 struct Settings
 {
-    bool    Dirty;
+    bool       Dirty;
+    SaveReasonFlags Reason;
 
     vector<NodeSettings> Nodes;
     ImVec2               ViewScroll;
     float                ViewZoom;
 
-    Settings(): Dirty(false), ViewScroll(0, 0), ViewZoom(1.0f) {}
+    Settings(): Dirty(false), Reason(SaveReasonFlags::Unknown), ViewScroll(0, 0), ViewZoom(1.0f) {}
 };
 
 struct Control
@@ -751,7 +753,7 @@ struct Context
     void Suspend();
     void Resume();
 
-    void MarkSettingsDirty();
+    void MarkSettingsDirty(SaveReasonFlags reason);
 
     Pin*    CreatePin(int id, PinKind kind);
     Node*   CreateNode(int id);

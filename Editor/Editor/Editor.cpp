@@ -967,6 +967,7 @@ void ed::Context::End()
     {
         Settings.Dirty = false;
         SaveSettings();
+        Settings.Reason = SaveReasonFlags::Unknown;
     }
 }
 
@@ -1394,7 +1395,7 @@ void ed::Context::SaveSettings()
 
     auto data = settingsValue.serialize(false);
     if (Config.SaveSettings)
-        Config.SaveSettings(data.c_str(), Config.UserPointer);
+        Config.SaveSettings(data.c_str(), Config.UserPointer, Settings.Reason);
     else if (Config.SettingsFile)
     {
         std::ofstream settingsFile(Config.SettingsFile);
@@ -1403,9 +1404,10 @@ void ed::Context::SaveSettings()
     }
 }
 
-void ed::Context::MarkSettingsDirty()
+void ed::Context::MarkSettingsDirty(SaveReasonFlags reason)
 {
-    Settings.Dirty = true;
+    Settings.Dirty  = true;
+    Settings.Reason = Settings.Reason | reason;
 }
 
 ed::Link* ed::Context::FindLinkAt(const ax::point& p)
@@ -1821,15 +1823,15 @@ void ed::ScrollAnimation::OnUpdate(float progress)
 
 void ed::ScrollAnimation::OnStop()
 {
-    Editor->MarkSettingsDirty();
+    Editor->MarkSettingsDirty(SaveReasonFlags::Navigation);
 }
 
 void ed::ScrollAnimation::OnFinish()
 {
     Action.Scroll = Target;
-    Action.Zoom = TargetZoom;
+    Action.Zoom   = TargetZoom;
 
-    Editor->MarkSettingsDirty();
+    Editor->MarkSettingsDirty(SaveReasonFlags::Navigation);
 }
 
 
@@ -2164,7 +2166,7 @@ bool ed::ScrollAction::Process(const Control& control)
     else
     {
         if (Scroll != ScrollStart)
-            Editor->MarkSettingsDirty();
+            Editor->MarkSettingsDirty(SaveReasonFlags::Navigation);
 
         IsActive = false;
     }
@@ -3162,7 +3164,7 @@ void ed::NodeBuilder::End()
 
     if (CurrentNode->Bounds.size != NodeRect.size)
     {
-        Editor->MarkSettingsDirty();
+        Editor->MarkSettingsDirty(SaveReasonFlags::NodePosition);
         CurrentNode->Bounds.size = NodeRect.size;
     }
 

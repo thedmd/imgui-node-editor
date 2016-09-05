@@ -7,7 +7,17 @@ namespace Editor {
 
 
 //------------------------------------------------------------------------------
-typedef void        (*ConfigSaveSettings)(const char* data, void* userPointer);
+enum class SaveReasonFlags
+{
+    Unknown      = 0,
+    Navigation   = 1,
+    NodePosition = 2
+};
+
+inline SaveReasonFlags operator |(SaveReasonFlags lhs, SaveReasonFlags rhs) { return static_cast<SaveReasonFlags>(static_cast<int>(lhs) | static_cast<int>(rhs)); }
+inline SaveReasonFlags operator &(SaveReasonFlags lhs, SaveReasonFlags rhs) { return static_cast<SaveReasonFlags>(static_cast<int>(lhs) & static_cast<int>(rhs)); }
+
+typedef void        (*ConfigSaveSettings)(const char* data, void* userPointer, SaveReasonFlags reason);
 typedef size_t      (*ConfigLoadSettings)(char* data, void* userPointer);
 
 struct Config
