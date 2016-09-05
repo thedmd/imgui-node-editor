@@ -116,6 +116,24 @@ static int GetNextId()
     return s_NextId++;
 }
 
+static Node* FindNode(int id)
+{
+    for (auto& node : s_Nodes)
+        if (node.ID == id)
+            return &node;
+
+    return nullptr;
+}
+
+static Link* FindLink(int id)
+{
+    for (auto& link : s_Links)
+        if (link.ID == id)
+            return &link;
+
+    return nullptr;
+}
+
 static Pin* FindPin(int id)
 {
     if (id <= 0)
@@ -306,6 +324,12 @@ static Node* SpawnTreeTask2Node()
     return &s_Nodes.back();
 }
 
+void BuildNodes()
+{
+    for (auto& node : s_Nodes)
+        BuildNode(&node);
+}
+
 void Application_Initialize()
 {
     m_Editor = ed::CreateEditor();
@@ -319,6 +343,8 @@ void Application_Initialize()
     SpawnTreeSequenceNode();
     SpawnTreeTaskNode();
     SpawnTreeTask2Node();
+
+    BuildNodes();
 
 //     s_Links.push_back(Link(GetNextId(), s_Nodes[5].Outputs[0].ID, s_Nodes[6].Inputs[0].ID));
 //     s_Links.push_back(Link(GetNextId(), s_Nodes[5].Outputs[0].ID, s_Nodes[7].Inputs[0].ID));
@@ -589,6 +615,7 @@ void Application_Frame()
 
     auto& style = ImGui::GetStyle();
 
+    static int  contextId      = 0;
     static bool createNewNode  = false;
     static Pin* newNodeLinkPin = nullptr;
     static Pin* newLinkPin     = nullptr;
@@ -976,8 +1003,72 @@ void Application_Frame()
         ImGui::SetCursorScreenPos(cursorTopLeft);
     }
 
+    if (ed::ShowNodeContextMenu(&contextId))
+        ImGui::OpenPopup("Node Context Menu");
+    else if (ed::ShowPinContextMenu(&contextId))
+        ImGui::OpenPopup("Pin Context Menu");
+    else if (ed::ShowLinkContextMenu(&contextId))
+        ImGui::OpenPopup("Link Context Menu");
+    else if (ed::ShowBackgroundContextMenu())
+        ImGui::OpenPopup("Create New Node");
+
     ed::Suspend();
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(8, 8));
+    if (ImGui::BeginPopup("Node Context Menu"))
+    {
+        auto node = FindNode(contextId);
+
+        ImGui::TextUnformatted("Node Context Menu");
+        ImGui::Separator();
+        if (node)
+        {
+            ImGui::Text("ID: %d", node->ID);
+            ImGui::Text("Type: %s", node->Type == NodeType::Blueprint ? "Blueprint" : "Tree");
+            ImGui::Text("Inputs: %d", (int)node->Inputs.size());
+            ImGui::Text("Outputs: %d", (int)node->Outputs.size());
+        }
+        else
+            ImGui::Text("Unknown node: %d", contextId);
+        ImGui::EndPopup();
+    }
+
+    if (ImGui::BeginPopup("Pin Context Menu"))
+    {
+        auto pin = FindPin(contextId);
+
+        ImGui::TextUnformatted("Pin Context Menu");
+        ImGui::Separator();
+        if (pin)
+        {
+            ImGui::Text("ID: %d", pin->ID);
+            if (pin->Node)
+                ImGui::Text("Node: %d", pin->Node->ID);
+            else
+                ImGui::Text("Node: %s", "<none>");
+        }
+        else
+            ImGui::Text("Unknown pin: %d", contextId);
+
+        ImGui::EndPopup();
+    }
+
+    if (ImGui::BeginPopup("Link Context Menu"))
+    {
+        auto link = FindLink(contextId);
+
+        ImGui::TextUnformatted("Link Context Menu");
+        ImGui::Separator();
+        if (link)
+        {
+            ImGui::Text("ID: %d", link->ID);
+            ImGui::Text("From: %d", link->StartPinID);
+            ImGui::Text("To: %d", link->EndPinID);
+        }
+        else
+            ImGui::Text("Unknown link: %d", contextId);
+        ImGui::EndPopup();
+    }
+
     if (ImGui::BeginPopup("Create New Node"))
     {
         auto newNodePostion = ImGui::GetMousePosOnOpeningCurrentPopup();
