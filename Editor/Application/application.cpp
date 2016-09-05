@@ -817,16 +817,36 @@ void Application_Frame()
 
                 auto drawList = ed::GetNodeBackgroundDrawList(node.ID);
 
+                const auto fringeScale = ImGui::GetStyle().AntiAliasFringeScale;
+                const auto unitSize    = 1.0f / fringeScale;
+
+                const auto ImDrawList_AddRect = [](ImDrawList* drawList, const ImVec2& a, const ImVec2& b, ImU32 col, float rounding, int rounding_corners, float thickness)
+                {
+                    if ((col >> 24) == 0)
+                        return;
+                    drawList->PathRect(a, b, rounding, rounding_corners);
+                    drawList->PathStroke(col, true, thickness);
+                };
+
                 drawList->AddRectFilled(to_imvec(inputsRect.top_left()) + ImVec2(0, 1), to_imvec(inputsRect.bottom_right()),
                     IM_COL32((int)(255 * pinBackground.x), (int)(255 * pinBackground.y), (int)(255 * pinBackground.z), inputAlpha), 4.0f, 12);
+                ImGui::PushStyleVar(ImGuiStyleVar_AntiAliasFringeScale, 1.0f);
                 drawList->AddRect(to_imvec(inputsRect.top_left()) + ImVec2(0, 1), to_imvec(inputsRect.bottom_right()),
                     IM_COL32((int)(255 * pinBackground.x), (int)(255 * pinBackground.y), (int)(255 * pinBackground.z), inputAlpha), 4.0f, 12);
+                ImGui::PopStyleVar();
                 drawList->AddRectFilled(to_imvec(outputsRect.top_left()), to_imvec(outputsRect.bottom_right()) - ImVec2(0, 1),
                     IM_COL32((int)(255 * pinBackground.x), (int)(255 * pinBackground.y), (int)(255 * pinBackground.z), outputAlpha), 4.0f, 3);
+                ImGui::PushStyleVar(ImGuiStyleVar_AntiAliasFringeScale, 1.0f);
                 drawList->AddRect(to_imvec(outputsRect.top_left()), to_imvec(outputsRect.bottom_right()) - ImVec2(0, 1),
                     IM_COL32((int)(255 * pinBackground.x), (int)(255 * pinBackground.y), (int)(255 * pinBackground.z), outputAlpha), 4.0f, 3);
+                ImGui::PopStyleVar();
                 drawList->AddRectFilled(to_imvec(contentRect.top_left()), to_imvec(contentRect.bottom_right()), IM_COL32(24, 64, 128, 200), 0.0f);
-                drawList->AddRect(to_imvec(contentRect.top_left()), to_imvec(contentRect.bottom_right()), IM_COL32(48, 128, 255, 100), 0.0f);
+                ImGui::PushStyleVar(ImGuiStyleVar_AntiAliasFringeScale, 1.0f);
+                drawList->AddRect(
+                    to_imvec(contentRect.top_left()),
+                    to_imvec(contentRect.bottom_right()),
+                    IM_COL32(48, 128, 255, 100), 0.0f);
+                ImGui::PopStyleVar();
             }
         }
 
