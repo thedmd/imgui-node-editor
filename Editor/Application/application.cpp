@@ -471,6 +471,19 @@ void ShowStyleEditor(bool* show = nullptr)
     ImGui::DragFloat("Pin Rounding", &editorStyle.PinRounding, 0.1f, 0.0f, 40.0f);
     ImGui::DragFloat("Pin Border Width", &editorStyle.PinBorderWidth, 0.1f, 0.0f, 15.0f);
     ImGui::DragFloat("Link Strength", &editorStyle.LinkStrength, 1.0f, 0.0f, 500.0f);
+    //ImVec2  SourceDirection;
+    //ImVec2  TargetDirection;
+    ImGui::DragFloat("Scroll Duration", &editorStyle.ScrollDuration, 0.001f, 0.0f, 2.0f);
+    ImGui::DragFloat("Flow Marker Distance", &editorStyle.FlowMarkerDistance, 1.0f, 1.0f, 200.0f);
+    ImGui::DragFloat("Flow Speed", &editorStyle.FlowMarkerDistance, 1.0f, 1.0f, 2000.0f);
+    ImGui::DragFloat("Flow Duration", &editorStyle.FlowDuration, 0.001f, 0.0f, 5.0f);
+    //ImVec2  PivotAlignment;
+    //ImVec2  PivotSize;
+    //ImVec2  PivotScale;
+    //float   PinCorners;
+    //float   PinRadius;
+    //float   PinArrowSize;
+    //float   PinArrowWidth;
 
     ImGui::Separator();
 
