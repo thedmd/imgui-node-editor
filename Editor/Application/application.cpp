@@ -58,6 +58,7 @@ enum class NodeType
 };
 
 struct Node;
+struct Comment;
 
 struct Pin
 {
@@ -72,7 +73,6 @@ struct Pin
     {
     }
 };
-
 
 struct Node
 {
@@ -104,9 +104,22 @@ struct Link
     }
 };
 
+struct Comment
+{
+    int         ID;
+    std::string Name;
+    ImVec2      Size;
+
+    Comment(int id, const char* name):
+        ID(id), Name(name)
+    {
+    }
+};
+
 static const int            s_PinIconSize = 24;
 static std::vector<Node>    s_Nodes;
 static std::vector<Link>    s_Links;
+static std::vector<Comment> s_Comments;
 static ImTextureID          s_HeaderBackground = nullptr;
 static ImTextureID          s_SampleImage = nullptr;
 
@@ -324,6 +337,14 @@ static Node* SpawnTreeTask2Node()
     return &s_Nodes.back();
 }
 
+static Comment* SpawnComment()
+{
+    s_Comments.emplace_back(GetNextId(), "Test Comment");
+    s_Comments.back().Size = ImVec2(300, 200);
+
+    return &s_Comments.back();
+}
+
 void BuildNodes()
 {
     for (auto& node : s_Nodes)
@@ -343,6 +364,8 @@ void Application_Initialize()
     SpawnTreeSequenceNode();
     SpawnTreeTaskNode();
     SpawnTreeTask2Node();
+
+    SpawnComment();
 
     BuildNodes();
 
@@ -893,6 +916,20 @@ void Application_Frame()
         for (auto& link : s_Links)
             ed::Link(link.ID, link.StartPinID, link.EndPinID, link.Color, 2.0f);
 
+        for (auto& comment : s_Comments)
+        {
+            ed::BeginGroup(comment.ID);
+            ImGui::BeginVertical("content");
+            ImGui::BeginHorizontal("horizontal");
+            ImGui::Spring(1);
+            ImGui::TextUnformatted(comment.Name.c_str());
+            ImGui::Spring(1);
+            ImGui::EndHorizontal();
+            ed::GroupContent(comment.Size);
+            ImGui::EndVertical();
+            ed::EndGroup();
+        }
+
         if (!createNewNode)
         {
             if (ed::BeginCreate(ImColor(255, 255, 255), 2.0f))
@@ -1182,7 +1219,7 @@ void Application_Frame()
     ed::End();
 
 
-    // ImGui::ShowTestWindow();
+    //ImGui::ShowTestWindow();
 
     //Sleep(16);
 }
