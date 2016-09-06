@@ -3534,6 +3534,8 @@ const char* ed::Style::GetColorName(StyleColor colorIndex) const
         case StyleColor_LinkSelRectBorder: return "LinkSelRectBorder";
         case StyleColor_PinRect: return "PinRect";
         case StyleColor_PinRectBorder: return "PinRectBorder";
+        case StyleColor_Flow: return "Flow";
+        case StyleColor_FlowMarker: return "FlowMarker";
     }
 
     assert(0);
