@@ -7,9 +7,9 @@
 #include "Editor/Types.h"
 #include "Editor/Types.inl"
 #include "Editor/ImGuiInterop.h"
-#include "Editor/Widgets.h"
 #include "Editor/EditorApi.h"
 #include "Editor/Builders.h"
+#include "widgets.h"
 #include "imgui_impl_dx11.h"
 
 namespace ed = ax::Editor;

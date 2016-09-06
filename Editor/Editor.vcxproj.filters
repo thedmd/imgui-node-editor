@@ -30,12 +30,6 @@
     <ClCompile Include="..\External\DXSDK\src\dxerr.cpp">
       <Filter>External</Filter>
     </ClCompile>
-    <ClCompile Include="Editor\Drawing.cpp">
-      <Filter>Editor</Filter>
-    </ClCompile>
-    <ClCompile Include="Editor\Widgets.cpp">
-      <Filter>Editor</Filter>
-    </ClCompile>
     <ClCompile Include="Editor\Editor.cpp">
       <Filter>Editor</Filter>
     </ClCompile>
@@ -53,6 +47,12 @@
     </ClCompile>
     <ClCompile Include="Editor\Builders.cpp">
       <Filter>Editor</Filter>
+    </ClCompile>
+    <ClCompile Include="Application\widgets.cpp">
+      <Filter>Application</Filter>
+    </ClCompile>
+    <ClCompile Include="Application\drawing.cpp">
+      <Filter>Application</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -77,13 +77,7 @@
     <ClInclude Include="Support\stb_image.h">
       <Filter>Support</Filter>
     </ClInclude>
-    <ClInclude Include="Editor\Drawing.h">
-      <Filter>Editor</Filter>
-    </ClInclude>
     <ClInclude Include="Editor\Types.h">
-      <Filter>Editor</Filter>
-    </ClInclude>
-    <ClInclude Include="Editor\Widgets.h">
       <Filter>Editor</Filter>
     </ClInclude>
     <ClInclude Include="Editor\EditorApi.h">
@@ -106,6 +100,12 @@
     </ClInclude>
     <ClInclude Include="Editor\Builders.h">
       <Filter>Editor</Filter>
+    </ClInclude>
+    <ClInclude Include="Application\widgets.h">
+      <Filter>Application</Filter>
+    </ClInclude>
+    <ClInclude Include="Application\drawing.h">
+      <Filter>Application</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

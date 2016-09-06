@@ -1,6 +1,5 @@
 #include "Editor.h"
 #include "Application/imgui_impl_dx11.h"
-#include "Drawing.h"
 #include "ImGuiInterop.h"
 #include <cstdlib> // _itoa
 #include <string>
