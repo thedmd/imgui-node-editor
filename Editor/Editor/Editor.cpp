@@ -800,10 +800,18 @@ void ed::Context::End()
 
     if (!isSelecting)
     {
+        bool allowPinHighlight = true;
+
         // Highlight selected node
         auto hotNode = control.HotNode;
         if (CurrentAction && CurrentAction->AsDrag())
+        {
             hotNode = CurrentAction->AsDrag()->DraggedNode;
+            if (hotNode != nullptr)
+                allowPinHighlight = false; // Don't highlight pins when dragging nodes
+        }
+
+        // Highlight node or link but never both at once
         if (hotNode && !IsSelected(hotNode))
         {
             const auto rectMin = to_imvec(hotNode->Bounds.top_left());
@@ -813,24 +821,31 @@ void ed::Context::End()
 
             hotNode->DrawBorder(drawList, GetColor(StyleColor_HovNodeBorder), editorStyle.HoveredNodeBorderWidth);
         }
-
-        // Highlight hovered pin
-        if (auto hotPin = control.HotPin)
+        else
         {
-            const auto rectMin = to_imvec(hotPin->Bounds.top_left());
-            const auto rectMax = to_imvec(hotPin->Bounds.bottom_right());
+            // Highlight hovered link
+            if (control.HotLink && !IsSelected(control.HotLink))
+            {
+                drawList->ChannelsSetCurrent(c_LinkChannel_Selection);
 
-            drawList->ChannelsSetCurrent(hotPin->Node->Channel + c_NodeBackgroundChannel);
+                control.HotLink->Draw(drawList, GetColor(StyleColor_HovLinkBorder), 4.5f);
 
-            hotPin->Draw(drawList);
+                allowPinHighlight = false;
+            }
         }
 
-        // Highlight hovered link
-        if (control.HotLink && !IsSelected(control.HotLink))
+        // Highlight hovered pin
+        if (allowPinHighlight)
         {
-            drawList->ChannelsSetCurrent(c_LinkChannel_Selection);
+            if (auto hotPin = control.HotPin)
+            {
+                const auto rectMin = to_imvec(hotPin->Bounds.top_left());
+                const auto rectMax = to_imvec(hotPin->Bounds.bottom_right());
 
-            control.HotLink->Draw(drawList, GetColor(StyleColor_HovLinkBorder), 4.5f);
+                drawList->ChannelsSetCurrent(hotPin->Node->Channel + c_NodeBackgroundChannel);
+
+                hotPin->Draw(drawList);
+            }
         }
     }
 
