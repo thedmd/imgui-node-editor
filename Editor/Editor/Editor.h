@@ -30,16 +30,33 @@ using ax::Editor::StyleColor;
 using ax::Editor::StyleVar;
 using ax::Editor::SaveReasonFlags;
 
+struct Context;
+
 struct Node;
 struct Pin;
 struct Link;
+struct Group;
 
 struct Object
 {
+    enum DrawFlags
+    {
+        None     = 0,
+        Hovered  = 1,
+        Selected = 2
+    };
+
+    inline friend DrawFlags operator|(DrawFlags lhs, DrawFlags rhs)  { return static_cast<DrawFlags>(static_cast<int>(lhs) | static_cast<int>(rhs)); }
+    inline friend DrawFlags operator&(DrawFlags lhs, DrawFlags rhs)  { return static_cast<DrawFlags>(static_cast<int>(lhs) & static_cast<int>(rhs)); }
+    inline friend DrawFlags& operator|=(DrawFlags& lhs, DrawFlags rhs) { lhs = lhs | rhs; return lhs; }
+    inline friend DrawFlags& operator&=(DrawFlags& lhs, DrawFlags rhs) { lhs = lhs & rhs; return lhs; }
+
+    Context* const Editor;
+
     int     ID;
     bool    IsLive;
 
-    Object(int id): ID(id), IsLive(true) {}
+    Object(Context* editor, int id): Editor(editor), ID(id), IsLive(true) {}
     virtual ~Object() = default;
 
     bool IsVisible() const
@@ -51,6 +68,8 @@ struct Object
 
         return ImGui::IsRectVisible(to_imvec(bounds.top_left()), to_imvec(bounds.bottom_right()));
     }
+
+    virtual void Draw(ImDrawList* drawList, DrawFlags flags = None) = 0;
 
     virtual bool AcceptDrag() { return false; }
     virtual void UpdateDrag(const ax::point& offset) { }
@@ -79,9 +98,10 @@ struct Object
 
     virtual ax::rectf GetBounds() const = 0;
 
-    virtual Node* AsNode() { return nullptr; }
-    virtual Pin*  AsPin()  { return nullptr; }
-    virtual Link* AsLink() { return nullptr; }
+    virtual Node*  AsNode()  { return nullptr; }
+    virtual Pin*   AsPin()   { return nullptr; }
+    virtual Link*  AsLink()  { return nullptr; }
+    virtual Group* AsGroup() { return nullptr; }
 };
 
 struct Pin final: Object
@@ -102,14 +122,14 @@ struct Pin final: Object
     float   ArrowSize;
     float   ArrowWidth;
 
-    Pin(int id, PinKind kind):
-        Object(id), Kind(kind), Node(nullptr), Bounds(), PreviousPin(nullptr),
+    Pin(Context* editor, int id, PinKind kind):
+        Object(editor, id), Kind(kind), Node(nullptr), Bounds(), PreviousPin(nullptr),
         Color(IM_COL32_WHITE), BorderColor(IM_COL32_BLACK), BorderWidth(0), Rounding(0),
         Corners(0), Dir(0, 0), Strength(0), Radius(0), ArrowSize(0), ArrowWidth(0)
     {
     }
 
-    void Draw(ImDrawList* drawList);
+    virtual void Draw(ImDrawList* drawList, DrawFlags flags = None) override final;
 
     ImVec2 GetClosestPoint(const ImVec2& p) const;
     line_f GetClosestLine(const Pin* pin) const;
@@ -131,8 +151,8 @@ struct Node final: Object
     float   BorderWidth;
     float   Rounding;
 
-    Node(int id):
-        Object(id),
+    Node(Context* editor, int id):
+        Object(editor, id),
         Bounds(),
         Channel(0),
         LastPin(nullptr),
@@ -148,7 +168,7 @@ struct Node final: Object
     void UpdateDrag(const ax::point& offset) override final;
     bool EndDrag() override final; // return true, when changed
 
-    void Draw(ImDrawList* drawList);
+    virtual void Draw(ImDrawList* drawList, DrawFlags flags = None) override final;
     void DrawBorder(ImDrawList* drawList, ImU32 color, float thickness = 1.0f);
 
     virtual ax::rectf GetBounds() const override final { return static_cast<rectf>(Bounds); }
@@ -165,12 +185,12 @@ struct Link final: Object
     ImVec2 Start;
     ImVec2 End;
 
-    Link(int id):
-        Object(id), StartPin(nullptr), EndPin(nullptr), Color(IM_COL32_WHITE), Thickness(1.0f)
+    Link(Context* editor, int id):
+        Object(editor, id), StartPin(nullptr), EndPin(nullptr), Color(IM_COL32_WHITE), Thickness(1.0f)
     {
     }
 
-    void Draw(ImDrawList* drawList, float extraThickness = 0.0f) const;
+    virtual void Draw(ImDrawList* drawList, DrawFlags flags = None) override final;
     void Draw(ImDrawList* drawList, ImU32 color, float extraThickness = 0.0f) const;
 
     void UpdateEndpoints();
@@ -183,6 +203,23 @@ struct Link final: Object
     virtual ax::rectf GetBounds() const override final;
 
     virtual Link* AsLink() override final { return this; }
+};
+
+struct Group final: Object
+{
+    rect Bounds;
+    rect Content;
+
+    Group(Context* editor, int id):
+        Object(editor, id)
+    {
+    }
+
+    virtual void Draw(ImDrawList* drawList, DrawFlags flags = None) override final;
+
+    virtual ax::rectf GetBounds() const override final;
+
+    virtual Group* AsGroup() override final { return this; }
 };
 
 struct NodeSettings
@@ -292,7 +329,6 @@ struct Canvas
     ImVec2 ToClient(ImVec2 point);
 };
 
-struct Context;
 struct ScrollAction;
 struct DragAction;
 struct SelectAction;
@@ -717,6 +753,23 @@ struct NodeBuilder
     ImDrawList* GetBackgroundDrawList(Node* node) const;
 };
 
+struct GroupBuilder
+{
+    Context* const Editor;
+
+    Group* CurrentGroup;
+
+    bool   IsNewGroup;
+    rect   GroupRect;
+    rect   ContentRect;
+
+    GroupBuilder(Context* editor);
+
+    void Begin(int groupId);
+    void Content(const ImVec2& size);
+    void End();
+};
+
 struct Style: ax::Editor::Style
 {
     void PushColor(StyleColor colorIndex, const ImVec4& color);
@@ -763,6 +816,7 @@ struct Context
     bool DoLink(int id, int startPinId, int endPinId, ImU32 color, float thickness);
 
     NodeBuilder& GetNodeBuilder() { return NodeBuilder; }
+    GroupBuilder& GetGroupBuilder() { return GroupBuilder; }
 
     EditorAction* GetCurrentAction() { return CurrentAction; }
 
@@ -803,16 +857,18 @@ struct Context
     Pin*    CreatePin(int id, PinKind kind);
     Node*   CreateNode(int id);
     Link*   CreateLink(int id);
-    void    DestroyObject(Node* node);
+    Group*  CreateGroup(int id);
     Object* FindObject(int id);
 
-    Node* FindNode(int id);
-    Pin*  FindPin(int id);
-    Link* FindLink(int id);
+    Node*  FindNode(int id);
+    Pin*   FindPin(int id);
+    Link*  FindLink(int id);
+    Group* FindGroup(int id);
 
-    Node* GetNode(int id);
-    Pin*  GetPin(int id, PinKind kind);
-    Link* GetLink(int id);
+    Node*  GetNode(int id);
+    Pin*   GetPin(int id, PinKind kind);
+    Link*  GetLink(int id);
+    Group* GetGroup(int id);
 
     Link* FindLinkAt(const point& p);
 
@@ -862,6 +918,7 @@ private:
     vector<Node*>       Nodes;
     vector<Pin*>        Pins;
     vector<Link*>       Links;
+    vector<Group*>      Groups;
 
     vector<Object*>     SelectedObjects;
 
@@ -882,6 +939,7 @@ private:
     bool                IsSuspended;
 
     NodeBuilder         NodeBuilder;
+    GroupBuilder        GroupBuilder;
 
     EditorAction*       CurrentAction;
     ScrollAction        ScrollAction;

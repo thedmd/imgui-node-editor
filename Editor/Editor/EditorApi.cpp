@@ -127,6 +127,21 @@ void ax::Editor::EndNode()
     s_Editor->GetNodeBuilder().End();
 }
 
+void ax::Editor::BeginGroup(int id)
+{
+    s_Editor->GetGroupBuilder().Begin(id);
+}
+
+void ax::Editor::GroupContent(const ImVec2& size)
+{
+    s_Editor->GetGroupBuilder().Content(size);
+}
+
+void ax::Editor::EndGroup()
+{
+    s_Editor->GetGroupBuilder().End();
+}
+
 ImDrawList* ax::Editor::GetNodeBackgroundDrawList(int nodeId)
 {
     if (auto node = s_Editor->FindNode(nodeId))

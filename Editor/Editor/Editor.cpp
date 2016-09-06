@@ -430,17 +430,22 @@ static void ImDrawList_AddBezierWithArrows(ImDrawList* drawList, const ax::cubic
 // Pin
 //
 //------------------------------------------------------------------------------
-void ed::Pin::Draw(ImDrawList* drawList)
+void ed::Pin::Draw(ImDrawList* drawList, DrawFlags flags)
 {
-    drawList->AddRectFilled(to_imvec(Bounds.top_left()), to_imvec(Bounds.bottom_right()),
-        Color, Rounding, Corners);
-
-    if (BorderWidth > 0.0f)
+    if (flags & Hovered)
     {
-        ImGui::PushStyleVar(ImGuiStyleVar_AntiAliasFringeScale, 1.0f);
-        drawList->AddRect(to_imvec(Bounds.top_left()), to_imvec(Bounds.bottom_right()),
-            BorderColor, Rounding, Corners, BorderWidth);
-        ImGui::PopStyleVar();
+        drawList->ChannelsSetCurrent(Node->Channel + c_NodeBackgroundChannel);
+
+        drawList->AddRectFilled(to_imvec(Bounds.top_left()), to_imvec(Bounds.bottom_right()),
+            Color, Rounding, Corners);
+
+        if (BorderWidth > 0.0f)
+        {
+            ImGui::PushStyleVar(ImGuiStyleVar_AntiAliasFringeScale, 1.0f);
+            drawList->AddRect(to_imvec(Bounds.top_left()), to_imvec(Bounds.bottom_right()),
+                BorderColor, Rounding, Corners, BorderWidth);
+            ImGui::PopStyleVar();
+        }
     }
 }
 
@@ -478,14 +483,37 @@ bool ed::Node::EndDrag()
     return Bounds.location != DragStart;
 }
 
-void ed::Node::Draw(ImDrawList* drawList)
+void ed::Node::Draw(ImDrawList* drawList, DrawFlags flags)
 {
-    drawList->AddRectFilled(
-        to_imvec(Bounds.top_left()),
-        to_imvec(Bounds.bottom_right()),
-        Color, Rounding);
+    if (flags == Detail::Object::None)
+    {
+        drawList->ChannelsSetCurrent(Channel + c_NodeBackgroundChannel);
 
-    DrawBorder(drawList, BorderColor, BorderWidth);
+        drawList->AddRectFilled(
+            to_imvec(Bounds.top_left()),
+            to_imvec(Bounds.bottom_right()),
+            Color, Rounding);
+
+        DrawBorder(drawList, BorderColor, BorderWidth);
+    }
+    else if (flags & Selected)
+    {
+        const auto  borderColor = Editor->GetColor(StyleColor_SelNodeBorder);
+        const auto& editorStyle = Editor->GetStyle();
+
+        drawList->ChannelsSetCurrent(Channel + c_NodeBaseChannel);
+
+        DrawBorder(drawList, borderColor, editorStyle.SelectedNodeBorderWidth);
+    }
+    else if (flags & Hovered)
+    {
+        const auto  borderColor = Editor->GetColor(StyleColor_HovNodeBorder);
+        const auto& editorStyle = Editor->GetStyle();
+
+        drawList->ChannelsSetCurrent(Channel + c_NodeBaseChannel);
+
+        DrawBorder(drawList, borderColor, editorStyle.HoveredNodeBorderWidth);
+    }
 }
 
 void ed::Node::DrawBorder(ImDrawList* drawList, ImU32 color, float thickness)
@@ -505,9 +533,32 @@ void ed::Node::DrawBorder(ImDrawList* drawList, ImU32 color, float thickness)
 // Link
 //
 //------------------------------------------------------------------------------
-void ed::Link::Draw(ImDrawList* drawList, float extraThickness) const
+void ed::Link::Draw(ImDrawList* drawList, DrawFlags flags)
 {
-    Draw(drawList, Color, extraThickness);
+    using namespace ax::ImGuiInterop;
+
+    if (flags == None)
+    {
+        drawList->ChannelsSetCurrent(c_LinkChannel_Links);
+
+        Draw(drawList, Color, 0.0f);
+    }
+    else if (flags & Selected)
+    {
+        const auto borderColor = Editor->GetColor(StyleColor_SelLinkBorder);
+
+        drawList->ChannelsSetCurrent(c_LinkChannel_Selection);
+
+        Draw(drawList, borderColor, 4.5f);
+    }
+    else if (flags & Hovered)
+    {
+        const auto borderColor = Editor->GetColor(StyleColor_HovLinkBorder);
+
+        drawList->ChannelsSetCurrent(c_LinkChannel_Selection);
+
+        Draw(drawList, borderColor, 2.0f);
+    }
 }
 
 void ed::Link::Draw(ImDrawList* drawList, ImU32 color, float extraThickness) const
@@ -658,6 +709,23 @@ ax::rectf ed::Link::GetBounds() const
 
 //------------------------------------------------------------------------------
 //
+// Group
+//
+//------------------------------------------------------------------------------
+void ed::Group::Draw(ImDrawList* drawList, DrawFlags flags)
+{
+}
+
+ax::rectf ed::Group::GetBounds() const
+{
+    return static_cast<ax::rectf>(Bounds);
+}
+
+
+
+
+//------------------------------------------------------------------------------
+//
 // Editor Context
 //
 //------------------------------------------------------------------------------
@@ -672,6 +740,7 @@ ed::Context::Context(const ax::Editor::Config* config):
     Canvas(),
     IsSuspended(false),
     NodeBuilder(this),
+    GroupBuilder(this),
     CurrentAction(nullptr),
     ScrollAction(this),
     DragAction(this),
@@ -692,9 +761,10 @@ ed::Context::~Context()
     if (IsInitialized)
         SaveSettings();
 
-    for (auto link : Links) delete link;
-    for (auto pin  : Pins)  delete pin;
-    for (auto node : Nodes) delete node;
+    for (auto group : Groups) delete group;
+    for (auto link  : Links)  delete link;
+    for (auto pin   : Pins)   delete pin;
+    for (auto node  : Nodes)  delete node;
 }
 
 void ed::Context::Begin(const char* id, const ImVec2& size)
@@ -708,9 +778,10 @@ void ed::Context::Begin(const char* id, const ImVec2& size)
     //ImGui::LogToClipboard();
     //Log("---- begin ----");
 
-    for (auto node : Nodes) node->IsLive = false;
-    for (auto pin  : Pins)   pin->IsLive = false;
-    for (auto link : Links) link->IsLive = false;
+    for (auto node  : Nodes)   node->IsLive = false;
+    for (auto pin   : Pins)     pin->IsLive = false;
+    for (auto link  : Links)   link->IsLive = false;
+    for (auto group : Groups) group->IsLive = false;
 
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
     ImGui::PushStyleColor(ImGuiCol_ChildWindowBg, ImColor(0, 0, 0, 0));
@@ -767,15 +838,10 @@ void ed::Context::End()
     bool isSelecting = CurrentAction && CurrentAction->AsSelect() != nullptr;
 
     // Draw links
-    drawList->ChannelsSetCurrent(c_LinkChannel_Links);
     for (auto link : Links)
     {
-        if (!link->IsLive || !link->IsVisible())
-            continue;
-
-        float extraThickness = !isSelecting && !IsSelected(link) && (control.HotLink == link || control.ActiveLink == link) ? 2.0f : 0.0f;
-
-        link->Draw(drawList, extraThickness);
+        if (link->IsLive && link->IsVisible())
+            link->Draw(drawList);
     }
 
     // Highlight selected objects
@@ -784,39 +850,13 @@ void ed::Context::End()
         if (auto selectAction = CurrentAction ? CurrentAction->AsSelect() : nullptr)
             selectedObjects = &selectAction->CandidateObjects;
 
-        if (!selectedObjects->empty())
-        {
-            const auto nodeBorderColor = GetColor(StyleColor_SelNodeBorder);
-            const auto linkBorderColor = GetColor(StyleColor_SelLinkBorder);
-
-            for (auto selectedObject : *selectedObjects)
-            {
-                if (auto selectedNode = selectedObject->AsNode())
-                {
-                    if (selectedNode->IsVisible())
-                    {
-                        drawList->ChannelsSetCurrent(selectedNode->Channel + c_NodeBaseChannel);
-
-                        selectedNode->DrawBorder(drawList, nodeBorderColor, editorStyle.SelectedNodeBorderWidth);
-                    }
-                }
-                else if (auto selectedLink = selectedObject->AsLink())
-                {
-                    if (selectedLink->IsVisible())
-                    {
-                        drawList->ChannelsSetCurrent(c_LinkChannel_Selection);
-
-                        selectedLink->Draw(drawList, linkBorderColor, 4.5f);
-                    }
-                }
-            }
-        }
+        for (auto selectedObject : *selectedObjects)
+            if (selectedObject->IsVisible())
+                selectedObject->Draw(drawList, Object::Selected);
     }
 
     if (!isSelecting)
     {
-        // #TODO: Simplify this
-
         bool allowPinHighlight = true;
 
         // Highlight selected node
@@ -831,41 +871,23 @@ void ed::Context::End()
         // Highlight node or link but never both at once
         if (hotNode && !IsSelected(hotNode))
         {
-            const auto rectMin = to_imvec(hotNode->Bounds.top_left());
-            const auto rectMax = to_imvec(hotNode->Bounds.bottom_right());
-
-            drawList->ChannelsSetCurrent(hotNode->Channel + c_NodeBaseChannel);
-
-            hotNode->DrawBorder(drawList, GetColor(StyleColor_HovNodeBorder), editorStyle.HoveredNodeBorderWidth);
+            if (hotNode->IsVisible())
+                hotNode->Draw(drawList, Object::Hovered);
         }
-        else
+        else if (control.HotLink && !IsSelected(control.HotLink)) // Highlight hovered link
         {
-            // Highlight hovered link
-            if (control.HotLink && !IsSelected(control.HotLink))
-            {
-                drawList->ChannelsSetCurrent(c_LinkChannel_Selection);
+            if (control.HotLink->IsVisible())
+                control.HotLink->Draw(drawList, Object::Hovered);
 
-                control.HotLink->Draw(drawList, GetColor(StyleColor_HovLinkBorder), 4.5f);
-
-                allowPinHighlight = false;
-            }
+            allowPinHighlight = false;
         }
 
         // Highlight hovered pin
-        if (allowPinHighlight)
-        {
-            if (auto hotPin = control.HotPin)
-            {
-                const auto rectMin = to_imvec(hotPin->Bounds.top_left());
-                const auto rectMax = to_imvec(hotPin->Bounds.bottom_right());
-
-                drawList->ChannelsSetCurrent(hotPin->Node->Channel + c_NodeBackgroundChannel);
-
-                hotPin->Draw(drawList);
-            }
-        }
+        if (allowPinHighlight && control.HotPin && control.HotPin->IsVisible())
+            control.HotPin->Draw(drawList, Object::Hovered);
     }
 
+    // Draw animations
     for (auto controller : AnimationControllers)
         controller->Draw(drawList);
 
@@ -891,6 +913,7 @@ void ed::Context::End()
             CurrentAction = &DeleteItemsAction;
     }
 
+    // Draw selection rectangle
     SelectAction.Draw(drawList);
 
     // Bring active node to front
@@ -1186,7 +1209,7 @@ void ed::Context::Resume()
 ed::Pin* ed::Context::CreatePin(int id, PinKind kind)
 {
     assert(nullptr == FindObject(id));
-    auto pin = new Pin(id, kind);
+    auto pin = new Pin(this, id, kind);
     Pins.push_back(pin);
     return pin;
 }
@@ -1194,7 +1217,7 @@ ed::Pin* ed::Context::CreatePin(int id, PinKind kind)
 ed::Node* ed::Context::CreateNode(int id)
 {
     assert(nullptr == FindObject(id));
-    auto node = new Node(id);
+    auto node = new Node(this, id);
     Nodes.push_back(node);
 
     auto settings = FindNodeSettings(id);
@@ -1213,14 +1236,19 @@ ed::Node* ed::Context::CreateNode(int id)
 ed::Link* ed::Context::CreateLink(int id)
 {
     assert(nullptr == FindObject(id));
-    auto link = new Link(id);
+    auto link = new Link(this, id);
     Links.push_back(link);
 
     return link;
 }
 
-void ed::Context::DestroyObject(Node* node)
+ed::Group* ed::Context::CreateGroup(int id)
 {
+    assert(nullptr == FindObject(id));
+    auto group = new Group(this, id);
+    Groups.push_back(group);
+
+    return group;
 }
 
 ed::Object* ed::Context::FindObject(int id)
@@ -1230,6 +1258,8 @@ ed::Object* ed::Context::FindObject(int id)
     if (auto object = FindPin(id))
         return object;
     if (auto object = FindLink(id))
+        return object;
+    if (auto object = FindGroup(id))
         return object;
     return nullptr;
 }
@@ -1259,6 +1289,11 @@ ed::Link* ed::Context::FindLink(int id)
     return FindItemIn(Links, id);
 }
 
+ed::Group* ed::Context::FindGroup(int id)
+{
+    return FindItemIn(Groups, id);
+}
+
 ed::Node* ed::Context::GetNode(int id)
 {
     auto node = FindNode(id);
@@ -1284,6 +1319,14 @@ ed::Link* ed::Context::GetLink(int id)
         return link;
     else
         return CreateLink(id);
+}
+
+ed::Group* ed::Context::GetGroup(int id)
+{
+    if (auto group = FindGroup(id))
+        return group;
+    else
+        return CreateGroup(id);
 }
 
 ed::NodeSettings* ed::Context::FindNodeSettings(int id)
@@ -1952,7 +1995,7 @@ void ed::FlowAnimation::Draw(ImDrawList* drawList)
         const auto markerRadius = 4.0f * (1.0f - progress) + 2.0f;
         const auto markerColor  = Editor->GetColor(StyleColor_FlowMarker, markerAlpha);
 
-        for (float d = 0.0f; d < PathLength; d += MarkerDistance)
+        for (float d = 0.0f; d < PathLength - Offset; d += MarkerDistance)
         {
             auto point = SamplePath(d + Offset);
 
@@ -2793,12 +2836,12 @@ bool ed::CreateItemAction::Process(const Control& control)
     {
         const auto draggingFromSource = (DraggedPin->Kind == PinKind::Source);
 
-        ed::Pin cursorPin(0, draggingFromSource ? PinKind::Target : PinKind::Source);
+        ed::Pin cursorPin(Editor, 0, draggingFromSource ? PinKind::Target : PinKind::Source);
         cursorPin.Pivot    = ax::rectf(to_pointf(ImGui::GetMousePos()), sizef(0, 0));
         cursorPin.Dir      = -DraggedPin->Dir;
         cursorPin.Strength =  DraggedPin->Strength;
 
-        ed::Link candidate(0);
+        ed::Link candidate(Editor, 0);
         candidate.Color    = LinkColor;
         candidate.StartPin = draggingFromSource ? DraggedPin : &cursorPin;
         candidate.EndPin   = draggingFromSource ? &cursorPin : DraggedPin;
@@ -2821,7 +2864,7 @@ bool ed::CreateItemAction::Process(const Control& control)
         drawList->ChannelsSetCurrent(c_LinkChannel_NewLink);
 
         candidate.UpdateEndpoints();
-        candidate.Draw(drawList, LinkThickness);
+        candidate.Draw(drawList, LinkColor, LinkThickness);
     }
     else if (CurrentStage == Possible)
     {
@@ -3436,6 +3479,64 @@ ImDrawList* ed::NodeBuilder::GetBackgroundDrawList(Node* node) const
     }
     else
         return nullptr;
+}
+
+
+
+
+//------------------------------------------------------------------------------
+//
+// GroupBuilder
+//
+//------------------------------------------------------------------------------
+ed::GroupBuilder::GroupBuilder(Context* editor):
+    Editor(editor),
+    CurrentGroup(nullptr),
+    IsNewGroup(false)
+{
+}
+
+void ed::GroupBuilder::Begin(int groupId)
+{
+    assert(nullptr == CurrentGroup);
+
+    CurrentGroup = Editor->FindGroup(groupId);
+    if (CurrentGroup == nullptr)
+    {
+        CurrentGroup = Editor->CreateGroup(groupId);
+        IsNewGroup = true;
+    }
+    else
+        IsNewGroup = false;
+
+    ImGui::SetCursorScreenPos(to_imvec(CurrentGroup->Bounds.location));
+
+    CurrentGroup->IsLive = true;
+
+    ImGui::BeginGroup();
+}
+
+void ed::GroupBuilder::Content(const ImVec2& size)
+{
+    assert(nullptr != CurrentGroup);
+
+    if (IsNewGroup)
+        ImGui::Dummy(size);
+    else
+        ImGui::Dummy(to_imvec(CurrentGroup->Content.size));
+
+    CurrentGroup->Content = ImGui_GetItemRect();
+}
+
+void ed::GroupBuilder::End()
+{
+    assert(nullptr != CurrentGroup);
+
+    ImGui::EndGroup();
+
+    CurrentGroup->Bounds = ImGui_GetItemRect();
+
+    CurrentGroup = nullptr;
 }
 
 
