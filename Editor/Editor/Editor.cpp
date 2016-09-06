@@ -874,6 +874,7 @@ void ed::Context::End()
 
     bool isSelecting = CurrentAction && CurrentAction->AsSelect() != nullptr;
     bool isDragging  = CurrentAction && CurrentAction->AsDrag()   != nullptr;
+    bool isSizing    = CurrentAction && CurrentAction->AsSize()   != nullptr;
 
     // Draw links
     for (auto link : Links)
@@ -895,7 +896,7 @@ void ed::Context::End()
 
     if (!isSelecting)
     {
-        auto hoveredObject = isDragging ? control.ActiveObject : control.HotObject;
+        auto hoveredObject = isDragging || isSizing ? control.ActiveObject : control.HotObject;
         if (hoveredObject && !IsSelected(hoveredObject) && hoveredObject->IsVisible())
             hoveredObject->Draw(drawList, Object::Hovered);
     }
@@ -951,12 +952,18 @@ void ed::Context::End()
     // Draw selection rectangle
     SelectAction.Draw(drawList);
 
-    // Bring active node to front
-    if (control.ActiveNode)
+    if (control.ActiveNode && control.ActiveNode->Type == NodeType::Node)
     {
+        // Bring active node to front
         auto activeNodeIt = std::find(Nodes.begin(), Nodes.end(), control.ActiveNode);
         std::rotate(activeNodeIt, activeNodeIt + 1, Nodes.end());
     }
+        //else
+        //{
+        //    // Bring active group node to back
+        //    auto activeNodeIt = std::find(Nodes.begin(), Nodes.end(), control.ActiveNode);
+        //    std::rotate(Nodes.begin(), activeNodeIt, activeNodeIt + 1);
+        //}
 
     // Bring all groups before regular nodes
     std::stable_partition(Nodes.begin(), Nodes.end(), [](Node* node) { return node->Type == NodeType::Group; });
@@ -2462,7 +2469,9 @@ int ed::ScrollAction::MatchZoomIndex(int direction)
 ed::SizeAction::SizeAction(Context* editor):
     EditorAction(editor),
     IsActive(false),
-    SizedNode(nullptr)
+    SizedNode(nullptr),
+    Pivot(rect_region::center),
+    Cursor(ImGuiMouseCursor_Arrow)
 {
 }
 
@@ -2473,16 +2482,26 @@ ed::EditorAction::AcceptResult ed::SizeAction::Accept(const Control& control)
     if (IsActive)
         return False;
 
-    if (control.ActiveNode && control.ActiveNode->Type == NodeType::Group && ImGui::IsMouseDragging(0))
+    if (control.ActiveNode && control.ActiveNode->Type == NodeType::Group && ImGui::IsMouseDragging(0, 0))
     {
         const auto mousePos     = to_point(ImGui::GetMousePos());
         const auto closestPoint = control.ActiveNode->GroupBounds.get_closest_point_hollow(mousePos, static_cast<int>(control.ActiveNode->Rounding));
 
-        if ((mousePos - closestPoint).length_sq() <= (c_GroupSelectThickness * c_GroupSelectThickness))
+        auto pivot = GetRegion(control.ActiveNode);
+        if (pivot != rect_region::center)
         {
-            SizedNode = control.ActiveNode;
-            IsActive = true;
+            StartBounds      = control.ActiveNode->Bounds;
+            StartGroupBounds = control.ActiveNode->GroupBounds;
+            Pivot            = pivot;
+            Cursor           = ChooseCursor(Pivot);
+            SizedNode        = control.ActiveNode;
+            IsActive         = true;
         }
+    }
+    else if (control.HotNode && control.HotNode->Type == NodeType::Group)
+    {
+        Cursor = ChooseCursor(GetRegion(control.HotNode));
+        return Possible;
     }
 
     return IsActive ? True : False;
@@ -2497,11 +2516,30 @@ bool ed::SizeAction::Process(const Control& control)
     {
         auto dragOffset = to_point(ImGui::GetMouseDragDelta(0, 0.0f));
 
+        auto p0 = StartBounds.top_left();
+        auto p1 = StartBounds.bottom_right();
 
+        if ((Pivot & rect_region::top) == rect_region::top)
+            p0.y += dragOffset.y;
+        if ((Pivot & rect_region::bottom) == rect_region::bottom)
+            p1.y += dragOffset.y;
+        if ((Pivot & rect_region::left) == rect_region::left)
+            p0.x += dragOffset.x;
+        if ((Pivot & rect_region::right) == rect_region::right)
+            p1.x += dragOffset.x;
+
+        auto min = p0.cwise_min(p1);
+        auto max = p0.cwise_max(p1);
+
+        SizedNode->Bounds      = ax::rect(min, max);
+        SizedNode->GroupBounds = SizedNode->Bounds.expanded(
+            StartBounds.left()        - StartGroupBounds.left(),
+            StartBounds.top()         - StartGroupBounds.top(),
+            StartGroupBounds.right()  - StartBounds.right(),
+            StartGroupBounds.bottom() - StartBounds.bottom());
     }
     else if (!control.ActiveNode)
     {
-
         SizedNode = nullptr;
         IsActive = false;
         return true;
@@ -2526,6 +2564,48 @@ void ed::SizeAction::ShowMetrics()
     ImGui::Text("%s:", GetName());
     ImGui::Text("    Active: %s", IsActive ? "yes" : "no");
     ImGui::Text("    Node: %s (%d)", getObjectName(SizedNode), SizedNode ? SizedNode->ID : 0);
+}
+
+ax::rect_region ed::SizeAction::GetRegion(Node* node)
+{
+    if (!node || node->Type != NodeType::Group)
+        return rect_region::center;
+
+    rect_region region = rect_region::center;
+    const auto mousePos = to_point(ImGui::GetMousePos());
+    const auto closestPoint = node->Bounds.get_closest_point_hollow(to_point(ImGui::GetMousePos()), static_cast<int>(node->Rounding), &region);
+
+    auto distance = (mousePos - closestPoint).length_sq();
+    if (distance > (c_GroupSelectThickness * c_GroupSelectThickness))
+        return rect_region::center;
+
+    return region;
+}
+
+ImGuiMouseCursor ed::SizeAction::ChooseCursor(ax::rect_region region)
+{
+    switch (region)
+    {
+        default:
+        case rect_region::center:
+            return ImGuiMouseCursor_Arrow;
+
+        case rect_region::top:
+        case rect_region::bottom:
+            return ImGuiMouseCursor_ResizeNS;
+
+        case rect_region::left:
+        case rect_region::right:
+            return ImGuiMouseCursor_ResizeEW;
+
+        case rect_region::top_left:
+        case rect_region::bottom_right:
+            return ImGuiMouseCursor_ResizeNWSE;
+
+        case rect_region::top_right:
+        case rect_region::bottom_left:
+            return ImGuiMouseCursor_ResizeNESW;
+    }
 }
 
 

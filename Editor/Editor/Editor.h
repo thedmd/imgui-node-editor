@@ -559,9 +559,20 @@ struct SizeAction final: EditorAction
     virtual AcceptResult Accept(const Control& control) override final;
     virtual bool Process(const Control& control) override final;
 
+    virtual ImGuiMouseCursor GetCursor() override final { return Cursor; }
+
     virtual void ShowMetrics() override final;
 
     virtual SizeAction* AsSize() override final { return this; }
+
+private:
+    ax::rect_region GetRegion(Node* node);
+    ImGuiMouseCursor ChooseCursor(ax::rect_region region);
+
+    ax::rect         StartBounds;
+    ax::rect         StartGroupBounds;
+    ax::rect_region  Pivot;
+    ImGuiMouseCursor Cursor;
 };
 
 struct DragAction final: EditorAction
@@ -576,8 +587,6 @@ struct DragAction final: EditorAction
 
     virtual AcceptResult Accept(const Control& control) override final;
     virtual bool Process(const Control& control) override final;
-
-    virtual ImGuiMouseCursor GetCursor() { return ImGuiMouseCursor_Move; }
 
     virtual void ShowMetrics() override final;
 

@@ -66,46 +66,61 @@ inline typename ax::basic_rect<T>::point_t ax::basic_rect<T>::get_closest_point(
 }
 
 template <typename T>
-inline typename ax::basic_rect<T>::point_t ax::basic_rect<T>::get_closest_point_hollow(const point_t& p, T rounding) const
+inline typename ax::basic_rect<T>::point_t ax::basic_rect<T>::get_closest_point_hollow(const point_t& p, T rounding, rect_region* region) const
 {
-            rounding = std::min(rounding, std::min(w, h) / 2);
+    rounding = std::min(rounding, std::min(w, h) / 2);
+
     const auto inner = expanded(-rounding);
 
-    if (p.x < inner.left() && p.y < inner.top())
+    if (p.x <= inner.left() && p.y <= inner.top())
     {
-        return inner.top_left() + (p - inner.top_left()).normalized() * rounding;
+        if (region) *region = rect_region::top_left;
+        return inner.top_left().followed(p + point_t(-1, -1), rounding);
     }
-    else if (p.x > inner.right() && p.y < inner.top())
+    else if (p.x >= inner.right() && p.y <= inner.top())
     {
-        return inner.top_right() + (p - inner.top_right()).normalized() * rounding;
+        if (region) *region = rect_region::top_right;
+        return inner.top_right().followed(p + point_t(1, -1), rounding);
     }
-    else if (p.x < inner.left() && p.y > inner.bottom())
+    else if (p.x <= inner.left() && p.y >= inner.bottom())
     {
-        return inner.bottom_left() + (p - inner.bottom_left()).normalized() * rounding;
+        if (region) *region = rect_region::bottom_left;
+        return inner.bottom_left().followed(p + point_t(-1, 1), rounding);
     }
-    else if (p.x > inner.right() && p.y > inner.bottom())
+    else if (p.x >= inner.right() && p.y >= inner.bottom())
     {
-        return inner.bottom_right() + (p - inner.bottom_right()).normalized() * rounding;
+        if (region) *region = rect_region::bottom_right;
+        return inner.bottom_right().followed(p + point_t(1, 1), rounding);
     }
     else
     {
-        auto projected = p;
-
-        if (contains(p))
+        if (contains(p) || region)
         {
             const auto l_diff = abs(p.x - left());
             const auto r_diff = abs(p.x - right());
             const auto t_diff = abs(p.y - top());
             const auto b_diff = abs(p.y - bottom());
 
-            if (l_diff < r_diff && l_diff < t_diff && l_diff < b_diff)
+            if (l_diff <= r_diff && l_diff <= t_diff && l_diff <= b_diff)
+            {
+                if (region) *region = rect_region::left;
                 return point_t(left(), p.y);
-            else if (r_diff < l_diff && r_diff < t_diff && r_diff < b_diff)
+            }
+            else if (r_diff <= l_diff && r_diff <= t_diff && r_diff <= b_diff)
+            {
+                if (region) *region = rect_region::right;
                 return point_t(right(), p.y);
-            else if (t_diff < l_diff && t_diff < r_diff && t_diff < b_diff)
+            }
+            else if (t_diff <= l_diff && t_diff <= r_diff && t_diff <= b_diff)
+            {
+                if (region) *region = rect_region::top;
                 return point_t(p.x, top());
+            }
             else
+            {
+                if (region) *region = rect_region::bottom;
                 return point_t(p.x, bottom());
+            }
         }
         else
             return get_closest_point(p, true);

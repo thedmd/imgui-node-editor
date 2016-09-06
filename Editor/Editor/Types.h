@@ -87,7 +87,17 @@ struct basic_point
         return static_cast<basic_point>(self * inv_length_sq);
     }
 
-    inline basic_point normalize() { *this = normalized(); }
+    inline void normalize() { *this = normalized(); }
+
+    inline basic_point followed(const basic_point& target, T distance) const
+    {
+        return *this + static_cast<basic_point>(static_cast<basic_point<float>>(target - *this).normalized() * static_cast<float>(distance));
+    }
+
+    inline void follow(const basic_point& target, T distance)
+    {
+        *this = followed(target, distance);
+    }
 
     inline basic_point cwise_min(const basic_point& rhs) const { return basic_point(std::min(x, rhs.x), std::min(y, rhs.y)); }
     inline basic_point cwise_max(const basic_point& rhs) const { return basic_point(std::max(x, rhs.x), std::max(y, rhs.y)); }
@@ -197,6 +207,24 @@ typedef basic_line<float> line_f;
 
 
 //------------------------------------------------------------------------------
+enum class rect_region
+{
+    center          = 0x00000,
+    top             = 0x00001,
+    bottom          = 0x00002,
+    left            = 0x00004,
+    right           = 0x00008,
+    top_left        = top | left,
+    top_right       = top | right,
+    bottom_left     = bottom | left,
+    bottom_right    = bottom | right,
+};
+
+inline rect_region operator |(rect_region lhs, rect_region rhs) { return static_cast<rect_region>(static_cast<int>(lhs) | static_cast<int>(rhs)); }
+inline rect_region operator &(rect_region lhs, rect_region rhs) { return static_cast<rect_region>(static_cast<int>(lhs) & static_cast<int>(rhs)); }
+
+
+//------------------------------------------------------------------------------
 template <typename T>
 struct basic_rect
 {
@@ -300,14 +328,6 @@ struct basic_rect
     }
 
     template <typename P>
-    basic_rect expanded(P extent) const
-    {
-        auto result = basic_rect(*this);
-        result.expand(extent);
-        return result;
-    }
-
-    template <typename P>
     basic_rect expand(P hotizontal, P vertical)  const
     {
         auto result = basic_rect(*this);
@@ -317,6 +337,30 @@ struct basic_rect
 
     template <typename P>
     basic_rect expand(P left, P top, P right, P bottom)  const
+    {
+        auto result = basic_rect(*this);
+        result.expand(left, top, right, bottom);
+        return result;
+    }
+
+    template <typename P>
+    basic_rect expanded(P extent) const
+    {
+        auto result = basic_rect(*this);
+        result.expand(extent);
+        return result;
+    }
+
+    template <typename P>
+    basic_rect expanded(P hotizontal, P vertical) const
+    {
+        auto result = basic_rect(*this);
+        result.expand(hotizontal, vertical);
+        return result;
+    }
+
+    template <typename P>
+    basic_rect expanded(P left, P top, P right, P bottom) const
     {
         auto result = basic_rect(*this);
         result.expand(left, top, right, bottom);
@@ -336,7 +380,7 @@ struct basic_rect
     point_t get_closest_point(const point_t& p, bool on_edge, float radius) const;
 
     point_t get_closest_point(const basic_rect& r) const;
-    point_t get_closest_point_hollow(const point_t& p, T rounding = 0) const;
+    point_t get_closest_point_hollow(const point_t& p, T rounding = 0, rect_region* region = nullptr) const;
 
     basic_line<T> get_closest_line(const basic_rect& r) const;
     basic_line<T> get_closest_line(const basic_rect& r, T radius) const;
