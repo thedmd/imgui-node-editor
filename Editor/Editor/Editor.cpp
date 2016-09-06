@@ -463,6 +463,22 @@ ax::line_f ed::Pin::GetClosestLine(const Pin* pin) const
 // Node
 //
 //------------------------------------------------------------------------------
+bool ed::Node::AcceptDrag()
+{
+    DragStart = Bounds.location;
+    return true;
+}
+
+void ed::Node::UpdateDrag(const ax::point& offset)
+{
+    Bounds.location = DragStart + offset;
+}
+
+bool ed::Node::EndDrag()
+{
+    return Bounds.location != DragStart;
+}
+
 void ed::Node::Draw(ImDrawList* drawList)
 {
     drawList->AddRectFilled(
@@ -800,13 +816,15 @@ void ed::Context::End()
 
     if (!isSelecting)
     {
+        // #TODO: Simplify this
+
         bool allowPinHighlight = true;
 
         // Highlight selected node
         auto hotNode = control.HotNode;
-        if (CurrentAction && CurrentAction->AsDrag())
+        if (CurrentAction && CurrentAction->AsDrag() && CurrentAction->AsDrag()->DraggedObject && CurrentAction->AsDrag()->DraggedObject->AsNode())
         {
-            hotNode = CurrentAction->AsDrag()->DraggedNode;
+            hotNode = CurrentAction->AsDrag()->DraggedObject->AsNode();
             if (hotNode != nullptr)
                 allowPinHighlight = false; // Don't highlight pins when dragging nodes
         }
@@ -985,7 +1003,7 @@ void ed::Context::End()
     {
         Settings.Dirty = false;
         SaveSettings();
-        Settings.Reason = SaveReasonFlags::Unknown;
+        Settings.Reason = SaveReasonFlags::None;
     }
 }
 
@@ -1020,7 +1038,12 @@ void ed::Context::SetNodePosition(int nodeId, const ImVec2& position)
         node->IsLive = false;
     }
 
-    node->Bounds.location = to_point(position);
+    auto newPosition = to_point(position);
+    if (node->Bounds.location != newPosition)
+    {
+        node->Bounds.location = to_point(position);
+        MarkSettingsDirty(Editor::SaveReasonFlags::NodePosition);
+    }
 }
 
 ImVec2 ed::Context::GetNodePosition(int nodeId)
@@ -2357,7 +2380,7 @@ int ed::ScrollAction::MatchZoomIndex(int direction)
 ed::DragAction::DragAction(Context* editor):
     EditorAction(editor),
     IsActive(false),
-    DraggedNode(nullptr)
+    DraggedObject(nullptr)
 {
 }
 
@@ -2370,17 +2393,21 @@ bool ed::DragAction::Accept(const Control& control)
 
     if (control.ActiveNode && ImGui::IsMouseDragging(0))
     {
-        DraggedNode = control.ActiveNode;
-        control.ActiveNode->DragStart = control.ActiveNode->Bounds.location;
+        if (!control.ActiveNode->AcceptDrag())
+            return false;
 
-        if (Editor->IsSelected(control.ActiveNode))
+        DraggedObject = control.ActiveNode;
+
+        Objects.resize(0);
+        Objects.push_back(DraggedObject);
+
+        if (Editor->IsSelected(DraggedObject))
         {
             for (auto selectedObject : Editor->GetSelectedObjects())
                 if (auto selectedNode = selectedObject->AsNode())
-                    selectedNode->DragStart = selectedNode->Bounds.location;
+                    if (selectedNode != DraggedObject && selectedNode->AcceptDrag())
+                        Objects.push_back(selectedNode);
         }
-        else
-            control.ActiveNode->DragStart = control.ActiveNode->Bounds.location;
 
         IsActive = true;
     }
@@ -2393,22 +2420,25 @@ bool ed::DragAction::Process(const Control& control)
     if (!IsActive)
         return false;
 
-    if (control.ActiveNode == DraggedNode)
+    if (control.ActiveNode == DraggedObject)
     {
-        auto dragOffset = ImGui::GetMouseDragDelta(0, 0.0f);
+        auto dragOffset = to_point(ImGui::GetMouseDragDelta(0, 0.0f));
 
-        if (Editor->IsSelected(control.ActiveNode))
-        {
-            for (auto selectedObject : Editor->GetSelectedObjects())
-                if (auto selectedNode = selectedObject->AsNode())
-                    selectedNode->Bounds.location = selectedNode->DragStart + to_point(dragOffset);
-        }
-        else
-            control.ActiveNode->Bounds.location = control.ActiveNode->DragStart + to_point(dragOffset);
+        for (auto object : Objects)
+            object->UpdateDrag(dragOffset);
     }
     else if (!control.ActiveNode)
     {
-        DraggedNode = nullptr;
+        bool anyModified = false;
+        for (auto object : Objects)
+            anyModified |= object->EndDrag();
+
+        if (anyModified)
+            Editor->MarkSettingsDirty(Editor::SaveReasonFlags::NodePosition);
+
+        Objects.resize(0);
+
+        DraggedObject = nullptr;
         IsActive = false;
         return true;
     }
@@ -2432,7 +2462,7 @@ void ed::DragAction::ShowMetrics()
 
     ImGui::Text("%s:", GetName());
     ImGui::Text("    Active: %s", IsActive ? "yes" : "no");
-    ImGui::Text("    Node: %s (%d)", getObjectName(DraggedNode), DraggedNode ? DraggedNode->ID : 0);
+    ImGui::Text("    Node: %s (%d)", getObjectName(DraggedObject), DraggedObject ? DraggedObject->ID : 0);
 }
 
 
@@ -3282,8 +3312,8 @@ void ed::NodeBuilder::End()
 
     if (CurrentNode->Bounds.size != NodeRect.size)
     {
-        Editor->MarkSettingsDirty(SaveReasonFlags::NodePosition);
         CurrentNode->Bounds.size = NodeRect.size;
+        Editor->MarkSettingsDirty(SaveReasonFlags::NodeSize);
     }
 
     if (CurrentNode->IsVisible())

@@ -52,6 +52,10 @@ struct Object
         return ImGui::IsRectVisible(to_imvec(bounds.top_left()), to_imvec(bounds.bottom_right()));
     }
 
+    virtual bool AcceptDrag() { return false; }
+    virtual void UpdateDrag(const ax::point& offset) { }
+    virtual bool EndDrag() { return false; }
+
     virtual bool TestHit(const ImVec2& point, float extraThickness = 0.0f) const
     {
         if (!IsLive)
@@ -140,6 +144,10 @@ struct Node final: Object
     {
     }
 
+    bool AcceptDrag() override final;
+    void UpdateDrag(const ax::point& offset) override final;
+    bool EndDrag() override final; // return true, when changed
+
     void Draw(ImDrawList* drawList);
     void DrawBorder(ImDrawList* drawList, ImU32 color, float thickness = 1.0f);
 
@@ -188,14 +196,14 @@ struct NodeSettings
 
 struct Settings
 {
-    bool       Dirty;
+    bool            Dirty;
     SaveReasonFlags Reason;
 
     vector<NodeSettings> Nodes;
     ImVec2               ViewScroll;
     float                ViewZoom;
 
-    Settings(): Dirty(false), Reason(SaveReasonFlags::Unknown), ViewScroll(0, 0), ViewZoom(1.0f) {}
+    Settings(): Dirty(false), Reason(SaveReasonFlags::None), ViewScroll(0, 0), ViewZoom(1.0f) {}
 };
 
 struct Control
@@ -496,8 +504,9 @@ private:
 
 struct DragAction final: EditorAction
 {
-    bool  IsActive;
-    Node* DraggedNode;
+    bool            IsActive;
+    Object*         DraggedObject;
+    vector<Object*> Objects;
 
     DragAction(Context* editor);
 
