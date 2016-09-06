@@ -127,19 +127,9 @@ void ax::Editor::EndNode()
     s_Editor->GetNodeBuilder().End();
 }
 
-void ax::Editor::BeginGroup(int id)
+void ax::Editor::Group(const ImVec2& size)
 {
-    s_Editor->GetGroupBuilder().Begin(id);
-}
-
-void ax::Editor::GroupContent(const ImVec2& size)
-{
-    s_Editor->GetGroupBuilder().Content(size);
-}
-
-void ax::Editor::EndGroup()
-{
-    s_Editor->GetGroupBuilder().End();
+    s_Editor->GetNodeBuilder().Group(size);
 }
 
 ImDrawList* ax::Editor::GetNodeBackgroundDrawList(int nodeId)

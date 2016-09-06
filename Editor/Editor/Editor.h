@@ -35,7 +35,6 @@ struct Context;
 struct Node;
 struct Pin;
 struct Link;
-struct Group;
 
 struct Object
 {
@@ -101,7 +100,6 @@ struct Object
     virtual Node*  AsNode()  { return nullptr; }
     virtual Pin*   AsPin()   { return nullptr; }
     virtual Link*  AsLink()  { return nullptr; }
-    virtual Group* AsGroup() { return nullptr; }
 };
 
 struct Pin final: Object
@@ -139,20 +137,30 @@ struct Pin final: Object
     virtual Pin* AsPin() override final { return this; }
 };
 
+enum class NodeType
+{
+    Node,
+    Group
+};
+
 struct Node final: Object
 {
-    rect    Bounds;
-    int     Channel;
-    Pin*    LastPin;
-    point   DragStart;
+    NodeType Type;
+    rect     Bounds;
+    int      Channel;
+    Pin*     LastPin;
+    point    DragStart;
 
-    ImU32   Color;
-    ImU32   BorderColor;
-    float   BorderWidth;
-    float   Rounding;
+    ImU32    Color;
+    ImU32    BorderColor;
+    float    BorderWidth;
+    float    Rounding;
+
+    rect     GroupBounds;
 
     Node(Context* editor, int id):
         Object(editor, id),
+        Type(NodeType::Node),
         Bounds(),
         Channel(0),
         LastPin(nullptr),
@@ -160,7 +168,8 @@ struct Node final: Object
         Color(IM_COL32_WHITE),
         BorderColor(IM_COL32_BLACK),
         BorderWidth(0),
-        Rounding(0)
+        Rounding(0),
+        GroupBounds()
     {
     }
 
@@ -205,45 +214,13 @@ struct Link final: Object
     virtual Link* AsLink() override final { return this; }
 };
 
-struct Group final: Object
-{
-    rect    Bounds;
-    rect    Content;
-    point   DragStart;
-
-    Group(Context* editor, int id):
-        Object(editor, id)
-    {
-    }
-
-    bool AcceptDrag() override final;
-    void UpdateDrag(const ax::point& offset) override final;
-    bool EndDrag() override final; // return true, when changed
-
-    virtual void Draw(ImDrawList* drawList, DrawFlags flags = None) override final;
-
-    virtual ax::rectf GetBounds() const override final;
-
-    virtual Group* AsGroup() override final { return this; }
-};
-
-struct ObjectSettings
+struct NodeSettings
 {
     int    ID;
     ImVec2 Location;
     bool   WasUsed;
 
-    ObjectSettings(int id): ID(id), WasUsed(false) {}
-};
-
-struct NodeSettings final: ObjectSettings
-{
-    NodeSettings(int id): ObjectSettings(id) {}
-};
-
-struct GroupSettings final: ObjectSettings
-{
-    GroupSettings(int id): ObjectSettings(id) {}
+    NodeSettings(int id): ID(id), WasUsed(false) {}
 };
 
 struct Settings
@@ -251,18 +228,14 @@ struct Settings
     bool                 Dirty;
     SaveReasonFlags      Reason;
 
-    vector<NodeSettings>   Nodes;
-    vector<GroupSettings>  Groups;
-    ImVec2                 ViewScroll;
-    float                  ViewZoom;
+    vector<NodeSettings> Nodes;
+    ImVec2               ViewScroll;
+    float                ViewZoom;
 
     Settings(): Dirty(false), Reason(SaveReasonFlags::None), ViewScroll(0, 0), ViewZoom(1.0f) {}
 
     NodeSettings* AddNode(int id);
     NodeSettings* FindNode(int id);
-
-    GroupSettings* AddGroup(int id);
-    GroupSettings* FindGroup(int id);
 
     std::string Serialize();
 
@@ -283,9 +256,6 @@ struct Control
     Link*   HotLink;
     Link*   ActiveLink;
     Link*   ClickedLink;
-    Group*  HotGroup;
-    Group*  ActiveGroup;
-    Group*  ClickedGroup;
     bool    BackgroundHot;
     bool    BackgroundActive;
     bool    BackgroundClicked;
@@ -304,9 +274,6 @@ struct Control
         HotLink(nullptr),
         ActiveLink(nullptr),
         ClickedLink(nullptr),
-        HotGroup(nullptr),
-        ActiveGroup(nullptr),
-        ClickedGroup(nullptr),
         BackgroundHot(backgroundHot),
         BackgroundActive(backgroundActive),
         BackgroundClicked(backgroundClicked)
@@ -316,7 +283,6 @@ struct Control
             HotNode  = hotObject->AsNode();
             HotPin   = hotObject->AsPin();
             HotLink  = hotObject->AsLink();
-            HotGroup = hotObject->AsGroup();
 
             if (HotPin)
                 HotNode = HotPin->Node;
@@ -327,7 +293,6 @@ struct Control
             ActiveNode  = activeObject->AsNode();
             ActivePin   = activeObject->AsPin();
             ActiveLink  = activeObject->AsLink();
-            ActiveGroup = activeObject->AsGroup();
         }
 
         if (clickedObject)
@@ -335,7 +300,6 @@ struct Control
             ClickedNode  = clickedObject->AsNode();
             ClickedPin   = clickedObject->AsPin();
             ClickedLink  = clickedObject->AsLink();
-            ClickedGroup = clickedObject->AsGroup();
         }
     }
 };
@@ -770,6 +734,9 @@ struct NodeBuilder
     bool   ResolvePinRect;
     bool   ResolvePivot;
 
+    rect   GroupBounds;
+    bool   IsGroup;
+
     NodeBuilder(Context* editor);
 
     void Begin(int nodeId);
@@ -784,25 +751,10 @@ struct NodeBuilder
     void PinPivotScale(const ImVec2& scale);
     void PinPivotAlignment(const ImVec2& alignment);
 
+    void Group(const ImVec2& size);
+
     ImDrawList* GetBackgroundDrawList() const;
     ImDrawList* GetBackgroundDrawList(Node* node) const;
-};
-
-struct GroupBuilder
-{
-    Context* const Editor;
-
-    Group* CurrentGroup;
-
-    bool   IsNewGroup;
-    rect   GroupRect;
-    rect   ContentRect;
-
-    GroupBuilder(Context* editor);
-
-    void Begin(int groupId);
-    void Content(const ImVec2& size);
-    void End();
 };
 
 struct Style: ax::Editor::Style
@@ -851,7 +803,6 @@ struct Context
     bool DoLink(int id, int startPinId, int endPinId, ImU32 color, float thickness);
 
     NodeBuilder& GetNodeBuilder() { return NodeBuilder; }
-    GroupBuilder& GetGroupBuilder() { return GroupBuilder; }
 
     EditorAction* GetCurrentAction() { return CurrentAction; }
 
@@ -892,18 +843,15 @@ struct Context
     Pin*    CreatePin(int id, PinKind kind);
     Node*   CreateNode(int id);
     Link*   CreateLink(int id);
-    Group*  CreateGroup(int id);
     Object* FindObject(int id);
 
     Node*  FindNode(int id);
     Pin*   FindPin(int id);
     Link*  FindLink(int id);
-    Group* FindGroup(int id);
 
     Node*  GetNode(int id);
     Pin*   GetPin(int id, PinKind kind);
     Link*  GetLink(int id);
-    Group* GetGroup(int id);
 
     Link* FindLinkAt(const point& p);
 
@@ -951,7 +899,6 @@ private:
     vector<Node*>       Nodes;
     vector<Pin*>        Pins;
     vector<Link*>       Links;
-    vector<Group*>      Groups;
 
     vector<Object*>     SelectedObjects;
 
@@ -972,7 +919,6 @@ private:
     bool                IsSuspended;
 
     NodeBuilder         NodeBuilder;
-    GroupBuilder        GroupBuilder;
 
     EditorAction*       CurrentAction;
     ScrollAction        ScrollAction;

@@ -496,6 +496,14 @@ void ed::Node::Draw(ImDrawList* drawList, DrawFlags flags)
             to_imvec(Bounds.bottom_right()),
             Color, Rounding);
 
+        if (Type == NodeType::Group)
+        {
+            drawList->AddRect(
+                to_imvec(GroupBounds.top_left()),
+                to_imvec(GroupBounds.bottom_right()),
+                IM_COL32(255, 0, 0, 255), Rounding * 0.25f);
+        }
+
         DrawBorder(drawList, BorderColor, BorderWidth);
     }
     else if (flags & Selected)
@@ -711,49 +719,6 @@ ax::rectf ed::Link::GetBounds() const
 
 //------------------------------------------------------------------------------
 //
-// Group
-//
-//------------------------------------------------------------------------------
-bool ed::Group::AcceptDrag()
-{
-    DragStart = Bounds.location;
-    return true;
-}
-
-void ed::Group::UpdateDrag(const ax::point& offset)
-{
-    Bounds.location = DragStart + offset;
-}
-
-bool ed::Group::EndDrag()
-{
-    return Bounds.location != DragStart;
-}
-
-void ed::Group::Draw(ImDrawList* drawList, DrawFlags flags)
-{
-    drawList->ChannelsSetCurrent(0);
-
-    auto Bounds = this->Bounds;
-    if (flags & Hovered)
-        Bounds.expand(5);
-
-    float w = (flags & Selected) ? 4.0f : 1.0f;
-
-    drawList->AddRect(to_imvec(Content.top_left()), to_imvec(Content.bottom_right()), IM_COL32(0, 255, 0, 255));
-    drawList->AddRect(to_imvec(Bounds.top_left()),  to_imvec(Bounds.bottom_right()),  IM_COL32(255, 0, 0, 255), 0, 15, w);
-}
-
-ax::rectf ed::Group::GetBounds() const
-{
-    return static_cast<ax::rectf>(Bounds);
-}
-
-
-
-
-//------------------------------------------------------------------------------
-//
 // Editor Context
 //
 //------------------------------------------------------------------------------
@@ -768,7 +733,6 @@ ed::Context::Context(const ax::Editor::Config* config):
     Canvas(),
     IsSuspended(false),
     NodeBuilder(this),
-    GroupBuilder(this),
     CurrentAction(nullptr),
     ScrollAction(this),
     DragAction(this),
@@ -789,7 +753,6 @@ ed::Context::~Context()
     if (IsInitialized)
         SaveSettings();
 
-    for (auto group : Groups) delete group;
     for (auto link  : Links)  delete link;
     for (auto pin   : Pins)   delete pin;
     for (auto node  : Nodes)  delete node;
@@ -809,7 +772,6 @@ void ed::Context::Begin(const char* id, const ImVec2& size)
     for (auto node  : Nodes)   node->IsLive = false;
     for (auto pin   : Pins)     pin->IsLive = false;
     for (auto link  : Links)   link->IsLive = false;
-    for (auto group : Groups) group->IsLive = false;
 
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
     ImGui::PushStyleColor(ImGuiCol_ChildWindowBg, ImColor(0, 0, 0, 0));
@@ -927,12 +889,8 @@ void ed::Context::End()
         std::rotate(activeNodeIt, activeNodeIt + 1, Nodes.end());
     }
 
-    // Bring active group to front
-    if (control.ActiveGroup)
-    {
-        auto activeGroupIt = std::find(Groups.begin(), Groups.end(), control.ActiveGroup);
-        std::rotate(activeGroupIt, activeGroupIt + 1, Groups.end());
-    }
+    // Bring all groups before regular nodes
+    std::stable_partition(Nodes.begin(), Nodes.end(), [](Node* node) { return node->Type == NodeType::Group; });
 
     // Every node has few channels assigned. Grow channel list
     // to hold twice as much of channels and place them in
@@ -1251,23 +1209,6 @@ ed::Link* ed::Context::CreateLink(int id)
     return link;
 }
 
-ed::Group* ed::Context::CreateGroup(int id)
-{
-    assert(nullptr == FindObject(id));
-    auto group = new Group(this, id);
-    Groups.push_back(group);
-
-    auto settings = Settings.FindGroup(id);
-    if (!settings)
-        settings = Settings.AddGroup(id);
-    else
-        group->Bounds.location = to_point(settings->Location);
-
-    settings->WasUsed = true;
-
-    return group;
-}
-
 ed::Object* ed::Context::FindObject(int id)
 {
     if (auto object = FindNode(id))
@@ -1275,8 +1216,6 @@ ed::Object* ed::Context::FindObject(int id)
     if (auto object = FindPin(id))
         return object;
     if (auto object = FindLink(id))
-        return object;
-    if (auto object = FindGroup(id))
         return object;
     return nullptr;
 }
@@ -1306,11 +1245,6 @@ ed::Link* ed::Context::FindLink(int id)
     return FindItemIn(Links, id);
 }
 
-ed::Group* ed::Context::FindGroup(int id)
-{
-    return FindItemIn(Groups, id);
-}
-
 ed::Node* ed::Context::GetNode(int id)
 {
     auto node = FindNode(id);
@@ -1336,14 +1270,6 @@ ed::Link* ed::Context::GetLink(int id)
         return link;
     else
         return CreateLink(id);
-}
-
-ed::Group* ed::Context::GetGroup(int id)
-{
-    if (auto group = FindGroup(id))
-        return group;
-    else
-        return CreateGroup(id);
 }
 
 void ed::Context::LoadSettings()
@@ -1384,12 +1310,6 @@ void ed::Context::SaveSettings()
     {
         auto settings = Settings.FindNode(node->ID);
         settings->Location = to_imvec(node->Bounds.location);
-    }
-
-    for (auto& group : Groups)
-    {
-        auto settings = Settings.FindGroup(group->ID);
-        settings->Location = to_imvec(group->Bounds.location);
     }
 
     Settings.ViewScroll = ScrollAction.Scroll;
@@ -1541,17 +1461,6 @@ ed::Control ed::Context::ComputeControl()
         checkInteractionsInArea(node->ID, node->Bounds, node);
     }
 
-    // Process live groups and pins.
-    for (auto groupIt = Groups.rbegin(), groupItEnd = Groups.rend(); groupIt != groupItEnd; ++groupIt)
-    {
-        auto group = *groupIt;
-
-        if (!group->IsLive) continue;
-
-        // Check for interactions with group.
-        checkInteractionsInArea(group->ID, group->Bounds, group);
-    }
-
     // Links are not regular widgets and must be done manually since
     // ImGui does not support interactive elements with custom hit maps.
     //
@@ -1607,14 +1516,12 @@ void ed::Context::ShowMetrics(const Control& control)
         else if (object->AsNode())  return "Node";
         else if (object->AsPin())   return "Pin";
         else if (object->AsLink())  return "Link";
-        else if (object->AsGroup()) return "Group";
         else return "";
     };
 
     auto liveNodeCount  = (int)std::count_if(Nodes.begin(),  Nodes.end(),  [](Node*  node)  { return  node->IsLive; });
     auto livePinCount   = (int)std::count_if(Pins.begin(),   Pins.end(),   [](Pin*   pin)   { return   pin->IsLive; });
     auto liveLinkCount  = (int)std::count_if(Links.begin(),  Links.end(),  [](Link*  link)  { return  link->IsLive; });
-    auto liveGroupCount = (int)std::count_if(Groups.begin(), Groups.end(), [](Group* group) { return group->IsLive; });
 
     ImGui::SetCursorPos(ImVec2(10, 10));
     ImGui::BeginGroup();
@@ -1626,7 +1533,6 @@ void ed::Context::ShowMetrics(const Control& control)
     ImGui::Text("Live Nodes: %d", liveNodeCount);
     ImGui::Text("Live Pins: %d", livePinCount);
     ImGui::Text("Live Links: %d", liveLinkCount);
-    ImGui::Text("Live Groups: %d", liveGroupCount);
     ImGui::Text("Hot Object: %s (%d)", getObjectName(control.HotObject), control.HotObject ? control.HotObject->ID : 0);
     if (auto node = control.HotObject ? control.HotObject->AsNode() : nullptr)
     {
@@ -1693,21 +1599,6 @@ ed::NodeSettings* ed::Settings::FindNode(int id)
     return nullptr;
 }
 
-ed::GroupSettings* ed::Settings::AddGroup(int id)
-{
-    Groups.push_back(GroupSettings(id));
-    return &Groups.back();
-}
-
-ed::GroupSettings* ed::Settings::FindGroup(int id)
-{
-    for (auto& settings : Groups)
-        if (settings.ID == id)
-            return &settings;
-
-    return nullptr;
-}
-
 std::string ed::Settings::Serialize()
 {
     namespace json = picojson;
@@ -1732,25 +1623,12 @@ std::string ed::Settings::Serialize()
         nodes[std::to_string(node.ID)] = json::value(std::move(nodeData));
     }
 
-    json::object groups;
-    for (auto& group : Groups)
-    {
-        if (!group.WasUsed)
-            continue;
-
-        json::object groupData;
-        groupData["location"] = json::value(serializeVector(group.Location));
-
-        groups[std::to_string(group.ID)] = json::value(std::move(groupData));
-    }
-
     json::object view;
     view["scroll"] = json::value(serializeVector(ViewScroll));
     view["zoom"]   = json::value((double)ViewZoom);
 
     json::object settings;
     settings["nodes"]  = json::value(std::move(nodes));
-    settings["groups"] = json::value(std::move(groups));
     settings["view"]   = json::value(std::move(view));
 
     json::value settingsValue(std::move(settings));
@@ -1808,23 +1686,6 @@ bool ed::Settings::Parse(const char* data, const char* dataEnd, Settings& settin
 
             auto locationValue = nodeData.get("location");
             if (!tryParseVector(nodeData.get("location"), settings->Location))
-                settings->Location = ImVec2(0, 0);
-        }
-    }
-
-    if (groupsValue.is<json::object>())
-    {
-        for (auto& group : groupsValue.get<json::object>())
-        {
-            auto id = static_cast<int>(strtoll(group.first.c_str(), nullptr, 10));
-            auto settings = result.FindGroup(id);
-            if (!settings)
-                settings = result.AddGroup(id);
-
-            auto& groupData = group.second;
-
-            auto locationValue = groupData.get("location");
-            if (!tryParseVector(groupData.get("location"), settings->Location))
                 settings->Location = ImVec2(0, 0);
         }
     }
@@ -2606,7 +2467,6 @@ void ed::DragAction::ShowMetrics()
         else if (object->AsNode())  return "Node";
         else if (object->AsPin())   return "Pin";
         else if (object->AsLink())  return "Link";
-        else if (object->AsGroup()) return "Group";
         else return "";
     };
 
@@ -3419,6 +3279,8 @@ void ed::NodeBuilder::Begin(int nodeId)
     CurrentNode->BorderWidth = editorStyle.NodeBorderWidth;
     CurrentNode->Rounding    = editorStyle.NodeRounding;
 
+    IsGroup = false;
+
     // Grow channel list and select user channel
     if (auto drawList = ImGui::GetWindowDrawList())
     {
@@ -3466,6 +3328,19 @@ void ed::NodeBuilder::End()
         Editor->MarkSettingsDirty(SaveReasonFlags::Size);
     }
 
+    if (IsGroup)
+    {
+        // Groups cannot have pins. Discard them.
+        for (auto pin = CurrentNode->LastPin; pin; pin = pin->PreviousPin)
+            pin->IsLive = false;
+
+        CurrentNode->Type        = NodeType::Group;
+        CurrentNode->GroupBounds = GroupBounds;
+        CurrentNode->LastPin     = nullptr;
+    }
+    else
+        CurrentNode->Type        = NodeType::Node;
+
     if (CurrentNode->IsVisible())
         CurrentNode->Draw(GetBackgroundDrawList());
 
@@ -3476,7 +3351,9 @@ void ed::NodeBuilder::End()
 
 void ed::NodeBuilder::BeginPin(int pinId, PinKind kind)
 {
+    assert(nullptr != CurrentNode);
     assert(nullptr == CurrentPin);
+    assert(false   == IsGroup);
 
     auto& editorStyle = Editor->GetStyle();
 
@@ -3572,6 +3449,22 @@ void ed::NodeBuilder::PinPivotAlignment(const ImVec2& alignment)
     ResolvePivot   = true;
 }
 
+void ed::NodeBuilder::Group(const ImVec2& size)
+{
+    assert(nullptr != CurrentNode);
+    assert(nullptr == CurrentPin);
+    assert(false   == IsGroup);
+
+    IsGroup = true;
+
+    if (CurrentNode->Type == NodeType::Group)
+        ImGui::Dummy(to_imvec(CurrentNode->GroupBounds.size));
+    else
+        ImGui::Dummy(size);
+
+    GroupBounds = ImGui_GetItemRect();
+}
+
 ImDrawList* ed::NodeBuilder::GetBackgroundDrawList() const
 {
     return GetBackgroundDrawList(CurrentNode);
@@ -3587,67 +3480,6 @@ ImDrawList* ed::NodeBuilder::GetBackgroundDrawList(Node* node) const
     }
     else
         return nullptr;
-}
-
-
-
-
-//------------------------------------------------------------------------------
-//
-// GroupBuilder
-//
-//------------------------------------------------------------------------------
-ed::GroupBuilder::GroupBuilder(Context* editor):
-    Editor(editor),
-    CurrentGroup(nullptr),
-    IsNewGroup(false)
-{
-}
-
-void ed::GroupBuilder::Begin(int groupId)
-{
-    assert(nullptr == CurrentGroup);
-
-    CurrentGroup = Editor->FindGroup(groupId);
-    if (CurrentGroup == nullptr)
-    {
-        CurrentGroup = Editor->CreateGroup(groupId);
-        IsNewGroup = true;
-    }
-    else
-        IsNewGroup = false;
-
-    ImGui::SetCursorScreenPos(to_imvec(CurrentGroup->Bounds.location));
-
-    CurrentGroup->IsLive = true;
-
-    ImGui::BeginGroup();
-}
-
-void ed::GroupBuilder::Content(const ImVec2& size)
-{
-    assert(nullptr != CurrentGroup);
-
-    if (IsNewGroup)
-        ImGui::Dummy(size);
-    else
-        ImGui::Dummy(to_imvec(CurrentGroup->Content.size));
-
-    CurrentGroup->Content = ImGui_GetItemRect();
-}
-
-void ed::GroupBuilder::End()
-{
-    assert(nullptr != CurrentGroup);
-
-    ImGui::EndGroup();
-
-    CurrentGroup->Bounds = ImGui_GetItemRect();
-
-    if (CurrentGroup ->IsVisible())
-        CurrentGroup ->Draw(ImGui::GetWindowDrawList());
-
-    CurrentGroup = nullptr;
 }
 
 

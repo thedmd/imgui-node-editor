@@ -195,11 +195,8 @@ void PinPivotSize(const ImVec2& size);
 void PinPivotScale(const ImVec2& scale);
 void PinPivotAlignment(const ImVec2& alignment);
 void EndPin();
+void Group(const ImVec2& size);
 void EndNode();
-
-void BeginGroup(int id);
-void GroupContent(const ImVec2& size);
-void EndGroup();
 
 // TODO: Add a way to manage node background channels
 ImDrawList* GetNodeBackgroundDrawList(int nodeId);
