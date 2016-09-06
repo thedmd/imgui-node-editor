@@ -207,13 +207,18 @@ struct Link final: Object
 
 struct Group final: Object
 {
-    rect Bounds;
-    rect Content;
+    rect    Bounds;
+    rect    Content;
+    point   DragStart;
 
     Group(Context* editor, int id):
         Object(editor, id)
     {
     }
+
+    bool AcceptDrag() override final;
+    void UpdateDrag(const ax::point& offset) override final;
+    bool EndDrag() override final; // return true, when changed
 
     virtual void Draw(ImDrawList* drawList, DrawFlags flags = None) override final;
 
@@ -222,25 +227,46 @@ struct Group final: Object
     virtual Group* AsGroup() override final { return this; }
 };
 
-struct NodeSettings
+struct ObjectSettings
 {
     int    ID;
     ImVec2 Location;
     bool   WasUsed;
 
-    NodeSettings(int id): ID(id), WasUsed(false) {}
+    ObjectSettings(int id): ID(id), WasUsed(false) {}
+};
+
+struct NodeSettings final: ObjectSettings
+{
+    NodeSettings(int id): ObjectSettings(id) {}
+};
+
+struct GroupSettings final: ObjectSettings
+{
+    GroupSettings(int id): ObjectSettings(id) {}
 };
 
 struct Settings
 {
-    bool            Dirty;
-    SaveReasonFlags Reason;
+    bool                 Dirty;
+    SaveReasonFlags      Reason;
 
-    vector<NodeSettings> Nodes;
-    ImVec2               ViewScroll;
-    float                ViewZoom;
+    vector<NodeSettings>   Nodes;
+    vector<GroupSettings>  Groups;
+    ImVec2                 ViewScroll;
+    float                  ViewZoom;
 
     Settings(): Dirty(false), Reason(SaveReasonFlags::None), ViewScroll(0, 0), ViewZoom(1.0f) {}
+
+    NodeSettings* AddNode(int id);
+    NodeSettings* FindNode(int id);
+
+    GroupSettings* AddGroup(int id);
+    GroupSettings* FindGroup(int id);
+
+    std::string Serialize();
+
+    static bool Parse(const char* data, const char* dataEnd, Settings& settings);
 };
 
 struct Control
@@ -257,6 +283,9 @@ struct Control
     Link*   HotLink;
     Link*   ActiveLink;
     Link*   ClickedLink;
+    Group*  HotGroup;
+    Group*  ActiveGroup;
+    Group*  ClickedGroup;
     bool    BackgroundHot;
     bool    BackgroundActive;
     bool    BackgroundClicked;
@@ -275,15 +304,19 @@ struct Control
         HotLink(nullptr),
         ActiveLink(nullptr),
         ClickedLink(nullptr),
+        HotGroup(nullptr),
+        ActiveGroup(nullptr),
+        ClickedGroup(nullptr),
         BackgroundHot(backgroundHot),
         BackgroundActive(backgroundActive),
         BackgroundClicked(backgroundClicked)
     {
         if (hotObject)
         {
-            HotNode = hotObject->AsNode();
-            HotPin  = hotObject->AsPin();
-            HotLink = hotObject->AsLink();
+            HotNode  = hotObject->AsNode();
+            HotPin   = hotObject->AsPin();
+            HotLink  = hotObject->AsLink();
+            HotGroup = hotObject->AsGroup();
 
             if (HotPin)
                 HotNode = HotPin->Node;
@@ -291,16 +324,18 @@ struct Control
 
         if (activeObject)
         {
-            ActiveNode = activeObject->AsNode();
-            ActivePin  = activeObject->AsPin();
-            ActiveLink = activeObject->AsLink();
+            ActiveNode  = activeObject->AsNode();
+            ActivePin   = activeObject->AsPin();
+            ActiveLink  = activeObject->AsLink();
+            ActiveGroup = activeObject->AsGroup();
         }
 
         if (clickedObject)
         {
-            ClickedNode = clickedObject->AsNode();
-            ClickedPin  = clickedObject->AsPin();
-            ClickedLink = clickedObject->AsLink();
+            ClickedNode  = clickedObject->AsNode();
+            ClickedPin   = clickedObject->AsPin();
+            ClickedLink  = clickedObject->AsLink();
+            ClickedGroup = clickedObject->AsGroup();
         }
     }
 };
@@ -899,10 +934,8 @@ struct Context
     void SetUserContext();
 
 private:
-    NodeSettings* FindNodeSettings(int id);
-    NodeSettings* AddNodeSettings(int id);
-    void          LoadSettings();
-    void          SaveSettings();
+    void LoadSettings();
+    void SaveSettings();
 
     Control ComputeControl();
 

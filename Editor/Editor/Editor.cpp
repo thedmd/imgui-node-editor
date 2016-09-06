@@ -446,6 +446,8 @@ void ed::Pin::Draw(ImDrawList* drawList, DrawFlags flags)
                 BorderColor, Rounding, Corners, BorderWidth);
             ImGui::PopStyleVar();
         }
+
+        Node->Draw(drawList, flags);
     }
 }
 
@@ -712,8 +714,34 @@ ax::rectf ed::Link::GetBounds() const
 // Group
 //
 //------------------------------------------------------------------------------
+bool ed::Group::AcceptDrag()
+{
+    DragStart = Bounds.location;
+    return true;
+}
+
+void ed::Group::UpdateDrag(const ax::point& offset)
+{
+    Bounds.location = DragStart + offset;
+}
+
+bool ed::Group::EndDrag()
+{
+    return Bounds.location != DragStart;
+}
+
 void ed::Group::Draw(ImDrawList* drawList, DrawFlags flags)
 {
+    drawList->ChannelsSetCurrent(0);
+
+    auto Bounds = this->Bounds;
+    if (flags & Hovered)
+        Bounds.expand(5);
+
+    float w = (flags & Selected) ? 4.0f : 1.0f;
+
+    drawList->AddRect(to_imvec(Content.top_left()), to_imvec(Content.bottom_right()), IM_COL32(0, 255, 0, 255));
+    drawList->AddRect(to_imvec(Bounds.top_left()),  to_imvec(Bounds.bottom_right()),  IM_COL32(255, 0, 0, 255), 0, 15, w);
 }
 
 ax::rectf ed::Group::GetBounds() const
@@ -836,6 +864,7 @@ void ed::Context::End()
     auto& editorStyle = GetStyle();
 
     bool isSelecting = CurrentAction && CurrentAction->AsSelect() != nullptr;
+    bool isDragging  = CurrentAction && CurrentAction->AsDrag()   != nullptr;
 
     // Draw links
     for (auto link : Links)
@@ -857,34 +886,9 @@ void ed::Context::End()
 
     if (!isSelecting)
     {
-        bool allowPinHighlight = true;
-
-        // Highlight selected node
-        auto hotNode = control.HotNode;
-        if (CurrentAction && CurrentAction->AsDrag() && CurrentAction->AsDrag()->DraggedObject && CurrentAction->AsDrag()->DraggedObject->AsNode())
-        {
-            hotNode = CurrentAction->AsDrag()->DraggedObject->AsNode();
-            if (hotNode != nullptr)
-                allowPinHighlight = false; // Don't highlight pins when dragging nodes
-        }
-
-        // Highlight node or link but never both at once
-        if (hotNode && !IsSelected(hotNode))
-        {
-            if (hotNode->IsVisible())
-                hotNode->Draw(drawList, Object::Hovered);
-        }
-        else if (control.HotLink && !IsSelected(control.HotLink)) // Highlight hovered link
-        {
-            if (control.HotLink->IsVisible())
-                control.HotLink->Draw(drawList, Object::Hovered);
-
-            allowPinHighlight = false;
-        }
-
-        // Highlight hovered pin
-        if (allowPinHighlight && control.HotPin && control.HotPin->IsVisible())
-            control.HotPin->Draw(drawList, Object::Hovered);
+        auto hoveredObject = isDragging ? control.ActiveObject : control.HotObject;
+        if (hoveredObject && !IsSelected(hoveredObject) && hoveredObject->IsVisible())
+            hoveredObject->Draw(drawList, Object::Hovered);
     }
 
     // Draw animations
@@ -917,13 +921,18 @@ void ed::Context::End()
     SelectAction.Draw(drawList);
 
     // Bring active node to front
-    std::stable_sort(Nodes.begin(), Nodes.end(), [&control](Node* lhs, Node* rhs)
+    if (control.ActiveNode)
     {
-        if (lhs->IsLive && rhs->IsLive)
-            return (rhs == control.ActiveNode);
-        else
-            return lhs->IsLive;
-    });
+        auto activeNodeIt = std::find(Nodes.begin(), Nodes.end(), control.ActiveNode);
+        std::rotate(activeNodeIt, activeNodeIt + 1, Nodes.end());
+    }
+
+    // Bring active group to front
+    if (control.ActiveGroup)
+    {
+        auto activeGroupIt = std::find(Groups.begin(), Groups.end(), control.ActiveGroup);
+        std::rotate(activeGroupIt, activeGroupIt + 1, Groups.end());
+    }
 
     // Every node has few channels assigned. Grow channel list
     // to hold twice as much of channels and place them in
@@ -1010,7 +1019,7 @@ void ed::Context::End()
         drawList->AddRect(Canvas.WindowScreenPos,                Canvas.WindowScreenPos + Canvas.WindowScreenSize,                ImColor(borderColor),      style.WindowRounding);
     }
 
-    // ShowMetrics(control);
+    ShowMetrics(control);
 
     // fringe scale
     ImGui::PopStyleVar();
@@ -1064,7 +1073,7 @@ void ed::Context::SetNodePosition(int nodeId, const ImVec2& position)
     if (node->Bounds.location != newPosition)
     {
         node->Bounds.location = to_point(position);
-        MarkSettingsDirty(Editor::SaveReasonFlags::NodePosition);
+        MarkSettingsDirty(Editor::SaveReasonFlags::Position);
     }
 }
 
@@ -1220,9 +1229,9 @@ ed::Node* ed::Context::CreateNode(int id)
     auto node = new Node(this, id);
     Nodes.push_back(node);
 
-    auto settings = FindNodeSettings(id);
+    auto settings = Settings.FindNode(id);
     if (!settings)
-        settings = AddNodeSettings(id);
+        settings = Settings.AddNode(id);
     else
         node->Bounds.location = to_point(settings->Location);
 
@@ -1247,6 +1256,14 @@ ed::Group* ed::Context::CreateGroup(int id)
     assert(nullptr == FindObject(id));
     auto group = new Group(this, id);
     Groups.push_back(group);
+
+    auto settings = Settings.FindGroup(id);
+    if (!settings)
+        settings = Settings.AddGroup(id);
+    else
+        group->Bounds.location = to_point(settings->Location);
+
+    settings->WasUsed = true;
 
     return group;
 }
@@ -1329,22 +1346,6 @@ ed::Group* ed::Context::GetGroup(int id)
         return CreateGroup(id);
 }
 
-ed::NodeSettings* ed::Context::FindNodeSettings(int id)
-{
-    for (auto& nodeSettings : Settings.Nodes)
-        if (nodeSettings.ID == id)
-            return &nodeSettings;
-
-    return nullptr;
-}
-
-ed::NodeSettings* ed::Context::AddNodeSettings(int id)
-{
-    Settings.Nodes.push_back(NodeSettings(id));
-    auto result = &Settings.Nodes.back();
-    return result;
-}
-
 void ed::Context::LoadSettings()
 {
     namespace json = picojson;
@@ -1370,64 +1371,8 @@ void ed::Context::LoadSettings()
     if (savedData.empty())
         return;
 
-    json::value settingsValue;
-    auto error = json::parse(settingsValue, savedData.begin(), savedData.end());
-    if (!error.empty() || settingsValue.is<json::null>())
-        return;
-
-    if (!settingsValue.is<json::object>())
-        return;
-
-    auto tryParseVector = [](const json::value& v, ImVec2& result) -> bool
-    {
-        if (v.is<json::object>())
-        {
-            auto xValue = v.get("x");
-            auto yValue = v.get("y");
-
-            if (xValue.is<double>() && yValue.is<double>())
-            {
-                result.x = static_cast<float>(xValue.get<double>());
-                result.y = static_cast<float>(yValue.get<double>());
-
-                return true;
-            }
-        }
-
-        return false;
-    };
-
-    auto& settingsObject = settingsValue.get<json::object>();
-    auto& nodesValue     = settingsValue.get("nodes");
-
-    if (nodesValue.is<json::object>())
-    {
-        for (auto& node : nodesValue.get<json::object>())
-        {
-            auto id       = static_cast<int>(strtoll(node.first.c_str(), nullptr, 10));
-            auto settings = FindNodeSettings(id);
-            if (!settings)
-                settings = AddNodeSettings(id);
-
-            auto& nodeData = node.second;
-
-            auto locationValue = nodeData.get("location");
-            if (!tryParseVector(nodeData.get("location"), settings->Location))
-                settings->Location = ImVec2(0, 0);
-        }
-    }
-
-    auto& viewValue = settingsValue.get("view");
-    if (viewValue.is<json::object>())
-    {
-        auto& viewScrollValue = viewValue.get("scroll");
-        auto& viewZoomValue   = viewValue.get("zoom");
-
-        if (!tryParseVector(viewValue.get("scroll"), Settings.ViewScroll))
-            Settings.ViewScroll = ImVec2(0, 0);
-
-        Settings.ViewZoom = viewZoomValue.is<double>() ? static_cast<float>(viewZoomValue.get<double>()) : 1.0f;
-    }
+    if (!ed::Settings::Parse(savedData.data(), savedData.data() + savedData.size(), Settings))
+        Settings = ed::Settings();
 
     ScrollAction.Scroll = Settings.ViewScroll;
     ScrollAction.Zoom   = Settings.ViewZoom;
@@ -1435,50 +1380,22 @@ void ed::Context::LoadSettings()
 
 void ed::Context::SaveSettings()
 {
-    namespace json = picojson;
-
-    auto serializeVector = [](ImVec2 p) -> json::object
-    {
-        json::object result;
-        result["x"] = json::value(static_cast<double>(p.x));
-        result["y"] = json::value(static_cast<double>(p.y));
-        return result;
-    };
-
-    // update settings data
     for (auto& node : Nodes)
     {
-        auto settings = FindNodeSettings(node->ID);
+        auto settings = Settings.FindNode(node->ID);
         settings->Location = to_imvec(node->Bounds.location);
     }
 
-    Settings.ViewScroll = ScrollAction.Scroll;
-    Settings.ViewZoom   = ScrollAction.Zoom;
-
-    // serializes
-    json::object nodes;
-    for (auto& node : Settings.Nodes)
+    for (auto& group : Groups)
     {
-        if (!node.WasUsed)
-            continue;
-
-        json::object nodeData;
-        nodeData["location"] = json::value(serializeVector(node.Location));
-
-        nodes[std::to_string(node.ID)] = json::value(std::move(nodeData));
+        auto settings = Settings.FindGroup(group->ID);
+        settings->Location = to_imvec(group->Bounds.location);
     }
 
-    json::object view;
-    view["scroll"] = json::value(serializeVector(Settings.ViewScroll));
-    view["zoom"]   = json::value((double)Settings.ViewZoom);
+    Settings.ViewScroll = ScrollAction.Scroll;
+    Settings.ViewZoom = ScrollAction.Zoom;
 
-    json::object settings;
-    settings["nodes"] = json::value(std::move(nodes));
-    settings["view"]  = json::value(std::move(view));
-
-    json::value settingsValue(std::move(settings));
-
-    auto data = settingsValue.serialize(false);
+    auto data = Settings.Serialize();
     if (Config.SaveSettings)
         Config.SaveSettings(data.c_str(), Config.UserPointer, Settings.Reason);
     else if (Config.SettingsFile)
@@ -1624,6 +1541,17 @@ ed::Control ed::Context::ComputeControl()
         checkInteractionsInArea(node->ID, node->Bounds, node);
     }
 
+    // Process live groups and pins.
+    for (auto groupIt = Groups.rbegin(), groupItEnd = Groups.rend(); groupIt != groupItEnd; ++groupIt)
+    {
+        auto group = *groupIt;
+
+        if (!group->IsLive) continue;
+
+        // Check for interactions with group.
+        checkInteractionsInArea(group->ID, group->Bounds, group);
+    }
+
     // Links are not regular widgets and must be done manually since
     // ImGui does not support interactive elements with custom hit maps.
     //
@@ -1676,15 +1604,17 @@ void ed::Context::ShowMetrics(const Control& control)
     auto getObjectName = [](Object* object)
     {
         if (!object) return "";
-        else if (object->AsNode()) return "Node";
-        else if (object->AsPin())  return "Pin";
-        else if (object->AsLink()) return "Link";
+        else if (object->AsNode())  return "Node";
+        else if (object->AsPin())   return "Pin";
+        else if (object->AsLink())  return "Link";
+        else if (object->AsGroup()) return "Group";
         else return "";
     };
 
-    auto liveNodeCount = (int)std::count_if(Nodes.begin(), Nodes.end(), [](Node* node) { return node->IsLive; });
-    auto livePinCount  = (int)std::count_if(Pins.begin(),  Pins.end(),  [](Pin*  pin)  { return  pin->IsLive; });
-    auto liveLinkCount = (int)std::count_if(Links.begin(), Links.end(), [](Link* link) { return link->IsLive; });
+    auto liveNodeCount  = (int)std::count_if(Nodes.begin(),  Nodes.end(),  [](Node*  node)  { return  node->IsLive; });
+    auto livePinCount   = (int)std::count_if(Pins.begin(),   Pins.end(),   [](Pin*   pin)   { return   pin->IsLive; });
+    auto liveLinkCount  = (int)std::count_if(Links.begin(),  Links.end(),  [](Link*  link)  { return  link->IsLive; });
+    auto liveGroupCount = (int)std::count_if(Groups.begin(), Groups.end(), [](Group* group) { return group->IsLive; });
 
     ImGui::SetCursorPos(ImVec2(10, 10));
     ImGui::BeginGroup();
@@ -1696,6 +1626,7 @@ void ed::Context::ShowMetrics(const Control& control)
     ImGui::Text("Live Nodes: %d", liveNodeCount);
     ImGui::Text("Live Pins: %d", livePinCount);
     ImGui::Text("Live Links: %d", liveLinkCount);
+    ImGui::Text("Live Groups: %d", liveGroupCount);
     ImGui::Text("Hot Object: %s (%d)", getObjectName(control.HotObject), control.HotObject ? control.HotObject->ID : 0);
     if (auto node = control.HotObject ? control.HotObject->AsNode() : nullptr)
     {
@@ -1737,6 +1668,182 @@ void ed::Context::ReleaseMouse()
 
     for (int i = 0; i < 5; ++i)
         io.MouseClickedPos[i] = MouseClickPosBackup[i];
+}
+
+
+
+
+//------------------------------------------------------------------------------
+//
+// Settings
+//
+//------------------------------------------------------------------------------
+ed::NodeSettings* ed::Settings::AddNode(int id)
+{
+    Nodes.push_back(NodeSettings(id));
+    return &Nodes.back();
+}
+
+ed::NodeSettings* ed::Settings::FindNode(int id)
+{
+    for (auto& settings : Nodes)
+        if (settings.ID == id)
+            return &settings;
+
+    return nullptr;
+}
+
+ed::GroupSettings* ed::Settings::AddGroup(int id)
+{
+    Groups.push_back(GroupSettings(id));
+    return &Groups.back();
+}
+
+ed::GroupSettings* ed::Settings::FindGroup(int id)
+{
+    for (auto& settings : Groups)
+        if (settings.ID == id)
+            return &settings;
+
+    return nullptr;
+}
+
+std::string ed::Settings::Serialize()
+{
+    namespace json = picojson;
+
+    auto serializeVector = [](ImVec2 p) -> json::object
+    {
+        json::object result;
+        result["x"] = json::value(static_cast<double>(p.x));
+        result["y"] = json::value(static_cast<double>(p.y));
+        return result;
+    };
+
+    json::object nodes;
+    for (auto& node : Nodes)
+    {
+        if (!node.WasUsed)
+            continue;
+
+        json::object nodeData;
+        nodeData["location"] = json::value(serializeVector(node.Location));
+
+        nodes[std::to_string(node.ID)] = json::value(std::move(nodeData));
+    }
+
+    json::object groups;
+    for (auto& group : Groups)
+    {
+        if (!group.WasUsed)
+            continue;
+
+        json::object groupData;
+        groupData["location"] = json::value(serializeVector(group.Location));
+
+        groups[std::to_string(group.ID)] = json::value(std::move(groupData));
+    }
+
+    json::object view;
+    view["scroll"] = json::value(serializeVector(ViewScroll));
+    view["zoom"]   = json::value((double)ViewZoom);
+
+    json::object settings;
+    settings["nodes"]  = json::value(std::move(nodes));
+    settings["groups"] = json::value(std::move(groups));
+    settings["view"]   = json::value(std::move(view));
+
+    json::value settingsValue(std::move(settings));
+
+    return settingsValue.serialize(false);
+}
+
+bool ed::Settings::Parse(const char* data, const char* dataEnd, Settings& settings)
+{
+    namespace json = picojson;
+
+    Settings result;
+
+    json::value settingsValue;
+    auto error = json::parse(settingsValue, data, dataEnd);
+    if (!error.empty() || settingsValue.is<json::null>())
+        return false;
+
+    if (!settingsValue.is<json::object>())
+        return false;
+
+    auto tryParseVector = [](const json::value& v, ImVec2& result) -> bool
+    {
+        if (v.is<json::object>())
+        {
+            auto xValue = v.get("x");
+            auto yValue = v.get("y");
+
+            if (xValue.is<double>() && yValue.is<double>())
+            {
+                result.x = static_cast<float>(xValue.get<double>());
+                result.y = static_cast<float>(yValue.get<double>());
+
+                return true;
+            }
+        }
+
+        return false;
+    };
+
+    auto& settingsObject = settingsValue.get<json::object>();
+    auto& nodesValue  = settingsValue.get("nodes");
+    auto& groupsValue = settingsValue.get("groups");
+
+    if (nodesValue.is<json::object>())
+    {
+        for (auto& node : nodesValue.get<json::object>())
+        {
+            auto id = static_cast<int>(strtoll(node.first.c_str(), nullptr, 10));
+            auto settings = result.FindNode(id);
+            if (!settings)
+                settings = result.AddNode(id);
+
+            auto& nodeData = node.second;
+
+            auto locationValue = nodeData.get("location");
+            if (!tryParseVector(nodeData.get("location"), settings->Location))
+                settings->Location = ImVec2(0, 0);
+        }
+    }
+
+    if (groupsValue.is<json::object>())
+    {
+        for (auto& group : groupsValue.get<json::object>())
+        {
+            auto id = static_cast<int>(strtoll(group.first.c_str(), nullptr, 10));
+            auto settings = result.FindGroup(id);
+            if (!settings)
+                settings = result.AddGroup(id);
+
+            auto& groupData = group.second;
+
+            auto locationValue = groupData.get("location");
+            if (!tryParseVector(groupData.get("location"), settings->Location))
+                settings->Location = ImVec2(0, 0);
+        }
+    }
+
+    auto& viewValue = settingsValue.get("view");
+    if (viewValue.is<json::object>())
+    {
+        auto& viewScrollValue = viewValue.get("scroll");
+        auto& viewZoomValue = viewValue.get("zoom");
+
+        if (!tryParseVector(viewValue.get("scroll"), result.ViewScroll))
+            result.ViewScroll = ImVec2(0, 0);
+
+        result.ViewZoom = viewZoomValue.is<double>() ? static_cast<float>(viewZoomValue.get<double>()) : 1.0f;
+    }
+
+    settings = std::move(result);
+
+    return true;
 }
 
 
@@ -2433,12 +2540,12 @@ bool ed::DragAction::Accept(const Control& control)
     if (IsActive)
         return false;
 
-    if (control.ActiveNode && ImGui::IsMouseDragging(0))
+    if (control.ActiveObject && ImGui::IsMouseDragging(0))
     {
-        if (!control.ActiveNode->AcceptDrag())
+        if (!control.ActiveObject->AcceptDrag())
             return false;
 
-        DraggedObject = control.ActiveNode;
+        DraggedObject = control.ActiveObject;
 
         Objects.resize(0);
         Objects.push_back(DraggedObject);
@@ -2462,21 +2569,21 @@ bool ed::DragAction::Process(const Control& control)
     if (!IsActive)
         return false;
 
-    if (control.ActiveNode == DraggedObject)
+    if (control.ActiveObject == DraggedObject)
     {
         auto dragOffset = to_point(ImGui::GetMouseDragDelta(0, 0.0f));
 
         for (auto object : Objects)
             object->UpdateDrag(dragOffset);
     }
-    else if (!control.ActiveNode)
+    else if (!control.ActiveObject)
     {
         bool anyModified = false;
         for (auto object : Objects)
             anyModified |= object->EndDrag();
 
         if (anyModified)
-            Editor->MarkSettingsDirty(Editor::SaveReasonFlags::NodePosition);
+            Editor->MarkSettingsDirty(Editor::SaveReasonFlags::Position);
 
         Objects.resize(0);
 
@@ -2496,9 +2603,10 @@ void ed::DragAction::ShowMetrics()
     auto getObjectName = [](Object* object)
     {
         if (!object) return "";
-        else if (object->AsNode()) return "Node";
-        else if (object->AsPin())  return "Pin";
-        else if (object->AsLink()) return "Link";
+        else if (object->AsNode())  return "Node";
+        else if (object->AsPin())   return "Pin";
+        else if (object->AsLink())  return "Link";
+        else if (object->AsGroup()) return "Group";
         else return "";
     };
 
@@ -3355,7 +3463,7 @@ void ed::NodeBuilder::End()
     if (CurrentNode->Bounds.size != NodeRect.size)
     {
         CurrentNode->Bounds.size = NodeRect.size;
-        Editor->MarkSettingsDirty(SaveReasonFlags::NodeSize);
+        Editor->MarkSettingsDirty(SaveReasonFlags::Size);
     }
 
     if (CurrentNode->IsVisible())
@@ -3535,6 +3643,9 @@ void ed::GroupBuilder::End()
     ImGui::EndGroup();
 
     CurrentGroup->Bounds = ImGui_GetItemRect();
+
+    if (CurrentGroup ->IsVisible())
+        CurrentGroup ->Draw(ImGui::GetWindowDrawList());
 
     CurrentGroup = nullptr;
 }
