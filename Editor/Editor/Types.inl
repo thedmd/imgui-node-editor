@@ -66,6 +66,53 @@ inline typename ax::basic_rect<T>::point_t ax::basic_rect<T>::get_closest_point(
 }
 
 template <typename T>
+inline typename ax::basic_rect<T>::point_t ax::basic_rect<T>::get_closest_point_hollow(const point_t& p, T rounding) const
+{
+            rounding = std::min(rounding, std::min(w, h) / 2);
+    const auto inner = expanded(-rounding);
+
+    if (p.x < inner.left() && p.y < inner.top())
+    {
+        return inner.top_left() + (p - inner.top_left()).normalized() * rounding;
+    }
+    else if (p.x > inner.right() && p.y < inner.top())
+    {
+        return inner.top_right() + (p - inner.top_right()).normalized() * rounding;
+    }
+    else if (p.x < inner.left() && p.y > inner.bottom())
+    {
+        return inner.bottom_left() + (p - inner.bottom_left()).normalized() * rounding;
+    }
+    else if (p.x > inner.right() && p.y > inner.bottom())
+    {
+        return inner.bottom_right() + (p - inner.bottom_right()).normalized() * rounding;
+    }
+    else
+    {
+        auto projected = p;
+
+        if (contains(p))
+        {
+            const auto l_diff = abs(p.x - left());
+            const auto r_diff = abs(p.x - right());
+            const auto t_diff = abs(p.y - top());
+            const auto b_diff = abs(p.y - bottom());
+
+            if (l_diff < r_diff && l_diff < t_diff && l_diff < b_diff)
+                return point_t(left(), p.y);
+            else if (r_diff < l_diff && r_diff < t_diff && r_diff < b_diff)
+                return point_t(right(), p.y);
+            else if (t_diff < l_diff && t_diff < r_diff && t_diff < b_diff)
+                return point_t(p.x, top());
+            else
+                return point_t(p.x, bottom());
+        }
+        else
+            return get_closest_point(p, true);
+    }
+}
+
+template <typename T>
 inline ax::basic_line<T> ax::basic_rect<T>::get_closest_line(const basic_rect& r) const
 {
     auto a = get_closest_point(r);

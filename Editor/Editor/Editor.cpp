@@ -34,6 +34,7 @@ static const int c_NodeBaseChannel        = 0;
 static const int c_NodeBackgroundChannel  = 1;
 static const int c_NodeContentChannel     = 2;
 
+static const float c_GroupSelectThickness       = 5.0f;  // canvas pixels
 static const float c_LinkSelectThickness        = 5.0f;  // canvas pixels
 static const float c_NavigationZoomMargin       = 0.1f;  // percentage of visible bounds
 static const float c_MouseZoomDuration          = 0.15f; // seconds
@@ -498,10 +499,40 @@ void ed::Node::Draw(ImDrawList* drawList, DrawFlags flags)
 
         if (Type == NodeType::Group)
         {
+            //auto mousePos = to_pointf(ImGui::GetMousePos());
+            //auto rect     = static_cast<ax::rectf>(GroupBounds);
+
+            //for (auto i = 0; i < 6000; ++i)
+            //{
+            //    const auto x = rand() / (float)RAND_MAX * rect.w * 1.2f + rect.x - rect.w * 0.1f;
+            //    const auto y = rand() / (float)RAND_MAX * rect.h * 1.2f + rect.y - rect.h * 0.1f;
+
+            //    auto color = IM_COL32(0, 0, 255, 255);
+            //    auto p     = rect.get_closest_point_hollow(pointf(x, y), Rounding * 4);
+            //    if ((p - pointf(x, y)).length() < 5.0f)
+            //    {
+            //        color = IM_COL32(0, 255, 0, 255);
+
+            //        drawList->AddRectFilled(
+            //            ImVec2(x, y) - ImVec2(0.5f, 0.5f),
+            //            ImVec2(x, y) + ImVec2(0.5f, 0.5f),
+            //            color);
+            //    }
+            //}
+
+            //auto p = static_cast<ax::rectf>(GroupBounds).get_closest_point(mousePos, true);
+            //auto l = (mousePos - p).length();
+
+            //auto g = l < 5.0f ? 255 : 0;
+
             drawList->AddRect(
                 to_imvec(GroupBounds.top_left()),
                 to_imvec(GroupBounds.bottom_right()),
-                IM_COL32(255, 0, 0, 255), Rounding * 0.25f);
+                IM_COL32(255, 0, 0, 255), Rounding);
+
+            //drawList->AddCircleFilled(to_imvec(mousePos), 4.0f, IM_COL32(255, 0, 255, 255));
+            //drawList->AddCircleFilled(to_imvec(p), 4.0f, IM_COL32(255, 0, 255, 255));
+
         }
 
         DrawBorder(drawList, BorderColor, BorderWidth);
@@ -750,6 +781,7 @@ ed::Context::Context(const ax::Editor::Config* config):
     NodeBuilder(this),
     CurrentAction(nullptr),
     ScrollAction(this),
+    SizeAction(this),
     DragAction(this),
     SelectAction(this),
     ContextMenuAction(this),
@@ -880,19 +912,41 @@ void ed::Context::End()
 
     if (nullptr == CurrentAction)
     {
-        if (ScrollAction.Accept(control))
+        EditorAction* possibleAction   = nullptr;
+
+        auto accept = [&possibleAction, &control](EditorAction& action)
+        {
+            auto result = action.Accept(control);
+
+            if (result == EditorAction::True)
+                return true;
+            else if (!possibleAction && result == EditorAction::Possible)
+                possibleAction = &action;
+
+            return false;
+        };
+
+        if (accept(ScrollAction))
             CurrentAction = &ScrollAction;
-        else if (DragAction.Accept(control))
+        else if (accept(SizeAction))
+            CurrentAction = &SizeAction;
+        else if (accept(DragAction))
             CurrentAction = &DragAction;
-        else if (SelectAction.Accept(control))
+        else if (accept(SelectAction))
             CurrentAction = &SelectAction;
-        else if (ContextMenuAction.Accept(control))
+        else if (accept(ContextMenuAction))
             CurrentAction = &ContextMenuAction;
-        else if (CreateItemAction.Accept(control))
+        else if (accept(CreateItemAction))
             CurrentAction = &CreateItemAction;
-        else if (DeleteItemsAction.Accept(control))
+        else if (accept(DeleteItemsAction))
             CurrentAction = &DeleteItemsAction;
+
+        if (possibleAction)
+            ImGui::SetMouseCursor(possibleAction->GetCursor());
     }
+
+    if (CurrentAction)
+        ImGui::SetMouseCursor(CurrentAction->GetCursor());
 
     // Draw selection rectangle
     SelectAction.Draw(drawList);
@@ -1565,6 +1619,7 @@ void ed::Context::ShowMetrics(const Control& control)
     ImGui::Text("Action: %s", CurrentAction ? CurrentAction->GetName() : "<none>");
     //ImGui::Text("Clicked Object: %s (%d)", getObjectName(control.ClickedObject), control.ClickedObject ? control.ClickedObject->ID : 0);
     ScrollAction.ShowMetrics();
+    SizeAction.ShowMetrics();
     DragAction.ShowMetrics();
     SelectAction.ShowMetrics();
     ContextMenuAction.ShowMetrics();
@@ -2153,12 +2208,12 @@ ed::ScrollAction::ScrollAction(Context* editor):
 {
 }
 
-bool ax::Editor::Detail::ScrollAction::Accept(const Control& control)
+ed::EditorAction::AcceptResult ed::ScrollAction::Accept(const Control& control)
 {
     assert(!IsActive);
 
     if (IsActive)
-        return false;
+        return False;
 
     if (ImGui::IsWindowHovered() && !ImGui::IsAnyItemActive() && ImGui::IsMouseDragging(2, 0.0f))
     {
@@ -2234,10 +2289,10 @@ bool ax::Editor::Detail::ScrollAction::Accept(const Control& control)
 
         NavigateTo(targetScroll, newZoom, c_MouseZoomDuration, NavigationReason::MouseZoom);
 
-        return true;
+        return True;
     }
 
-    return IsActive;
+    return IsActive ? True : False;
 }
 
 bool ed::ScrollAction::Process(const Control& control)
@@ -2401,6 +2456,83 @@ int ed::ScrollAction::MatchZoomIndex(int direction)
 
 //------------------------------------------------------------------------------
 //
+// Size Action
+//
+//------------------------------------------------------------------------------
+ed::SizeAction::SizeAction(Context* editor):
+    EditorAction(editor),
+    IsActive(false),
+    SizedNode(nullptr)
+{
+}
+
+ed::EditorAction::AcceptResult ed::SizeAction::Accept(const Control& control)
+{
+    assert(!IsActive);
+
+    if (IsActive)
+        return False;
+
+    if (control.ActiveNode && control.ActiveNode->Type == NodeType::Group && ImGui::IsMouseDragging(0))
+    {
+        const auto mousePos     = to_point(ImGui::GetMousePos());
+        const auto closestPoint = control.ActiveNode->GroupBounds.get_closest_point_hollow(mousePos, static_cast<int>(control.ActiveNode->Rounding));
+
+        if ((mousePos - closestPoint).length_sq() <= (c_GroupSelectThickness * c_GroupSelectThickness))
+        {
+            SizedNode = control.ActiveNode;
+            IsActive = true;
+        }
+    }
+
+    return IsActive ? True : False;
+}
+
+bool ed::SizeAction::Process(const Control& control)
+{
+    if (!IsActive)
+        return false;
+
+    if (control.ActiveNode == SizedNode)
+    {
+        auto dragOffset = to_point(ImGui::GetMouseDragDelta(0, 0.0f));
+
+
+    }
+    else if (!control.ActiveNode)
+    {
+
+        SizedNode = nullptr;
+        IsActive = false;
+        return true;
+    }
+
+    return IsActive;
+}
+
+void ed::SizeAction::ShowMetrics()
+{
+    EditorAction::ShowMetrics();
+
+    auto getObjectName = [](Object* object)
+    {
+        if (!object) return "";
+        else if (object->AsNode())  return "Node";
+        else if (object->AsPin())   return "Pin";
+        else if (object->AsLink())  return "Link";
+        else return "";
+    };
+
+    ImGui::Text("%s:", GetName());
+    ImGui::Text("    Active: %s", IsActive ? "yes" : "no");
+    ImGui::Text("    Node: %s (%d)", getObjectName(SizedNode), SizedNode ? SizedNode->ID : 0);
+}
+
+
+
+
+//------------------------------------------------------------------------------
+//
 // Drag Action
 //
 //------------------------------------------------------------------------------
@@ -2411,17 +2543,17 @@ ed::DragAction::DragAction(Context* editor):
 {
 }
 
-bool ed::DragAction::Accept(const Control& control)
+ed::EditorAction::AcceptResult ed::DragAction::Accept(const Control& control)
 {
     assert(!IsActive);
 
     if (IsActive)
-        return false;
+        return False;
 
     if (control.ActiveObject && ImGui::IsMouseDragging(0))
     {
         if (!control.ActiveObject->AcceptDrag())
-            return false;
+            return False;
 
         DraggedObject = control.ActiveObject;
 
@@ -2436,24 +2568,28 @@ bool ed::DragAction::Accept(const Control& control)
                         Objects.push_back(selectedNode);
         }
 
-        std::vector<Node*> groupedNodes;
-        for (auto object : Objects)
-            if (auto node = object->AsNode())
-                node->GetGroupedNodes(groupedNodes, true);
-
-        auto isAlreadyPicked = [this](Node* node)
+        auto& io = ImGui::GetIO();
+        if (!io.KeyShift)
         {
-            return std::find(Objects.begin(), Objects.end(), node) != Objects.end();
-        };
+            std::vector<Node*> groupedNodes;
+            for (auto object : Objects)
+                if (auto node = object->AsNode())
+                    node->GetGroupedNodes(groupedNodes, true);
 
-        for (auto candidate : groupedNodes)
-            if (!isAlreadyPicked(candidate) && candidate->AcceptDrag())
-                Objects.push_back(candidate);
+            auto isAlreadyPicked = [this](Node* node)
+            {
+                return std::find(Objects.begin(), Objects.end(), node) != Objects.end();
+            };
+
+            for (auto candidate : groupedNodes)
+                if (!isAlreadyPicked(candidate) && candidate->AcceptDrag())
+                    Objects.push_back(candidate);
+        }
 
         IsActive = true;
     }
 
-    return IsActive;
+    return IsActive ? True : False;
 }
 
 bool ed::DragAction::Process(const Control& control)
@@ -2483,7 +2619,6 @@ bool ed::DragAction::Process(const Control& control)
         IsActive = false;
         return true;
     }
-
 
     return IsActive;
 }
@@ -2523,12 +2658,12 @@ ed::SelectAction::SelectAction(Context* editor):
 {
 }
 
-bool ed::SelectAction::Accept(const Control& control)
+ed::EditorAction::AcceptResult ed::SelectAction::Accept(const Control& control)
 {
     assert(!IsActive);
 
     if (IsActive)
-        return false;
+        return False;
 
     auto& io = ImGui::GetIO();
     SelectLinkMode = io.KeyAlt;
@@ -2578,7 +2713,7 @@ bool ed::SelectAction::Accept(const Control& control)
     if (IsActive)
         Animation.Stop();
 
-    return IsActive;
+    return IsActive ? True : False;
 }
 
 bool ed::SelectAction::Process(const Control& control)
@@ -2680,10 +2815,10 @@ ed::ContextMenuAction::ContextMenuAction(Context* editor):
 {
 }
 
-bool ed::ContextMenuAction::Accept(const Control& control)
+ed::EditorAction::AcceptResult ed::ContextMenuAction::Accept(const Control& control)
 {
     if (!ImGui::IsMouseClicked(1))
-        return false;
+        return False;
 
     if (auto hotObejct = control.HotObject)
     {
@@ -2697,16 +2832,16 @@ bool ed::ContextMenuAction::Accept(const Control& control)
         if (CurrentMenu != None)
         {
             ContextId = hotObejct->ID;
-            return true;
+            return True;
         }
     }
     else if (control.BackgroundHot)
     {
         CurrentMenu = Background;
-        return true;
+        return True;
     }
 
-    return false;
+    return False;
 }
 
 bool ed::ContextMenuAction::Process(const Control& control)
@@ -2802,12 +2937,12 @@ ed::CreateItemAction::CreateItemAction(Context* editor):
 {
 }
 
-bool ed::CreateItemAction::Accept(const Control& control)
+ed::EditorAction::AcceptResult ed::CreateItemAction::Accept(const Control& control)
 {
     assert(!IsActive);
 
     if (IsActive)
-        return false;
+        return EditorAction::False;
 
     if (control.ActivePin && ImGui::IsMouseDragging(0))
     {
@@ -2817,11 +2952,11 @@ bool ed::CreateItemAction::Accept(const Control& control)
         Editor->ClearSelection();
     }
     else
-        return false;
+        return EditorAction::False;
 
     IsActive = true;
 
-    return true;
+    return EditorAction::True;
 }
 
 bool ed::CreateItemAction::Process(const Control& control)
@@ -3084,12 +3219,12 @@ ed::DeleteItemsAction::DeleteItemsAction(Context* editor):
 {
 }
 
-bool ed::DeleteItemsAction::Accept(const Control& control)
+ed::EditorAction::AcceptResult ed::DeleteItemsAction::Accept(const Control& control)
 {
     assert(!IsActive);
 
     if (IsActive)
-        return false;
+        return False;
 
     auto& io = ImGui::GetIO();
     if (ImGui::IsKeyPressed(ImGui::GetKeyIndex(ImGuiKey_Delete)))
@@ -3116,7 +3251,7 @@ bool ed::DeleteItemsAction::Accept(const Control& control)
             }
 
             IsActive = true;
-            return true;
+            return True;
         }
     }
     else if (control.ClickedLink && io.KeyAlt)
@@ -3124,10 +3259,10 @@ bool ed::DeleteItemsAction::Accept(const Control& control)
         CandidateObjects.clear();
         CandidateObjects.push_back(control.ClickedLink);
         IsActive = true;
-        return true;
+        return True;
     }
 
-    return IsActive;
+    return IsActive ? True : False;
 }
 
 bool ed::DeleteItemsAction::Process(const Control& control)

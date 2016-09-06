@@ -74,6 +74,8 @@ struct Object
     virtual void UpdateDrag(const ax::point& offset) { }
     virtual bool EndDrag() { return false; }
 
+    virtual bool IsDraggable() { bool result = AcceptDrag(); EndDrag(); return result; }
+
     virtual bool TestHit(const ImVec2& point, float extraThickness = 0.0f) const
     {
         if (!IsLive)
@@ -331,6 +333,7 @@ struct Canvas
 };
 
 struct ScrollAction;
+struct SizeAction;
 struct DragAction;
 struct SelectAction;
 struct CreateItemAction;
@@ -466,17 +469,22 @@ private:
 
 struct EditorAction
 {
+    enum AcceptResult { False, True, Possible };
+
     EditorAction(Context* editor): Editor(editor) {}
     virtual ~EditorAction() {}
 
     virtual const char* GetName() const = 0;
 
-    virtual bool Accept(const Control& control) = 0;
+    virtual AcceptResult Accept(const Control& control) = 0;
     virtual bool Process(const Control& control) = 0;
+
+    virtual ImGuiMouseCursor GetCursor() { return ImGuiMouseCursor_Arrow; }
 
     virtual void ShowMetrics() {}
 
     virtual ScrollAction*      AsScroll()      { return nullptr; }
+    virtual SizeAction*        AsSize()        { return nullptr; }
     virtual DragAction*        AsDrag()        { return nullptr; }
     virtual SelectAction*      AsSelect()      { return nullptr; }
     virtual CreateItemAction*  AsCreateItem()  { return nullptr; }
@@ -505,7 +513,7 @@ struct ScrollAction final: EditorAction
 
     virtual const char* GetName() const override final { return "Scroll"; }
 
-    virtual bool Accept(const Control& control) override final;
+    virtual AcceptResult Accept(const Control& control) override final;
     virtual bool Process(const Control& control) override final;
 
     virtual void ShowMetrics() override final;
@@ -539,6 +547,23 @@ private:
     static const int   s_ZoomLevelCount;
 };
 
+struct SizeAction final: EditorAction
+{
+    bool IsActive;
+    Node* SizedNode;
+
+    SizeAction(Context* editor);
+
+    virtual const char* GetName() const override final { return "Size"; }
+
+    virtual AcceptResult Accept(const Control& control) override final;
+    virtual bool Process(const Control& control) override final;
+
+    virtual void ShowMetrics() override final;
+
+    virtual SizeAction* AsSize() override final { return this; }
+};
+
 struct DragAction final: EditorAction
 {
     bool            IsActive;
@@ -549,8 +574,10 @@ struct DragAction final: EditorAction
 
     virtual const char* GetName() const override final { return "Drag"; }
 
-    virtual bool Accept(const Control& control) override final;
+    virtual AcceptResult Accept(const Control& control) override final;
     virtual bool Process(const Control& control) override final;
+
+    virtual ImGuiMouseCursor GetCursor() { return ImGuiMouseCursor_Move; }
 
     virtual void ShowMetrics() override final;
 
@@ -573,7 +600,7 @@ struct SelectAction final: EditorAction
 
     virtual const char* GetName() const override final { return "Select"; }
 
-    virtual bool Accept(const Control& control) override final;
+    virtual AcceptResult Accept(const Control& control) override final;
     virtual bool Process(const Control& control) override final;
 
     virtual void ShowMetrics() override final;
@@ -594,7 +621,7 @@ struct ContextMenuAction final: EditorAction
 
     virtual const char* GetName() const override final { return "Context Menu"; }
 
-    virtual bool Accept(const Control& control) override final;
+    virtual AcceptResult Accept(const Control& control) override final;
     virtual bool Process(const Control& control) override final;
 
     virtual void ShowMetrics() override final;
@@ -656,7 +683,7 @@ struct CreateItemAction final : EditorAction
 
     virtual const char* GetName() const override final { return "Create Item"; }
 
-    virtual bool Accept(const Control& control) override final;
+    virtual AcceptResult Accept(const Control& control) override final;
     virtual bool Process(const Control& control) override final;
 
     virtual void ShowMetrics() override final;
@@ -691,7 +718,7 @@ struct DeleteItemsAction final: EditorAction
 
     virtual const char* GetName() const override final { return "Delete Items"; }
 
-    virtual bool Accept(const Control& control) override final;
+    virtual AcceptResult Accept(const Control& control) override final;
     virtual bool Process(const Control& control) override final;
 
     virtual void ShowMetrics() override final;
@@ -924,6 +951,7 @@ private:
 
     EditorAction*       CurrentAction;
     ScrollAction        ScrollAction;
+    SizeAction          SizeAction;
     DragAction          DragAction;
     SelectAction        SelectAction;
     ContextMenuAction   ContextMenuAction;

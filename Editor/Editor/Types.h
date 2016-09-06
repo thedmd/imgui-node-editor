@@ -94,6 +94,7 @@ struct basic_point
     inline basic_point cwise_product(const basic_point& rhs) const { return basic_point(x * rhs.x, y * rhs.y); }
     inline basic_point cwise_quotient(const basic_point& rhs) const { return basic_point(x / rhs.x, y / rhs.y); }
     inline basic_point cwise_safe_quotient(const basic_point& rhs, const basic_point& alt = basic_point()) const { return basic_point(rhs.x ? x / rhs.x : alt.x, rhs.y ? y / rhs.y : alt.x); }
+    inline basic_point cwise_abs() const { return basic_point(fabsf(x), fabsf(y)); }
     inline basic_point cwise_sqrt() const { return basic_point(sqrtf(x), sqrtf(y)); }
     //inline basic_point cwise_floor() const { return basic_point(floorf(x), floorf(y)); }
 
@@ -335,6 +336,7 @@ struct basic_rect
     point_t get_closest_point(const point_t& p, bool on_edge, float radius) const;
 
     point_t get_closest_point(const basic_rect& r) const;
+    point_t get_closest_point_hollow(const point_t& p, T rounding = 0) const;
 
     basic_line<T> get_closest_line(const basic_rect& r) const;
     basic_line<T> get_closest_line(const basic_rect& r, T radius) const;
