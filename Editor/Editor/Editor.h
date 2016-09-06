@@ -86,13 +86,13 @@ struct Object
         return bounds.contains(to_pointf(point));
     }
 
-    virtual bool TestHit(const ax::rectf& rect) const
+    virtual bool TestHit(const ax::rectf& rect, bool allowIntersect = true) const
     {
         if (!IsLive)
             return false;
 
         const auto bounds = GetBounds();
-        return !bounds.is_empty() && bounds.intersects(rect);
+        return !bounds.is_empty() && (allowIntersect ? bounds.intersects(rect) : rect.contains(bounds));
     }
 
     virtual ax::rectf GetBounds() const = 0;
@@ -180,6 +180,8 @@ struct Node final: Object
     virtual void Draw(ImDrawList* drawList, DrawFlags flags = None) override final;
     void DrawBorder(ImDrawList* drawList, ImU32 color, float thickness = 1.0f);
 
+    void GetGroupedNodes(std::vector<Node*>& result, bool append = false);
+
     virtual ax::rectf GetBounds() const override final { return static_cast<rectf>(Bounds); }
 
     virtual Node* AsNode() override final { return this; }
@@ -207,7 +209,7 @@ struct Link final: Object
     cubic_bezier_t GetCurve() const;
 
     virtual bool TestHit(const ImVec2& point, float extraThickness = 0.0f) const override final;
-    virtual bool TestHit(const ax::rectf& rect) const override final;
+    virtual bool TestHit(const ax::rectf& rect, bool allowIntersect = true) const override final;
 
     virtual ax::rectf GetBounds() const override final;
 
@@ -825,8 +827,8 @@ struct Context
     bool HasSelectionChanged();
     uint64_t GetSelectionId() const { return SelectionId; }
 
-    void FindNodesInRect(const ax::rectf& r, vector<Node*>& result);
-    void FindLinksInRect(const ax::rectf& r, vector<Link*>& result);
+    void FindNodesInRect(const ax::rectf& r, vector<Node*>& result, bool append = false, bool includeIntersecting = true);
+    void FindLinksInRect(const ax::rectf& r, vector<Link*>& result, bool append = false);
 
     void FindLinksForNode(int nodeId, vector<Link*>& result, bool add = false);
 

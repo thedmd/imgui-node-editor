@@ -535,6 +535,21 @@ void ed::Node::DrawBorder(ImDrawList* drawList, ImU32 color, float thickness)
     }
 }
 
+void ed::Node::GetGroupedNodes(std::vector<Node*>& result, bool append)
+{
+    if (!append)
+        result.resize(0);
+
+    if (Type != NodeType::Group)
+        return;
+
+    const auto firstNodeIndex = result.size();
+    Editor->FindNodesInRect(static_cast<ax::rectf>(GroupBounds), result, append, false);
+
+    for (auto index = firstNodeIndex, lastNodeIndex = result.size(); index < result.size(); ++index)
+        result[index]->GetGroupedNodes(result, append);
+}
+
 
 
 
@@ -636,7 +651,7 @@ bool ed::Link::TestHit(const ImVec2& point, float extraThickness) const
     return result.distance <= Thickness + extraThickness;
 }
 
-bool ed::Link::TestHit(const ax::rectf& rect) const
+bool ed::Link::TestHit(const ax::rectf& rect, bool allowIntersect) const
 {
     if (!IsLive)
         return false;
@@ -646,7 +661,7 @@ bool ed::Link::TestHit(const ax::rectf& rect) const
     if (rect.contains(bounds))
         return true;
 
-    if (!rect.intersects(bounds))
+    if (!allowIntersect || !rect.intersects(bounds))
         return false;
 
     const auto bezier = GetCurve();
@@ -1108,23 +1123,25 @@ bool ed::Context::HasSelectionChanged()
     return LastSelectedObjects != SelectedObjects;
 }
 
-void ed::Context::FindNodesInRect(const ax::rectf& r, vector<Node*>& result)
+void ed::Context::FindNodesInRect(const ax::rectf& r, vector<Node*>& result, bool append, bool includeIntersecting)
 {
-    result.clear();
+    if (!append)
+        result.resize(0);
 
     if (r.is_empty())
         return;
 
     for (auto node : Nodes)
-        if (node->TestHit(r))
+        if (node->TestHit(r, includeIntersecting))
             result.push_back(node);
 }
 
-void ed::Context::FindLinksInRect(const ax::rectf& r, vector<Link*>& result)
+void ed::Context::FindLinksInRect(const ax::rectf& r, vector<Link*>& result, bool append)
 {
     using namespace ImGuiInterop;
 
-    result.clear();
+    if (!append)
+        result.resize(0);
 
     if (r.is_empty())
         return;
@@ -2418,6 +2435,20 @@ bool ed::DragAction::Accept(const Control& control)
                     if (selectedNode != DraggedObject && selectedNode->AcceptDrag())
                         Objects.push_back(selectedNode);
         }
+
+        std::vector<Node*> groupedNodes;
+        for (auto object : Objects)
+            if (auto node = object->AsNode())
+                node->GetGroupedNodes(groupedNodes, true);
+
+        auto isAlreadyPicked = [this](Node* node)
+        {
+            return std::find(Objects.begin(), Objects.end(), node) != Objects.end();
+        };
+
+        for (auto candidate : groupedNodes)
+            if (!isAlreadyPicked(candidate) && candidate->AcceptDrag())
+                Objects.push_back(candidate);
 
         IsActive = true;
     }
