@@ -366,7 +366,6 @@ void Application_Initialize()
     s_SampleImage = ImGui_LoadTexture("../Data/Lena512.png");
 
     auto& io = ImGui::GetIO();
-    io.MouseDrawCursor = true;
 }
 
 void Application_Finalize()
