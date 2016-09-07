@@ -158,6 +158,10 @@ struct Node final: Object
     float    BorderWidth;
     float    Rounding;
 
+    ImU32    GroupColor;
+    ImU32    GroupBorderColor;
+    float    GroupBorderWidth;
+    float    GroupRounding;
     rect     GroupBounds;
 
     Node(Context* editor, int id):
@@ -565,6 +569,8 @@ struct SizeAction final: EditorAction
     virtual void ShowMetrics() override final;
 
     virtual SizeAction* AsSize() override final { return this; }
+
+    const ax::rect& GetStartGroupBounds() const { return StartGroupBounds; }
 
 private:
     ax::rect_region GetRegion(Node* node);

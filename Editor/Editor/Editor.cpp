@@ -501,40 +501,22 @@ void ed::Node::Draw(ImDrawList* drawList, DrawFlags flags)
 
         if (Type == NodeType::Group)
         {
-            //auto mousePos = to_pointf(ImGui::GetMousePos());
-            //auto rect     = static_cast<ax::rectf>(GroupBounds);
-
-            //for (auto i = 0; i < 6000; ++i)
-            //{
-            //    const auto x = rand() / (float)RAND_MAX * rect.w * 1.2f + rect.x - rect.w * 0.1f;
-            //    const auto y = rand() / (float)RAND_MAX * rect.h * 1.2f + rect.y - rect.h * 0.1f;
-
-            //    auto color = IM_COL32(0, 0, 255, 255);
-            //    auto p     = rect.get_closest_point_hollow(pointf(x, y), Rounding * 4);
-            //    if ((p - pointf(x, y)).length() < 5.0f)
-            //    {
-            //        color = IM_COL32(0, 255, 0, 255);
-
-            //        drawList->AddRectFilled(
-            //            ImVec2(x, y) - ImVec2(0.5f, 0.5f),
-            //            ImVec2(x, y) + ImVec2(0.5f, 0.5f),
-            //            color);
-            //    }
-            //}
-
-            //auto p = static_cast<ax::rectf>(GroupBounds).get_closest_point(mousePos, true);
-            //auto l = (mousePos - p).length();
-
-            //auto g = l < 5.0f ? 255 : 0;
-
-            drawList->AddRect(
+            drawList->AddRectFilled(
                 to_imvec(GroupBounds.top_left()),
                 to_imvec(GroupBounds.bottom_right()),
-                IM_COL32(255, 0, 0, 255), Rounding);
+                GroupColor, GroupRounding);
 
-            //drawList->AddCircleFilled(to_imvec(mousePos), 4.0f, IM_COL32(255, 0, 255, 255));
-            //drawList->AddCircleFilled(to_imvec(p), 4.0f, IM_COL32(255, 0, 255, 255));
+            if (GroupBorderWidth > 0.0f)
+            {
+                ImGui::PushStyleVar(ImGuiStyleVar_AntiAliasFringeScale, 1.0f);
 
+                drawList->AddRect(
+                    to_imvec(GroupBounds.top_left()),
+                    to_imvec(GroupBounds.bottom_right()),
+                    GroupBorderColor, GroupRounding, 15, GroupBorderWidth);
+
+                ImGui::PopStyleVar();
+            }
         }
 
         DrawBorder(drawList, BorderColor, BorderWidth);
@@ -957,21 +939,27 @@ void ed::Context::End()
     // Draw selection rectangle
     SelectAction.Draw(drawList);
 
-    if (control.ActiveNode && control.ActiveNode->Type == NodeType::Node)
+    // Bring active node to front
+    if (control.ActiveNode)
     {
-        // Bring active node to front
         auto activeNodeIt = std::find(Nodes.begin(), Nodes.end(), control.ActiveNode);
         std::rotate(activeNodeIt, activeNodeIt + 1, Nodes.end());
     }
-        //else
-        //{
-        //    // Bring active group node to back
-        //    auto activeNodeIt = std::find(Nodes.begin(), Nodes.end(), control.ActiveNode);
-        //    std::rotate(Nodes.begin(), activeNodeIt, activeNodeIt + 1);
-        //}
 
     // Bring all groups before regular nodes
-    std::stable_partition(Nodes.begin(), Nodes.end(), [](Node* node) { return node->Type == NodeType::Group; });
+    auto groupsItEnd = std::stable_partition(Nodes.begin(), Nodes.end(), [](Node* node) { return node->Type == NodeType::Group; });
+
+    // Sort groups by area
+    std::sort(Nodes.begin(), groupsItEnd, [this](Node* lhs, Node* rhs)
+    {
+        const auto& lhsSize = lhs == SizeAction.SizedNode ? SizeAction.GetStartGroupBounds().size : lhs->GroupBounds.size;
+        const auto& rhsSize = rhs == SizeAction.SizedNode ? SizeAction.GetStartGroupBounds().size : rhs->GroupBounds.size;
+
+        const auto lhsArea = lhsSize.w * lhsSize.h;
+        const auto rhsArea = rhsSize.w * rhsSize.h;
+
+        return lhsArea > rhsArea;
+    });
 
     // Every node has few channels assigned. Grow channel list
     // to hold twice as much of channels and place them in
@@ -979,19 +967,31 @@ void ed::Context::End()
     {
         // Reserve two additional channels for sorted list of channels
         auto nodeChannelCount = drawList->_ChannelsCount;
-        ImDrawList_ChannelsGrow(drawList, (drawList->_ChannelsCount - 1) * 2 + 1);
+        ImDrawList_ChannelsGrow(drawList, (drawList->_ChannelsCount - 1) * 2 + 1 + c_LinkChannelCount);
 
         int targetChannel = nodeChannelCount;
-        for (auto node : Nodes)
+
+        auto copyNode = [&targetChannel, drawList](Node* node)
         {
             if (!node->IsLive)
-                continue;
+                return;
 
             for (int i = 0; i < c_ChannelsPerNode; ++i)
                 ImDrawList_SwapChannels(drawList, node->Channel + i, targetChannel + i);
+
             node->Channel = targetChannel;
             targetChannel += c_ChannelsPerNode;
-        }
+        };
+
+        // Copy group nodes
+        std::for_each(Nodes.begin(), groupsItEnd, copyNode);
+
+        // Copy links
+        for (int i = 0; i < c_LinkChannelCount; ++i, ++targetChannel)
+            ImDrawList_SwapChannels(drawList, c_LinkStartChannel + i, targetChannel + i);
+
+        // Copy normal nodes
+        std::for_each(groupsItEnd, Nodes.end(), copyNode);
     }
 
     ImGui::PopClipRect();
@@ -1058,7 +1058,7 @@ void ed::Context::End()
         drawList->AddRect(Canvas.WindowScreenPos,                Canvas.WindowScreenPos + Canvas.WindowScreenSize,                ImColor(borderColor),      style.WindowRounding);
     }
 
-    ShowMetrics(control);
+    // ShowMetrics(control);
 
     // fringe scale
     ImGui::PopStyleVar();
@@ -3597,12 +3597,16 @@ void ed::NodeBuilder::Begin(int nodeId)
 
     const auto alpha = ImGui::GetStyle().Alpha;
 
-    CurrentNode->IsLive      = true;
-    CurrentNode->LastPin     = nullptr;
-    CurrentNode->Color       = Editor->GetColor(StyleColor_NodeBg, alpha);
-    CurrentNode->BorderColor = Editor->GetColor(StyleColor_NodeBorder, alpha);
-    CurrentNode->BorderWidth = editorStyle.NodeBorderWidth;
-    CurrentNode->Rounding    = editorStyle.NodeRounding;
+    CurrentNode->IsLive           = true;
+    CurrentNode->LastPin          = nullptr;
+    CurrentNode->Color            = Editor->GetColor(StyleColor_NodeBg, alpha);
+    CurrentNode->BorderColor      = Editor->GetColor(StyleColor_NodeBorder, alpha);
+    CurrentNode->BorderWidth      = editorStyle.NodeBorderWidth;
+    CurrentNode->Rounding         = editorStyle.NodeRounding;
+    CurrentNode->GroupColor       = Editor->GetColor(StyleColor_GroupBg, alpha);
+    CurrentNode->GroupBorderColor = Editor->GetColor(StyleColor_GroupBorder, alpha);
+    CurrentNode->GroupBorderWidth = editorStyle.GroupBorderWidth;
+    CurrentNode->GroupRounding    = editorStyle.GroupRounding;
 
     IsGroup = false;
 
@@ -3901,6 +3905,8 @@ const char* ed::Style::GetColorName(StyleColor colorIndex) const
         case StyleColor_PinRectBorder: return "PinRectBorder";
         case StyleColor_Flow: return "Flow";
         case StyleColor_FlowMarker: return "FlowMarker";
+        case StyleColor_GroupBg: return "GroupBg";
+        case StyleColor_GroupBorder: return "GroupBorder";
     }
 
     assert(0);
@@ -3926,6 +3932,8 @@ float* ed::Style::GetVarFloatAddr(StyleVar idx)
         case StyleVar_PinRadius:                return &PinRadius;
         case StyleVar_PinArrowSize:             return &PinArrowSize;
         case StyleVar_PinArrowWidth:            return &PinArrowWidth;
+        case StyleVar_GroupRounding:            return &GroupRounding;
+        case StyleVar_GroupBorderWidth:         return &GroupBorderWidth;
     }
 
     return nullptr;

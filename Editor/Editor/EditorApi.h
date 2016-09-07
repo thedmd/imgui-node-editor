@@ -65,6 +65,8 @@ enum StyleColor
     StyleColor_PinRectBorder,
     StyleColor_Flow,
     StyleColor_FlowMarker,
+    StyleColor_GroupBg,
+    StyleColor_GroupBorder,
 
     StyleColor_Count
 };
@@ -91,7 +93,9 @@ enum StyleVar
     StyleVar_PinCorners,
     StyleVar_PinRadius,
     StyleVar_PinArrowSize,
-    StyleVar_PinArrowWidth
+    StyleVar_PinArrowWidth,
+    StyleVar_GroupRounding,
+    StyleVar_GroupBorderWidth,
 };
 
 struct Style
@@ -117,6 +121,8 @@ struct Style
     float   PinRadius;
     float   PinArrowSize;
     float   PinArrowWidth;
+    float   GroupRounding;
+    float   GroupBorderWidth;
     ImVec4  Colors[StyleColor_Count];
 
     Style()
@@ -142,6 +148,8 @@ struct Style
         PinRadius               = 0.0f;
         PinArrowSize            = 0.0f;
         PinArrowWidth           = 0.0f;
+        GroupRounding           = 6.0f;
+        GroupBorderWidth        = 1.0f;
 
         Colors[StyleColor_Bg]                 = ImColor( 60,  60,  70, 200);
         Colors[StyleColor_Grid]               = ImColor(120, 120, 120,  40);
@@ -159,6 +167,8 @@ struct Style
         Colors[StyleColor_PinRectBorder]      = ImColor( 60, 180, 255, 128);
         Colors[StyleColor_Flow]               = ImColor(255, 128,  64, 255);
         Colors[StyleColor_FlowMarker]         = ImColor(255, 128,  64, 255);
+        Colors[StyleColor_GroupBg]            = ImColor(255, 255, 255,  32);
+        Colors[StyleColor_GroupBorder]        = ImColor(255, 255, 255,  32);
     }
 };
 
