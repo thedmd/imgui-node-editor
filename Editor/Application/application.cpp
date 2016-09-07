@@ -1072,7 +1072,7 @@ void Application_Frame()
         if (node)
         {
             ImGui::Text("ID: %d", node->ID);
-            ImGui::Text("Type: %s", node->Type == NodeType::Blueprint ? "Blueprint" : "Tree");
+            ImGui::Text("Type: %s", node->Type == NodeType::Blueprint ? "Blueprint" : (node->Type == NodeType::Tree ? "Tree" : "Comment"));
             ImGui::Text("Inputs: %d", (int)node->Inputs.size());
             ImGui::Text("Outputs: %d", (int)node->Outputs.size());
         }
