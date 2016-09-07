@@ -909,7 +909,8 @@ struct Context
         ax::rectf bounds;
 
         for (auto object : objects)
-            bounds = make_union(bounds, object->GetBounds());
+            if (object->IsLive)
+                bounds = make_union(bounds, object->GetBounds());
 
         return bounds;
     }

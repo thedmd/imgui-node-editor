@@ -988,7 +988,7 @@ void ed::Context::End()
 
         // Copy links
         for (int i = 0; i < c_LinkChannelCount; ++i, ++targetChannel)
-            ImDrawList_SwapChannels(drawList, c_LinkStartChannel + i, targetChannel + i);
+            ImDrawList_SwapChannels(drawList, c_LinkStartChannel + i, targetChannel);
 
         // Copy normal nodes
         std::for_each(groupsItEnd, Nodes.end(), copyNode);
@@ -3618,8 +3618,6 @@ void ed::NodeBuilder::Begin(int nodeId)
         drawList->ChannelsSetCurrent(CurrentNode->Channel + c_NodeContentChannel);
     }
 
-    ImGui::PushStyleVar(ImGuiStyleVar_Alpha, 1.0f);
-
     // Begin outer group
     ImGui::BeginGroup();
 
@@ -3669,8 +3667,6 @@ void ed::NodeBuilder::End()
     }
     else
         CurrentNode->Type        = NodeType::Node;
-
-    ImGui::PopStyleVar();
 
     CurrentNode = nullptr;
 }
