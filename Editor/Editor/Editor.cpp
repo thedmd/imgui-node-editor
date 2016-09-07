@@ -71,6 +71,26 @@ void ed::Log(const char* fmt, ...)
 
 
 //------------------------------------------------------------------------------
+static bool IsGroup(const ed::Node* node)
+{
+    if (node && node->Type == ed::NodeType::Group)
+        return true;
+    else
+        return false;
+}
+
+static bool IsMouseOverGroup(const ed::Node* node)
+{
+    using namespace ax::ImGuiInterop;
+
+    if (IsGroup(node))
+        return node->GroupBounds.contains(to_point(ImGui::GetMousePos()));
+    else
+        return false;
+}
+
+
+//------------------------------------------------------------------------------
 static void ImDrawList_ChannelsGrow(ImDrawList* draw_list, int channels_count)
 {
     IM_ASSERT(draw_list->_ChannelsCount <= channels_count);
@@ -499,7 +519,7 @@ void ed::Node::Draw(ImDrawList* drawList, DrawFlags flags)
             to_imvec(Bounds.bottom_right()),
             Color, Rounding);
 
-        if (Type == NodeType::Group)
+        if (IsGroup(this))
         {
             drawList->AddRectFilled(
                 to_imvec(GroupBounds.top_left()),
@@ -530,7 +550,7 @@ void ed::Node::Draw(ImDrawList* drawList, DrawFlags flags)
 
         DrawBorder(drawList, borderColor, editorStyle.SelectedNodeBorderWidth);
     }
-    else if (flags & Hovered)
+    else if (!IsGroup(this) && (flags & Hovered))
     {
         const auto  borderColor = Editor->GetColor(StyleColor_HovNodeBorder);
         const auto& editorStyle = Editor->GetStyle();
@@ -555,7 +575,7 @@ void ed::Node::GetGroupedNodes(std::vector<Node*>& result, bool append)
     if (!append)
         result.resize(0);
 
-    if (Type != NodeType::Group)
+    if (!IsGroup(this))
         return;
 
     const auto firstNodeIndex = result.size();
@@ -940,7 +960,7 @@ void ed::Context::End()
     SelectAction.Draw(drawList);
 
     // Bring active node to front
-    if (control.ActiveNode && control.ActiveNode->Type != NodeType::Group)
+    if (control.ActiveNode && !IsGroup(control.ActiveNode))
     {
         auto activeNodeIt = std::find(Nodes.begin(), Nodes.end(), control.ActiveNode);
         std::rotate(activeNodeIt, activeNodeIt + 1, Nodes.end());
@@ -950,7 +970,7 @@ void ed::Context::End()
     if (((Settings.Reason & (SaveReasonFlags::Position | SaveReasonFlags::Size)) != SaveReasonFlags::None))
     {
         // Bring all groups before regular nodes
-        auto groupsItEnd = std::stable_partition(Nodes.begin(), Nodes.end(), [](Node* node) { return node->Type == NodeType::Group; });
+        auto groupsItEnd = std::stable_partition(Nodes.begin(), Nodes.end(), IsGroup);
 
         // Sort groups by area
         std::sort(Nodes.begin(), groupsItEnd, [this](Node* lhs, Node* rhs)
@@ -987,7 +1007,7 @@ void ed::Context::End()
             targetChannel += c_ChannelsPerNode;
         };
 
-        auto groupsItEnd = std::find_if(Nodes.begin(), Nodes.end(), [](Node* node) { return node->Type != NodeType::Group; });
+        auto groupsItEnd = std::find_if(Nodes.begin(), Nodes.end(), [](Node* node) { return !IsGroup(node); });
 
         // Copy group nodes
         std::for_each(Nodes.begin(), groupsItEnd, copyNode);
@@ -1405,7 +1425,7 @@ void ed::Context::SaveSettings()
     {
         auto settings = Settings.FindNode(node->ID);
         settings->Location = to_imvec(node->Bounds.location);
-        if (node->Type == NodeType::Group)
+        if (IsGroup(node))
             settings->GroupSize = to_imvec(node->GroupBounds.size);
     }
 
@@ -2506,10 +2526,10 @@ ed::EditorAction::AcceptResult ed::SizeAction::Accept(const Control& control)
     if (IsActive)
         return False;
 
-    if (control.ActiveNode && control.ActiveNode->Type == NodeType::Group && ImGui::IsMouseDragging(0, 0))
+    if (control.ActiveNode && IsGroup(control.ActiveNode) && ImGui::IsMouseDragging(0, 0))
     {
         const auto mousePos     = to_point(ImGui::GetMousePos());
-        const auto closestPoint = control.ActiveNode->GroupBounds.get_closest_point_hollow(mousePos, static_cast<int>(control.ActiveNode->Rounding));
+        const auto closestPoint = control.ActiveNode->Bounds.get_closest_point_hollow(mousePos, static_cast<int>(control.ActiveNode->Rounding));
 
         auto pivot = GetRegion(control.ActiveNode);
         if (pivot != rect_region::center)
@@ -2525,7 +2545,7 @@ ed::EditorAction::AcceptResult ed::SizeAction::Accept(const Control& control)
             IsActive         = true;
         }
     }
-    else if (control.HotNode && control.HotNode->Type == NodeType::Group)
+    else if (control.HotNode && IsGroup(control.HotNode))
     {
         Cursor = ChooseCursor(GetRegion(control.HotNode));
         return Possible;
@@ -2659,7 +2679,7 @@ void ed::SizeAction::ShowMetrics()
 
 ax::rect_region ed::SizeAction::GetRegion(Node* node)
 {
-    if (!node || node->Type != NodeType::Group)
+    if (!node || !IsGroup(node))
         return rect_region::center;
 
     rect_region region = rect_region::center;
@@ -2725,6 +2745,12 @@ ed::EditorAction::AcceptResult ed::DragAction::Accept(const Control& control)
     {
         if (!control.ActiveObject->AcceptDrag())
             return False;
+
+        if (!Editor->IsSelected(control.ActiveObject) && IsMouseOverGroup(control.ActiveObject->AsNode()))
+        {
+            control.ActiveObject->EndDrag();
+            return False;
+        }
 
         DraggedObject = control.ActiveObject;
 
@@ -2823,6 +2849,7 @@ void ed::DragAction::ShowMetrics()
 ed::SelectAction::SelectAction(Context* editor):
     EditorAction(editor),
     IsActive(false),
+    SelectGroups(false),
     SelectLinkMode(false),
     StartPoint(),
     Animation(editor)
@@ -2836,12 +2863,16 @@ ed::EditorAction::AcceptResult ed::SelectAction::Accept(const Control& control)
     if (IsActive)
         return False;
 
+    const auto isOverGroupContent = IsMouseOverGroup(control.ActiveNode);
+
     auto& io = ImGui::GetIO();
+    SelectGroups   = io.KeyShift;
     SelectLinkMode = io.KeyAlt;
 
     SelectedObjectsAtStart.clear();
 
-    if (control.BackgroundActive && ImGui::IsMouseDragging(0, 0))
+    const auto isBackgroundActive = control.BackgroundActive || isOverGroupContent;
+    if (isBackgroundActive && ImGui::IsMouseDragging(0, 0))
     {
         IsActive = true;
         StartPoint = ImGui::GetMousePos();
@@ -2918,6 +2949,17 @@ bool ed::SelectAction::Process(const Control& control)
         {
             Editor->FindNodesInRect(rect, nodes);
             CandidateObjects.assign(nodes.begin(), nodes.end());
+
+            if (SelectGroups)
+            {
+                auto endIt = std::remove_if(CandidateObjects.begin(), CandidateObjects.end(), [](Object* object) { return !IsGroup(object->AsNode()); });
+                CandidateObjects.erase(endIt, CandidateObjects.end());
+            }
+            else
+            {
+                auto endIt = std::remove_if(CandidateObjects.begin(), CandidateObjects.end(), [](Object* object) { return IsGroup(object->AsNode()); });
+                CandidateObjects.erase(endIt, CandidateObjects.end());
+            }
         }
 
         CandidateObjects.insert(CandidateObjects.end(), SelectedObjectsAtStart.begin(), SelectedObjectsAtStart.end());
@@ -3791,7 +3833,7 @@ void ed::NodeBuilder::Group(const ImVec2& size)
 
     IsGroup = true;
 
-    if (CurrentNode->Type == NodeType::Group)
+    if (::IsGroup(CurrentNode))
         ImGui::Dummy(to_imvec(CurrentNode->GroupBounds.size));
     else
         ImGui::Dummy(size);

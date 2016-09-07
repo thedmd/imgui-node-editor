@@ -598,6 +598,8 @@ struct DragAction final: EditorAction
     virtual AcceptResult Accept(const Control& control) override final;
     virtual bool Process(const Control& control) override final;
 
+    virtual ImGuiMouseCursor GetCursor() override final { return ImGuiMouseCursor_Move; }
+
     virtual void ShowMetrics() override final;
 
     virtual DragAction* AsDrag() override final { return this; }
@@ -607,6 +609,7 @@ struct SelectAction final: EditorAction
 {
     bool            IsActive;
 
+    bool            SelectGroups;
     bool            SelectLinkMode;
     ImVec2          StartPoint;
     ImVec2          EndPoint;
