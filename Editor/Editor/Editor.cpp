@@ -83,16 +83,6 @@ static bool IsGroup(const ed::Node* node)
         return false;
 }
 
-static bool IsMouseOverGroup(const ed::Node* node)
-{
-    using namespace ax::ImGuiInterop;
-
-    if (IsGroup(node))
-        return node->GroupBounds.contains(to_point(ImGui::GetMousePos()));
-    else
-        return false;
-}
-
 
 //------------------------------------------------------------------------------
 static void ImDrawList_ChannelsGrow(ImDrawList* draw_list, int channels_count)
@@ -1089,7 +1079,7 @@ void ed::Context::End()
         drawList->AddRect(Canvas.WindowScreenPos,                Canvas.WindowScreenPos + Canvas.WindowScreenSize,                ImColor(borderColor),      style.WindowRounding);
     }
 
-    // ShowMetrics(control);
+    ShowMetrics(control);
 
     // fringe scale
     ImGui::PopStyleVar();
@@ -1218,6 +1208,15 @@ bool ed::Context::IsAnyLinkSelected()
 bool ed::Context::HasSelectionChanged()
 {
     return LastSelectedObjects != SelectedObjects;
+}
+
+ed::Node* ed::Context::FindNodeAt(const ImVec2& p)
+{
+    for (auto node : Nodes)
+        if (node->TestHit(p))
+            return node;
+
+    return nullptr;
 }
 
 void ed::Context::FindNodesInRect(const ax::rectf& r, vector<Node*>& result, bool append, bool includeIntersecting)
@@ -1538,7 +1537,7 @@ ed::Control ed::Context::ComputeControl()
         ImGui::SetCursorScreenPos(to_imvec(rect.location));
 
         // debug
-        //if (id == 0)
+        //if (id < 0)
         //    return ImGui::Button(idString, to_imvec(rect.size));
 
         auto result = ImGui::InvisibleButton(idString, to_imvec(rect.size));
@@ -1580,7 +1579,25 @@ ed::Control ed::Context::ComputeControl()
         }
 
         // Check for interactions with node.
-        checkInteractionsInArea(node->ID, node->Bounds, node);
+        if (node->Type == NodeType::Group)
+        {
+            // Node with a hole
+            ImGui::PushID(node->ID);
+
+            const auto top    = node->GroupBounds.top()  - node->Bounds.top();
+            const auto left   = node->GroupBounds.left() - node->Bounds.left();
+            const auto bottom = node->Bounds.bottom()    - node->GroupBounds.bottom();
+            const auto right  = node->Bounds.right()     - node->GroupBounds.right();
+
+            checkInteractionsInArea(1, rect(node->Bounds.left(),  node->Bounds.top(),             node->Bounds.w, top),    node);
+            checkInteractionsInArea(2, rect(node->Bounds.left(),  node->Bounds.bottom() - bottom, node->Bounds.w, bottom), node);
+            checkInteractionsInArea(3, rect(node->Bounds.left(),  node->Bounds.top() + top,       left, node->Bounds.h - top - bottom), node);
+            checkInteractionsInArea(4, rect(node->Bounds.right() - right, node->Bounds.top() + top, right, node->Bounds.h - top - bottom), node);
+
+            ImGui::PopID();
+        }
+        else
+            checkInteractionsInArea(node->ID, node->Bounds, node);
     }
 
     // Links are not regular widgets and must be done manually since
@@ -1622,6 +1639,32 @@ ed::Control ed::Context::ComputeControl()
         clickedObject     = hotLink;
         backgroundClicked = false;
     }
+
+//    if (!isDragging && (isBackgroundHot || backgroundClicked) && !isBackgroundActive)
+//    {
+//        for (auto nodeIt = Nodes.rbegin(), nodeItEnd = Nodes.rend(); nodeIt != nodeItEnd; ++nodeIt)
+//        {
+//            auto node = *nodeIt;
+//
+//            if (!node->IsLive || !IsGroup(node)) continue;
+//
+//            if (node->GroupBounds.contains(mousePos))
+//            {
+////                 if (isBackgroundHot)
+////                 {
+////                     hotObject         = node;
+////                     isBackgroundHot   = false;
+////                 }
+//
+//                if (backgroundClicked)
+//                {
+//                    clickedObject     = node;
+//                    backgroundClicked = false;
+//                }
+//                break;
+//            }
+//        }
+//    }
 
     return Control(hotObject, activeObject, clickedObject,
         isBackgroundHot, isBackgroundActive, backgroundClicked);
@@ -2083,19 +2126,30 @@ void ed::FlowAnimation::Draw(ImDrawList* drawList)
     const auto flowAlpha = 1.0f - progress * progress;
     const auto flowColor = Editor->GetColor(StyleColor_Flow, flowAlpha);
     const auto flowPath  = Link->GetCurve();
-    drawList->AddBezierCurve(to_imvec(flowPath.p0), to_imvec(flowPath.p1), to_imvec(flowPath.p2), to_imvec(flowPath.p3), flowColor, 4.0f);
+
+    Link->Draw(drawList, flowColor, 4.0f);
 
     if (IsPathValid())
     {
-        const auto markerAlpha  = powf(1.0f - progress, 0.5f);
+        //Offset = 0;
+
+        const auto markerAlpha  = powf(1.0f - progress, 0.35f);
         const auto markerRadius = 4.0f * (1.0f - progress) + 2.0f;
         const auto markerColor  = Editor->GetColor(StyleColor_FlowMarker, markerAlpha);
 
-        for (float d = 0.0f; d < PathLength - Offset; d += MarkerDistance)
-        {
-            auto point = SamplePath(d + Offset);
+        const auto from = Offset     - Link->StartPin->ArrowSize;
+        const auto to   = PathLength + Link->EndPin->ArrowSize;
 
-            drawList->AddCircleFilled(point, markerRadius, markerColor);
+        for (float d = from; d < to * 2; d += MarkerDistance)
+        {
+            auto point = SamplePath(d);
+
+            auto g = std::min(255, (int)(255 * d / PathLength));
+
+            point.x += d;
+
+            //drawList->AddCircle(point, markerRadius, markerColor);
+            drawList->AddRectFilled(point - ImVec2(1.5f, 1.5f), point + ImVec2(1.5f, 1.5f), IM_COL32(255, g, 0, 255));
         }
     }
 }
@@ -2107,7 +2161,7 @@ bool ed::FlowAnimation::IsLinkValid() const
 
 bool ed::FlowAnimation::IsPathValid() const
 {
-    return !Path.empty() && PathLength > 0.0f && Link->Start == LastStart && Link->End == LastEnd;
+    return Path.size() > 1 && PathLength > 0.0f && Link->Start == LastStart && Link->End == LastEnd;
 }
 
 void ed::FlowAnimation::UpdatePath()
@@ -2143,11 +2197,13 @@ void ed::FlowAnimation::ClearPath()
 
 ImVec2 ed::FlowAnimation::SamplePath(float distance)
 {
-    distance = std::max(0.0f, std::min(distance, PathLength));
+    //distance = std::max(0.0f, std::min(distance, PathLength));
 
     auto endPointIt = std::find_if(Path.begin(), Path.end(), [distance](const CurvePoint& p) { return distance < p.Distance; });
-    if (endPointIt == Path.end() || endPointIt == Path.begin())
-        return ImVec2(0, 0);
+    if (endPointIt == Path.end())
+        endPointIt = Path.end() - 1;
+    else if (endPointIt == Path.begin())
+        endPointIt = Path.begin() + 1;
 
     const auto& start = endPointIt[-1];
     const auto& end   = *endPointIt;
@@ -2165,6 +2221,7 @@ void ed::FlowAnimation::OnStop()
 {
     Controller->Release(this);
 }
+
 
 
 
@@ -2282,7 +2339,26 @@ ed::EditorAction::AcceptResult ed::ScrollAction::Accept(const Control& control)
 
     if (ImGui::IsKeyPressed(ImGui::GetKeyIndex(ImGuiKey_F)))
     {
-        const auto  allowZoomIn = io.KeyShift;
+        const auto allowZoomIn = io.KeyShift;
+
+        auto findHotObjectToZoom = [this, &control, &io]() -> Object*
+        {
+            if (control.HotObject)
+            {
+                if (auto pin = control.HotObject->AsPin())
+                    return pin->Node;
+                else
+                    return control.HotObject;
+            }
+            else if (control.BackgroundHot)
+            {
+                auto node = Editor->FindNodeAt(io.MousePos);
+                if (IsGroup(node))
+                    return node;
+            }
+
+            return nullptr;
+        };
 
         bool navigateToContent = false;
         if (!Editor->GetSelectedObjects().empty())
@@ -2295,14 +2371,12 @@ ed::EditorAction::AcceptResult ed::ScrollAction::Accept(const Control& control)
             else
                 navigateToContent = true;
         }
-        else if(control.HotObject)
+        else if(auto hotObject = findHotObjectToZoom())
         {
-            auto object = control.HotObject->AsPin() ? control.HotObject->AsPin()->Node : control.HotObject;
-
-            if (Reason != NavigationReason::Object || LastObject != object || allowZoomIn)
+            if (Reason != NavigationReason::Object || LastObject != hotObject || allowZoomIn)
             {
-                LastObject = object;
-                auto bounds = (control.HotObject->AsPin() ? control.HotObject->AsPin()->Node : control.HotObject)->GetBounds();
+                LastObject = hotObject;
+                auto bounds = hotObject->GetBounds();
                 NavigateTo(bounds, allowZoomIn, -1.0f, NavigationReason::Object);
             }
             else
@@ -2746,16 +2820,10 @@ ed::EditorAction::AcceptResult ed::DragAction::Accept(const Control& control)
     if (IsActive)
         return False;
 
-    if (control.ActiveObject && ImGui::IsMouseDragging(0, ImGui::GetIO().MouseDragThreshold * Editor->GetCanvas().Zoom.y))
+    if (control.ActiveObject && ImGui::IsMouseDragging(0))
     {
         if (!control.ActiveObject->AcceptDrag())
             return False;
-
-        if (!Editor->IsSelected(control.ActiveObject) && IsMouseOverGroup(control.ActiveObject->AsNode()))
-        {
-            control.ActiveObject->EndDrag();
-            return False;
-        }
 
         DraggedObject = control.ActiveObject;
 
@@ -2868,16 +2936,13 @@ ed::EditorAction::AcceptResult ed::SelectAction::Accept(const Control& control)
     if (IsActive)
         return False;
 
-    const auto isOverGroupContent = IsMouseOverGroup(control.ActiveNode);
-
     auto& io = ImGui::GetIO();
     SelectGroups   = io.KeyShift;
     SelectLinkMode = io.KeyAlt;
 
     SelectedObjectsAtStart.clear();
 
-    const auto isBackgroundActive = control.BackgroundActive || isOverGroupContent;
-    if (isBackgroundActive && ImGui::IsMouseDragging(0, 0))
+    if (control.BackgroundActive && ImGui::IsMouseDragging(0, 1))
     {
         IsActive = true;
         StartPoint = ImGui::GetMousePos();

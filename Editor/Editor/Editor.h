@@ -897,6 +897,7 @@ struct Context
     bool HasSelectionChanged();
     uint64_t GetSelectionId() const { return SelectionId; }
 
+    Node* FindNodeAt(const ImVec2& p);
     void FindNodesInRect(const ax::rectf& r, vector<Node*>& result, bool append = false, bool includeIntersecting = true);
     void FindLinksInRect(const ax::rectf& r, vector<Link*>& result, bool append = false);
 

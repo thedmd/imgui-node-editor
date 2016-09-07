@@ -1013,7 +1013,7 @@ inline void cubic_bezier_fixed_step(bezier_fixed_step_callback_t callback, void*
     const auto length       = cubic_bezier_length(p0, p1, p2, p3);
     const auto point_count  = static_cast<int>(length / step) + (overshoot ? 2 : 1);
     const auto t_min        = 0.0f;
-    const auto t_max        = overshoot ? 2.0f : 1.0f;
+    const auto t_max        = step * point_count / length;
     const auto t_0          = (t_min + t_max) * 0.5f;
 
     std::map<float, float> cache;
