@@ -909,7 +909,9 @@ void Application_Frame()
             if (node.Type != NodeType::Comment)
                 continue;
 
-            ImGui::PushStyleVar(ImGuiStyleVar_Alpha, 0.5f);
+            const float commentAlpha = 0.5f;
+
+            ImGui::PushStyleVar(ImGuiStyleVar_Alpha, commentAlpha);
             ed::PushStyleColor(ed::StyleColor_NodeBg, ImColor(255, 255, 255, 64));
             ed::PushStyleColor(ed::StyleColor_NodeBorder, ImColor(255, 255, 255, 64));
             ed::BeginNode(node.ID);
@@ -924,6 +926,35 @@ void Application_Frame()
             ed::EndNode();
             ed::PopStyleColor(2);
             ImGui::PopStyleVar();
+
+            if (ed::BeginGroupHint(node.ID))
+            {
+                auto alpha = static_cast<int>(commentAlpha * ImGui::GetStyle().Alpha * 255);
+
+                auto min = ed::GetGroupMin();
+                auto max = ed::GetGroupMax();
+
+                ImGui::SetCursorScreenPos(min - ImVec2(-8, ImGui::GetTextLineHeightWithSpacing() + 4));
+                ImGui::BeginGroup();
+                ImGui::TextUnformatted(node.Name.c_str());
+                ImGui::EndGroup();
+
+                auto drawList = ed::GetHintBackgroundDrawList();
+
+                auto hintBounds      = ImGui_GetItemRect();
+                auto hintFrameBounds = hintBounds.expanded(8, 4);
+
+                drawList->AddRectFilled(
+                    to_imvec(hintFrameBounds.top_left()),
+                    to_imvec(hintFrameBounds.bottom_right()),
+                    IM_COL32(255, 255, 255, 64 * alpha / 255), 4.0f);
+
+                drawList->AddRect(
+                    to_imvec(hintFrameBounds.top_left()),
+                    to_imvec(hintFrameBounds.bottom_right()),
+                    IM_COL32(255, 255, 255, 128 * alpha / 255), 4.0f);
+            }
+            ed::EndGroupHint();
         }
 
         for (auto& link : s_Links)
