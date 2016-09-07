@@ -2127,7 +2127,7 @@ void ed::FlowAnimation::Draw(ImDrawList* drawList)
     const auto flowColor = Editor->GetColor(StyleColor_Flow, flowAlpha);
     const auto flowPath  = Link->GetCurve();
 
-    Link->Draw(drawList, flowColor, 4.0f);
+    Link->Draw(drawList, flowColor, 2.0f);
 
     if (IsPathValid())
     {
@@ -2137,20 +2137,8 @@ void ed::FlowAnimation::Draw(ImDrawList* drawList)
         const auto markerRadius = 4.0f * (1.0f - progress) + 2.0f;
         const auto markerColor  = Editor->GetColor(StyleColor_FlowMarker, markerAlpha);
 
-        const auto from = Offset     - Link->StartPin->ArrowSize;
-        const auto to   = PathLength + Link->EndPin->ArrowSize;
-
-        for (float d = from; d < to * 2; d += MarkerDistance)
-        {
-            auto point = SamplePath(d);
-
-            auto g = std::min(255, (int)(255 * d / PathLength));
-
-            point.x += d;
-
-            //drawList->AddCircle(point, markerRadius, markerColor);
-            drawList->AddRectFilled(point - ImVec2(1.5f, 1.5f), point + ImVec2(1.5f, 1.5f), IM_COL32(255, g, 0, 255));
-        }
+        for (float d = Offset; d < PathLength; d += MarkerDistance)
+            drawList->AddCircleFilled(SamplePath(d), markerRadius, markerColor);
     }
 }
 
@@ -2186,7 +2174,7 @@ void ed::FlowAnimation::UpdatePath()
     const auto step = std::max(MarkerDistance * 0.5f, 15.0f);
 
     Path.resize(0);
-    cubic_bezier_fixed_step(collectPointsCallback, curve.p0, curve.p1, curve.p2, curve.p3, step, true, 0.5f, 0.001f);
+    cubic_bezier_fixed_step(collectPointsCallback, curve.p0, curve.p1, curve.p2, curve.p3, step, false, 0.5f, 0.001f);
 }
 
 void ed::FlowAnimation::ClearPath()
