@@ -222,9 +222,10 @@ struct NodeSettings
 {
     int    ID;
     ImVec2 Location;
+    ImVec2 GroupSize;
     bool   WasUsed;
 
-    NodeSettings(int id): ID(id), WasUsed(false) {}
+    NodeSettings(int id): ID(id), Location(0, 0), GroupSize(0, 0), WasUsed(false) {}
 };
 
 struct Settings
@@ -549,7 +550,7 @@ private:
 
 struct SizeAction final: EditorAction
 {
-    bool IsActive;
+    bool  IsActive;
     Node* SizedNode;
 
     SizeAction(Context* editor);
@@ -571,6 +572,9 @@ private:
 
     ax::rect         StartBounds;
     ax::rect         StartGroupBounds;
+    ax::size         LastSize;
+    ax::point        LastDragOffset;
+    bool             Stable;
     ax::rect_region  Pivot;
     ImGuiMouseCursor Cursor;
 };
@@ -791,8 +795,8 @@ struct NodeBuilder
 
     void Group(const ImVec2& size);
 
-    ImDrawList* GetBackgroundDrawList() const;
-    ImDrawList* GetBackgroundDrawList(Node* node) const;
+    ImDrawList* GetUserBackgroundDrawList() const;
+    ImDrawList* GetUserBackgroundDrawList(Node* node) const;
 };
 
 struct Style: ax::Editor::Style

@@ -29,10 +29,12 @@ static const int c_LinkChannel_Links      = c_LinkStartChannel + 1;
 static const int c_LinkChannel_Flow       = c_LinkStartChannel + 2;
 static const int c_LinkChannel_NewLink    = c_LinkStartChannel + 3;
 
-static const int c_ChannelsPerNode        = 3;
-static const int c_NodeBaseChannel        = 0;
-static const int c_NodeBackgroundChannel  = 1;
-static const int c_NodeContentChannel     = 2;
+static const int c_ChannelsPerNode           = 5;
+static const int c_NodeBaseChannel           = 0;
+static const int c_NodeBackgroundChannel     = 1;
+static const int c_NodeUserBackgroundChannel = 2;
+static const int c_NodePinChannel            = 3;
+static const int c_NodeContentChannel        = 4;
 
 static const float c_GroupSelectThickness       = 5.0f;  // canvas pixels
 static const float c_LinkSelectThickness        = 5.0f;  // canvas pixels
@@ -435,7 +437,7 @@ void ed::Pin::Draw(ImDrawList* drawList, DrawFlags flags)
 {
     if (flags & Hovered)
     {
-        drawList->ChannelsSetCurrent(Node->Channel + c_NodeBackgroundChannel);
+        drawList->ChannelsSetCurrent(Node->Channel + c_NodePinChannel);
 
         drawList->AddRectFilled(to_imvec(Bounds.top_left()), to_imvec(Bounds.bottom_right()),
             Color, Rounding, Corners);
@@ -876,12 +878,15 @@ void ed::Context::End()
     bool isDragging  = CurrentAction && CurrentAction->AsDrag()   != nullptr;
     bool isSizing    = CurrentAction && CurrentAction->AsSize()   != nullptr;
 
+    // Draw nodes
+    for (auto node : Nodes)
+        if (node->IsLive && node->IsVisible())
+            node->Draw(drawList);
+
     // Draw links
     for (auto link : Links)
-    {
-        if (link->IsLive && link->IsVisible())
+        if (link->IsLive && link->IsVisible()) 
             link->Draw(drawList);
-    }
 
     // Highlight selected objects
     {
@@ -1268,8 +1273,14 @@ ed::Node* ed::Context::CreateNode(int id)
     auto settings = Settings.FindNode(id);
     if (!settings)
         settings = Settings.AddNode(id);
-    else
-        node->Bounds.location = to_point(settings->Location);
+
+    node->Bounds.location  = to_point(settings->Location);
+
+    if (settings->GroupSize.x > 0 || settings->GroupSize.y > 0)
+    {
+        node->Type             = NodeType::Group;
+        node->GroupBounds.size = to_size(settings->GroupSize);
+    }
 
     settings->WasUsed = true;
 
@@ -1388,6 +1399,8 @@ void ed::Context::SaveSettings()
     {
         auto settings = Settings.FindNode(node->ID);
         settings->Location = to_imvec(node->Bounds.location);
+        if (node->Type == NodeType::Group)
+            settings->GroupSize = to_imvec(node->GroupBounds.size);
     }
 
     Settings.ViewScroll = ScrollAction.Scroll;
@@ -1699,6 +1712,9 @@ std::string ed::Settings::Serialize()
         json::object nodeData;
         nodeData["location"] = json::value(serializeVector(node.Location));
 
+        if (node.GroupSize.x > 0 || node.GroupSize.y > 0)
+            nodeData["group_size"] = json::value(serializeVector(node.GroupSize));
+
         nodes[std::to_string(node.ID)] = json::value(std::move(nodeData));
     }
 
@@ -1763,9 +1779,11 @@ bool ed::Settings::Parse(const char* data, const char* dataEnd, Settings& settin
 
             auto& nodeData = node.second;
 
-            auto locationValue = nodeData.get("location");
             if (!tryParseVector(nodeData.get("location"), settings->Location))
                 settings->Location = ImVec2(0, 0);
+
+            if (!tryParseVector(nodeData.get("group_size"), settings->GroupSize))
+                settings->GroupSize = ImVec2(0, 0);
         }
     }
 
@@ -2492,6 +2510,9 @@ ed::EditorAction::AcceptResult ed::SizeAction::Accept(const Control& control)
         {
             StartBounds      = control.ActiveNode->Bounds;
             StartGroupBounds = control.ActiveNode->GroupBounds;
+            LastSize         = control.ActiveNode->Bounds.size;
+            LastDragOffset   = point(0, 0);
+            Stable           = true;
             Pivot            = pivot;
             Cursor           = ChooseCursor(Pivot);
             SizedNode        = control.ActiveNode;
@@ -2512,27 +2533,76 @@ bool ed::SizeAction::Process(const Control& control)
     if (!IsActive)
         return false;
 
-    if (control.ActiveNode == SizedNode)
+    if (control.ActiveNode == SizedNode || !Stable)
     {
-        auto dragOffset = to_point(ImGui::GetMouseDragDelta(0, 0.0f));
+        const auto dragOffset = (control.ActiveNode == SizedNode) ? to_point(ImGui::GetMouseDragDelta(0, 0.0f)) : LastDragOffset;
+        LastDragOffset = dragOffset;
 
+        // Calculate new rect size
         auto p0 = StartBounds.top_left();
         auto p1 = StartBounds.bottom_right();
 
         if ((Pivot & rect_region::top) == rect_region::top)
-            p0.y += dragOffset.y;
+            p0.y = std::min(p0.y + dragOffset.y, p1.y);
         if ((Pivot & rect_region::bottom) == rect_region::bottom)
-            p1.y += dragOffset.y;
+            p1.y = std::max(p1.y + dragOffset.y, p0.y);
         if ((Pivot & rect_region::left) == rect_region::left)
-            p0.x += dragOffset.x;
+            p0.x = std::min(p0.x + dragOffset.x, p1.x);
         if ((Pivot & rect_region::right) == rect_region::right)
-            p1.x += dragOffset.x;
+            p1.x = std::max(p1.x + dragOffset.x, p0.x);
 
-        auto min = p0.cwise_min(p1);
-        auto max = p0.cwise_max(p1);
+        auto newBounds = ax::rect(p0, p1);
+        auto newSize   = newBounds.size;
 
-        SizedNode->Bounds      = ax::rect(min, max);
-        SizedNode->GroupBounds = SizedNode->Bounds.expanded(
+        Stable = true;
+
+        // Apply dynamic minimum size constrains. It will always be one frame off
+        if (SizedNode->Bounds.w > LastSize.w)
+        {
+            if ((Pivot & rect_region::left) == rect_region::left)
+            {
+                  LastSize.w = newBounds.w;
+                 newBounds.w = SizedNode->Bounds.w;
+                 newBounds.x = StartBounds.right() - newBounds.w;
+            }
+            else
+            {
+                  LastSize.w = newBounds.w;
+                 newBounds.w = SizedNode->Bounds.w;
+            }
+        }
+        else
+        {
+            if (LastSize.w != newBounds.w)
+                Stable &= false;
+
+            LastSize.w = newBounds.w;
+        }
+
+        if (SizedNode->Bounds.h > LastSize.h)
+        {
+            if ((Pivot & rect_region::top) == rect_region::top)
+            {
+                 LastSize.h = newBounds.h;
+                newBounds.h = SizedNode->Bounds.h;
+                newBounds.y = StartBounds.bottom() - newBounds.h;
+            }
+            else
+            {
+                 LastSize.h = newBounds.h;
+                newBounds.h = SizedNode->Bounds.h;
+            }
+        }
+        else
+        {
+            if (LastSize.h != newBounds.h)
+                Stable &= false;
+
+            LastSize.h = newBounds.h;
+        }
+
+        SizedNode->Bounds      = newBounds;
+        SizedNode->GroupBounds = newBounds.expanded(
             StartBounds.left()        - StartGroupBounds.left(),
             StartBounds.top()         - StartGroupBounds.top(),
             StartGroupBounds.right()  - StartBounds.right(),
@@ -2564,6 +2634,15 @@ void ed::SizeAction::ShowMetrics()
     ImGui::Text("%s:", GetName());
     ImGui::Text("    Active: %s", IsActive ? "yes" : "no");
     ImGui::Text("    Node: %s (%d)", getObjectName(SizedNode), SizedNode ? SizedNode->ID : 0);
+    if (SizedNode && IsActive)
+    {
+        ImGui::Text("    Bounds: { x=%d y=%d w=%d h=%d }", SizedNode->Bounds.x, SizedNode->Bounds.y, SizedNode->Bounds.w, SizedNode->Bounds.h);
+        ImGui::Text("    Group Bounds: { x=%d y=%d w=%d h=%d }", SizedNode->GroupBounds.x, SizedNode->GroupBounds.y, SizedNode->GroupBounds.w, SizedNode->GroupBounds.h);
+        ImGui::Text("    Start Bounds: { x=%d y=%d w=%d h=%d }", StartBounds.x, StartBounds.y, StartBounds.w, StartBounds.h);
+        ImGui::Text("    Start Group Bounds: { x=%d y=%d w=%d h=%d }", StartGroupBounds.x, StartGroupBounds.y, StartGroupBounds.w, StartGroupBounds.h);
+        ImGui::Text("    Last Size: { w=%d h=%d }", LastSize.w, LastSize.h);
+        ImGui::Text("    Stable: %s", Stable ? "Yes" : "No");
+    }
 }
 
 ax::rect_region ed::SizeAction::GetRegion(Node* node)
@@ -3587,9 +3666,6 @@ void ed::NodeBuilder::End()
     else
         CurrentNode->Type        = NodeType::Node;
 
-    if (CurrentNode->IsVisible())
-        CurrentNode->Draw(GetBackgroundDrawList());
-
     ImGui::PopStyleVar();
 
     CurrentNode = nullptr;
@@ -3711,17 +3787,17 @@ void ed::NodeBuilder::Group(const ImVec2& size)
     GroupBounds = ImGui_GetItemRect();
 }
 
-ImDrawList* ed::NodeBuilder::GetBackgroundDrawList() const
+ImDrawList* ed::NodeBuilder::GetUserBackgroundDrawList() const
 {
-    return GetBackgroundDrawList(CurrentNode);
+    return GetUserBackgroundDrawList(CurrentNode);
 }
 
-ImDrawList* ed::NodeBuilder::GetBackgroundDrawList(Node* node) const
+ImDrawList* ed::NodeBuilder::GetUserBackgroundDrawList(Node* node) const
 {
     if (node && node->IsLive)
     {
         auto drawList = ImGui::GetWindowDrawList();
-        drawList->ChannelsSetCurrent(node->Channel + c_NodeBackgroundChannel);
+        drawList->ChannelsSetCurrent(node->Channel + c_NodeUserBackgroundChannel);
         return drawList;
     }
     else

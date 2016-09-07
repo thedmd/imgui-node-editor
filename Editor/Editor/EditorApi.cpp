@@ -135,7 +135,7 @@ void ax::Editor::Group(const ImVec2& size)
 ImDrawList* ax::Editor::GetNodeBackgroundDrawList(int nodeId)
 {
     if (auto node = s_Editor->FindNode(nodeId))
-        return s_Editor->GetNodeBuilder().GetBackgroundDrawList(node);
+        return s_Editor->GetNodeBuilder().GetUserBackgroundDrawList(node);
     else
         return nullptr;
 }
