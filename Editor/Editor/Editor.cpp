@@ -940,26 +940,30 @@ void ed::Context::End()
     SelectAction.Draw(drawList);
 
     // Bring active node to front
-    if (control.ActiveNode)
+    if (control.ActiveNode && control.ActiveNode->Type != NodeType::Group)
     {
         auto activeNodeIt = std::find(Nodes.begin(), Nodes.end(), control.ActiveNode);
         std::rotate(activeNodeIt, activeNodeIt + 1, Nodes.end());
     }
 
-    // Bring all groups before regular nodes
-    auto groupsItEnd = std::stable_partition(Nodes.begin(), Nodes.end(), [](Node* node) { return node->Type == NodeType::Group; });
-
-    // Sort groups by area
-    std::sort(Nodes.begin(), groupsItEnd, [this](Node* lhs, Node* rhs)
+    // Sort nodes if bounds of node changed
+    if (((Settings.Reason & (SaveReasonFlags::Position | SaveReasonFlags::Size)) != SaveReasonFlags::None))
     {
-        const auto& lhsSize = lhs == SizeAction.SizedNode ? SizeAction.GetStartGroupBounds().size : lhs->GroupBounds.size;
-        const auto& rhsSize = rhs == SizeAction.SizedNode ? SizeAction.GetStartGroupBounds().size : rhs->GroupBounds.size;
+        // Bring all groups before regular nodes
+        auto groupsItEnd = std::stable_partition(Nodes.begin(), Nodes.end(), [](Node* node) { return node->Type == NodeType::Group; });
 
-        const auto lhsArea = lhsSize.w * lhsSize.h;
-        const auto rhsArea = rhsSize.w * rhsSize.h;
+        // Sort groups by area
+        std::sort(Nodes.begin(), groupsItEnd, [this](Node* lhs, Node* rhs)
+        {
+            const auto& lhsSize = lhs == SizeAction.SizedNode ? SizeAction.GetStartGroupBounds().size : lhs->GroupBounds.size;
+            const auto& rhsSize = rhs == SizeAction.SizedNode ? SizeAction.GetStartGroupBounds().size : rhs->GroupBounds.size;
 
-        return lhsArea > rhsArea;
-    });
+            const auto lhsArea = lhsSize.w * lhsSize.h;
+            const auto rhsArea = rhsSize.w * rhsSize.h;
+
+            return lhsArea > rhsArea;
+        });
+    }
 
     // Every node has few channels assigned. Grow channel list
     // to hold twice as much of channels and place them in
@@ -982,6 +986,8 @@ void ed::Context::End()
             node->Channel = targetChannel;
             targetChannel += c_ChannelsPerNode;
         };
+
+        auto groupsItEnd = std::find_if(Nodes.begin(), Nodes.end(), [](Node* node) { return node->Type != NodeType::Group; });
 
         // Copy group nodes
         std::for_each(Nodes.begin(), groupsItEnd, copyNode);
@@ -2610,6 +2616,12 @@ bool ed::SizeAction::Process(const Control& control)
     }
     else if (!control.ActiveNode)
     {
+        if (SizedNode->Bounds.location != StartBounds.location || SizedNode->GroupBounds.location != StartGroupBounds.location)
+            Editor->MarkSettingsDirty(SaveReasonFlags::Position);
+
+        if (SizedNode->Bounds.size != StartBounds.size || SizedNode->GroupBounds.size != StartGroupBounds.size)
+            Editor->MarkSettingsDirty(SaveReasonFlags::Size);
+
         SizedNode = nullptr;
         IsActive = false;
         return true;
