@@ -356,11 +356,12 @@ void Application_Initialize()
     SpawnTreeTask2Node();
 
     SpawnComment();
+    SpawnComment();
 
     BuildNodes();
 
-//     s_Links.push_back(Link(GetNextId(), s_Nodes[5].Outputs[0].ID, s_Nodes[6].Inputs[0].ID));
-//     s_Links.push_back(Link(GetNextId(), s_Nodes[5].Outputs[0].ID, s_Nodes[7].Inputs[0].ID));
+     s_Links.push_back(Link(GetNextId(), s_Nodes[5].Outputs[0].ID, s_Nodes[6].Inputs[0].ID));
+     s_Links.push_back(Link(GetNextId(), s_Nodes[5].Outputs[0].ID, s_Nodes[7].Inputs[0].ID));
 
     s_HeaderBackground = ImGui_LoadTexture("../Data/BlueprintBackground.png");
     s_SampleImage = ImGui_LoadTexture("../Data/Lena512.png");
@@ -908,6 +909,9 @@ void Application_Frame()
             if (node.Type != NodeType::Comment)
                 continue;
 
+            ImGui::PushStyleVar(ImGuiStyleVar_Alpha, 0.5f);
+            ed::PushStyleColor(ed::StyleColor_NodeBg, ImColor(255, 255, 255, 64));
+            ed::PushStyleColor(ed::StyleColor_NodeBorder, ImColor(255, 255, 255, 64));
             ed::BeginNode(node.ID);
             ImGui::BeginVertical("content");
             ImGui::BeginHorizontal("horizontal");
@@ -918,6 +922,8 @@ void Application_Frame()
             ed::Group(node.Size);
             ImGui::EndVertical();
             ed::EndNode();
+            ed::PopStyleColor(2);
+            ImGui::PopStyleVar();
         }
 
         for (auto& link : s_Links)
@@ -1210,7 +1216,6 @@ void Application_Frame()
     drawList->AddBezierCurve(to_imvec(c.p0), to_imvec(c.p1), to_imvec(c.p2), to_imvec(c.p3), IM_COL32(255, 255, 255, 255), 1.0f);
     cubic_bezier_subdivide(acceptPoint, c);
 */
-
 
     ed::End();
 
