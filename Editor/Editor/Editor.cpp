@@ -1079,7 +1079,7 @@ void ed::Context::End()
         drawList->AddRect(Canvas.WindowScreenPos,                Canvas.WindowScreenPos + Canvas.WindowScreenSize,                ImColor(borderColor),      style.WindowRounding);
     }
 
-    ShowMetrics(control);
+    //ShowMetrics(control);
 
     // fringe scale
     ImGui::PopStyleVar();
