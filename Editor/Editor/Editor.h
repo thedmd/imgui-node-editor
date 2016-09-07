@@ -331,10 +331,10 @@ struct Canvas
 
     ax::rectf GetVisibleBounds();
 
-    ImVec2 FromScreen(ImVec2 point);
-    ImVec2 ToScreen(ImVec2 point);
-    ImVec2 FromClient(ImVec2 point);
-    ImVec2 ToClient(ImVec2 point);
+    ImVec2 FromScreen(ImVec2 point) const;
+    ImVec2 ToScreen(ImVec2 point) const;
+    ImVec2 FromClient(ImVec2 point) const;
+    ImVec2 ToClient(ImVec2 point) const;
 };
 
 struct ScrollAction;
@@ -808,6 +808,24 @@ struct NodeBuilder
     ImDrawList* GetUserBackgroundDrawList(Node* node) const;
 };
 
+struct HintBuilder
+{
+    Context* const Editor;
+    bool  IsActive;
+    Node* CurrentNode;
+
+    HintBuilder(Context* editor);
+
+    bool Begin(int nodeId);
+    void End();
+
+    ImVec2 GetGroupMin();
+    ImVec2 GetGroupMax();
+
+    ImDrawList* GetForegroundDrawList();
+    ImDrawList* GetBackgroundDrawList();
+};
+
 struct Style: ax::Editor::Style
 {
     void PushColor(StyleColor colorIndex, const ImVec4& color);
@@ -854,12 +872,15 @@ struct Context
     bool DoLink(int id, int startPinId, int endPinId, ImU32 color, float thickness);
 
     NodeBuilder& GetNodeBuilder() { return NodeBuilder; }
+    HintBuilder& GetHintBuilder() { return HintBuilder; }
 
     EditorAction* GetCurrentAction() { return CurrentAction; }
 
     CreateItemAction& GetItemCreator() { return CreateItemAction; }
     DeleteItemsAction& GetItemDeleter() { return DeleteItemsAction; }
     ContextMenuAction& GetContextMenu() { return ContextMenuAction; }
+
+    const Canvas& GetCanvas() const { return Canvas; }
 
     void SetNodePosition(int nodeId, const ImVec2& screenPosition);
     ImVec2 GetNodePosition(int nodeId);
@@ -971,6 +992,7 @@ private:
     bool                IsSuspended;
 
     NodeBuilder         NodeBuilder;
+    HintBuilder         HintBuilder;
 
     EditorAction*       CurrentAction;
     ScrollAction        ScrollAction;

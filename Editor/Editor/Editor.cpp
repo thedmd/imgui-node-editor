@@ -14,7 +14,7 @@ namespace ed = ax::Editor::Detail;
 //------------------------------------------------------------------------------
 static const int c_BackgroundChannelCount = 2;
 static const int c_LinkChannelCount       = 4;
-static const int c_UserLayersCount        = 1;
+static const int c_UserLayersCount        = 3;
 
 static const int c_UserLayerChannelStart  = 0;
 static const int c_BackgroundChannelStart = c_UserLayerChannelStart  + c_UserLayersCount;
@@ -23,6 +23,10 @@ static const int c_NodeStartChannel       = c_LinkStartChannel       + c_LinkCha
 
 static const int c_BackgroundChannel_Grid          = c_BackgroundChannelStart + 0;
 static const int c_BackgroundChannel_SelectionRect = c_BackgroundChannelStart + 1;
+
+static const int c_UserChannel_Content         = c_UserLayerChannelStart + 0;
+static const int c_UserChannel_HintsBackground = c_UserLayerChannelStart + 1;
+static const int c_UserChannel_Hints           = c_UserLayerChannelStart + 2;
 
 static const int c_LinkChannel_Selection  = c_LinkStartChannel + 0;
 static const int c_LinkChannel_Links      = c_LinkStartChannel + 1;
@@ -36,7 +40,7 @@ static const int c_NodeUserBackgroundChannel = 2;
 static const int c_NodePinChannel            = 3;
 static const int c_NodeContentChannel        = 4;
 
-static const float c_GroupSelectThickness       = 5.0f;  // canvas pixels
+static const float c_GroupSelectThickness       = 3.0f;  // canvas pixels
 static const float c_LinkSelectThickness        = 5.0f;  // canvas pixels
 static const float c_NavigationZoomMargin       = 0.1f;  // percentage of visible bounds
 static const float c_MouseZoomDuration          = 0.15f; // seconds
@@ -783,6 +787,7 @@ ed::Context::Context(const ax::Editor::Config* config):
     Canvas(),
     IsSuspended(false),
     NodeBuilder(this),
+    HintBuilder(this),
     CurrentAction(nullptr),
     ScrollAction(this),
     SizeAction(this),
@@ -1056,12 +1061,12 @@ void ed::Context::End()
         auto scale      = Canvas.Zoom;
 
         ImDrawList_TransformChannels(drawList,                                 0, c_BackgroundChannel_Grid, preOffset, scale, postOffset);
-        ImDrawList_TransformChannels(drawList, c_BackgroundChannel_SelectionRect, drawList->_ChannelsCount, preOffset, scale, postOffset);
+        ImDrawList_TransformChannels(drawList, c_BackgroundChannel_SelectionRect, drawList->_ChannelsCount - 2, preOffset, scale, postOffset);
 
         auto clipTranslation = Canvas.WindowScreenPos - Canvas.FromScreen(Canvas.WindowScreenPos);
         ImGui::PushClipRect(Canvas.WindowScreenPos + ImVec2(1, 1), Canvas.WindowScreenPos + Canvas.WindowScreenSize - ImVec2(1, 1), false);
         ImDrawList_TranslateAndClampClipRects(drawList,                                 0, c_BackgroundChannel_Grid, clipTranslation);
-        ImDrawList_TranslateAndClampClipRects(drawList, c_BackgroundChannel_SelectionRect, drawList->_ChannelsCount, clipTranslation);
+        ImDrawList_TranslateAndClampClipRects(drawList, c_BackgroundChannel_SelectionRect, drawList->_ChannelsCount - 2, clipTranslation);
         ImGui::PopClipRect();
 
         // #debug: Static grid in local space
@@ -1508,7 +1513,7 @@ void ed::Context::SetUserContext()
     ImGui::SetCursorScreenPos(ImVec2(floorf(mousePos.x), floorf(mousePos.y)));
 
     auto drawList = ImGui::GetWindowDrawList();
-    drawList->ChannelsSetCurrent(c_UserLayerChannelStart);
+    drawList->ChannelsSetCurrent(c_UserChannel_Content);
 
     // #debug
     //drawList->AddCircleFilled(ImGui::GetMousePos(), 4, IM_COL32(0, 255, 0, 255));
@@ -1872,28 +1877,28 @@ ax::rectf ed::Canvas::GetVisibleBounds()
         to_pointf(FromScreen(WindowScreenPos + WindowScreenSize)));
 }
 
-ImVec2 ed::Canvas::FromScreen(ImVec2 point)
+ImVec2 ed::Canvas::FromScreen(ImVec2 point) const
 {
     return ImVec2(
         (point.x - WindowScreenPos.x - ClientOrigin.x) * InvZoom.x,
         (point.y - WindowScreenPos.y - ClientOrigin.y) * InvZoom.y);
 }
 
-ImVec2 ed::Canvas::ToScreen(ImVec2 point)
+ImVec2 ed::Canvas::ToScreen(ImVec2 point) const
 {
     return ImVec2(
         (point.x * Zoom.x + ClientOrigin.x + WindowScreenPos.x),
         (point.y * Zoom.y + ClientOrigin.y + WindowScreenPos.y));
 }
 
-ImVec2 ed::Canvas::FromClient(ImVec2 point)
+ImVec2 ed::Canvas::FromClient(ImVec2 point) const
 {
     return ImVec2(
         (point.x - ClientOrigin.x) * InvZoom.x,
         (point.y - ClientOrigin.y) * InvZoom.y);
 }
 
-ImVec2 ed::Canvas::ToClient(ImVec2 point)
+ImVec2 ed::Canvas::ToClient(ImVec2 point) const
 {
     return ImVec2(
         (point.x * Zoom.x + ClientOrigin.x),
@@ -2741,7 +2746,7 @@ ed::EditorAction::AcceptResult ed::DragAction::Accept(const Control& control)
     if (IsActive)
         return False;
 
-    if (control.ActiveObject && ImGui::IsMouseDragging(0))
+    if (control.ActiveObject && ImGui::IsMouseDragging(0, ImGui::GetIO().MouseDragThreshold * Editor->GetCanvas().Zoom.y))
     {
         if (!control.ActiveObject->AcceptDrag())
             return False;
@@ -3856,6 +3861,108 @@ ImDrawList* ed::NodeBuilder::GetUserBackgroundDrawList(Node* node) const
     }
     else
         return nullptr;
+}
+
+
+
+
+//------------------------------------------------------------------------------
+//
+// Node Builder
+//
+//------------------------------------------------------------------------------
+ed::HintBuilder::HintBuilder(Context* editor):
+    Editor(editor),
+    IsActive(false),
+    CurrentNode(nullptr)
+{
+}
+
+bool ed::HintBuilder::Begin(int nodeId)
+{
+    assert(nullptr == CurrentNode);
+
+    auto& canvas = Editor->GetCanvas();
+
+    const float c_min_zoom = 0.75f;
+    const float c_max_zoom = 0.50f;
+
+    if (canvas.Zoom.y > 0.75f)
+        return false;
+
+    auto node = Editor->FindNode(nodeId);
+    if (!IsGroup(node))
+        return false;
+
+    CurrentNode = node;
+
+    Editor->Suspend();
+
+    const auto alpha = std::max(0.0f, std::min(1.0f, (canvas.Zoom.y - c_min_zoom) / (c_max_zoom - c_min_zoom)));
+
+    ImGui::GetWindowDrawList()->ChannelsSetCurrent(c_UserChannel_HintsBackground);
+    ImGui::PushClipRect(canvas.WindowScreenPos + ImVec2(1, 1), canvas.WindowScreenPos + canvas.WindowScreenSize - ImVec2(1, 1), false);
+
+    ImGui::GetWindowDrawList()->ChannelsSetCurrent(c_UserChannel_Hints);
+    ImGui::PushClipRect(canvas.WindowScreenPos + ImVec2(1, 1), canvas.WindowScreenPos + canvas.WindowScreenSize - ImVec2(1, 1), false);
+
+    ImGui::PushStyleVar(ImGuiStyleVar_AntiAliasFringeScale, 1.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_Alpha, alpha);
+
+    IsActive = true;
+
+    return true;
+}
+
+void ed::HintBuilder::End()
+{
+    if (!IsActive)
+        return;
+
+    ImGui::PopClipRect();
+    ImGui::PopClipRect();
+    ImGui::PopStyleVar(2);
+
+    Editor->Resume();
+
+    IsActive    = false;
+    CurrentNode = nullptr;
+}
+
+ImVec2 ed::HintBuilder::GetGroupMin()
+{
+    assert(nullptr != CurrentNode);
+
+    return Editor->GetCanvas().ToScreen(to_imvec(CurrentNode->Bounds.top_left()));
+}
+
+ImVec2 ed::HintBuilder::GetGroupMax()
+{
+    assert(nullptr != CurrentNode);
+
+    return Editor->GetCanvas().ToScreen(to_imvec(CurrentNode->Bounds.bottom_right()));
+}
+
+ImDrawList* ed::HintBuilder::GetForegroundDrawList()
+{
+    assert(nullptr != CurrentNode);
+
+    auto drawList = ImGui::GetWindowDrawList();
+
+    drawList->ChannelsSetCurrent(c_UserChannel_Hints);
+
+    return drawList;
+}
+
+ImDrawList* ed::HintBuilder::GetBackgroundDrawList()
+{
+    assert(nullptr != CurrentNode);
+
+    auto drawList = ImGui::GetWindowDrawList();
+
+    drawList->ChannelsSetCurrent(c_UserChannel_HintsBackground);
+
+    return drawList;
 }
 
 

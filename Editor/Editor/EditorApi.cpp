@@ -122,14 +122,44 @@ void ax::Editor::EndPin()
     s_Editor->GetNodeBuilder().EndPin();
 }
 
+void ax::Editor::Group(const ImVec2& size)
+{
+    s_Editor->GetNodeBuilder().Group(size);
+}
+
 void ax::Editor::EndNode()
 {
     s_Editor->GetNodeBuilder().End();
 }
 
-void ax::Editor::Group(const ImVec2& size)
+bool ax::Editor::BeginGroupHint(int nodeId)
 {
-    s_Editor->GetNodeBuilder().Group(size);
+    return s_Editor->GetHintBuilder().Begin(nodeId);
+}
+
+ImVec2 ax::Editor::GetGroupMin()
+{
+    return s_Editor->GetHintBuilder().GetGroupMin();
+}
+
+ImVec2 ax::Editor::GetGroupMax()
+{
+    return s_Editor->GetHintBuilder().GetGroupMax();
+}
+
+ImDrawList* ax::Editor::GetHintForegroundDrawList()
+{
+    return s_Editor->GetHintBuilder().GetForegroundDrawList();
+}
+
+ImDrawList* ax::Editor::GetHintBackgroundDrawList()
+{
+    return s_Editor->GetHintBuilder().GetBackgroundDrawList();
+}
+
+void ax::Editor::EndGroupHint()
+{
+    s_Editor->GetHintBuilder().End();
 }
 
 ImDrawList* ax::Editor::GetNodeBackgroundDrawList(int nodeId)

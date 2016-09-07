@@ -208,6 +208,13 @@ void EndPin();
 void Group(const ImVec2& size);
 void EndNode();
 
+bool BeginGroupHint(int nodeId);
+ImVec2 GetGroupMin();
+ImVec2 GetGroupMax();
+ImDrawList* GetHintForegroundDrawList();
+ImDrawList* GetHintBackgroundDrawList();
+void EndGroupHint();
+
 // TODO: Add a way to manage node background channels
 ImDrawList* GetNodeBackgroundDrawList(int nodeId);
 
