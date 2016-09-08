@@ -574,10 +574,10 @@ void ed::Node::GetGroupedNodes(std::vector<Node*>& result, bool append)
         return;
 
     const auto firstNodeIndex = result.size();
-    Editor->FindNodesInRect(static_cast<ax::rectf>(GroupBounds), result, append, false);
+    Editor->FindNodesInRect(static_cast<ax::rectf>(GroupBounds), result, true, false);
 
     for (auto index = firstNodeIndex, lastNodeIndex = result.size(); index < result.size(); ++index)
-        result[index]->GetGroupedNodes(result, append);
+        result[index]->GetGroupedNodes(result, true);
 }
 
 
@@ -973,15 +973,32 @@ void ed::Context::End()
     // Draw selection rectangle
     SelectAction.Draw(drawList);
 
-    // Bring active node to front
-    if (control.ActiveNode && !IsGroup(control.ActiveNode))
+    bool sortGroups = false;
+    if (control.ActiveNode)
     {
-        auto activeNodeIt = std::find(Nodes.begin(), Nodes.end(), control.ActiveNode);
-        std::rotate(activeNodeIt, activeNodeIt + 1, Nodes.end());
+        if (!IsGroup(control.ActiveNode))
+        {
+            // Bring active node to front
+            auto activeNodeIt = std::find(Nodes.begin(), Nodes.end(), control.ActiveNode);
+            std::rotate(activeNodeIt, activeNodeIt + 1, Nodes.end());
+        }
+        else if (!isDragging && CurrentAction && CurrentAction->AsDrag())
+        {
+            // Bring content of dragged group to front
+            std::vector<Node*> nodes;
+            control.ActiveNode->GetGroupedNodes(nodes);
+
+            std::stable_partition(Nodes.begin(), Nodes.end(), [&nodes](Node* node)
+            {
+                return std::find(nodes.begin(), nodes.end(), node) == nodes.end();
+            });
+
+            sortGroups = true;
+        }
     }
 
     // Sort nodes if bounds of node changed
-    if (((Settings.Reason & (SaveReasonFlags::Position | SaveReasonFlags::Size)) != SaveReasonFlags::None))
+    if (sortGroups || ((Settings.Reason & (SaveReasonFlags::Position | SaveReasonFlags::Size)) != SaveReasonFlags::None))
     {
         // Bring all groups before regular nodes
         auto groupsItEnd = std::stable_partition(Nodes.begin(), Nodes.end(), IsGroup);
@@ -1098,7 +1115,7 @@ void ed::Context::End()
         drawList->AddRect(Canvas.WindowScreenPos,                Canvas.WindowScreenPos + Canvas.WindowScreenSize,                ImColor(borderColor),      style.WindowRounding);
     }
 
-    ShowMetrics(control);
+    //ShowMetrics(control);
 
     // fringe scale
     ImGui::PopStyleVar();

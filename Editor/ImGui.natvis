@@ -111,4 +111,8 @@
     </Expand>
   </Type>
 
+    <Type Name="ax::Editor::Detail::Object">
+        <DisplayString>{{ ID={ID} Live={IsLive} }}</DisplayString>
+    </Type>
+
 </AutoVisualizer>
