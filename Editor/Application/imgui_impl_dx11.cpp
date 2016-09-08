@@ -284,28 +284,50 @@ void ImGui_ImplDX11_RenderDrawLists(ImDrawData* draw_data)
     g_Gizmos.clear();
 }
 
+static void ImGui_ImplDX11_CaptureMouse()
+{
+    ImGuiIO& io = ImGui::GetIO();
+
+    if (!io.MouseDown[0] && !io.MouseDown[1] && !io.MouseDown[2])
+        SetCapture(g_hWnd);
+}
+
+static void ImGui_ImplDX11_ReleaseMouse()
+{
+    ImGuiIO& io = ImGui::GetIO();
+
+    if (!io.MouseDown[0] && !io.MouseDown[1] && !io.MouseDown[2])
+        ReleaseCapture();
+}
+
 IMGUI_API LRESULT ImGui_ImplDX11_WndProcHandler(HWND, UINT msg, WPARAM wParam, LPARAM lParam)
 {
     ImGuiIO& io = ImGui::GetIO();
     switch (msg)
     {
     case WM_LBUTTONDOWN:
+        ImGui_ImplDX11_CaptureMouse();
         io.MouseDown[0] = true;
         return 0;
     case WM_LBUTTONUP:
         io.MouseDown[0] = false;
+        ImGui_ImplDX11_ReleaseMouse();
         return 0;
     case WM_RBUTTONDOWN:
+        ImGui_ImplDX11_CaptureMouse();
         io.MouseDown[1] = true;
         return 0;
     case WM_RBUTTONUP:
         io.MouseDown[1] = false;
+        ImGui_ImplDX11_ReleaseMouse();
         return 0;
     case WM_MBUTTONDOWN:
+        ImGui_ImplDX11_CaptureMouse();
         io.MouseDown[2] = true;
         return 0;
     case WM_MBUTTONUP:
         io.MouseDown[2] = false;
+        ImGui_ImplDX11_ReleaseMouse();
         return 0;
     case WM_MOUSEWHEEL:
         io.MouseWheel += GET_WHEEL_DELTA_WPARAM(wParam) > 0 ? +1.0f : -1.0f;
