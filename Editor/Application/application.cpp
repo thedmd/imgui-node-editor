@@ -932,6 +932,8 @@ void Application_Frame()
             {
                 auto alpha = static_cast<int>(commentAlpha * ImGui::GetStyle().Alpha * 255);
 
+                ImGui::PushStyleVar(ImGuiStyleVar_Alpha, commentAlpha * ImGui::GetStyle().Alpha);
+
                 auto min = ed::GetGroupMin();
                 auto max = ed::GetGroupMax();
 
@@ -954,6 +956,8 @@ void Application_Frame()
                     to_imvec(hintFrameBounds.top_left()),
                     to_imvec(hintFrameBounds.bottom_right()),
                     IM_COL32(255, 255, 255, 128 * alpha / 255), 4.0f);
+
+                ImGui::PopStyleVar();
             }
             ed::EndGroupHint();
         }
