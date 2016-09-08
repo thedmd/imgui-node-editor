@@ -284,6 +284,38 @@ void ImGui_ImplDX11_RenderDrawLists(ImDrawData* draw_data)
     g_Gizmos.clear();
 }
 
+static void ImGui_UpdateCursor()
+{
+    RECT rect;
+    GetClientRect(g_hWnd, &rect);
+
+    bool cursorInWindow = false;
+    POINT cursorPos;
+    if (GetCursorPos(&cursorPos))
+    {
+        ScreenToClient(g_hWnd, &cursorPos);
+
+        cursorInWindow = PtInRect(&rect, cursorPos) == TRUE;
+    }
+
+    auto currentCursor = cursorInWindow ? ImGui::GetMouseCursor() : ImGuiMouseCursor_Arrow;
+    HCURSOR hCursor = nullptr;
+
+    switch (currentCursor)
+    {
+        default:
+        case ImGuiMouseCursor_Arrow:      hCursor = LoadCursor(nullptr, IDC_ARROW);    break;
+        case ImGuiMouseCursor_TextInput:  hCursor = LoadCursor(nullptr, IDC_IBEAM);    break;
+        case ImGuiMouseCursor_Move:       hCursor = LoadCursor(nullptr, IDC_SIZEALL);  break;
+        case ImGuiMouseCursor_ResizeNS:   hCursor = LoadCursor(nullptr, IDC_SIZENS);   break;
+        case ImGuiMouseCursor_ResizeEW:   hCursor = LoadCursor(nullptr, IDC_SIZEWE);   break;
+        case ImGuiMouseCursor_ResizeNESW: hCursor = LoadCursor(nullptr, IDC_SIZENESW); break;
+        case ImGuiMouseCursor_ResizeNWSE: hCursor = LoadCursor(nullptr, IDC_SIZENWSE); break;
+    }
+
+    SetCursor(hCursor);
+}
+
 static void ImGui_ImplDX11_CaptureMouse()
 {
     ImGuiIO& io = ImGui::GetIO();
@@ -335,6 +367,10 @@ IMGUI_API LRESULT ImGui_ImplDX11_WndProcHandler(HWND, UINT msg, WPARAM wParam, L
     case WM_MOUSEMOVE:
         io.MousePos.x = (signed short)(lParam);
         io.MousePos.y = (signed short)(lParam >> 16);
+
+        if (io.MouseDown[0] || io.MouseDown[1] || io.MouseDown[2])
+            ImGui_UpdateCursor();
+
         return 0;
     case WM_KEYDOWN:
         if (wParam < 256)
@@ -349,6 +385,9 @@ IMGUI_API LRESULT ImGui_ImplDX11_WndProcHandler(HWND, UINT msg, WPARAM wParam, L
         if (wParam > 0 && wParam < 0x10000)
             io.AddInputCharacter((unsigned short)wParam);
         return 0;
+    case WM_SETCURSOR:
+        ImGui_UpdateCursor();
+        return TRUE;
     }
     return 0;
 }
@@ -679,43 +718,6 @@ void ImGui_ImplDX11_Shutdown()
     g_hWnd = (HWND)0;
 }
 
-static void ImGui_UpdateCursor()
-{
-    RECT rect;
-    GetClientRect(g_hWnd, &rect);
-
-    bool cursorInWindow = false;
-    POINT cursorPos;
-    if (GetCursorPos(&cursorPos))
-    {
-        ScreenToClient(g_hWnd, &cursorPos);
-
-        cursorInWindow = PtInRect(&rect, cursorPos) == TRUE;
-    }
-
-    if (cursorInWindow)
-    {
-        HCURSOR hCursor = nullptr;
-
-        auto currentCursor = ImGui::GetMouseCursor();
-        switch (currentCursor)
-        {
-            default:
-            case ImGuiMouseCursor_Arrow:      hCursor = LoadCursor(nullptr, IDC_ARROW);    break;
-            case ImGuiMouseCursor_TextInput:  hCursor = LoadCursor(nullptr, IDC_IBEAM);    break;
-            case ImGuiMouseCursor_Move:       hCursor = LoadCursor(nullptr, IDC_SIZEALL);  break;
-            case ImGuiMouseCursor_ResizeNS:   hCursor = LoadCursor(nullptr, IDC_SIZENS);   break;
-            case ImGuiMouseCursor_ResizeEW:   hCursor = LoadCursor(nullptr, IDC_SIZEWE);   break;
-            case ImGuiMouseCursor_ResizeNESW: hCursor = LoadCursor(nullptr, IDC_SIZENESW); break;
-            case ImGuiMouseCursor_ResizeNWSE: hCursor = LoadCursor(nullptr, IDC_SIZENWSE); break;
-        }
-
-        SetCursor(hCursor);
-    }
-    else
-        SetCursor(LoadCursor(nullptr, IDC_ARROW));
-}
-
 void ImGui_ImplDX11_NewFrame()
 {
     if (!g_pSampler)
@@ -744,7 +746,7 @@ void ImGui_ImplDX11_NewFrame()
     // io.MouseDown : filled by WM_*BUTTON* events
     // io.MouseWheel : filled by WM_MOUSEWHEEL events
 
-    ImGui_UpdateCursor();
+    //ImGui_UpdateCursor();
 
     // Start the frame
     ImGui::NewFrame();
