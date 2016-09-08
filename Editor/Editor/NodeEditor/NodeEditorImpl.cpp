@@ -742,7 +742,10 @@ ax::rectf ed::Link::GetBounds() const
             const auto p1 = curve.p0 - start_dir * StartPin->ArrowSize;
             const auto min = p0.cwise_min(p1);
             const auto max = p0.cwise_max(p1);
-            bounds = make_union(bounds, rectf(min, max));
+            auto arrowBounds = rectf(min, max);
+            arrowBounds.w = std::max(arrowBounds.w, 1.0f);
+            arrowBounds.h = std::max(arrowBounds.h, 1.0f);
+            bounds = make_union(bounds, arrowBounds);
         }
 
         if (EndPin->ArrowSize)
@@ -752,7 +755,10 @@ ax::rectf ed::Link::GetBounds() const
             const auto p1 = curve.p3 + end_dir * EndPin->ArrowSize;
             const auto min = p0.cwise_min(p1);
             const auto max = p0.cwise_max(p1);
-            bounds = make_union(bounds, rectf(min, max));
+            auto arrowBounds = rectf(min, max);
+            arrowBounds.w = std::max(arrowBounds.w, 1.0f);
+            arrowBounds.h = std::max(arrowBounds.h, 1.0f);
+            bounds = make_union(bounds, arrowBounds);
         }
 
         return bounds;
@@ -2167,7 +2173,7 @@ void ed::FlowAnimation::Flow(ed::Link* link, float markerDistance, float speed, 
 
 void ed::FlowAnimation::Draw(ImDrawList* drawList)
 {
-    if (!IsPlaying() || !IsLinkValid())
+    if (!IsPlaying() || !IsLinkValid() || !Link->IsVisible())
         return;
 
     if (!IsPathValid())
