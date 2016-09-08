@@ -1047,9 +1047,6 @@ void Application_Frame()
             else
                 newLinkPin = nullptr;
 
-            if (!ImGui::IsWindowHovered())
-                newLinkPin = nullptr;
-
             ed::EndCreate();
 
             if (ed::BeginDelete())
