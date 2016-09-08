@@ -1,19 +1,19 @@
 #pragma once
-#include "ImGuiInterop.h"
+#include "../Common/ImGuiInterop.h"
 namespace ax { using namespace ImGuiInterop; }
-#include "Types.h"
-#include "EditorApi.h"
+#include "../Common/Types.h"
+#include "../NodeEditor.h"
 #define PICOJSON_USE_LOCALE 0
 #include "picojson.h"
 #include <vector>
 
 namespace ax {
-namespace Editor {
+namespace NodeEditor {
 namespace Detail {
 
 
 //------------------------------------------------------------------------------
-namespace ed = ax::Editor::Detail;
+namespace ed = ax::NodeEditor::Detail;
 
 
 //------------------------------------------------------------------------------
@@ -31,12 +31,12 @@ enum class ObjectType
     Node, Pin
 };
 
-using ax::Editor::PinKind;
-using ax::Editor::StyleColor;
-using ax::Editor::StyleVar;
-using ax::Editor::SaveReasonFlags;
+using ax::NodeEditor::PinKind;
+using ax::NodeEditor::StyleColor;
+using ax::NodeEditor::StyleVar;
+using ax::NodeEditor::SaveReasonFlags;
 
-struct Context;
+struct EditorContext;
 
 struct Node;
 struct Pin;
@@ -56,12 +56,12 @@ struct Object
     inline friend DrawFlags& operator|=(DrawFlags& lhs, DrawFlags rhs) { lhs = lhs | rhs; return lhs; }
     inline friend DrawFlags& operator&=(DrawFlags& lhs, DrawFlags rhs) { lhs = lhs & rhs; return lhs; }
 
-    Context* const Editor;
+    EditorContext* const Editor;
 
     int     ID;
     bool    IsLive;
 
-    Object(Context* editor, int id): Editor(editor), ID(id), IsLive(true) {}
+    Object(EditorContext* editor, int id): Editor(editor), ID(id), IsLive(true) {}
     virtual ~Object() = default;
 
     bool IsVisible() const
@@ -128,7 +128,7 @@ struct Pin final: Object
     float   ArrowSize;
     float   ArrowWidth;
 
-    Pin(Context* editor, int id, PinKind kind):
+    Pin(EditorContext* editor, int id, PinKind kind):
         Object(editor, id), Kind(kind), Node(nullptr), Bounds(), PreviousPin(nullptr),
         Color(IM_COL32_WHITE), BorderColor(IM_COL32_BLACK), BorderWidth(0), Rounding(0),
         Corners(0), Dir(0, 0), Strength(0), Radius(0), ArrowSize(0), ArrowWidth(0)
@@ -170,7 +170,7 @@ struct Node final: Object
     float    GroupRounding;
     rect     GroupBounds;
 
-    Node(Context* editor, int id):
+    Node(EditorContext* editor, int id):
         Object(editor, id),
         Type(NodeType::Node),
         Bounds(),
@@ -208,7 +208,7 @@ struct Link final: Object
     ImVec2 Start;
     ImVec2 End;
 
-    Link(Context* editor, int id):
+    Link(EditorContext* editor, int id):
         Object(editor, id), StartPin(nullptr), EndPin(nullptr), Color(IM_COL32_WHITE), Thickness(1.0f)
     {
     }
@@ -362,12 +362,12 @@ struct Animation
         Stopped
     };
 
-    Context*        Editor;
+    EditorContext*        Editor;
     State           State;
     float           Time;
     float           Duration;
 
-    Animation(Context* editor);
+    Animation(EditorContext* editor);
     virtual ~Animation();
 
     void Play(float duration);
@@ -395,7 +395,7 @@ struct NavigateAnimation final: Animation
     ImVec2        Target;
     float         TargetZoom;
 
-    NavigateAnimation(Context* editor, NavigateAction& scrollAction);
+    NavigateAnimation(EditorContext* editor, NavigateAction& scrollAction);
 
     void NavigateTo(const ImVec2& target, float targetZoom, float duration);
 
@@ -444,9 +444,9 @@ private:
 
 struct AnimationController
 {
-    Context* Editor;
+    EditorContext* Editor;
 
-    AnimationController(Context* editor):
+    AnimationController(EditorContext* editor):
         Editor(editor)
     {
     }
@@ -462,7 +462,7 @@ struct AnimationController
 
 struct FlowAnimationController final : AnimationController
 {
-    FlowAnimationController(Context* editor);
+    FlowAnimationController(EditorContext* editor);
     virtual ~FlowAnimationController();
 
     void Flow(Link* link);
@@ -482,7 +482,7 @@ struct EditorAction
 {
     enum AcceptResult { False, True, Possible };
 
-    EditorAction(Context* editor): Editor(editor) {}
+    EditorAction(EditorContext* editor): Editor(editor) {}
     virtual ~EditorAction() {}
 
     virtual const char* GetName() const = 0;
@@ -505,7 +505,7 @@ struct EditorAction
     virtual DeleteItemsAction* AsDeleteItems() { return nullptr; }
     virtual ContextMenuAction* AsContextMenu() { return nullptr; }
 
-    Context* Editor;
+    EditorContext* Editor;
 };
 
 struct NavigateAction final: EditorAction
@@ -526,7 +526,7 @@ struct NavigateAction final: EditorAction
     ImVec2          ScrollStart;
     ImVec2          ScrollDelta;
 
-    NavigateAction(Context* editor);
+    NavigateAction(EditorContext* editor);
 
     virtual const char* GetName() const override final { return "Navigate"; }
 
@@ -577,7 +577,7 @@ struct SizeAction final: EditorAction
     bool  IsActive;
     Node* SizedNode;
 
-    SizeAction(Context* editor);
+    SizeAction(EditorContext* editor);
 
     virtual const char* GetName() const override final { return "Size"; }
 
@@ -613,7 +613,7 @@ struct DragAction final: EditorAction
     Object*         DraggedObject;
     vector<Object*> Objects;
 
-    DragAction(Context* editor);
+    DragAction(EditorContext* editor);
 
     virtual const char* GetName() const override final { return "Drag"; }
 
@@ -642,7 +642,7 @@ struct SelectAction final: EditorAction
 
     Animation       Animation;
 
-    SelectAction(Context* editor);
+    SelectAction(EditorContext* editor);
 
     virtual const char* GetName() const override final { return "Select"; }
 
@@ -666,7 +666,7 @@ struct ContextMenuAction final: EditorAction
     Menu CurrentMenu;
     int  ContextId;
 
-    ContextMenuAction(Context* editor);
+    ContextMenuAction(EditorContext* editor);
 
     virtual const char* GetName() const override final { return "Context Menu"; }
 
@@ -729,7 +729,7 @@ struct CreateItemAction final : EditorAction
     Pin*      DraggedPin;
 
 
-    CreateItemAction(Context* editor);
+    CreateItemAction(EditorContext* editor);
 
     virtual const char* GetName() const override final { return "Create Item"; }
 
@@ -766,7 +766,7 @@ struct DeleteItemsAction final: EditorAction
     bool    IsActive;
     bool    InInteraction;
 
-    DeleteItemsAction(Context* editor);
+    DeleteItemsAction(EditorContext* editor);
 
     virtual const char* GetName() const override final { return "Delete Items"; }
 
@@ -801,7 +801,7 @@ private:
 
 struct NodeBuilder
 {
-    Context* const Editor;
+    EditorContext* const Editor;
 
     Node* CurrentNode;
     Pin*  CurrentPin;
@@ -818,7 +818,7 @@ struct NodeBuilder
     rect   GroupBounds;
     bool   IsGroup;
 
-    NodeBuilder(Context* editor);
+    NodeBuilder(EditorContext* editor);
 
     void Begin(int nodeId);
     void End();
@@ -840,11 +840,11 @@ struct NodeBuilder
 
 struct HintBuilder
 {
-    Context* const Editor;
+    EditorContext* const Editor;
     bool  IsActive;
     Node* CurrentNode;
 
-    HintBuilder(Context* editor);
+    HintBuilder(EditorContext* editor);
 
     bool Begin(int nodeId);
     void End();
@@ -856,7 +856,7 @@ struct HintBuilder
     ImDrawList* GetBackgroundDrawList();
 };
 
-struct Style: ax::Editor::Style
+struct Style: ax::NodeEditor::Style
 {
     void PushColor(StyleColor colorIndex, const ImVec4& color);
     void PopColor(int count = 1);
@@ -889,10 +889,10 @@ private:
     vector<VarModifier>     VarStack;
 };
 
-struct Context
+struct EditorContext
 {
-    Context(const Config* config = nullptr);
-    ~Context();
+    EditorContext(const Config* config = nullptr);
+    ~EditorContext();
 
     Style& GetStyle() { return Style; }
 

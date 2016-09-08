@@ -1,6 +1,4 @@
-#include "Editor.h"
-#include "Application/imgui_impl_dx11.h"
-#include "ImGuiInterop.h"
+#include "NodeEditorImpl.h"
 #include <cstdlib> // _itoa
 #include <string>
 #include <fstream>
@@ -8,7 +6,7 @@
 
 
 //------------------------------------------------------------------------------
-namespace ed = ax::Editor::Detail;
+namespace ed = ax::NodeEditor::Detail;
 
 
 //------------------------------------------------------------------------------
@@ -49,6 +47,7 @@ static const auto  c_ScrollButtonIndex          = 1;
 
 
 //------------------------------------------------------------------------------
+# if defined(_DEBUG) && defined(_WIN32)
 extern "C" __declspec(dllimport) void __stdcall OutputDebugStringA(const char* string);
 
 static void LogV(const char* fmt, va_list args)
@@ -65,13 +64,16 @@ static void LogV(const char* fmt, va_list args)
     OutputDebugStringA(buffer);
     OutputDebugStringA("\n");
 }
+# endif
 
 void ed::Log(const char* fmt, ...)
 {
+# if defined(_DEBUG) && defined(_WIN32)
     va_list args;
     va_start(args, fmt);
     LogV(fmt, args);
     va_end(args);
+# endif
 }
 
 
@@ -767,7 +769,7 @@ ax::rectf ed::Link::GetBounds() const
 // Editor Context
 //
 //------------------------------------------------------------------------------
-ed::Context::Context(const ax::Editor::Config* config):
+ed::EditorContext::EditorContext(const ax::NodeEditor::Config* config):
     Nodes(),
     Pins(),
     Links(),
@@ -791,11 +793,11 @@ ed::Context::Context(const ax::Editor::Config* config):
     FlowAnimationController(this),
     IsInitialized(false),
     Settings(),
-    Config(config ? *config : ax::Editor::Config())
+    Config(config ? *config : ax::NodeEditor::Config())
 {
 }
 
-ed::Context::~Context()
+ed::EditorContext::~EditorContext()
 {
     if (IsInitialized)
         SaveSettings();
@@ -805,7 +807,7 @@ ed::Context::~Context()
     for (auto node  : Nodes)  delete node;
 }
 
-void ed::Context::Begin(const char* id, const ImVec2& size)
+void ed::EditorContext::Begin(const char* id, const ImVec2& size)
 {
     if (!IsInitialized)
     {
@@ -878,7 +880,7 @@ void ed::Context::Begin(const char* id, const ImVec2& size)
     LastSelectedObjects = SelectedObjects;
 }
 
-void ed::Context::End()
+void ed::EditorContext::End()
 {
     auto& io          = ImGui::GetIO();
     auto  control     = BuildControl(CurrentAction && CurrentAction->IsDragging()  /*NavigateAction.IsMovingOverEdge()*/);
@@ -1134,7 +1136,7 @@ void ed::Context::End()
     }
 }
 
-bool ed::Context::DoLink(int id, int startPinId, int endPinId, ImU32 color, float thickness)
+bool ed::EditorContext::DoLink(int id, int startPinId, int endPinId, ImU32 color, float thickness)
 {
     auto& editorStyle = GetStyle();
 
@@ -1156,7 +1158,7 @@ bool ed::Context::DoLink(int id, int startPinId, int endPinId, ImU32 color, floa
     return true;
 }
 
-void ed::Context::SetNodePosition(int nodeId, const ImVec2& position)
+void ed::EditorContext::SetNodePosition(int nodeId, const ImVec2& position)
 {
     auto node = FindNode(nodeId);
     if (!node)
@@ -1169,11 +1171,11 @@ void ed::Context::SetNodePosition(int nodeId, const ImVec2& position)
     if (node->Bounds.location != newPosition)
     {
         node->Bounds.location = to_point(position);
-        MarkSettingsDirty(Editor::SaveReasonFlags::Position);
+        MarkSettingsDirty(NodeEditor::SaveReasonFlags::Position);
     }
 }
 
-ImVec2 ed::Context::GetNodePosition(int nodeId)
+ImVec2 ed::EditorContext::GetNodePosition(int nodeId)
 {
     auto node = FindNode(nodeId);
     if (!node)
@@ -1182,30 +1184,30 @@ ImVec2 ed::Context::GetNodePosition(int nodeId)
     return to_imvec(node->Bounds.location);
 }
 
-void ed::Context::ClearSelection()
+void ed::EditorContext::ClearSelection()
 {
     SelectedObjects.clear();
 }
 
-void ed::Context::SelectObject(Object* object)
+void ed::EditorContext::SelectObject(Object* object)
 {
     SelectedObjects.push_back(object);
 }
 
-void ed::Context::DeselectObject(Object* object)
+void ed::EditorContext::DeselectObject(Object* object)
 {
     auto objectIt = std::find(SelectedObjects.begin(), SelectedObjects.end(), object);
     if (objectIt != SelectedObjects.end())
         SelectedObjects.erase(objectIt);
 }
 
-void ed::Context::SetSelectedObject(Object* object)
+void ed::EditorContext::SetSelectedObject(Object* object)
 {
     ClearSelection();
     SelectObject(object);
 }
 
-void ed::Context::ToggleObjectSelection(Object* object)
+void ed::EditorContext::ToggleObjectSelection(Object* object)
 {
     if (IsSelected(object))
         DeselectObject(object);
@@ -1213,17 +1215,17 @@ void ed::Context::ToggleObjectSelection(Object* object)
         SelectObject(object);
 }
 
-bool ed::Context::IsSelected(Object* object)
+bool ed::EditorContext::IsSelected(Object* object)
 {
     return std::find(SelectedObjects.begin(), SelectedObjects.end(), object) != SelectedObjects.end();
 }
 
-const ed::vector<ed::Object*>& ed::Context::GetSelectedObjects()
+const ed::vector<ed::Object*>& ed::EditorContext::GetSelectedObjects()
 {
     return SelectedObjects;
 }
 
-bool ed::Context::IsAnyNodeSelected()
+bool ed::EditorContext::IsAnyNodeSelected()
 {
     for (auto object : SelectedObjects)
         if (object->AsNode())
@@ -1232,7 +1234,7 @@ bool ed::Context::IsAnyNodeSelected()
     return false;
 }
 
-bool ed::Context::IsAnyLinkSelected()
+bool ed::EditorContext::IsAnyLinkSelected()
 {
     for (auto object : SelectedObjects)
         if (object->AsLink())
@@ -1241,12 +1243,12 @@ bool ed::Context::IsAnyLinkSelected()
     return false;
 }
 
-bool ed::Context::HasSelectionChanged()
+bool ed::EditorContext::HasSelectionChanged()
 {
     return LastSelectedObjects != SelectedObjects;
 }
 
-ed::Node* ed::Context::FindNodeAt(const ImVec2& p)
+ed::Node* ed::EditorContext::FindNodeAt(const ImVec2& p)
 {
     for (auto node : Nodes)
         if (node->TestHit(p))
@@ -1255,7 +1257,7 @@ ed::Node* ed::Context::FindNodeAt(const ImVec2& p)
     return nullptr;
 }
 
-void ed::Context::FindNodesInRect(const ax::rectf& r, vector<Node*>& result, bool append, bool includeIntersecting)
+void ed::EditorContext::FindNodesInRect(const ax::rectf& r, vector<Node*>& result, bool append, bool includeIntersecting)
 {
     if (!append)
         result.resize(0);
@@ -1268,7 +1270,7 @@ void ed::Context::FindNodesInRect(const ax::rectf& r, vector<Node*>& result, boo
             result.push_back(node);
 }
 
-void ed::Context::FindLinksInRect(const ax::rectf& r, vector<Link*>& result, bool append)
+void ed::EditorContext::FindLinksInRect(const ax::rectf& r, vector<Link*>& result, bool append)
 {
     using namespace ImGuiInterop;
 
@@ -1283,7 +1285,7 @@ void ed::Context::FindLinksInRect(const ax::rectf& r, vector<Link*>& result, boo
             result.push_back(link);
 }
 
-void ed::Context::FindLinksForNode(int nodeId, vector<Link*>& result, bool add)
+void ed::EditorContext::FindLinksForNode(int nodeId, vector<Link*>& result, bool add)
 {
     if (!add)
         result.clear();
@@ -1298,13 +1300,13 @@ void ed::Context::FindLinksForNode(int nodeId, vector<Link*>& result, bool add)
     }
 }
 
-void ed::Context::NotifyLinkDeleted(Link* link)
+void ed::EditorContext::NotifyLinkDeleted(Link* link)
 {
     if (LastActiveLink == link)
         LastActiveLink = nullptr;
 }
 
-void ed::Context::Suspend()
+void ed::EditorContext::Suspend()
 {
     assert(!IsSuspended);
 
@@ -1313,7 +1315,7 @@ void ed::Context::Suspend()
     ReleaseMouse();
 }
 
-void ed::Context::Resume()
+void ed::EditorContext::Resume()
 {
     assert(IsSuspended);
 
@@ -1322,7 +1324,7 @@ void ed::Context::Resume()
     CaptureMouse();
 }
 
-ed::Pin* ed::Context::CreatePin(int id, PinKind kind)
+ed::Pin* ed::EditorContext::CreatePin(int id, PinKind kind)
 {
     assert(nullptr == FindObject(id));
     auto pin = new Pin(this, id, kind);
@@ -1330,7 +1332,7 @@ ed::Pin* ed::Context::CreatePin(int id, PinKind kind)
     return pin;
 }
 
-ed::Node* ed::Context::CreateNode(int id)
+ed::Node* ed::EditorContext::CreateNode(int id)
 {
     assert(nullptr == FindObject(id));
     auto node = new Node(this, id);
@@ -1355,7 +1357,7 @@ ed::Node* ed::Context::CreateNode(int id)
     return node;
 }
 
-ed::Link* ed::Context::CreateLink(int id)
+ed::Link* ed::EditorContext::CreateLink(int id)
 {
     assert(nullptr == FindObject(id));
     auto link = new Link(this, id);
@@ -1364,7 +1366,7 @@ ed::Link* ed::Context::CreateLink(int id)
     return link;
 }
 
-ed::Object* ed::Context::FindObject(int id)
+ed::Object* ed::EditorContext::FindObject(int id)
 {
     if (auto object = FindNode(id))
         return object;
@@ -1385,22 +1387,22 @@ static inline auto FindItemIn(C& container, int id)
     return (typename C::value_type)nullptr;
 }
 
-ed::Node* ed::Context::FindNode(int id)
+ed::Node* ed::EditorContext::FindNode(int id)
 {
     return FindItemIn(Nodes, id);
 }
 
-ed::Pin* ed::Context::FindPin(int id)
+ed::Pin* ed::EditorContext::FindPin(int id)
 {
     return FindItemIn(Pins, id);
 }
 
-ed::Link* ed::Context::FindLink(int id)
+ed::Link* ed::EditorContext::FindLink(int id)
 {
     return FindItemIn(Links, id);
 }
 
-ed::Node* ed::Context::GetNode(int id)
+ed::Node* ed::EditorContext::GetNode(int id)
 {
     auto node = FindNode(id);
     if (!node)
@@ -1408,7 +1410,7 @@ ed::Node* ed::Context::GetNode(int id)
     return node;
 }
 
-ed::Pin* ed::Context::GetPin(int id, PinKind kind)
+ed::Pin* ed::EditorContext::GetPin(int id, PinKind kind)
 {
     if (auto pin = FindPin(id))
     {
@@ -1419,7 +1421,7 @@ ed::Pin* ed::Context::GetPin(int id, PinKind kind)
         return CreatePin(id, kind);
 }
 
-ed::Link* ed::Context::GetLink(int id)
+ed::Link* ed::EditorContext::GetLink(int id)
 {
     if (auto link = FindLink(id))
         return link;
@@ -1427,7 +1429,7 @@ ed::Link* ed::Context::GetLink(int id)
         return CreateLink(id);
 }
 
-void ed::Context::LoadSettings()
+void ed::EditorContext::LoadSettings()
 {
     namespace json = picojson;
 
@@ -1459,7 +1461,7 @@ void ed::Context::LoadSettings()
     NavigateAction.Zoom   = Settings.ViewZoom;
 }
 
-void ed::Context::SaveSettings()
+void ed::EditorContext::SaveSettings()
 {
     for (auto& node : Nodes)
     {
@@ -1483,13 +1485,13 @@ void ed::Context::SaveSettings()
     }
 }
 
-void ed::Context::MarkSettingsDirty(SaveReasonFlags reason)
+void ed::EditorContext::MarkSettingsDirty(SaveReasonFlags reason)
 {
     Settings.Dirty  = true;
     Settings.Reason = Settings.Reason | reason;
 }
 
-ed::Link* ed::Context::FindLinkAt(const ax::point& p)
+ed::Link* ed::EditorContext::FindLinkAt(const ax::point& p)
 {
     for (auto& link : Links)
         if (link->TestHit(to_imvec(p), c_LinkSelectThickness))
@@ -1498,30 +1500,30 @@ ed::Link* ed::Context::FindLinkAt(const ax::point& p)
     return nullptr;
 }
 
-ImU32 ed::Context::GetColor(StyleColor colorIndex) const
+ImU32 ed::EditorContext::GetColor(StyleColor colorIndex) const
 {
     return ImColor(Style.Colors[colorIndex]);
 }
 
-ImU32 ed::Context::GetColor(StyleColor colorIndex, float alpha) const
+ImU32 ed::EditorContext::GetColor(StyleColor colorIndex, float alpha) const
 {
     auto color = Style.Colors[colorIndex];
     return ImColor(color.x, color.y, color.z, color.w * alpha);
 }
 
-void ed::Context::RegisterAnimation(Animation* animation)
+void ed::EditorContext::RegisterAnimation(Animation* animation)
 {
     LiveAnimations.push_back(animation);
 }
 
-void ed::Context::UnregisterAnimation(Animation* animation)
+void ed::EditorContext::UnregisterAnimation(Animation* animation)
 {
     auto it = std::find(LiveAnimations.begin(), LiveAnimations.end(), animation);
     if (it != LiveAnimations.end())
         LiveAnimations.erase(it);
 }
 
-void ed::Context::UpdateAnimations()
+void ed::EditorContext::UpdateAnimations()
 {
     LastLiveAnimations = LiveAnimations;
 
@@ -1534,12 +1536,12 @@ void ed::Context::UpdateAnimations()
     }
 }
 
-void ed::Context::Flow(Link* link)
+void ed::EditorContext::Flow(Link* link)
 {
     FlowAnimationController.Flow(link);
 }
 
-void ed::Context::SetUserContext()
+void ed::EditorContext::SetUserContext()
 {
     const auto mousePos = ImGui::GetMousePos();
 
@@ -1554,7 +1556,7 @@ void ed::Context::SetUserContext()
     //drawList->AddCircleFilled(ImGui::GetMousePos(), 4, IM_COL32(0, 255, 0, 255));
 }
 
-ed::Control ed::Context::BuildControl(bool allowOffscreen)
+ed::Control ed::EditorContext::BuildControl(bool allowOffscreen)
 {
     if (!allowOffscreen && !ImGui::IsWindowHovered())
         return Control(nullptr, nullptr, nullptr, false, false, false);
@@ -1696,7 +1698,7 @@ ed::Control ed::Context::BuildControl(bool allowOffscreen)
         isBackgroundHot, isBackgroundActive, backgroundClicked);
 }
 
-void ed::Context::ShowMetrics(const Control& control)
+void ed::EditorContext::ShowMetrics(const Control& control)
 {
     auto& io = ImGui::GetIO();
 
@@ -1768,7 +1770,7 @@ void ed::Context::ShowMetrics(const Control& control)
     ImGui::EndGroup();
 }
 
-void ed::Context::CaptureMouse()
+void ed::EditorContext::CaptureMouse()
 {
     auto& io = ImGui::GetIO();
 
@@ -1778,7 +1780,7 @@ void ed::Context::CaptureMouse()
         io.MouseClickedPos[i] = Canvas.FromScreen(MouseClickPosBackup[i]);
 }
 
-void ed::Context::ReleaseMouse()
+void ed::EditorContext::ReleaseMouse()
 {
     auto& io = ImGui::GetIO();
 
@@ -2002,7 +2004,7 @@ ImVec2 ed::Canvas::ToClient(ImVec2 point) const
 // Animation
 //
 //------------------------------------------------------------------------------
-ed::Animation::Animation(Context* editor):
+ed::Animation::Animation(EditorContext* editor):
     Editor(editor),
     State(Stopped),
     Time(0.0f),
@@ -2083,7 +2085,7 @@ void ed::Animation::Update()
 // Navigate Animation
 //
 //------------------------------------------------------------------------------
-ed::NavigateAnimation::NavigateAnimation(Context* editor, NavigateAction& scrollAction):
+ed::NavigateAnimation::NavigateAnimation(EditorContext* editor, NavigateAction& scrollAction):
     Animation(editor),
     Action(scrollAction)
 {
@@ -2264,7 +2266,7 @@ void ed::FlowAnimation::OnStop()
 // Flow Animation Controller
 //
 //------------------------------------------------------------------------------
-ed::FlowAnimationController::FlowAnimationController(Context* editor):
+ed::FlowAnimationController::FlowAnimationController(EditorContext* editor):
     AnimationController(editor)
 {
 }
@@ -2340,7 +2342,7 @@ const float ed::NavigateAction::s_ZoomLevels[] =
 
 const int ed::NavigateAction::s_ZoomLevelCount = sizeof(s_ZoomLevels) / sizeof(*s_ZoomLevels);
 
-ed::NavigateAction::NavigateAction(Context* editor):
+ed::NavigateAction::NavigateAction(EditorContext* editor):
     EditorAction(editor),
     IsActive(false),
     Zoom(1),
@@ -2687,7 +2689,7 @@ int ed::NavigateAction::MatchZoomIndex(int direction)
 // Size Action
 //
 //------------------------------------------------------------------------------
-ed::SizeAction::SizeAction(Context* editor):
+ed::SizeAction::SizeAction(EditorContext* editor):
     EditorAction(editor),
     IsActive(false),
     SizedNode(nullptr),
@@ -2904,7 +2906,7 @@ ImGuiMouseCursor ed::SizeAction::ChooseCursor(ax::rect_region region)
 // Drag Action
 //
 //------------------------------------------------------------------------------
-ed::DragAction::DragAction(Context* editor):
+ed::DragAction::DragAction(EditorContext* editor):
     EditorAction(editor),
     IsActive(false),
     DraggedObject(nullptr)
@@ -2979,7 +2981,7 @@ bool ed::DragAction::Process(const Control& control)
             anyModified |= object->EndDrag();
 
         if (anyModified)
-            Editor->MarkSettingsDirty(Editor::SaveReasonFlags::Position);
+            Editor->MarkSettingsDirty(SaveReasonFlags::Position);
 
         Objects.resize(0);
 
@@ -3017,7 +3019,7 @@ void ed::DragAction::ShowMetrics()
 // Select Action
 //
 //------------------------------------------------------------------------------
-ed::SelectAction::SelectAction(Context* editor):
+ed::SelectAction::SelectAction(EditorContext* editor):
     EditorAction(editor),
     IsActive(false),
     SelectGroups(false),
@@ -3189,7 +3191,7 @@ void ed::SelectAction::Draw(ImDrawList* drawList)
 // Context Menu Action
 //
 //------------------------------------------------------------------------------
-ed::ContextMenuAction::ContextMenuAction(Context* editor):
+ed::ContextMenuAction::ContextMenuAction(EditorContext* editor):
     EditorAction(editor),
     CandidateMenu(Menu::None),
     CurrentMenu(Menu::None),
@@ -3331,7 +3333,7 @@ bool ed::ContextMenuAction::ShowBackgroundContextMenu()
 // Create Item Action
 //
 //------------------------------------------------------------------------------
-ed::CreateItemAction::CreateItemAction(Context* editor):
+ed::CreateItemAction::CreateItemAction(EditorContext* editor):
     EditorAction(editor),
     InActive(false),
     NextStage(None),
@@ -3621,7 +3623,7 @@ ed::CreateItemAction::Result ed::CreateItemAction::QueryNode(int* pinId)
 // Delete Items Action
 //
 //------------------------------------------------------------------------------
-ed::DeleteItemsAction::DeleteItemsAction(Context* editor):
+ed::DeleteItemsAction::DeleteItemsAction(EditorContext* editor):
     EditorAction(editor),
     IsActive(false),
     InInteraction(false),
@@ -3829,7 +3831,7 @@ void ed::DeleteItemsAction::RemoveItem()
 // Node Builder
 //
 //------------------------------------------------------------------------------
-ed::NodeBuilder::NodeBuilder(Context* editor):
+ed::NodeBuilder::NodeBuilder(EditorContext* editor):
     Editor(editor),
     CurrentNode(nullptr),
     CurrentPin(nullptr)
@@ -4064,7 +4066,7 @@ ImDrawList* ed::NodeBuilder::GetUserBackgroundDrawList(Node* node) const
 // Node Builder
 //
 //------------------------------------------------------------------------------
-ed::HintBuilder::HintBuilder(Context* editor):
+ed::HintBuilder::HintBuilder(EditorContext* editor):
     Editor(editor),
     IsActive(false),
     CurrentNode(nullptr)

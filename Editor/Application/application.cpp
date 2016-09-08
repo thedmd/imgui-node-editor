@@ -4,23 +4,22 @@
 #include <map>
 #include <algorithm>
 #include <utility>
-#include "Editor/Types.h"
-#include "Editor/Types.inl"
-#include "Editor/ImGuiInterop.h"
-#include "Editor/EditorApi.h"
-#include "Editor/Builders.h"
+#include "Editor/Common/Types.h"
+#include "Editor/Common/ImGuiInterop.h"
+#include "Editor/NodeEditor.h"
+#include "Editor/Utilities/Builders.h"
 #include "widgets.h"
 #include "imgui_impl_dx11.h"
 
-namespace ed = ax::Editor;
-namespace util = ax::Editor::Utilities;
+namespace ed = ax::NodeEditor;
+namespace util = ax::NodeEditor::Utilities;
 
 using namespace ax;
 using namespace ax::ImGuiInterop;
 
 using ax::Widgets::IconType;
 
-static ed::Context* m_Editor = nullptr;
+static ed::EditorContext* m_Editor = nullptr;
 
 extern "C" __declspec(dllimport) short __stdcall GetAsyncKeyState(int vkey);
 extern "C" bool Debug_KeyPress(int vkey)

@@ -1,6 +1,6 @@
 #include "drawing.h"
-#include "../Editor/Types.h"
-#include "../Editor/ImGuiInterop.h"
+#include "../Editor/Common/Types.h"
+#include "../Editor/Common/ImGuiInterop.h"
 //#include "Application/imgui_impl_dx11.h"
 #include <cmath>
 

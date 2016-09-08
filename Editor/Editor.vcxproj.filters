@@ -4,9 +4,6 @@
     <Filter Include="ImGui">
       <UniqueIdentifier>{917f46dc-1830-4bef-86f2-92146f795b0a}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Editor">
-      <UniqueIdentifier>{0a3006ef-56cc-4b61-b811-f41836ad94de}</UniqueIdentifier>
-    </Filter>
     <Filter Include="External">
       <UniqueIdentifier>{a82fb34f-37e9-4de5-a432-0641a6b2c1ba}</UniqueIdentifier>
     </Filter>
@@ -15,6 +12,18 @@
     </Filter>
     <Filter Include="Application">
       <UniqueIdentifier>{914bf31c-90fd-448c-9600-334a952bf058}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Editor">
+      <UniqueIdentifier>{0a3006ef-56cc-4b61-b811-f41836ad94de}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Editor\NodeEditor">
+      <UniqueIdentifier>{99ea05b9-5a97-4103-b138-b505a1bdf8fd}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Editor\Common">
+      <UniqueIdentifier>{32ccf2df-bd54-421d-9430-76ba2bed3706}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Editor\Utilities">
+      <UniqueIdentifier>{0d516d1b-9d08-49d0-8e2e-fa84160723e9}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
@@ -30,12 +39,6 @@
     <ClCompile Include="..\External\DXSDK\src\dxerr.cpp">
       <Filter>External</Filter>
     </ClCompile>
-    <ClCompile Include="Editor\Editor.cpp">
-      <Filter>Editor</Filter>
-    </ClCompile>
-    <ClCompile Include="Editor\EditorApi.cpp">
-      <Filter>Editor</Filter>
-    </ClCompile>
     <ClCompile Include="Application\imgui_impl_dx11.cpp">
       <Filter>Application</Filter>
     </ClCompile>
@@ -45,14 +48,20 @@
     <ClCompile Include="Application\application.cpp">
       <Filter>Application</Filter>
     </ClCompile>
-    <ClCompile Include="Editor\Builders.cpp">
-      <Filter>Editor</Filter>
-    </ClCompile>
     <ClCompile Include="Application\widgets.cpp">
       <Filter>Application</Filter>
     </ClCompile>
     <ClCompile Include="Application\drawing.cpp">
       <Filter>Application</Filter>
+    </ClCompile>
+    <ClCompile Include="Editor\Utilities\Builders.cpp">
+      <Filter>Editor\Utilities</Filter>
+    </ClCompile>
+    <ClCompile Include="Editor\NodeEditor\NodeEditor.cpp">
+      <Filter>Editor\NodeEditor</Filter>
+    </ClCompile>
+    <ClCompile Include="Editor\NodeEditor\NodeEditorImpl.cpp">
+      <Filter>Editor\NodeEditor</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -77,18 +86,6 @@
     <ClInclude Include="Support\stb_image.h">
       <Filter>Support</Filter>
     </ClInclude>
-    <ClInclude Include="Editor\Types.h">
-      <Filter>Editor</Filter>
-    </ClInclude>
-    <ClInclude Include="Editor\EditorApi.h">
-      <Filter>Editor</Filter>
-    </ClInclude>
-    <ClInclude Include="Editor\Editor.h">
-      <Filter>Editor</Filter>
-    </ClInclude>
-    <ClInclude Include="Editor\ImGuiInterop.h">
-      <Filter>Editor</Filter>
-    </ClInclude>
     <ClInclude Include="Support\scope_guard.h">
       <Filter>Support</Filter>
     </ClInclude>
@@ -98,20 +95,32 @@
     <ClInclude Include="Application\application.h">
       <Filter>Application</Filter>
     </ClInclude>
-    <ClInclude Include="Editor\Builders.h">
-      <Filter>Editor</Filter>
-    </ClInclude>
     <ClInclude Include="Application\widgets.h">
       <Filter>Application</Filter>
     </ClInclude>
     <ClInclude Include="Application\drawing.h">
       <Filter>Application</Filter>
     </ClInclude>
+    <ClInclude Include="Editor\NodeEditor.h">
+      <Filter>Editor</Filter>
+    </ClInclude>
+    <ClInclude Include="Editor\Common\Types.h">
+      <Filter>Editor\Common</Filter>
+    </ClInclude>
+    <ClInclude Include="Editor\Common\ImGuiInterop.h">
+      <Filter>Editor\Common</Filter>
+    </ClInclude>
+    <ClInclude Include="Editor\Utilities\Builders.h">
+      <Filter>Editor\Utilities</Filter>
+    </ClInclude>
+    <ClInclude Include="Editor\NodeEditor\NodeEditorImpl.h">
+      <Filter>Editor\NodeEditor</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="Configuration.props" />
-    <None Include="Editor\Types.inl">
-      <Filter>Editor</Filter>
+    <None Include="Editor\Common\Types.inl">
+      <Filter>Editor\Common</Filter>
     </None>
   </ItemGroup>
   <ItemGroup>

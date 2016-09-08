@@ -3,7 +3,7 @@
 
 //------------------------------------------------------------------------------
 namespace ax {
-namespace Editor {
+namespace NodeEditor {
 
 
 //------------------------------------------------------------------------------
@@ -174,14 +174,14 @@ struct Style
 
 
 //------------------------------------------------------------------------------
-struct Context;
+struct EditorContext;
 
 
 //------------------------------------------------------------------------------
-void SetCurrentEditor(Context* ctx);
-Context* GetCurrentEditor();
-Context* CreateEditor(const Config* config = nullptr);
-void DestroyEditor(Context* ctx);
+void SetCurrentEditor(EditorContext* ctx);
+EditorContext* GetCurrentEditor();
+EditorContext* CreateEditor(const Config* config = nullptr);
+void DestroyEditor(EditorContext* ctx);
 
 Style& GetStyle();
 const char* GetStyleColorName(StyleColor colorIndex);

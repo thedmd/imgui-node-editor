@@ -1,11 +1,10 @@
 #include "Builders.h"
-#include "ImGuiInterop.h"
-#include "Application/imgui_impl_dx11.h"
+#include "../Common/ImGuiInterop.h"
 
 
 //------------------------------------------------------------------------------
-namespace ed   = ax::Editor;
-namespace util = ax::Editor::Utilities;
+namespace ed   = ax::NodeEditor;
+namespace util = ax::NodeEditor::Utilities;
 
 util::BlueprintNodeBuilder::BlueprintNodeBuilder(ImTextureID texture, int textureWidth, int textureHeight):
     HeaderTextureId(texture),

@@ -1,11 +1,11 @@
 #pragma once
-#include "EditorApi.h"
-#include "Types.h"
+#include "../NodeEditor.h"
+#include "../Common/Types.h"
 
 
 //------------------------------------------------------------------------------
 namespace ax {
-namespace Editor {
+namespace NodeEditor {
 namespace Utilities {
 
 
@@ -40,7 +40,7 @@ private:
 
     bool SetStage(Stage stage);
 
-    void Pin(int id, ax::Editor::PinKind kind);
+    void Pin(int id, ax::NodeEditor::PinKind kind);
     void EndPin();
 
     ImTextureID HeaderTextureId;

@@ -178,9 +178,9 @@
     <ClCompile Include="Application\drawing.cpp" />
     <ClCompile Include="Application\imgui_impl_dx11.cpp" />
     <ClCompile Include="Application\widgets.cpp" />
-    <ClCompile Include="Editor\Builders.cpp" />
-    <ClCompile Include="Editor\Editor.cpp" />
-    <ClCompile Include="Editor\EditorApi.cpp" />
+    <ClCompile Include="Editor\Utilities\Builders.cpp" />
+    <ClCompile Include="Editor\NodeEditor\NodeEditorImpl.cpp" />
+    <ClCompile Include="Editor\NodeEditor\NodeEditor.cpp" />
     <ClCompile Include="ImGui\imgui.cpp" />
     <ClCompile Include="ImGui\imgui_demo.cpp" />
     <ClCompile Include="ImGui\imgui_draw.cpp" />
@@ -191,11 +191,11 @@
     <ClInclude Include="Application\drawing.h" />
     <ClInclude Include="Application\imgui_impl_dx11.h" />
     <ClInclude Include="Application\widgets.h" />
-    <ClInclude Include="Editor\Builders.h" />
-    <ClInclude Include="Editor\EditorApi.h" />
-    <ClInclude Include="Editor\Editor.h" />
-    <ClInclude Include="Editor\ImGuiInterop.h" />
-    <ClInclude Include="Editor\Types.h" />
+    <ClInclude Include="Editor\Utilities\Builders.h" />
+    <ClInclude Include="Editor\NodeEditor.h" />
+    <ClInclude Include="Editor\NodeEditor\NodeEditorImpl.h" />
+    <ClInclude Include="Editor\Common\ImGuiInterop.h" />
+    <ClInclude Include="Editor\Common\Types.h" />
     <ClInclude Include="ImGui\imconfig.h" />
     <ClInclude Include="ImGui\imgui.h" />
     <ClInclude Include="ImGui\imgui_internal.h" />
@@ -210,7 +210,7 @@
     <None Include="Configuration.props">
       <SubType>Designer</SubType>
     </None>
-    <None Include="Editor\Types.inl" />
+    <None Include="Editor\Common\Types.inl" />
   </ItemGroup>
   <ItemGroup>
     <Natvis Include="ImGui.natvis" />
