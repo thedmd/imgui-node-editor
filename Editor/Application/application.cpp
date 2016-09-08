@@ -1088,7 +1088,10 @@ void Application_Frame()
     else if (ed::ShowLinkContextMenu(&contextId))
         ImGui::OpenPopup("Link Context Menu");
     else if (ed::ShowBackgroundContextMenu())
+    {
         ImGui::OpenPopup("Create New Node");
+        newNodeLinkPin = nullptr;
+    }
 
     ed::Suspend();
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(8, 8));
