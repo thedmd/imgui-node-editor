@@ -167,7 +167,7 @@ struct Style
         Colors[StyleColor_PinRectBorder]      = ImColor( 60, 180, 255, 128);
         Colors[StyleColor_Flow]               = ImColor(255, 128,  64, 255);
         Colors[StyleColor_FlowMarker]         = ImColor(255, 128,  64, 255);
-        Colors[StyleColor_GroupBg]            = ImColor(255, 255, 255,  32);
+        Colors[StyleColor_GroupBg]            = ImColor(  0,   0,   0, 160);
         Colors[StyleColor_GroupBorder]        = ImColor(255, 255, 255,  32);
     }
 };

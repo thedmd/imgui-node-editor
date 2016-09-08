@@ -490,7 +490,7 @@ void ShowStyleEditor(bool* show = nullptr)
     //ImVec2  TargetDirection;
     ImGui::DragFloat("Scroll Duration", &editorStyle.ScrollDuration, 0.001f, 0.0f, 2.0f);
     ImGui::DragFloat("Flow Marker Distance", &editorStyle.FlowMarkerDistance, 1.0f, 1.0f, 200.0f);
-    ImGui::DragFloat("Flow Speed", &editorStyle.FlowMarkerDistance, 1.0f, 1.0f, 2000.0f);
+    ImGui::DragFloat("Flow Speed", &editorStyle.FlowSpeed, 1.0f, 1.0f, 2000.0f);
     ImGui::DragFloat("Flow Duration", &editorStyle.FlowDuration, 0.001f, 0.0f, 5.0f);
     //ImVec2  PivotAlignment;
     //ImVec2  PivotSize;
@@ -499,6 +499,8 @@ void ShowStyleEditor(bool* show = nullptr)
     //float   PinRadius;
     //float   PinArrowSize;
     //float   PinArrowWidth;
+    ImGui::DragFloat("Group Rounding", &editorStyle.GroupRounding, 0.1f, 0.0f, 40.0f);
+    ImGui::DragFloat("Group Border Width", &editorStyle.GroupBorderWidth, 0.1f, 0.0f, 15.0f);
 
     ImGui::Separator();
 
@@ -580,7 +582,7 @@ void ShowLeftPane(float paneWidth)
         auto start = ImGui::GetCursorScreenPos();
 
         bool isSelected = std::find(selectedNodes.begin(), selectedNodes.end(), node.ID) != selectedNodes.end();
-        if (ImGui::Selectable(node.Name.c_str(), &isSelected))
+        if (ImGui::Selectable((node.Name + "##" + std::to_string(node.ID)).c_str(), &isSelected))
         {
             if (io.KeyCtrl)
             {
