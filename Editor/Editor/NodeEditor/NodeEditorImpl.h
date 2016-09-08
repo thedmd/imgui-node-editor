@@ -754,6 +754,8 @@ struct CreateItemAction final : EditorAction
     Result QueryNode(int* pinId);
 
 private:
+    bool IsInGlobalSpace;
+
     void DragStart(Pin* startPin);
     void DragEnd();
     void DropPin(Pin* endPin);
@@ -983,7 +985,7 @@ struct EditorContext
 
     void Flow(Link* link);
 
-    void SetUserContext();
+    void SetUserContext(bool globalSpace = false);
 
 private:
     void LoadSettings();

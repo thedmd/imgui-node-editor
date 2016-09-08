@@ -10,21 +10,21 @@ namespace ed = ax::NodeEditor::Detail;
 
 
 //------------------------------------------------------------------------------
-static const int c_BackgroundChannelCount = 2;
+static const int c_BackgroundChannelCount = 1;
 static const int c_LinkChannelCount       = 4;
-static const int c_UserLayersCount        = 3;
+static const int c_UserLayersCount        = 4;
 
 static const int c_UserLayerChannelStart  = 0;
 static const int c_BackgroundChannelStart = c_UserLayerChannelStart  + c_UserLayersCount;
 static const int c_LinkStartChannel       = c_BackgroundChannelStart + c_BackgroundChannelCount;
 static const int c_NodeStartChannel       = c_LinkStartChannel       + c_LinkChannelCount;
 
-static const int c_BackgroundChannel_Grid          = c_BackgroundChannelStart + 0;
-static const int c_BackgroundChannel_SelectionRect = c_BackgroundChannelStart + 1;
+static const int c_BackgroundChannel_SelectionRect = c_BackgroundChannelStart + 0;
 
 static const int c_UserChannel_Content         = c_UserLayerChannelStart + 0;
-static const int c_UserChannel_HintsBackground = c_UserLayerChannelStart + 1;
-static const int c_UserChannel_Hints           = c_UserLayerChannelStart + 2;
+static const int c_UserChannel_Grid            = c_UserLayerChannelStart + 1;
+static const int c_UserChannel_HintsBackground = c_UserLayerChannelStart + 2;
+static const int c_UserChannel_Hints           = c_UserLayerChannelStart + 3;
 
 static const int c_LinkChannel_Selection  = c_LinkStartChannel + 0;
 static const int c_LinkChannel_Links      = c_LinkStartChannel + 1;
@@ -1057,7 +1057,7 @@ void ed::EditorContext::End()
 
     // Draw grid
     {
-        drawList->ChannelsSetCurrent(c_BackgroundChannel_Grid);
+        drawList->ChannelsSetCurrent(c_UserChannel_Grid);
 
         ImGui::PushClipRect(Canvas.WindowScreenPos + ImVec2(1, 1), Canvas.WindowScreenPos + Canvas.WindowScreenSize - ImVec2(1, 1), false);
 
@@ -1078,23 +1078,26 @@ void ed::EditorContext::End()
         ImGui::PopClipRect();
     }
 
-    auto userChannel = drawList->_ChannelsCount;
-    ImDrawList_ChannelsGrow(drawList, userChannel + c_UserLayersCount);
-    for (int i = 0; i < c_UserLayersCount; ++i)
-        ImDrawList_SwapChannels(drawList, userChannel + i, c_UserLayerChannelStart + i);
+    {
+        auto userChannel = drawList->_ChannelsCount;
+        auto channelsToCopy = 1; //c_UserLayersCount;
+        ImDrawList_ChannelsGrow(drawList, userChannel + channelsToCopy);
+        for (int i = 0; i < channelsToCopy; ++i)
+            ImDrawList_SwapChannels(drawList, userChannel + i, c_UserLayerChannelStart + i);
+    }
 
     {
         auto preOffset  = ImVec2(0, 0);
         auto postOffset = Canvas.WindowScreenPos + Canvas.ClientOrigin;
         auto scale      = Canvas.Zoom;
 
-        ImDrawList_TransformChannels(drawList,                                 0, c_BackgroundChannel_Grid, preOffset, scale, postOffset);
-        ImDrawList_TransformChannels(drawList, c_BackgroundChannel_SelectionRect, drawList->_ChannelsCount - 2, preOffset, scale, postOffset);
+        ImDrawList_TransformChannels(drawList,                        0,                            1, preOffset, scale, postOffset);
+        ImDrawList_TransformChannels(drawList, c_BackgroundChannelStart, drawList->_ChannelsCount - 1, preOffset, scale, postOffset);
 
         auto clipTranslation = Canvas.WindowScreenPos - Canvas.FromScreen(Canvas.WindowScreenPos);
         ImGui::PushClipRect(Canvas.WindowScreenPos + ImVec2(1, 1), Canvas.WindowScreenPos + Canvas.WindowScreenSize - ImVec2(1, 1), false);
-        ImDrawList_TranslateAndClampClipRects(drawList,                                 0, c_BackgroundChannel_Grid, clipTranslation);
-        ImDrawList_TranslateAndClampClipRects(drawList, c_BackgroundChannel_SelectionRect, drawList->_ChannelsCount - 2, clipTranslation);
+        ImDrawList_TranslateAndClampClipRects(drawList,                        0,                            1, clipTranslation);
+        ImDrawList_TranslateAndClampClipRects(drawList, c_BackgroundChannelStart, drawList->_ChannelsCount - 1, clipTranslation);
         ImGui::PopClipRect();
 
         // #debug: Static grid in local space
@@ -1541,13 +1544,16 @@ void ed::EditorContext::Flow(Link* link)
     FlowAnimationController.Flow(link);
 }
 
-void ed::EditorContext::SetUserContext()
+void ed::EditorContext::SetUserContext(bool globalSpace)
 {
     const auto mousePos = ImGui::GetMousePos();
 
     // Move drawing cursor to mouse location and prepare layer for
     // content added by user.
-    ImGui::SetCursorScreenPos(ImVec2(floorf(mousePos.x), floorf(mousePos.y)));
+    if (globalSpace)
+        ImGui::SetCursorScreenPos(Canvas.ToScreen(mousePos));
+    else
+        ImGui::SetCursorScreenPos(ImVec2(floorf(mousePos.x), floorf(mousePos.y)));
 
     auto drawList = ImGui::GetWindowDrawList();
     drawList->ChannelsSetCurrent(c_UserChannel_Content);
@@ -3346,7 +3352,9 @@ ed::CreateItemAction::CreateItemAction(EditorContext* editor):
     LinkEnd(nullptr),
 
     IsActive(false),
-    DraggedPin(nullptr)
+    DraggedPin(nullptr),
+
+    IsInGlobalSpace(false)
 {
 }
 
@@ -3497,6 +3505,12 @@ void ed::CreateItemAction::End()
 {
     IM_ASSERT(InActive);
 
+    if (IsInGlobalSpace)
+    {
+        ImGui::PopClipRect();
+        IsInGlobalSpace = false;
+    }
+
     InActive = false;
 }
 
@@ -3596,7 +3610,14 @@ ed::CreateItemAction::Result ed::CreateItemAction::QueryLink(int* startId, int* 
     *startId = linkStartId;
     *endId   = linkEndId;
 
-    Editor->SetUserContext();
+    Editor->SetUserContext(true);
+
+    if (!IsInGlobalSpace)
+    {
+        auto& canvas = Editor->GetCanvas();
+        ImGui::PushClipRect(canvas.WindowScreenPos + ImVec2(1, 1), canvas.WindowScreenPos + canvas.WindowScreenSize - ImVec2(1, 1), false);
+        IsInGlobalSpace = true;
+    }
 
     return True;
 }
@@ -3610,7 +3631,14 @@ ed::CreateItemAction::Result ed::CreateItemAction::QueryNode(int* pinId)
 
     *pinId = LinkStart ? LinkStart->ID : 0;
 
-    Editor->SetUserContext();
+    Editor->SetUserContext(true);
+
+    if (!IsInGlobalSpace)
+    {
+        auto& canvas = Editor->GetCanvas();
+        ImGui::PushClipRect(canvas.WindowScreenPos + ImVec2(1, 1), canvas.WindowScreenPos + canvas.WindowScreenSize - ImVec2(1, 1), false);
+        IsInGlobalSpace = true;
+    }
 
     return True;
 }
