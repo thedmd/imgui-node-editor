@@ -104,9 +104,11 @@ struct basic_point
     inline basic_point cwise_product(const basic_point& rhs) const { return basic_point(x * rhs.x, y * rhs.y); }
     inline basic_point cwise_quotient(const basic_point& rhs) const { return basic_point(x / rhs.x, y / rhs.y); }
     inline basic_point cwise_safe_quotient(const basic_point& rhs, const basic_point& alt = basic_point()) const { return basic_point(rhs.x ? x / rhs.x : alt.x, rhs.y ? y / rhs.y : alt.x); }
-    inline basic_point cwise_abs() const { return basic_point(fabsf(x), fabsf(y)); }
-    inline basic_point cwise_sqrt() const { return basic_point(sqrtf(x), sqrtf(y)); }
-    //inline basic_point cwise_floor() const { return basic_point(floorf(x), floorf(y)); }
+    inline basic_point cwise_abs()   const { return basic_point(fabsf(x), fabsf(y)); }
+    inline basic_point cwise_sqrt()  const { return basic_point(sqrtf(x), sqrtf(y)); }
+    inline basic_point cwise_floor() const { return basic_point(floorf(x), floorf(y)); }
+    inline basic_point cwise_ceil()  const { return basic_point(ceilf(x), ceilf(y)); }
+    inline basic_point cwise_round() const { return basic_point(roundf(x), roundf(y)); }
 
     friend inline bool operator == (const basic_point& lhs, const basic_point& rhs) { return lhs.x == rhs.x && lhs.y == rhs.y; }
     friend inline bool operator != (const basic_point& lhs, const basic_point& rhs) { return !(lhs == rhs); }
@@ -411,6 +413,18 @@ static inline basic_rect<T> make_union(const basic_rect<T>& lhs, const basic_rec
 
     const auto tl = lhs.top_left().cwise_min(rhs.top_left());
     const auto br = lhs.bottom_right().cwise_max(rhs.bottom_right());
+
+    return basic_rect<T>(tl, br);
+}
+
+template <typename T>
+static inline basic_rect<T> make_union(const basic_rect<T>& lhs, const basic_point<T>& p)
+{
+    if (lhs.is_empty())
+        return basic_rect<T>(p, p);
+
+    const auto tl = lhs.top_left().cwise_min(p);
+    const auto br = lhs.bottom_right().cwise_max(p);
 
     return basic_rect<T>(tl, br);
 }

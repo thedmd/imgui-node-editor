@@ -45,6 +45,7 @@ static const float c_LinkSelectThickness        = 5.0f;  // canvas pixels
 static const float c_NavigationZoomMargin       = 0.1f;  // percentage of visible bounds
 static const float c_MouseZoomDuration          = 0.15f; // seconds
 static const float c_SelectionFadeOutDuration   = 0.15f; // seconds
+static const auto  c_ScrollButtonIndex          = 1;
 
 
 //------------------------------------------------------------------------------
@@ -779,7 +780,7 @@ ed::Context::Context(const ax::Editor::Config* config):
     NodeBuilder(this),
     HintBuilder(this),
     CurrentAction(nullptr),
-    ScrollAction(this),
+    NavigateAction(this),
     SizeAction(this),
     DragAction(this),
     SelectAction(this),
@@ -826,12 +827,25 @@ void ed::Context::Begin(const char* id, const ImVec2& size)
         ImGuiWindowFlags_NoScrollbar |
         ImGuiWindowFlags_NoScrollWithMouse);
 
-    ScrollAction.SetWindow(ImGui::GetWindowPos(), ImGui::GetWindowSize());
+    //
+    if (CurrentAction && CurrentAction->IsDragging() && NavigateAction.MoveOverEdge())
+    {
+        auto& io = ImGui::GetIO();
+        auto offset = NavigateAction.GetMoveOffset();
+        for (int i = 0; i < 5; ++i)
+            io.MouseClickedPos[i] = io.MouseClickedPos[i] - offset;
+    }
+    else
+        NavigateAction.StopMoveOverEdge();
 
-    Canvas = ScrollAction.GetCanvas();
+    // Setup canvas
+    NavigateAction.SetWindow(ImGui::GetWindowPos(), ImGui::GetWindowSize());
+
+    Canvas = NavigateAction.GetCanvas();
 
     ImGui::PushStyleVar(ImGuiStyleVar_AntiAliasFringeScale, std::min(std::max(Canvas.InvZoom.x, Canvas.InvZoom.y), 1.0f));
 
+    // Save mouse positions
     auto& io = ImGui::GetIO();
     MousePosBackup = io.MousePos;
     for (int i = 0; i < 5; ++i)
@@ -867,13 +881,13 @@ void ed::Context::Begin(const char* id, const ImVec2& size)
 void ed::Context::End()
 {
     auto& io          = ImGui::GetIO();
-    auto  control     = ComputeControl();
+    auto  control     = BuildControl(CurrentAction && CurrentAction->IsDragging()  /*NavigateAction.IsMovingOverEdge()*/);
     auto  drawList    = ImGui::GetWindowDrawList();
     auto& editorStyle = GetStyle();
 
-    bool isSelecting = CurrentAction && CurrentAction->AsSelect() != nullptr;
-    bool isDragging  = CurrentAction && CurrentAction->AsDrag()   != nullptr;
-    bool isSizing    = CurrentAction && CurrentAction->AsSize()   != nullptr;
+    const bool isSelecting = CurrentAction && CurrentAction->AsSelect() != nullptr;
+    const bool isDragging  = CurrentAction && CurrentAction->AsDrag()   != nullptr;
+    const bool isSizing    = CurrentAction && CurrentAction->AsSize()   != nullptr;
 
     // Draw nodes
     for (auto node : Nodes)
@@ -882,7 +896,7 @@ void ed::Context::End()
 
     // Draw links
     for (auto link : Links)
-        if (link->IsLive && link->IsVisible()) 
+        if (link->IsLive && link->IsVisible())
             link->Draw(drawList);
 
     // Highlight selected objects
@@ -910,8 +924,10 @@ void ed::Context::End()
     if (CurrentAction && !CurrentAction->Process(control))
         CurrentAction = nullptr;
 
-    if (CurrentAction || io.MouseDown[0] || io.MouseDown[1] || io.MouseDown[2])
-        ScrollAction.StopNavigation();
+    if (NavigateAction.IsActive)
+        NavigateAction.Process(control);
+    else
+        NavigateAction.Accept(control);
 
     if (nullptr == CurrentAction)
     {
@@ -925,20 +941,20 @@ void ed::Context::End()
                 return true;
             else if (!possibleAction && result == EditorAction::Possible)
                 possibleAction = &action;
+            else if (result == EditorAction::Possible)
+                action.Reject();
 
             return false;
         };
 
-        if (accept(ScrollAction))
-            CurrentAction = &ScrollAction;
+        if (accept(ContextMenuAction))
+            CurrentAction = &ContextMenuAction;
         else if (accept(SizeAction))
             CurrentAction = &SizeAction;
         else if (accept(DragAction))
             CurrentAction = &DragAction;
         else if (accept(SelectAction))
             CurrentAction = &SelectAction;
-        else if (accept(ContextMenuAction))
-            CurrentAction = &ContextMenuAction;
         else if (accept(CreateItemAction))
             CurrentAction = &CreateItemAction;
         else if (accept(DeleteItemsAction))
@@ -946,6 +962,9 @@ void ed::Context::End()
 
         if (possibleAction)
             ImGui::SetMouseCursor(possibleAction->GetCursor());
+
+        if (CurrentAction && possibleAction)
+            possibleAction->Reject();
     }
 
     if (CurrentAction)
@@ -1079,7 +1098,7 @@ void ed::Context::End()
         drawList->AddRect(Canvas.WindowScreenPos,                Canvas.WindowScreenPos + Canvas.WindowScreenSize,                ImColor(borderColor),      style.WindowRounding);
     }
 
-    //ShowMetrics(control);
+    ShowMetrics(control);
 
     // fringe scale
     ImGui::PopStyleVar();
@@ -1419,8 +1438,8 @@ void ed::Context::LoadSettings()
     if (!ed::Settings::Parse(savedData.data(), savedData.data() + savedData.size(), Settings))
         Settings = ed::Settings();
 
-    ScrollAction.Scroll = Settings.ViewScroll;
-    ScrollAction.Zoom   = Settings.ViewZoom;
+    NavigateAction.Scroll = Settings.ViewScroll;
+    NavigateAction.Zoom   = Settings.ViewZoom;
 }
 
 void ed::Context::SaveSettings()
@@ -1433,8 +1452,8 @@ void ed::Context::SaveSettings()
             settings->GroupSize = to_imvec(node->GroupBounds.size);
     }
 
-    Settings.ViewScroll = ScrollAction.Scroll;
-    Settings.ViewZoom = ScrollAction.Zoom;
+    Settings.ViewScroll = NavigateAction.Scroll;
+    Settings.ViewZoom   = NavigateAction.Zoom;
 
     auto data = Settings.Serialize();
     if (Config.SaveSettings)
@@ -1518,12 +1537,27 @@ void ed::Context::SetUserContext()
     //drawList->AddCircleFilled(ImGui::GetMousePos(), 4, IM_COL32(0, 255, 0, 255));
 }
 
-ed::Control ed::Context::ComputeControl()
+ed::Control ed::Context::BuildControl(bool allowOffscreen)
 {
-    if (!ImGui::IsWindowHovered())
-        return ed::Control(nullptr, nullptr, nullptr, false, false, false);
+    if (!allowOffscreen && !ImGui::IsWindowHovered())
+        return Control(nullptr, nullptr, nullptr, false, false, false);
 
     const auto mousePos = to_point(ImGui::GetMousePos());
+
+    // Expand clip rectangle to always contain cursor
+    auto editorRect = rect(to_point(Canvas.FromClient(ImVec2(0, 0))), to_size(Canvas.ClientSize));
+    auto isMouseOffscreen = allowOffscreen && !editorRect.contains(mousePos);
+    if (isMouseOffscreen)
+    {
+        // Extend clip rect to capture off-screen mouse cursor
+        editorRect = make_union(editorRect, static_cast<point>(to_pointf(ImGui::GetMousePos()).cwise_floor()));
+        editorRect = make_union(editorRect, static_cast<point>(to_pointf(ImGui::GetMousePos()).cwise_ceil()));
+
+        const auto clipMin = to_imvec(editorRect.top_left());
+        const auto clipMax = to_imvec(editorRect.bottom_right());
+
+        ImGui::PushClipRect(clipMin, clipMax, false);
+    }
 
     Object* hotObject     = nullptr;
     Object* activeObject  = nullptr;
@@ -1610,13 +1644,14 @@ ed::Control ed::Context::ComputeControl()
     if (nullptr == hotObject)
         hotObject = FindLinkAt(mousePos);
 
-    const auto editorRect = rect(to_point(Canvas.FromClient(ImVec2(0, 0))), to_size(Canvas.ClientSize));
-
     // Check for interaction with background.
     auto backgroundClicked  = emitInteractiveArea(0, editorRect);
     auto isBackgroundActive = ImGui::IsItemActive();
-    auto isBackgroundHot    = !hotObject && ImGui::IsItemHoveredRect();
+    auto isBackgroundHot    = !hotObject;
     auto isDragging         = ImGui::IsMouseDragging(0, 1) || ImGui::IsMouseDragging(1, 1) || ImGui::IsMouseDragging(2, 1);
+
+    if (isMouseOffscreen)
+        ImGui::PopClipRect();
 
     // Process link input using background interactions.
     auto hotLink = hotObject ? hotObject->AsLink() : nullptr;
@@ -1640,32 +1675,6 @@ ed::Control ed::Context::ComputeControl()
         backgroundClicked = false;
     }
 
-//    if (!isDragging && (isBackgroundHot || backgroundClicked) && !isBackgroundActive)
-//    {
-//        for (auto nodeIt = Nodes.rbegin(), nodeItEnd = Nodes.rend(); nodeIt != nodeItEnd; ++nodeIt)
-//        {
-//            auto node = *nodeIt;
-//
-//            if (!node->IsLive || !IsGroup(node)) continue;
-//
-//            if (node->GroupBounds.contains(mousePos))
-//            {
-////                 if (isBackgroundHot)
-////                 {
-////                     hotObject         = node;
-////                     isBackgroundHot   = false;
-////                 }
-//
-//                if (backgroundClicked)
-//                {
-//                    clickedObject     = node;
-//                    backgroundClicked = false;
-//                }
-//                break;
-//            }
-//        }
-//    }
-
     return Control(hotObject, activeObject, clickedObject,
         isBackgroundHot, isBackgroundActive, backgroundClicked);
 }
@@ -1684,6 +1693,26 @@ void ed::Context::ShowMetrics(const Control& control)
         else return "";
     };
 
+    auto getHotObjectName = [&control, &getObjectName]()
+    {
+        if (control.HotObject)
+            return getObjectName(control.HotObject);
+        else if (control.BackgroundHot)
+            return "Background";
+        else
+            return "<???>";
+    };
+
+    auto getActiveObjectName = [&control, &getObjectName]()
+    {
+        if (control.ActiveObject)
+            return getObjectName(control.ActiveObject);
+        else if (control.BackgroundActive)
+            return "Background";
+        else
+            return "<???>";
+    };
+
     auto liveNodeCount  = (int)std::count_if(Nodes.begin(),  Nodes.end(),  [](Node*  node)  { return  node->IsLive; });
     auto livePinCount   = (int)std::count_if(Pins.begin(),   Pins.end(),   [](Pin*   pin)   { return   pin->IsLive; });
     auto liveLinkCount  = (int)std::count_if(Links.begin(),  Links.end(),  [](Link*  link)  { return  link->IsLive; });
@@ -1698,21 +1727,21 @@ void ed::Context::ShowMetrics(const Control& control)
     ImGui::Text("Live Nodes: %d", liveNodeCount);
     ImGui::Text("Live Pins: %d", livePinCount);
     ImGui::Text("Live Links: %d", liveLinkCount);
-    ImGui::Text("Hot Object: %s (%d)", getObjectName(control.HotObject), control.HotObject ? control.HotObject->ID : 0);
+    ImGui::Text("Hot Object: %s (%d)", getHotObjectName(), control.HotObject ? control.HotObject->ID : 0);
     if (auto node = control.HotObject ? control.HotObject->AsNode() : nullptr)
     {
         ImGui::SameLine();
         ImGui::Text("{ x=%d y=%d w=%d h=%d }", node->Bounds.x, node->Bounds.y, node->Bounds.w, node->Bounds.h);
     }
-    ImGui::Text("Active Object: %s (%d)", getObjectName(control.ActiveObject), control.ActiveObject ? control.ActiveObject->ID : 0);
+    ImGui::Text("Active Object: %s (%d)", getActiveObjectName(), control.ActiveObject ? control.ActiveObject->ID : 0);
     if (auto node = control.ActiveObject ? control.ActiveObject->AsNode() : nullptr)
     {
         ImGui::SameLine();
         ImGui::Text("{ x=%d y=%d w=%d h=%d }", node->Bounds.x, node->Bounds.y, node->Bounds.w, node->Bounds.h);
     }
     ImGui::Text("Action: %s", CurrentAction ? CurrentAction->GetName() : "<none>");
-    //ImGui::Text("Clicked Object: %s (%d)", getObjectName(control.ClickedObject), control.ClickedObject ? control.ClickedObject->ID : 0);
-    ScrollAction.ShowMetrics();
+    ImGui::Text("Action Is Dragging: %s", CurrentAction && CurrentAction->IsDragging() ? "Yes" : "No");
+    NavigateAction.ShowMetrics();
     SizeAction.ShowMetrics();
     DragAction.ShowMetrics();
     SelectAction.ShowMetrics();
@@ -2034,16 +2063,16 @@ void ed::Animation::Update()
 
 //------------------------------------------------------------------------------
 //
-// Scroll Animation
+// Navigate Animation
 //
 //------------------------------------------------------------------------------
-ed::ScrollAnimation::ScrollAnimation(Context* editor, ScrollAction& scrollAction):
+ed::NavigateAnimation::NavigateAnimation(Context* editor, NavigateAction& scrollAction):
     Animation(editor),
     Action(scrollAction)
 {
 }
 
-void ed::ScrollAnimation::NavigateTo(const ImVec2& target, float targetZoom, float duration)
+void ed::NavigateAnimation::NavigateTo(const ImVec2& target, float targetZoom, float duration)
 {
     Stop();
 
@@ -2055,18 +2084,18 @@ void ed::ScrollAnimation::NavigateTo(const ImVec2& target, float targetZoom, flo
     Play(duration);
 }
 
-void ed::ScrollAnimation::OnUpdate(float progress)
+void ed::NavigateAnimation::OnUpdate(float progress)
 {
-    Action.Scroll = easing::ease_out_quad(Start,     Target     - Start,     progress);
+    Action.Scroll = easing::ease_out_quad(Start, Target - Start, progress);
     Action.Zoom   = easing::ease_out_quad(StartZoom, TargetZoom - StartZoom, progress);
 }
 
-void ed::ScrollAnimation::OnStop()
+void ed::NavigateAnimation::OnStop()
 {
     Editor->MarkSettingsDirty(SaveReasonFlags::Navigation);
 }
 
-void ed::ScrollAnimation::OnFinish()
+void ed::NavigateAnimation::OnFinish()
 {
     Action.Scroll = Target;
     Action.Zoom   = TargetZoom;
@@ -2284,43 +2313,47 @@ void ed::FlowAnimationController::Release(FlowAnimation* animation)
 
 //------------------------------------------------------------------------------
 //
-// Scroll Action
+// Navigate Action
 //
 //------------------------------------------------------------------------------
-const float ed::ScrollAction::s_ZoomLevels[] =
+const float ed::NavigateAction::s_ZoomLevels[] =
 {
     /*0.1f, 0.15f, */0.20f, 0.25f, 0.33f, 0.5f, 0.75f, 1.0f, 1.25f, 1.50f, 2.0f, 2.5f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f
 };
 
-const int ed::ScrollAction::s_ZoomLevelCount = sizeof(s_ZoomLevels) / sizeof(*s_ZoomLevels);
+const int ed::NavigateAction::s_ZoomLevelCount = sizeof(s_ZoomLevels) / sizeof(*s_ZoomLevels);
 
-ed::ScrollAction::ScrollAction(Context* editor):
+ed::NavigateAction::NavigateAction(Context* editor):
     EditorAction(editor),
     IsActive(false),
     Zoom(1),
     Scroll(0, 0),
+    ScrollStart(0, 0),
+    ScrollDelta(0, 0),
     Animation(editor, *this),
     WindowScreenPos(0, 0),
     WindowScreenSize(0, 0),
-    ScrollStart(0, 0),
     Reason(NavigationReason::Unknown),
     LastSelectionId(0),
-    LastObject(nullptr)
+    LastObject(nullptr),
+    MovingOverEdge(false),
+    MoveOffset(0, 0)
 {
 }
 
-ed::EditorAction::AcceptResult ed::ScrollAction::Accept(const Control& control)
+ed::EditorAction::AcceptResult ed::NavigateAction::Accept(const Control& control)
 {
     assert(!IsActive);
 
     if (IsActive)
         return False;
 
-    if (ImGui::IsWindowHovered() && !ImGui::IsAnyItemActive() && ImGui::IsMouseDragging(2, 0.0f))
+    if (ImGui::IsWindowHovered() /*&& !ImGui::IsAnyItemActive()*/ && ImGui::IsMouseDragging(c_ScrollButtonIndex, 0.0f))
     {
         IsActive    = true;
         ScrollStart = Scroll;
-        Scroll      = ScrollStart - ImGui::GetMouseDragDelta(2) * Zoom;
+        ScrollDelta = ImGui::GetMouseDragDelta(c_ScrollButtonIndex);
+        Scroll      = ScrollStart - ScrollDelta * Zoom;
     }
 
     auto& io = ImGui::GetIO();
@@ -2381,46 +2414,24 @@ ed::EditorAction::AcceptResult ed::ScrollAction::Accept(const Control& control)
     // if (auto drawList = ImGui::GetWindowDrawList())
     //     drawList->AddCircleFilled(io.MousePos, 4.0f, IM_COL32(255, 0, 255, 255));
 
-    if (io.MouseWheel && ImGui::IsWindowHovered() && !ImGui::IsAnyItemActive())
-    {
-        auto savedScroll = Scroll;
-        auto savedZoom   = Zoom;
-
-        Animation.Finish();
-
-        auto mousePos     = io.MousePos;
-        auto steps        = (int)io.MouseWheel;
-        auto newZoom      = MatchZoom(steps, s_ZoomLevels[steps < 0 ? 0 : s_ZoomLevelCount - 1]);
-
-        auto oldCanvas    = GetCanvas(false);
-        Zoom = newZoom;
-        auto newCanvas    = GetCanvas(false);
-
-        auto screenPos    = oldCanvas.ToScreen(mousePos);
-        auto canvasPos    = newCanvas.FromScreen(screenPos);
-
-        auto offset       = (canvasPos - mousePos) * Zoom;
-        auto targetScroll = Scroll - offset;
-
-        Scroll = savedScroll;
-        Zoom   = savedZoom;
-
-        NavigateTo(targetScroll, newZoom, c_MouseZoomDuration, NavigationReason::MouseZoom);
-
+    if (HandleZoom(control))
         return True;
-    }
 
     return IsActive ? True : False;
 }
 
-bool ed::ScrollAction::Process(const Control& control)
+bool ed::NavigateAction::Process(const Control& control)
 {
     if (!IsActive)
         return false;
 
-    if (ImGui::IsMouseDragging(2, 0.0f))
+    if (ImGui::IsMouseDragging(c_ScrollButtonIndex, 0.0f))
     {
-        Scroll = ScrollStart - ImGui::GetMouseDragDelta(2) * Zoom;
+        ScrollDelta = ImGui::GetMouseDragDelta(c_ScrollButtonIndex);
+        Scroll      = ScrollStart - ScrollDelta * Zoom;
+
+//         if (IsActive && Animation.IsPlaying())
+//             Animation.Target = Animation.Target - ScrollDelta * Animation.TargetZoom;
     }
     else
     {
@@ -2430,10 +2441,55 @@ bool ed::ScrollAction::Process(const Control& control)
         IsActive = false;
     }
 
+    // #TODO: Handle zoom while scrolling
+    // HandleZoom(control);
+
     return IsActive;
 }
 
-void ed::ScrollAction::ShowMetrics()
+bool ed::NavigateAction::HandleZoom(const Control& control)
+{
+    const auto currentAction  = Editor->GetCurrentAction();
+    const auto allowOffscreen = currentAction && currentAction->IsDragging();
+
+    auto& io = ImGui::GetIO();
+
+    if (!io.MouseWheel || (!allowOffscreen && !ImGui::IsWindowHovered()))// && !ImGui::IsAnyItemActive())
+        return false;
+
+    auto savedScroll = Scroll;
+    auto savedZoom   = Zoom;
+
+    Animation.Finish();
+
+    auto mousePos = io.MousePos;
+    auto steps    = (int)io.MouseWheel;
+    auto newZoom  = MatchZoom(steps, s_ZoomLevels[steps < 0 ? 0 : s_ZoomLevelCount - 1]);
+
+    auto oldCanvas = GetCanvas(false);
+    Zoom = newZoom;
+    auto newCanvas = GetCanvas(false);
+
+    auto screenPos = oldCanvas.ToScreen(mousePos);
+    auto canvasPos = newCanvas.FromScreen(screenPos);
+
+    auto offset       = (canvasPos - mousePos) * Zoom;
+    auto targetScroll = Scroll - offset;
+
+    if (Scroll != savedScroll || Zoom != savedZoom)
+    {
+        Scroll = savedScroll;
+        Zoom = savedZoom;
+
+        Editor->MarkSettingsDirty(SaveReasonFlags::Navigation);
+    }
+
+    NavigateTo(targetScroll, newZoom, c_MouseZoomDuration, NavigationReason::MouseZoom);
+
+    return true;
+}
+
+void ed::NavigateAction::ShowMetrics()
 {
     EditorAction::ShowMetrics();
 
@@ -2443,7 +2499,7 @@ void ed::ScrollAction::ShowMetrics()
     ImGui::Text("    Zoom: %g", Zoom);
 }
 
-void ed::ScrollAction::NavigateTo(const ax::rectf& bounds, bool zoomIn, float duration, NavigationReason reason)
+void ed::NavigateAction::NavigateTo(const ax::rectf& bounds, bool zoomIn, float duration, NavigationReason reason)
 {
     if (bounds.is_empty())
         return;
@@ -2481,30 +2537,67 @@ void ed::ScrollAction::NavigateTo(const ax::rectf& bounds, bool zoomIn, float du
         NavigateTo(action.Scroll, action.Zoom, GetStyle().ScrollDuration, reason);
 }
 
-void ed::ScrollAction::NavigateTo(const ImVec2& target, float targetZoom, float duration, NavigationReason reason)
+void ed::NavigateAction::NavigateTo(const ImVec2& target, float targetZoom, float duration, NavigationReason reason)
 {
     Reason = reason;
 
     Animation.NavigateTo(target, targetZoom, duration);
 }
 
-void ed::ScrollAction::StopNavigation()
+void ed::NavigateAction::StopNavigation()
 {
     Animation.Stop();
 }
 
-void ed::ScrollAction::FinishNavigation()
+void ed::NavigateAction::FinishNavigation()
 {
     Animation.Finish();
 }
 
-void ed::ScrollAction::SetWindow(ImVec2 position, ImVec2 size)
+bool ed::NavigateAction::MoveOverEdge()
+{
+    // Don't interrupt non-edge animations
+    if (Animation.IsPlaying())
+        return false;
+
+          auto& io            = ImGui::GetIO();
+    const auto screenRect     = ax::rectf(to_pointf(WindowScreenPos), to_sizef(WindowScreenSize));
+    const auto screenMousePos = to_pointf(io.MousePos);
+
+    // Mouse is over screen, do nothing
+    if (screenRect.contains(screenMousePos))
+        return false;
+
+    const auto screenPointOnEdge = screenRect.get_closest_point(screenMousePos, true);
+    const auto direction         = screenPointOnEdge - screenMousePos;
+    const auto offset            = to_imvec(-direction) * io.DeltaTime * 10.0f;
+
+    Scroll = Scroll + offset;
+
+    MoveOffset     = offset;
+    MovingOverEdge = true;
+
+    return true;
+}
+
+void ed::NavigateAction::StopMoveOverEdge()
+{
+    if (MovingOverEdge)
+    {
+        Editor->MarkSettingsDirty(SaveReasonFlags::Navigation);
+
+        MoveOffset     = ImVec2(0, 0);
+        MovingOverEdge = false;
+    }
+}
+
+void ed::NavigateAction::SetWindow(ImVec2 position, ImVec2 size)
 {
     WindowScreenPos  = position;
     WindowScreenSize = size;
 }
 
-ed::Canvas ed::ScrollAction::GetCanvas(bool alignToPixels)
+ed::Canvas ed::NavigateAction::GetCanvas(bool alignToPixels)
 {
     ImVec2 origin = -Scroll;
     if (alignToPixels)
@@ -2516,7 +2609,7 @@ ed::Canvas ed::ScrollAction::GetCanvas(bool alignToPixels)
     return Canvas(WindowScreenPos, WindowScreenSize, ImVec2(Zoom, Zoom), origin);
 }
 
-float ed::ScrollAction::MatchZoom(int steps, float fallbackZoom)
+float ed::NavigateAction::MatchZoom(int steps, float fallbackZoom)
 {
     auto currentZoomIndex = MatchZoomIndex(steps);
     if (currentZoomIndex < 0)
@@ -2533,7 +2626,7 @@ float ed::ScrollAction::MatchZoom(int steps, float fallbackZoom)
         return fallbackZoom;
 }
 
-int ed::ScrollAction::MatchZoomIndex(int direction)
+int ed::NavigateAction::MatchZoomIndex(int direction)
 {
     int   bestIndex    = -1;
     float bestDistance = 0.0f;
@@ -3081,6 +3174,7 @@ void ed::SelectAction::Draw(ImDrawList* drawList)
 //------------------------------------------------------------------------------
 ed::ContextMenuAction::ContextMenuAction(Context* editor):
     EditorAction(editor),
+    CandidateMenu(Menu::None),
     CurrentMenu(Menu::None),
     ContextId(0)
 {
@@ -3088,28 +3182,49 @@ ed::ContextMenuAction::ContextMenuAction(Context* editor):
 
 ed::EditorAction::AcceptResult ed::ContextMenuAction::Accept(const Control& control)
 {
-    if (!ImGui::IsMouseClicked(1))
-        return False;
+    const auto isPressed  = ImGui::IsMouseClicked(1);
+    const auto isReleased = ImGui::IsMouseReleased(1);
+    const auto isDragging = ImGui::IsMouseDragging(1);
 
-    if (auto hotObejct = control.HotObject)
+    if (isPressed || isReleased || isDragging)
     {
-        if (hotObejct->AsNode())
-            CurrentMenu = Node;
-        else if (hotObejct->AsPin())
-            CurrentMenu = Pin;
-        else if (hotObejct->AsLink())
-            CurrentMenu = Link;
+        Menu candidateMenu = ContextMenuAction::None;
+        int  contextId     = 0;
 
-        if (CurrentMenu != None)
+        if (auto hotObejct = control.HotObject)
         {
-            ContextId = hotObejct->ID;
+            if (hotObejct->AsNode())
+                candidateMenu = Node;
+            else if (hotObejct->AsPin())
+                candidateMenu = Pin;
+            else if (hotObejct->AsLink())
+                candidateMenu = Link;
+
+            if (candidateMenu != None)
+                contextId = hotObejct->ID;
+        }
+        else if (control.BackgroundHot)
+            candidateMenu = Background;
+
+        if (isPressed)
+        {
+            CandidateMenu = candidateMenu;
+            ContextId     = contextId;
+            return Possible;
+        }
+        else if (isReleased && CandidateMenu == candidateMenu && ContextId == contextId)
+        {
+            CurrentMenu   = CandidateMenu;
+            CandidateMenu = ContextMenuAction::None;
             return True;
         }
-    }
-    else if (control.BackgroundHot)
-    {
-        CurrentMenu = Background;
-        return True;
+        else
+        {
+            CandidateMenu = None;
+            CurrentMenu   = None;
+            ContextId     = 0;
+            return False;
+        }
     }
 
     return False;
@@ -3117,9 +3232,17 @@ ed::EditorAction::AcceptResult ed::ContextMenuAction::Accept(const Control& cont
 
 bool ed::ContextMenuAction::Process(const Control& control)
 {
-    CurrentMenu = None;
-    ContextId   = 0;
+    CandidateMenu = None;
+    CurrentMenu   = None;
+    ContextId     = 0;
     return false;
+}
+
+void ed::ContextMenuAction::Reject()
+{
+    CandidateMenu = None;
+    CurrentMenu   = None;
+    ContextId     = 0;
 }
 
 void ed::ContextMenuAction::ShowMetrics()

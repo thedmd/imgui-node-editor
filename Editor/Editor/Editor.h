@@ -11,6 +11,12 @@ namespace ax {
 namespace Editor {
 namespace Detail {
 
+
+//------------------------------------------------------------------------------
+namespace ed = ax::Editor::Detail;
+
+
+//------------------------------------------------------------------------------
 using std::vector;
 using std::string;
 
@@ -337,7 +343,7 @@ struct Canvas
     ImVec2 ToClient(ImVec2 point) const;
 };
 
-struct ScrollAction;
+struct NavigateAction;
 struct SizeAction;
 struct DragAction;
 struct SelectAction;
@@ -381,15 +387,15 @@ protected:
     virtual void OnUpdate(float progress) {}
 };
 
-struct ScrollAnimation final: Animation
+struct NavigateAnimation final: Animation
 {
-    ScrollAction& Action;
+    NavigateAction& Action;
     ImVec2        Start;
     float         StartZoom;
     ImVec2        Target;
     float         TargetZoom;
 
-    ScrollAnimation(Context* editor, ScrollAction& scrollAction);
+    NavigateAnimation(Context* editor, NavigateAction& scrollAction);
 
     void NavigateTo(const ImVec2& target, float targetZoom, float duration);
 
@@ -409,7 +415,7 @@ struct FlowAnimation final: Animation
 
     FlowAnimation(FlowAnimationController* controller);
 
-    void Flow(ax::Editor::Detail::Link* link, float markerDistance, float speed, float duration);
+    void Flow(ed::Link* link, float markerDistance, float speed, float duration);
 
     void Draw(ImDrawList* drawList);
 
@@ -483,12 +489,15 @@ struct EditorAction
 
     virtual AcceptResult Accept(const Control& control) = 0;
     virtual bool Process(const Control& control) = 0;
+    virtual void Reject() {} // celled when Accept return 'Possible' and was rejected
 
     virtual ImGuiMouseCursor GetCursor() { return ImGuiMouseCursor_Arrow; }
 
+    virtual bool IsDragging() { return false; }
+
     virtual void ShowMetrics() {}
 
-    virtual ScrollAction*      AsScroll()      { return nullptr; }
+    virtual NavigateAction*    AsNavigate()    { return nullptr; }
     virtual SizeAction*        AsSize()        { return nullptr; }
     virtual DragAction*        AsDrag()        { return nullptr; }
     virtual SelectAction*      AsSelect()      { return nullptr; }
@@ -499,7 +508,7 @@ struct EditorAction
     Context* Editor;
 };
 
-struct ScrollAction final: EditorAction
+struct NavigateAction final: EditorAction
 {
     enum class NavigationReason
     {
@@ -507,27 +516,35 @@ struct ScrollAction final: EditorAction
         MouseZoom,
         Selection,
         Object,
-        Content
+        Content,
+        Edge
     };
 
     bool            IsActive;
     float           Zoom;
     ImVec2          Scroll;
+    ImVec2          ScrollStart;
+    ImVec2          ScrollDelta;
 
-    ScrollAction(Context* editor);
+    NavigateAction(Context* editor);
 
-    virtual const char* GetName() const override final { return "Scroll"; }
+    virtual const char* GetName() const override final { return "Navigate"; }
 
     virtual AcceptResult Accept(const Control& control) override final;
     virtual bool Process(const Control& control) override final;
 
     virtual void ShowMetrics() override final;
 
-    virtual ScrollAction* AsScroll() override final { return this; }
+    virtual NavigateAction* AsNavigate() override final { return this; }
 
     void NavigateTo(const ax::rectf& bounds, bool zoomIn, float duration = -1.0f, NavigationReason reason = NavigationReason::Unknown);
     void StopNavigation();
     void FinishNavigation();
+
+    bool MoveOverEdge();
+    void StopMoveOverEdge();
+    bool IsMovingOverEdge() const { return MovingOverEdge; }
+    ImVec2 GetMoveOffset() const { return MoveOffset; }
 
     void SetWindow(ImVec2 position, ImVec2 size);
 
@@ -536,12 +553,15 @@ struct ScrollAction final: EditorAction
 private:
     ImVec2 WindowScreenPos;
     ImVec2 WindowScreenSize;
-    ImVec2 ScrollStart;
 
-    ScrollAnimation  Animation;
-    NavigationReason Reason;
-    uint64_t         LastSelectionId;
-    Object*          LastObject;
+    NavigateAnimation  Animation;
+    NavigationReason   Reason;
+    uint64_t           LastSelectionId;
+    Object*            LastObject;
+    bool               MovingOverEdge;
+    ImVec2             MoveOffset;
+
+    bool HandleZoom(const Control& control);
 
     void NavigateTo(const ImVec2& target, float targetZoom, float duration = -1.0f, NavigationReason reason = NavigationReason::Unknown);
 
@@ -569,6 +589,8 @@ struct SizeAction final: EditorAction
     virtual void ShowMetrics() override final;
 
     virtual SizeAction* AsSize() override final { return this; }
+
+    virtual bool IsDragging() override final { return IsActive; }
 
     const ax::rect& GetStartGroupBounds() const { return StartGroupBounds; }
 
@@ -600,6 +622,8 @@ struct DragAction final: EditorAction
 
     virtual ImGuiMouseCursor GetCursor() override final { return ImGuiMouseCursor_Move; }
 
+    virtual bool IsDragging() override final { return IsActive; }
+
     virtual void ShowMetrics() override final;
 
     virtual DragAction* AsDrag() override final { return this; }
@@ -627,6 +651,8 @@ struct SelectAction final: EditorAction
 
     virtual void ShowMetrics() override final;
 
+    virtual bool IsDragging() override final { return IsActive; }
+
     virtual SelectAction* AsSelect() override final { return this; }
 
     void Draw(ImDrawList* drawList);
@@ -636,6 +662,7 @@ struct ContextMenuAction final: EditorAction
 {
     enum Menu { None, Node, Pin, Link, Background };
 
+    Menu CandidateMenu;
     Menu CurrentMenu;
     int  ContextId;
 
@@ -645,6 +672,7 @@ struct ContextMenuAction final: EditorAction
 
     virtual AcceptResult Accept(const Control& control) override final;
     virtual bool Process(const Control& control) override final;
+    virtual void Reject() override final;
 
     virtual void ShowMetrics() override final;
 
@@ -709,6 +737,8 @@ struct CreateItemAction final : EditorAction
     virtual bool Process(const Control& control) override final;
 
     virtual void ShowMetrics() override final;
+
+    virtual bool IsDragging() override final { return IsActive; }
 
     virtual CreateItemAction* AsCreateItem() override final { return this; }
 
@@ -946,7 +976,7 @@ struct Context
     ImU32 GetColor(StyleColor colorIndex) const;
     ImU32 GetColor(StyleColor colorIndex, float alpha) const;
 
-    void NavigateTo(const rectf& bounds, bool zoomIn = false, float duration = -1) { ScrollAction.NavigateTo(bounds, zoomIn, duration); }
+    void NavigateTo(const rectf& bounds, bool zoomIn = false, float duration = -1) { NavigateAction.NavigateTo(bounds, zoomIn, duration); }
 
     void RegisterAnimation(Animation* animation);
     void UnregisterAnimation(Animation* animation);
@@ -959,7 +989,7 @@ private:
     void LoadSettings();
     void SaveSettings();
 
-    Control ComputeControl();
+    Control BuildControl(bool allowOffscreen);
 
     void ShowMetrics(const Control& control);
 
@@ -996,7 +1026,7 @@ private:
     HintBuilder         HintBuilder;
 
     EditorAction*       CurrentAction;
-    ScrollAction        ScrollAction;
+    NavigateAction      NavigateAction;
     SizeAction          SizeAction;
     DragAction          DragAction;
     SelectAction        SelectAction;
