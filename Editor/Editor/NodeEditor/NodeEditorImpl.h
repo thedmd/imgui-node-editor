@@ -14,6 +14,7 @@ namespace Detail {
 
 //------------------------------------------------------------------------------
 namespace ed = ax::NodeEditor::Detail;
+namespace json = picojson;
 
 
 //------------------------------------------------------------------------------
@@ -232,28 +233,46 @@ struct NodeSettings
 {
     int    ID;
     ImVec2 Location;
+    ImVec2 Size;
     ImVec2 GroupSize;
     bool   WasUsed;
 
-    NodeSettings(int id): ID(id), Location(0, 0), GroupSize(0, 0), WasUsed(false) {}
+    bool            Saved;
+    bool            IsDirty;
+    SaveReasonFlags DirtyReason;
+
+    NodeSettings(int id): ID(id), Location(0, 0), Size(0, 0), GroupSize(0, 0), WasUsed(false), Saved(false), IsDirty(false), DirtyReason(SaveReasonFlags::None) {}
+
+    void ClearDirty();
+    void MakeDirty(SaveReasonFlags reason);
+
+    json::object Serialize();
+
+    static bool Parse(const std::string& string, NodeSettings& settings) { return Parse(string.data(), string.data() + string.size(), settings); }
+    static bool Parse(const char* data, const char* dataEnd, NodeSettings& settings);
+    static bool Parse(const json::value& data, NodeSettings& result);
 };
 
 struct Settings
 {
-    bool                 Dirty;
-    SaveReasonFlags      Reason;
+    bool                 IsDirty;
+    SaveReasonFlags      DirtyReason;
 
     vector<NodeSettings> Nodes;
     ImVec2               ViewScroll;
     float                ViewZoom;
 
-    Settings(): Dirty(false), Reason(SaveReasonFlags::None), ViewScroll(0, 0), ViewZoom(1.0f) {}
+    Settings(): IsDirty(false), DirtyReason(SaveReasonFlags::None), ViewScroll(0, 0), ViewZoom(1.0f) {}
 
     NodeSettings* AddNode(int id);
     NodeSettings* FindNode(int id);
 
+    void ClearDirty(Node* node = nullptr);
+    void MakeDirty(SaveReasonFlags reason, Node* node = nullptr);
+
     std::string Serialize();
 
+    static bool Parse(const std::string& string, Settings& settings) { return Parse(string.data(), string.data() + string.size(), settings); }
     static bool Parse(const char* data, const char* dataEnd, Settings& settings);
 };
 
@@ -891,9 +910,19 @@ private:
     vector<VarModifier>     VarStack;
 };
 
+struct Config: ax::NodeEditor::Config
+{
+    Config(const ax::NodeEditor::Config* config);
+
+    std::string Load();
+    std::string LoadNode(int nodeId);
+    bool Save(const std::string& data, SaveReasonFlags flags);
+    bool SaveNode(int nodeId, const std::string& data, SaveReasonFlags flags);
+};
+
 struct EditorContext
 {
-    EditorContext(const Config* config = nullptr);
+    EditorContext(const ax::NodeEditor::Config* config = nullptr);
     ~EditorContext();
 
     Style& GetStyle() { return Style; }
@@ -943,7 +972,8 @@ struct EditorContext
     void Suspend();
     void Resume();
 
-    void MarkSettingsDirty(SaveReasonFlags reason);
+    void MakeDirty(SaveReasonFlags reason);
+    void MakeDirty(SaveReasonFlags reason, Node* node);
 
     Pin*    CreatePin(int id, PinKind kind);
     Node*   CreateNode(int id);
@@ -1022,7 +1052,7 @@ private:
 
     Canvas              Canvas;
 
-    bool                IsSuspended;
+    int                 SuspendCount;
 
     NodeBuilder         NodeBuilder;
     HintBuilder         HintBuilder;

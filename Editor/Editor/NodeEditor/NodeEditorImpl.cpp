@@ -784,7 +784,7 @@ ed::EditorContext::EditorContext(const ax::NodeEditor::Config* config):
     MousePosBackup(0, 0),
     MouseClickPosBackup(),
     Canvas(),
-    IsSuspended(false),
+    SuspendCount(0),
     NodeBuilder(this),
     HintBuilder(this),
     CurrentAction(nullptr),
@@ -799,7 +799,7 @@ ed::EditorContext::EditorContext(const ax::NodeEditor::Config* config):
     FlowAnimationController(this),
     IsInitialized(false),
     Settings(),
-    Config(config ? *config : ax::NodeEditor::Config())
+    Config(config)
 {
 }
 
@@ -897,38 +897,6 @@ void ed::EditorContext::End()
     const bool isDragging  = CurrentAction && CurrentAction->AsDrag()   != nullptr;
     const bool isSizing    = CurrentAction && CurrentAction->AsSize()   != nullptr;
 
-    // Draw nodes
-    for (auto node : Nodes)
-        if (node->IsLive && node->IsVisible())
-            node->Draw(drawList);
-
-    // Draw links
-    for (auto link : Links)
-        if (link->IsLive && link->IsVisible())
-            link->Draw(drawList);
-
-    // Highlight selected objects
-    {
-        auto selectedObjects = &SelectedObjects;
-        if (auto selectAction = CurrentAction ? CurrentAction->AsSelect() : nullptr)
-            selectedObjects = &selectAction->CandidateObjects;
-
-        for (auto selectedObject : *selectedObjects)
-            if (selectedObject->IsVisible())
-                selectedObject->Draw(drawList, Object::Selected);
-    }
-
-    if (!isSelecting)
-    {
-        auto hoveredObject = isDragging || isSizing ? control.ActiveObject : control.HotObject;
-        if (hoveredObject && !IsSelected(hoveredObject) && hoveredObject->IsVisible())
-            hoveredObject->Draw(drawList, Object::Hovered);
-    }
-
-    // Draw animations
-    for (auto controller : AnimationControllers)
-        controller->Draw(drawList);
-
     if (CurrentAction && !CurrentAction->Process(control))
         CurrentAction = nullptr;
 
@@ -981,6 +949,38 @@ void ed::EditorContext::End()
     // Draw selection rectangle
     SelectAction.Draw(drawList);
 
+    // Draw nodes
+    for (auto node : Nodes)
+        if (node->IsLive && node->IsVisible())
+            node->Draw(drawList);
+
+    // Draw links
+    for (auto link : Links)
+        if (link->IsLive && link->IsVisible())
+            link->Draw(drawList);
+
+    // Highlight selected objects
+    {
+        auto selectedObjects = &SelectedObjects;
+        if (auto selectAction = CurrentAction ? CurrentAction->AsSelect() : nullptr)
+            selectedObjects = &selectAction->CandidateObjects;
+
+        for (auto selectedObject : *selectedObjects)
+            if (selectedObject->IsVisible())
+                selectedObject->Draw(drawList, Object::Selected);
+    }
+
+    if (!isSelecting)
+    {
+        auto hoveredObject = isDragging || isSizing ? control.ActiveObject : control.HotObject;
+        if (hoveredObject && !IsSelected(hoveredObject) && hoveredObject->IsVisible())
+            hoveredObject->Draw(drawList, Object::Hovered);
+    }
+
+    // Draw animations
+    for (auto controller : AnimationControllers)
+        controller->Draw(drawList);
+
     bool sortGroups = false;
     if (control.ActiveNode)
     {
@@ -1006,7 +1006,7 @@ void ed::EditorContext::End()
     }
 
     // Sort nodes if bounds of node changed
-    if (sortGroups || ((Settings.Reason & (SaveReasonFlags::Position | SaveReasonFlags::Size)) != SaveReasonFlags::None))
+    if (sortGroups || ((Settings.DirtyReason & (SaveReasonFlags::Position | SaveReasonFlags::Size)) != SaveReasonFlags::None))
     {
         // Bring all groups before regular nodes
         auto groupsItEnd = std::stable_partition(Nodes.begin(), Nodes.end(), IsGroup);
@@ -1137,25 +1137,21 @@ void ed::EditorContext::End()
 
     ReleaseMouse();
 
-    if (Settings.Dirty)
-    {
-        Settings.Dirty = false;
+    if (Settings.IsDirty)
         SaveSettings();
-        Settings.Reason = SaveReasonFlags::None;
-    }
 }
 
 bool ed::EditorContext::DoLink(int id, int startPinId, int endPinId, ImU32 color, float thickness)
 {
     auto& editorStyle = GetStyle();
 
-    auto link     = GetLink(id);
     auto startPin = FindPin(startPinId);
     auto endPin   = FindPin(endPinId);
 
     if (!startPin || !startPin->IsLive || !endPin || !endPin->IsLive)
         return false;
 
+    auto link           = GetLink(id);
     link->StartPin      = startPin;
     link->EndPin        = endPin;
     link->Color         = color;
@@ -1180,7 +1176,7 @@ void ed::EditorContext::SetNodePosition(int nodeId, const ImVec2& position)
     if (node->Bounds.location != newPosition)
     {
         node->Bounds.location = to_point(position);
-        MarkSettingsDirty(NodeEditor::SaveReasonFlags::Position);
+        MakeDirty(NodeEditor::SaveReasonFlags::Position, node);
     }
 }
 
@@ -1317,20 +1313,17 @@ void ed::EditorContext::NotifyLinkDeleted(Link* link)
 
 void ed::EditorContext::Suspend()
 {
-    assert(!IsSuspended);
-
-    IsSuspended = true;
-
-    ReleaseMouse();
+    //assert(!IsSuspended);
+    if (0 == SuspendCount++)
+        ReleaseMouse();
 }
 
 void ed::EditorContext::Resume()
 {
-    assert(IsSuspended);
+    assert(SuspendCount > 0);
 
-    IsSuspended = false;
-
-    CaptureMouse();
+    if (0 == --SuspendCount)
+        CaptureMouse();
 }
 
 ed::Pin* ed::EditorContext::CreatePin(int id, PinKind kind)
@@ -1351,6 +1344,14 @@ ed::Node* ed::EditorContext::CreateNode(int id)
     if (!settings)
         settings = Settings.AddNode(id);
 
+    if (!settings->WasUsed)
+    {
+        settings->WasUsed = true;
+
+        // Load state from config (if possible)
+        NodeSettings::Parse(Config.LoadNode(id), *settings);
+    }
+
     node->Bounds.location  = to_point(settings->Location);
 
     if (settings->GroupSize.x > 0 || settings->GroupSize.y > 0)
@@ -1358,8 +1359,6 @@ ed::Node* ed::EditorContext::CreateNode(int id)
         node->Type             = NodeType::Group;
         node->GroupBounds.size = to_size(settings->GroupSize);
     }
-
-    settings->WasUsed = true;
 
     node->IsLive = false;
 
@@ -1440,30 +1439,7 @@ ed::Link* ed::EditorContext::GetLink(int id)
 
 void ed::EditorContext::LoadSettings()
 {
-    namespace json = picojson;
-
-    std::vector<char> savedData;
-
-    if (Config.LoadSettings)
-    {
-        auto dataSize = Config.LoadSettings(nullptr, Config.UserPointer);
-        if (dataSize > 0)
-        {
-            savedData.resize(dataSize);
-            Config.LoadSettings(savedData.data(), Config.UserPointer);
-        }
-    }
-    else if (Config.SettingsFile)
-    {
-        std::ifstream settingsFile(Config.SettingsFile);
-        if (settingsFile)
-            std::copy(std::istream_iterator<char>(settingsFile), std::istream_iterator<char>(), std::back_inserter(savedData));
-    }
-
-    if (savedData.empty())
-        return;
-
-    if (!ed::Settings::Parse(savedData.data(), savedData.data() + savedData.size(), Settings))
+    if (!ed::Settings::Parse(Config.Load(), Settings))
         Settings = ed::Settings();
 
     NavigateAction.Scroll = Settings.ViewScroll;
@@ -1476,28 +1452,32 @@ void ed::EditorContext::SaveSettings()
     {
         auto settings = Settings.FindNode(node->ID);
         settings->Location = to_imvec(node->Bounds.location);
+        settings->Size     = to_imvec(node->Bounds.size);
         if (IsGroup(node))
             settings->GroupSize = to_imvec(node->GroupBounds.size);
+
+        if (settings->IsDirty && Config.SaveNodeSettings)
+        {
+            if (Config.SaveNode(node->ID, json::value(settings->Serialize()).serialize(), settings->DirtyReason))
+                settings->ClearDirty();
+        }
     }
 
     Settings.ViewScroll = NavigateAction.Scroll;
     Settings.ViewZoom   = NavigateAction.Zoom;
 
-    auto data = Settings.Serialize();
-    if (Config.SaveSettings)
-        Config.SaveSettings(data.c_str(), Config.UserPointer, Settings.Reason);
-    else if (Config.SettingsFile)
-    {
-        std::ofstream settingsFile(Config.SettingsFile);
-        if (settingsFile)
-            settingsFile << data;
-    }
+    if (Config.Save(Settings.Serialize(), Settings.DirtyReason))
+        Settings.ClearDirty();
 }
 
-void ed::EditorContext::MarkSettingsDirty(SaveReasonFlags reason)
+void ed::EditorContext::MakeDirty(SaveReasonFlags reason)
 {
-    Settings.Dirty  = true;
-    Settings.Reason = Settings.Reason | reason;
+    Settings.MakeDirty(reason);
+}
+
+void ed::EditorContext::MakeDirty(SaveReasonFlags reason, Node* node)
+{
+    Settings.MakeDirty(reason, node);
 }
 
 ed::Link* ed::EditorContext::FindLinkAt(const ax::point& p)
@@ -1807,6 +1787,90 @@ void ed::EditorContext::ReleaseMouse()
 
 //------------------------------------------------------------------------------
 //
+// Node Settings
+//
+//------------------------------------------------------------------------------
+void ed::NodeSettings::ClearDirty()
+{
+    IsDirty     = false;
+    DirtyReason = SaveReasonFlags::None;
+}
+
+void ed::NodeSettings::MakeDirty(SaveReasonFlags reason)
+{
+    IsDirty     = true;
+    DirtyReason = DirtyReason | reason;
+}
+
+ed::json::object ed::NodeSettings::Serialize()
+{
+    auto serializeVector = [](ImVec2 p) -> json::object
+    {
+        json::object result;
+        result["x"] = json::value(static_cast<double>(p.x));
+        result["y"] = json::value(static_cast<double>(p.y));
+        return result;
+    };
+
+    json::object nodeData;
+    nodeData["location"] = json::value(serializeVector(Location));
+    nodeData["size"]     = json::value(serializeVector(Size));
+
+    if (GroupSize.x > 0 || GroupSize.y > 0)
+        nodeData["group_size"] = json::value(serializeVector(GroupSize));
+
+    return std::move(nodeData);
+}
+
+bool ed::NodeSettings::Parse(const char* data, const char* dataEnd, NodeSettings& settings)
+{
+    json::value settingsValue;
+    auto error = json::parse(settingsValue, data, dataEnd);
+    if (!error.empty() || settingsValue.is<json::null>())
+        return false;
+
+    return Parse(settingsValue, settings);
+
+}
+
+bool ed::NodeSettings::Parse(const json::value& data, NodeSettings& result)
+{
+    if (!data.is<json::object>())
+        return false;
+
+    auto tryParseVector = [](const json::value& v, ImVec2& result) -> bool
+    {
+        if (v.is<json::object>())
+        {
+            auto xValue = v.get("x");
+            auto yValue = v.get("y");
+
+            if (xValue.is<double>() && yValue.is<double>())
+            {
+                result.x = static_cast<float>(xValue.get<double>());
+                result.y = static_cast<float>(yValue.get<double>());
+
+                return true;
+            }
+        }
+
+        return false;
+    };
+
+    if (!tryParseVector(data.get("location"), result.Location))
+        return false;
+
+    if (data.contains("group_size") && !tryParseVector(data.get("group_size"), result.GroupSize))
+        return false;
+
+    return true;
+}
+
+
+
+
+//------------------------------------------------------------------------------
+//
 // Settings
 //
 //------------------------------------------------------------------------------
@@ -1825,10 +1889,40 @@ ed::NodeSettings* ed::Settings::FindNode(int id)
     return nullptr;
 }
 
+void ed::Settings::ClearDirty(Node* node)
+{
+    if (node)
+    {
+        auto settings = FindNode(node->ID);
+        assert(settings);
+        settings->ClearDirty();
+    }
+    else
+    {
+        IsDirty     = false;
+        DirtyReason = SaveReasonFlags::None;
+
+        for (auto& node : Nodes)
+            node.ClearDirty();
+    }
+}
+
+void ed::Settings::MakeDirty(SaveReasonFlags reason, Node* node)
+{
+    IsDirty     = true;
+    DirtyReason = DirtyReason | reason;
+
+    if (node)
+    {
+        auto settings = FindNode(node->ID);
+        assert(settings);
+
+        settings->MakeDirty(reason);
+    }
+}
+
 std::string ed::Settings::Serialize()
 {
-    namespace json = picojson;
-
     auto serializeVector = [](ImVec2 p) -> json::object
     {
         json::object result;
@@ -1840,16 +1934,8 @@ std::string ed::Settings::Serialize()
     json::object nodes;
     for (auto& node : Nodes)
     {
-        if (!node.WasUsed)
-            continue;
-
-        json::object nodeData;
-        nodeData["location"] = json::value(serializeVector(node.Location));
-
-        if (node.GroupSize.x > 0 || node.GroupSize.y > 0)
-            nodeData["group_size"] = json::value(serializeVector(node.GroupSize));
-
-        nodes[std::to_string(node.ID)] = json::value(std::move(nodeData));
+        if (node.WasUsed)
+            nodes[std::to_string(node.ID)] = json::value(node.Serialize());
     }
 
     json::object view;
@@ -1867,8 +1953,6 @@ std::string ed::Settings::Serialize()
 
 bool ed::Settings::Parse(const char* data, const char* dataEnd, Settings& settings)
 {
-    namespace json = picojson;
-
     Settings result;
 
     json::value settingsValue;
@@ -1899,25 +1983,20 @@ bool ed::Settings::Parse(const char* data, const char* dataEnd, Settings& settin
     };
 
     auto& settingsObject = settingsValue.get<json::object>();
-    auto& nodesValue  = settingsValue.get("nodes");
-    auto& groupsValue = settingsValue.get("groups");
+    auto& nodesValue     = settingsValue.get("nodes");
+    auto& groupsValue    = settingsValue.get("groups");
 
     if (nodesValue.is<json::object>())
     {
         for (auto& node : nodesValue.get<json::object>())
         {
             auto id = static_cast<int>(strtoll(node.first.c_str(), nullptr, 10));
+
             auto settings = result.FindNode(id);
             if (!settings)
                 settings = result.AddNode(id);
 
-            auto& nodeData = node.second;
-
-            if (!tryParseVector(nodeData.get("location"), settings->Location))
-                settings->Location = ImVec2(0, 0);
-
-            if (!tryParseVector(nodeData.get("group_size"), settings->GroupSize))
-                settings->GroupSize = ImVec2(0, 0);
+            NodeSettings::Parse(node.second, *settings);
         }
     }
 
@@ -2123,7 +2202,7 @@ void ed::NavigateAnimation::OnUpdate(float progress)
 
 void ed::NavigateAnimation::OnStop()
 {
-    Editor->MarkSettingsDirty(SaveReasonFlags::Navigation);
+    Editor->MakeDirty(SaveReasonFlags::Navigation);
 }
 
 void ed::NavigateAnimation::OnFinish()
@@ -2131,7 +2210,7 @@ void ed::NavigateAnimation::OnFinish()
     Action.Scroll = Target;
     Action.Zoom   = TargetZoom;
 
-    Editor->MarkSettingsDirty(SaveReasonFlags::Navigation);
+    Editor->MakeDirty(SaveReasonFlags::Navigation);
 }
 
 
@@ -2467,7 +2546,7 @@ bool ed::NavigateAction::Process(const Control& control)
     else
     {
         if (Scroll != ScrollStart)
-            Editor->MarkSettingsDirty(SaveReasonFlags::Navigation);
+            Editor->MakeDirty(SaveReasonFlags::Navigation);
 
         IsActive = false;
     }
@@ -2512,7 +2591,7 @@ bool ed::NavigateAction::HandleZoom(const Control& control)
         Scroll = savedScroll;
         Zoom = savedZoom;
 
-        Editor->MarkSettingsDirty(SaveReasonFlags::Navigation);
+        Editor->MakeDirty(SaveReasonFlags::Navigation);
     }
 
     NavigateTo(targetScroll, newZoom, c_MouseZoomDuration, NavigationReason::MouseZoom);
@@ -2615,7 +2694,7 @@ void ed::NavigateAction::StopMoveOverEdge()
 {
     if (MovingOverEdge)
     {
-        Editor->MarkSettingsDirty(SaveReasonFlags::Navigation);
+        Editor->MakeDirty(SaveReasonFlags::Navigation);
 
         MoveOffset     = ImVec2(0, 0);
         MovingOverEdge = false;
@@ -2828,10 +2907,10 @@ bool ed::SizeAction::Process(const Control& control)
     else if (!control.ActiveNode)
     {
         if (SizedNode->Bounds.location != StartBounds.location || SizedNode->GroupBounds.location != StartGroupBounds.location)
-            Editor->MarkSettingsDirty(SaveReasonFlags::Position);
+            Editor->MakeDirty(SaveReasonFlags::Position, SizedNode);
 
         if (SizedNode->Bounds.size != StartBounds.size || SizedNode->GroupBounds.size != StartGroupBounds.size)
-            Editor->MarkSettingsDirty(SaveReasonFlags::Size);
+            Editor->MakeDirty(SaveReasonFlags::Size, SizedNode);
 
         SizedNode = nullptr;
         IsActive = false;
@@ -2988,12 +3067,11 @@ bool ed::DragAction::Process(const Control& control)
     }
     else if (!control.ActiveObject)
     {
-        bool anyModified = false;
         for (auto object : Objects)
-            anyModified |= object->EndDrag();
-
-        if (anyModified)
-            Editor->MarkSettingsDirty(SaveReasonFlags::Position);
+        {
+            if (object->EndDrag())
+                Editor->MakeDirty(SaveReasonFlags::Position, object->AsNode());
+        }
 
         Objects.resize(0);
 
@@ -3940,7 +4018,7 @@ void ed::NodeBuilder::End()
     if (CurrentNode->Bounds.size != NodeRect.size)
     {
         CurrentNode->Bounds.size = NodeRect.size;
-        Editor->MarkSettingsDirty(SaveReasonFlags::Size);
+        Editor->MakeDirty(SaveReasonFlags::Size, CurrentNode);
     }
 
     if (IsGroup)
@@ -4347,4 +4425,92 @@ ImVec4* ed::Style::GetVarVec4Addr(StyleVar idx)
     }
 
     return nullptr;
+}
+
+
+
+
+//------------------------------------------------------------------------------
+//
+// Config
+//
+//------------------------------------------------------------------------------
+ed::Config::Config(const ax::NodeEditor::Config* config)
+{
+    if (config)
+        *static_cast<ax::NodeEditor::Config*>(this) = *config;
+}
+
+std::string ed::Config::Load()
+{
+    std::string data;
+
+    if (LoadSettings)
+    {
+        const auto size = LoadSettings(nullptr, UserPointer);
+        if (size > 0)
+        {
+            data.resize(size);
+            LoadSettings(const_cast<char*>(data.data()), UserPointer);
+        }
+    }
+    else if (SettingsFile)
+    {
+        std::ifstream file(SettingsFile);
+        if (file)
+        {
+            file.seekg(0, std::ios_base::end);
+            auto size = static_cast<size_t>(file.tellg());
+            file.seekg(0, std::ios_base::beg);
+
+            data.reserve(size);
+
+            std::copy(std::istream_iterator<char>(file), std::istream_iterator<char>(), std::back_inserter(data));
+        }
+    }
+
+    return data;
+}
+
+std::string ed::Config::LoadNode(int nodeId)
+{
+    std::string data;
+
+    if (LoadNodeSettings)
+    {
+        const auto size = LoadNodeSettings(nodeId, nullptr, UserPointer);
+        if (size > 0)
+        {
+            data.resize(size);
+            LoadNodeSettings(nodeId, const_cast<char*>(data.data()), UserPointer);
+        }
+    }
+
+    return data;
+}
+
+bool ed::Config::Save(const std::string& data, SaveReasonFlags flags)
+{
+    if (SaveSettings)
+    {
+        return SaveSettings(data.c_str(), data.size(), flags, UserPointer);
+    }
+    else if (SettingsFile)
+    {
+        std::ofstream settingsFile(SettingsFile);
+        if (settingsFile)
+            settingsFile << data;
+
+        return !!settingsFile;
+    }
+
+    return false;
+}
+
+bool ed::Config::SaveNode(int nodeId, const std::string& data, SaveReasonFlags flags)
+{
+    if (SaveNodeSettings)
+        return SaveNodeSettings(nodeId, data.c_str(), data.size(), flags, UserPointer);
+
+    return false;
 }

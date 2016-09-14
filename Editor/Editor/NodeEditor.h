@@ -18,20 +18,27 @@ enum class SaveReasonFlags: int
 inline SaveReasonFlags operator |(SaveReasonFlags lhs, SaveReasonFlags rhs) { return static_cast<SaveReasonFlags>(static_cast<int>(lhs) | static_cast<int>(rhs)); }
 inline SaveReasonFlags operator &(SaveReasonFlags lhs, SaveReasonFlags rhs) { return static_cast<SaveReasonFlags>(static_cast<int>(lhs) & static_cast<int>(rhs)); }
 
-typedef void        (*ConfigSaveSettings)(const char* data, void* userPointer, SaveReasonFlags reason);
+typedef bool        (*ConfigSaveSettings)(const char* data, size_t size, SaveReasonFlags reason, void* userPointer);
 typedef size_t      (*ConfigLoadSettings)(char* data, void* userPointer);
+
+typedef bool        (*ConfigSaveNodeSettings)(int nodeId, const char* data, size_t size, SaveReasonFlags reason, void* userPointer);
+typedef size_t      (*ConfigLoadNodeSettings)(int nodeId, char* data, void* userPointer);
 
 struct Config
 {
     const char*             SettingsFile;
     ConfigSaveSettings      SaveSettings;
     ConfigLoadSettings      LoadSettings;
+    ConfigSaveNodeSettings  SaveNodeSettings;
+    ConfigLoadNodeSettings  LoadNodeSettings;
     void*                   UserPointer;
 
     Config():
         SettingsFile("NodeEditor.json"),
         SaveSettings(nullptr),
         LoadSettings(nullptr),
+        SaveNodeSettings(nullptr),
+        LoadNodeSettings(nullptr),
         UserPointer(nullptr)
     {
     }
