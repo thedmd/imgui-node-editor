@@ -171,6 +171,8 @@ struct Node final: Object
     float    GroupRounding;
     rect     GroupBounds;
 
+    bool     RestoreState;
+
     Node(EditorContext* editor, int id):
         Object(editor, id),
         Type(NodeType::Node),
@@ -182,7 +184,8 @@ struct Node final: Object
         BorderColor(IM_COL32_BLACK),
         BorderWidth(0),
         Rounding(0),
-        GroupBounds()
+        GroupBounds(),
+        RestoreState(false)
     {
     }
 
@@ -952,6 +955,9 @@ struct EditorContext
     ImVec2 GetNodePosition(int nodeId);
     ImVec2 GetNodeSize(int nodeId);
 
+    void MarkNodeToRestoreState(Node* node);
+    void RestoreNodeState(Node* node);
+
     void ClearSelection();
     void SelectObject(Object* object);
     void DeselectObject(Object* object);
@@ -977,6 +983,7 @@ struct EditorContext
 
     void Suspend();
     void Resume();
+    bool IsSuspended();
 
     void MakeDirty(SaveReasonFlags reason);
     void MakeDirty(SaveReasonFlags reason, Node* node);

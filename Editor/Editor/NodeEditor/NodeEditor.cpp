@@ -341,6 +341,12 @@ ImVec2 ax::NodeEditor::GetNodeSize(int nodeId)
     return s_Editor->GetNodeSize(nodeId);
 }
 
+void ax::NodeEditor::RestoreNodeState(int nodeId)
+{
+    if (auto node = s_Editor->FindNode(nodeId))
+        s_Editor->MarkNodeToRestoreState(node);
+}
+
 void ax::NodeEditor::Suspend()
 {
     s_Editor->Suspend();
@@ -349,6 +355,11 @@ void ax::NodeEditor::Suspend()
 void ax::NodeEditor::Resume()
 {
     s_Editor->Resume();
+}
+
+bool ax::NodeEditor::IsSuspended()
+{
+    return s_Editor->IsSuspended();
 }
 
 bool ax::NodeEditor::HasSelectionChanged()

@@ -899,6 +899,38 @@ void ed::EditorContext::End()
     const bool isDragging  = CurrentAction && CurrentAction->AsDrag()   != nullptr;
     const bool isSizing    = CurrentAction && CurrentAction->AsSize()   != nullptr;
 
+    // Draw nodes
+    for (auto node : Nodes)
+        if (node->IsLive && node->IsVisible())
+            node->Draw(drawList);
+
+    // Draw links
+    for (auto link : Links)
+        if (link->IsLive && link->IsVisible())
+            link->Draw(drawList);
+
+    // Highlight selected objects
+    {
+        auto selectedObjects = &SelectedObjects;
+        if (auto selectAction = CurrentAction ? CurrentAction->AsSelect() : nullptr)
+            selectedObjects = &selectAction->CandidateObjects;
+
+        for (auto selectedObject : *selectedObjects)
+            if (selectedObject->IsVisible())
+                selectedObject->Draw(drawList, Object::Selected);
+    }
+
+    if (!isSelecting)
+    {
+        auto hoveredObject = isDragging || isSizing ? control.ActiveObject : control.HotObject;
+        if (hoveredObject && !IsSelected(hoveredObject) && hoveredObject->IsVisible())
+            hoveredObject->Draw(drawList, Object::Hovered);
+    }
+
+    // Draw animations
+    for (auto controller : AnimationControllers)
+        controller->Draw(drawList);
+
     if (CurrentAction && !CurrentAction->Process(control))
         CurrentAction = nullptr;
 
@@ -950,38 +982,6 @@ void ed::EditorContext::End()
 
     // Draw selection rectangle
     SelectAction.Draw(drawList);
-
-    // Draw nodes
-    for (auto node : Nodes)
-        if (node->IsLive && node->IsVisible())
-            node->Draw(drawList);
-
-    // Draw links
-    for (auto link : Links)
-        if (link->IsLive && link->IsVisible())
-            link->Draw(drawList);
-
-    // Highlight selected objects
-    {
-        auto selectedObjects = &SelectedObjects;
-        if (auto selectAction = CurrentAction ? CurrentAction->AsSelect() : nullptr)
-            selectedObjects = &selectAction->CandidateObjects;
-
-        for (auto selectedObject : *selectedObjects)
-            if (selectedObject->IsVisible())
-                selectedObject->Draw(drawList, Object::Selected);
-    }
-
-    if (!isSelecting)
-    {
-        auto hoveredObject = isDragging || isSizing ? control.ActiveObject : control.HotObject;
-        if (hoveredObject && !IsSelected(hoveredObject) && hoveredObject->IsVisible())
-            hoveredObject->Draw(drawList, Object::Hovered);
-    }
-
-    // Draw animations
-    for (auto controller : AnimationControllers)
-        controller->Draw(drawList);
 
     bool sortGroups = false;
     if (control.ActiveNode)
@@ -1213,6 +1213,25 @@ ImVec2 ed::EditorContext::GetNodeSize(int nodeId)
     return to_imvec(node->Bounds.size);
 }
 
+void ed::EditorContext::MarkNodeToRestoreState(Node* node)
+{
+    node->RestoreState = true;
+}
+
+void ed::EditorContext::RestoreNodeState(Node* node)
+{
+    auto settings = Settings.FindNode(node->ID);
+    if (!settings)
+        return;
+
+    // Load state from config (if possible)
+    if (!NodeSettings::Parse(Config.LoadNode(node->ID), *settings))
+        return;
+
+    node->Bounds.location  = to_point(settings->Location);
+    node->GroupBounds.size = to_size(settings->GroupSize);
+}
+
 void ed::EditorContext::ClearSelection()
 {
     SelectedObjects.clear();
@@ -1350,6 +1369,11 @@ void ed::EditorContext::Resume()
         CaptureMouse();
 }
 
+bool ed::EditorContext::IsSuspended()
+{
+    return SuspendCount > 0;
+}
+
 ed::Pin* ed::EditorContext::CreatePin(int id, PinKind kind)
 {
     assert(nullptr == FindObject(id));
@@ -1371,9 +1395,7 @@ ed::Node* ed::EditorContext::CreateNode(int id)
     if (!settings->WasUsed)
     {
         settings->WasUsed = true;
-
-        // Load state from config (if possible)
-        NodeSettings::Parse(Config.LoadNode(id), *settings);
+        RestoreNodeState(node);
     }
 
     node->Bounds.location  = to_point(settings->Location);
@@ -1480,7 +1502,7 @@ void ed::EditorContext::SaveSettings()
         if (IsGroup(node))
             settings->GroupSize = to_imvec(node->GroupBounds.size);
 
-        if (settings->IsDirty && Config.SaveNodeSettings)
+        if (!node->RestoreState && settings->IsDirty && Config.SaveNodeSettings)
         {
             if (Config.SaveNode(node->ID, json::value(settings->Serialize()).serialize(), settings->DirtyReason))
                 settings->ClearDirty();
@@ -4023,6 +4045,12 @@ void ed::NodeBuilder::Begin(int nodeId)
     assert(nullptr == CurrentNode);
 
     CurrentNode = Editor->GetNode(nodeId);
+
+    if (CurrentNode->RestoreState)
+    {
+        Editor->RestoreNodeState(CurrentNode);
+        CurrentNode->RestoreState = false;
+    }
 
     // Position node on screen
     ImGui::SetCursorScreenPos(to_imvec(CurrentNode->Bounds.location));
