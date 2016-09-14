@@ -1143,7 +1143,8 @@ void ed::EditorContext::End()
     {
         ClearSelection();
         for (int id : Settings.Selection)
-            SelectObject(FindObject(id));
+            if (auto object = FindObject(id))
+                SelectObject(object);
     }
 
     if (HasSelectionChanged())
