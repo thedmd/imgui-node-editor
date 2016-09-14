@@ -83,6 +83,8 @@ struct Node
     NodeType Type;
     ImVec2 Size;
 
+    std::string State;
+
     Node(int id, const char* name, ImColor color = ImColor(255, 255, 255)):
         ID(id), Name(name), Color(color), Type(NodeType::Blueprint), Size(0, 0)
     {
@@ -111,10 +113,37 @@ static std::vector<Link>    s_Links;
 static ImTextureID          s_HeaderBackground = nullptr;
 static ImTextureID          s_SampleImage = nullptr;
 
+static const float          s_TouchTime = 2.0f;
+static std::map<int, float> s_NodeTouchTime;
+
 static int s_NextId = 1;
 static int GetNextId()
 {
     return s_NextId++;
+}
+
+static void TouchNode(int id)
+{
+    s_NodeTouchTime[id] = s_TouchTime;
+}
+
+static float GetTouchProgress(int id)
+{
+    auto it = s_NodeTouchTime.find(id);
+    if (it != s_NodeTouchTime.end() && it->second > 0.0f)
+        return (s_TouchTime - it->second) / s_TouchTime;
+    else
+        return 0.0f;
+}
+
+static void UpdateTouch()
+{
+    const auto deltaTime = ImGui::GetIO().DeltaTime;
+    for (auto& entry : s_NodeTouchTime)
+    {
+        if (entry.second > 0.0f)
+            entry.second -= deltaTime;
+    }
 }
 
 static Node* FindNode(int id)
@@ -342,7 +371,32 @@ void BuildNodes()
 
 void Application_Initialize()
 {
-    m_Editor = ed::CreateEditor();
+    ed::Config config;
+    config.LoadNodeSettings = [](int nodeId, char* data, void* userPointer) -> size_t
+    {
+        auto node = FindNode(nodeId);
+        if (!node)
+            return 0;
+
+        if (data != nullptr)
+            memcpy(data, node->State.data(), node->State.size());
+        return node->State.size();
+    };
+
+    config.SaveNodeSettings = [](int nodeId, const char* data, size_t size, ed::SaveReasonFlags reason, void* userPointer) -> bool
+    {
+        auto node = FindNode(nodeId);
+        if (!node)
+            return false;
+
+        node->State.assign(data, size);
+
+        TouchNode(nodeId);
+
+        return true;
+    };
+
+    m_Editor = ed::CreateEditor(&config);
 
     SpawnInputActionNode();
     SpawnBranchNode();
@@ -581,6 +635,14 @@ void ShowLeftPane(float paneWidth)
     {
         auto start = ImGui::GetCursorScreenPos();
 
+        if (const auto progress = GetTouchProgress(node.ID))
+        {
+            ImGui::GetWindowDrawList()->AddLine(
+                start + ImVec2(-8, 0),
+                start + ImVec2(-8, ImGui::GetTextLineHeight()),
+                IM_COL32(255, 0, 0, 255 - (int)(255 * progress * progress)), 4.0f);
+        }
+
         bool isSelected = std::find(selectedNodes.begin(), selectedNodes.end(), node.ID) != selectedNodes.end();
         if (ImGui::Selectable((node.Name + "##" + std::to_string(node.ID)).c_str(), &isSelected))
         {
@@ -596,6 +658,8 @@ void ShowLeftPane(float paneWidth)
 
             ed::NavigateToSelection();
         }
+        if (ImGui::IsItemHovered() && !node.State.empty())
+            ImGui::SetTooltip("State: %s", node.State.c_str());
 
         auto id = std::string("(") + std::to_string(node.ID) + ")";
         auto textSize = ImGui::CalcTextSize(id.c_str(), nullptr);
@@ -637,6 +701,8 @@ void ShowLeftPane(float paneWidth)
 
 void Application_Frame()
 {
+    UpdateTouch();
+
     auto& io = ImGui::GetIO();
 
     ImGui::Text("FPS: %.2f (%.2gms)", io.Framerate, io.Framerate ? 1000.0f / io.Framerate : 0.0f);
