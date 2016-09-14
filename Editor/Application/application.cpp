@@ -1180,6 +1180,9 @@ void Application_Frame()
         }
         else
             ImGui::Text("Unknown node: %d", contextId);
+        ImGui::Separator();
+        if (ImGui::MenuItem("Delete"))
+            ed::DeleteNode(contextId);
         ImGui::EndPopup();
     }
 
@@ -1217,6 +1220,9 @@ void Application_Frame()
         }
         else
             ImGui::Text("Unknown link: %d", contextId);
+        ImGui::Separator();
+        if (ImGui::MenuItem("Delete"))
+            ed::DeleteLink(contextId);
         ImGui::EndPopup();
     }
 
