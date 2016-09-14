@@ -84,6 +84,7 @@ struct Node
     ImVec2 Size;
 
     std::string State;
+    std::string SavedState;
 
     Node(int id, const char* name, ImColor color = ImColor(255, 255, 255)):
         ID(id), Name(name), Color(color), Type(NodeType::Blueprint), Size(0, 0)
@@ -112,6 +113,8 @@ static std::vector<Node>    s_Nodes;
 static std::vector<Link>    s_Links;
 static ImTextureID          s_HeaderBackground = nullptr;
 static ImTextureID          s_SampleImage = nullptr;
+static ImTextureID          s_SaveIcon = nullptr;
+static ImTextureID          s_RestoreIcon = nullptr;
 
 static const float          s_TouchTime = 1.0f;
 static std::map<int, float> s_NodeTouchTime;
@@ -417,24 +420,29 @@ void Application_Initialize()
      s_Links.push_back(Link(GetNextId(), s_Nodes[5].Outputs[0].ID, s_Nodes[7].Inputs[0].ID));
 
     s_HeaderBackground = ImGui_LoadTexture("../Data/BlueprintBackground.png");
-    s_SampleImage = ImGui_LoadTexture("../Data/Lena512.png");
+    s_SampleImage      = ImGui_LoadTexture("../Data/Lena512.png");
+    s_SaveIcon         = ImGui_LoadTexture("../Data/ic_save_white_24dp.png");
+    s_RestoreIcon      = ImGui_LoadTexture("../Data/ic_restore_white_24dp.png");
+
 
     auto& io = ImGui::GetIO();
 }
 
 void Application_Finalize()
 {
-    if (s_SampleImage)
+    auto releaseTexture = [](ImTextureID& id)
     {
-        ImGui_DestroyTexture(s_SampleImage);
-        s_SampleImage = nullptr;
-    }
+        if (id)
+        {
+            ImGui_DestroyTexture(id);
+            id = nullptr;
+        }
+    };
 
-    if (s_HeaderBackground)
-    {
-        ImGui_DestroyTexture(s_HeaderBackground);
-        s_HeaderBackground = nullptr;
-    }
+    releaseTexture(s_RestoreIcon);
+    releaseTexture(s_SaveIcon);
+    releaseTexture(s_SampleImage);
+    releaseTexture(s_HeaderBackground);
 
     if (m_Editor)
     {
@@ -624,6 +632,11 @@ void ShowLeftPane(float paneWidth)
     selectedNodes.resize(nodeCount);
     selectedLinks.resize(linkCount);
 
+    int saveIconWidth     = ImGui_GetTextureWidth(s_SaveIcon);
+    int saveIconHeight    = ImGui_GetTextureWidth(s_SaveIcon);
+    int restoreIconWidth  = ImGui_GetTextureWidth(s_RestoreIcon);
+    int restoreIconHeight = ImGui_GetTextureWidth(s_RestoreIcon);
+
     ImGui::GetWindowDrawList()->AddRectFilled(
         ImGui::GetCursorScreenPos(),
         ImGui::GetCursorScreenPos() + ImVec2(paneWidth, ImGui::GetTextLineHeight()),
@@ -633,6 +646,7 @@ void ShowLeftPane(float paneWidth)
     ImGui::Indent();
     for (auto& node : s_Nodes)
     {
+        ImGui::PushID(node.ID);
         auto start = ImGui::GetCursorScreenPos();
 
         if (const auto progress = GetTouchProgress(node.ID))
@@ -663,9 +677,63 @@ void ShowLeftPane(float paneWidth)
 
         auto id = std::string("(") + std::to_string(node.ID) + ")";
         auto textSize = ImGui::CalcTextSize(id.c_str(), nullptr);
+        auto iconPanelPos = start + ImVec2(
+            paneWidth - ImGui::GetStyle().FramePadding.x - ImGui::GetStyle().IndentSpacing - saveIconWidth - restoreIconWidth - ImGui::GetStyle().ItemInnerSpacing.x * 1,
+            (ImGui::GetTextLineHeight() - saveIconHeight) / 2);
         ImGui::GetWindowDrawList()->AddText(
-            start + ImVec2(paneWidth - textSize.x - ImGui::GetStyle().FramePadding.x - ImGui::GetStyle().IndentSpacing, 0),
+            ImVec2(iconPanelPos.x - textSize.x - ImGui::GetStyle().ItemInnerSpacing.x, start.y),
             IM_COL32(255, 255, 255, 255), id.c_str(), nullptr);
+
+        auto drawList = ImGui::GetWindowDrawList();
+        ImGui::SetCursorScreenPos(iconPanelPos);
+        ImGui::SetItemAllowOverlap();
+        if (node.SavedState.empty())
+        {
+            if (ImGui::InvisibleButton("save", ImVec2((float)saveIconWidth, (float)saveIconHeight)))
+                node.SavedState = node.State;
+
+            if (ImGui::IsItemActive())
+                drawList->AddImage(s_SaveIcon, ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), ImVec2(0, 0), ImVec2(1, 1), IM_COL32(255, 255, 255, 96));
+            else if (ImGui::IsItemHovered())
+                drawList->AddImage(s_SaveIcon, ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), ImVec2(0, 0), ImVec2(1, 1), IM_COL32(255, 255, 255, 255));
+            else
+                drawList->AddImage(s_SaveIcon, ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), ImVec2(0, 0), ImVec2(1, 1), IM_COL32(255, 255, 255, 160));
+        }
+        else
+        {
+            ImGui::Dummy(ImVec2((float)saveIconWidth, (float)saveIconHeight));
+            drawList->AddImage(s_SaveIcon, ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), ImVec2(0, 0), ImVec2(1, 1), IM_COL32(255, 255, 255, 32));
+        }
+
+        ImGui::SameLine(0, ImGui::GetStyle().ItemInnerSpacing.x);
+        ImGui::SetItemAllowOverlap();
+        if (!node.SavedState.empty())
+        {
+            if (ImGui::InvisibleButton("restore", ImVec2((float)restoreIconWidth, (float)restoreIconHeight)))
+            {
+                node.State = node.SavedState;
+                ed::RestoreNodeState(node.ID);
+                node.SavedState.clear();
+            }
+
+            if (ImGui::IsItemActive())
+                drawList->AddImage(s_RestoreIcon, ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), ImVec2(0, 0), ImVec2(1, 1), IM_COL32(255, 255, 255, 96));
+            else if (ImGui::IsItemHovered())
+                drawList->AddImage(s_RestoreIcon, ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), ImVec2(0, 0), ImVec2(1, 1), IM_COL32(255, 255, 255, 255));
+            else
+                drawList->AddImage(s_RestoreIcon, ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), ImVec2(0, 0), ImVec2(1, 1), IM_COL32(255, 255, 255, 160));
+        }
+        else
+        {
+            ImGui::Dummy(ImVec2((float)restoreIconWidth, (float)restoreIconHeight));
+            drawList->AddImage(s_RestoreIcon, ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), ImVec2(0, 0), ImVec2(1, 1), IM_COL32(255, 255, 255, 32));
+        }
+
+        ImGui::SameLine(0, 0);
+        ImGui::SetItemAllowOverlap();
+        ImGui::Dummy(ImVec2(0, (float)restoreIconHeight));
+
+        ImGui::PopID();
     }
     ImGui::Unindent();
 
