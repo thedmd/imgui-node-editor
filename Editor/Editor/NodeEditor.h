@@ -263,6 +263,9 @@ void SelectLink(int linkId, bool append = false);
 void DeselectNode(int nodeId);
 void DeselectLink(int linkId);
 
+bool DeleteNode(int nodeId);
+bool DeleteLink(int linkId);
+
 void NavigateToContent(float duration = -1);
 void NavigateToSelection(bool zoomIn = false, float duration = -1);
 

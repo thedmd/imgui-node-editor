@@ -433,6 +433,22 @@ void ax::NodeEditor::DeselectLink(int linkId)
         s_Editor->DeselectObject(link);
 }
 
+bool ax::NodeEditor::DeleteNode(int nodeId)
+{
+    if (auto node = s_Editor->FindNode(nodeId))
+        return s_Editor->GetItemDeleter().Add(node);
+    else
+        return false;
+}
+
+bool ax::NodeEditor::DeleteLink(int linkId)
+{
+    if (auto link = s_Editor->FindLink(linkId))
+        return s_Editor->GetItemDeleter().Add(link);
+    else
+        return false;
+}
+
 void ax::NodeEditor::NavigateToContent(float duration)
 {
     s_Editor->NavigateTo(s_Editor->GetContentBounds(), true, duration);

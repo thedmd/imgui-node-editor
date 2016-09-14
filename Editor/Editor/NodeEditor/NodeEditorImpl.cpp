@@ -1137,7 +1137,7 @@ void ed::EditorContext::End()
 
     ReleaseMouse();
 
-    if (Settings.IsDirty)
+    if (Settings.IsDirty && !CurrentAction)
         SaveSettings();
 }
 
@@ -3751,6 +3751,25 @@ ed::EditorAction::AcceptResult ed::DeleteItemsAction::Accept(const Control& cont
     if (IsActive)
         return False;
 
+    auto addDeadLinks = [this]()
+    {
+        vector<ed::Link*> links;
+        for (auto object : CandidateObjects)
+        {
+            auto node = object->AsNode();
+            if (!node)
+                continue;
+
+            Editor->FindLinksForNode(node->ID, links, true);
+        }
+        if (!links.empty())
+        {
+            std::sort(links.begin(), links.end());
+            links.erase(std::unique(links.begin(), links.end()), links.end());
+            CandidateObjects.insert(CandidateObjects.end(), links.begin(), links.end());
+        }
+    };
+
     auto& io = ImGui::GetIO();
     if (ImGui::IsKeyPressed(ImGui::GetKeyIndex(ImGuiKey_Delete)))
     {
@@ -3758,23 +3777,7 @@ ed::EditorAction::AcceptResult ed::DeleteItemsAction::Accept(const Control& cont
         if (!selection.empty())
         {
             CandidateObjects = selection;
-
-            vector<ed::Link*> links;
-            for (auto object : selection)
-            {
-                auto node = object->AsNode();
-                if (!node)
-                    continue;
-
-                Editor->FindLinksForNode(node->ID, links, true);
-            }
-            if (!links.empty())
-            {
-                std::sort(links.begin(), links.end());
-                links.erase(std::unique(links.begin(), links.end()), links.end());
-                CandidateObjects.insert(CandidateObjects.end(), links.begin(), links.end());
-            }
-
+            addDeadLinks();
             IsActive = true;
             return True;
         }
@@ -3783,6 +3786,15 @@ ed::EditorAction::AcceptResult ed::DeleteItemsAction::Accept(const Control& cont
     {
         CandidateObjects.clear();
         CandidateObjects.push_back(control.ClickedLink);
+        IsActive = true;
+        return True;
+    }
+
+    else if (!ManuallyDeletedObjects.empty())
+    {
+        CandidateObjects = ManuallyDeletedObjects;
+        ManuallyDeletedObjects.clear();
+        addDeadLinks();
         IsActive = true;
         return True;
     }
@@ -3820,6 +3832,16 @@ void ed::DeleteItemsAction::ShowMetrics()
     ImGui::Text("%s:", GetName());
     ImGui::Text("    Active: %s", IsActive ? "yes" : "no");
     //ImGui::Text("    Node: %s (%d)", getObjectName(DeleteItemsgedNode), DeleteItemsgedNode ? DeleteItemsgedNode->ID : 0);
+}
+
+bool ed::DeleteItemsAction::Add(Object* object)
+{
+    if (Editor->GetCurrentAction() != nullptr)
+        return false;
+
+    ManuallyDeletedObjects.push_back(object);
+
+    return true;
 }
 
 bool ed::DeleteItemsAction::Begin()

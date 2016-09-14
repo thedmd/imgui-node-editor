@@ -798,6 +798,8 @@ struct DeleteItemsAction final: EditorAction
 
     virtual DeleteItemsAction* AsDeleteItems() override final { return this; }
 
+    bool Add(Object* object);
+
     bool Begin();
     void End();
 
@@ -813,6 +815,8 @@ private:
 
     bool QueryItem(int* itemId, IteratorType itemType);
     void RemoveItem();
+
+    vector<Object*> ManuallyDeletedObjects;
 
     IteratorType    CurrentItemType;
     UserAction      UserAction;
