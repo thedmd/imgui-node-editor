@@ -259,6 +259,7 @@ struct Settings
     SaveReasonFlags      DirtyReason;
 
     vector<NodeSettings> Nodes;
+    vector<int>          Selection;
     ImVec2               ViewScroll;
     float                ViewZoom;
 
@@ -1033,6 +1034,8 @@ private:
     void ReleaseMouse();
 
     void UpdateAnimations();
+
+    bool                IsFirstFrame;
 
     Style               Style;
 

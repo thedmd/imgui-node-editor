@@ -12,7 +12,8 @@ enum class SaveReasonFlags: int
     None       = 0x00000000,
     Navigation = 0x00000001,
     Position   = 0x00000002,
-    Size       = 0x00000004
+    Size       = 0x00000004,
+    Selection  = 0x00000008
 };
 
 inline SaveReasonFlags operator |(SaveReasonFlags lhs, SaveReasonFlags rhs) { return static_cast<SaveReasonFlags>(static_cast<int>(lhs) | static_cast<int>(rhs)); }

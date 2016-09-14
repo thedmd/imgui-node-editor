@@ -776,6 +776,8 @@ ax::rectf ed::Link::GetBounds() const
 //
 //------------------------------------------------------------------------------
 ed::EditorContext::EditorContext(const ax::NodeEditor::Config* config):
+    IsFirstFrame(true),
+    Style(),
     Nodes(),
     Pins(),
     Links(),
@@ -1137,8 +1139,20 @@ void ed::EditorContext::End()
 
     ReleaseMouse();
 
+    if (!CurrentAction && IsFirstFrame && !Settings.Selection.empty())
+    {
+        ClearSelection();
+        for (int id : Settings.Selection)
+            SelectObject(FindObject(id));
+    }
+
+    if (HasSelectionChanged())
+        MakeDirty(SaveReasonFlags::Selection);
+
     if (Settings.IsDirty && !CurrentAction)
         SaveSettings();
+
+    IsFirstFrame = false;
 }
 
 bool ed::EditorContext::DoLink(int id, int startPinId, int endPinId, ImU32 color, float thickness)
@@ -1462,6 +1476,10 @@ void ed::EditorContext::SaveSettings()
                 settings->ClearDirty();
         }
     }
+
+    Settings.Selection.resize(0);
+    for (auto& object : SelectedObjects)
+        Settings.Selection.push_back(object->ID);
 
     Settings.ViewScroll = NavigateAction.Scroll;
     Settings.ViewZoom   = NavigateAction.Zoom;
@@ -1938,13 +1956,18 @@ std::string ed::Settings::Serialize()
             nodes[std::to_string(node.ID)] = json::value(node.Serialize());
     }
 
+    json::array selection;
+    for (auto& id : Selection)
+        selection.push_back(json::value(static_cast<double>(id)));
+
     json::object view;
     view["scroll"] = json::value(serializeVector(ViewScroll));
     view["zoom"]   = json::value((double)ViewZoom);
 
     json::object settings;
-    settings["nodes"]  = json::value(std::move(nodes));
-    settings["view"]   = json::value(std::move(view));
+    settings["nodes"]     = json::value(std::move(nodes));
+    settings["view"]      = json::value(std::move(view));
+    settings["selection"] = json::value(std::move(selection));
 
     json::value settingsValue(std::move(settings));
 
@@ -1983,9 +2006,8 @@ bool ed::Settings::Parse(const char* data, const char* dataEnd, Settings& settin
     };
 
     auto& settingsObject = settingsValue.get<json::object>();
-    auto& nodesValue     = settingsValue.get("nodes");
-    auto& groupsValue    = settingsValue.get("groups");
 
+    auto& nodesValue = settingsValue.get("nodes");
     if (nodesValue.is<json::object>())
     {
         for (auto& node : nodesValue.get<json::object>())
@@ -1997,6 +2019,20 @@ bool ed::Settings::Parse(const char* data, const char* dataEnd, Settings& settin
                 settings = result.AddNode(id);
 
             NodeSettings::Parse(node.second, *settings);
+        }
+    }
+
+    auto& selectionValue = settingsValue.get("selection");
+    if (selectionValue.is<json::array>())
+    {
+        const auto selectionArray = selectionValue.get<json::array>();
+
+        result.Selection.reserve(selectionArray.size());
+        result.Selection.resize(0);
+        for (auto& selection : selectionArray)
+        {
+            if (selection.is<double>())
+                result.Selection.push_back(static_cast<int>(selection.get<double>()));
         }
     }
 
