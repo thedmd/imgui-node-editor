@@ -336,6 +336,11 @@ ImVec2 ax::NodeEditor::GetNodePosition(int nodeId)
     return s_Editor->GetNodePosition(nodeId);
 }
 
+ImVec2 ax::NodeEditor::GetNodeSize(int nodeId)
+{
+    return s_Editor->GetNodeSize(nodeId);
+}
+
 void ax::NodeEditor::Suspend()
 {
     s_Editor->Suspend();

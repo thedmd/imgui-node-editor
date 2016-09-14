@@ -250,6 +250,7 @@ void EndDelete();
 
 void SetNodePosition(int nodeId, const ImVec2& editorPosition);
 ImVec2 GetNodePosition(int nodeId);
+ImVec2 GetNodeSize(int nodeId);
 
 void Suspend();
 void Resume();

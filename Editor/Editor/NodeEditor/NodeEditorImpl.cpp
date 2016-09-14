@@ -1203,6 +1203,15 @@ ImVec2 ed::EditorContext::GetNodePosition(int nodeId)
     return to_imvec(node->Bounds.location);
 }
 
+ImVec2 ed::EditorContext::GetNodeSize(int nodeId)
+{
+    auto node = FindNode(nodeId);
+    if (!node)
+        return ImVec2(0, 0);
+
+    return to_imvec(node->Bounds.size);
+}
+
 void ed::EditorContext::ClearSelection()
 {
     SelectedObjects.clear();

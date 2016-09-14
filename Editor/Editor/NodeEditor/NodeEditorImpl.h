@@ -950,6 +950,7 @@ struct EditorContext
 
     void SetNodePosition(int nodeId, const ImVec2& screenPosition);
     ImVec2 GetNodePosition(int nodeId);
+    ImVec2 GetNodeSize(int nodeId);
 
     void ClearSelection();
     void SelectObject(Object* object);
