@@ -113,7 +113,7 @@ static std::vector<Link>    s_Links;
 static ImTextureID          s_HeaderBackground = nullptr;
 static ImTextureID          s_SampleImage = nullptr;
 
-static const float          s_TouchTime = 2.0f;
+static const float          s_TouchTime = 1.0f;
 static std::map<int, float> s_NodeTouchTime;
 
 static int s_NextId = 1;
@@ -640,7 +640,7 @@ void ShowLeftPane(float paneWidth)
             ImGui::GetWindowDrawList()->AddLine(
                 start + ImVec2(-8, 0),
                 start + ImVec2(-8, ImGui::GetTextLineHeight()),
-                IM_COL32(255, 0, 0, 255 - (int)(255 * progress * progress)), 4.0f);
+                IM_COL32(255, 0, 0, 255 - (int)(255 * progress)), 4.0f);
         }
 
         bool isSelected = std::find(selectedNodes.begin(), selectedNodes.end(), node.ID) != selectedNodes.end();
