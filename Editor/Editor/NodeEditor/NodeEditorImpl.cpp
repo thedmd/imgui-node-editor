@@ -146,38 +146,30 @@ static void ImDrawList_TransformChannel_Inner(ImVector<ImDrawVert>& vtxBuffer, c
 {
     auto idxRead = idxBuffer.Data;
 
-    std::bitset<65536> indexMap;
-
-    int minIndex    = 65536;
-    int maxIndex    = 0;
     int indexOffset = 0;
     for (auto& cmd : cmdBuffer)
     {
-        int idxCount = cmd.ElemCount;
+        auto idxCount = cmd.ElemCount;
 
         if (idxCount == 0) continue;
 
-        for (int i = 0; i < idxCount; ++i)
+        auto minIndex = idxRead[indexOffset];
+        auto maxIndex = idxRead[indexOffset];
+
+        for (auto i = 1u; i < idxCount; ++i)
         {
-            int idx = idxRead[indexOffset + i];
-            indexMap.set(idx);
-            if (minIndex > idx) minIndex = idx;
-            if (maxIndex < idx) maxIndex = idx;
+            auto idx = idxRead[indexOffset + i];
+            minIndex = std::min(minIndex, idx);
+            maxIndex = std::max(maxIndex, idx);
+        }
+
+        for (auto vtx = vtxBuffer.Data + minIndex, vtxEnd = vtxBuffer.Data + maxIndex + 1; vtx < vtxEnd; ++vtx)
+        {
+            vtx->pos.x = (vtx->pos.x + preOffset.x) * scale.x + postOffset.x;
+            vtx->pos.y = (vtx->pos.y + preOffset.y) * scale.y + postOffset.y;
         }
 
         indexOffset += idxCount;
-    }
-
-    ++maxIndex;
-    for (int idx = minIndex; idx < maxIndex; ++idx)
-    {
-        if (!indexMap.test(idx))
-            continue;
-
-        auto& vtx = vtxBuffer.Data[idx];
-
-        vtx.pos.x = (vtx.pos.x + preOffset.x) * scale.x + postOffset.x;
-        vtx.pos.y = (vtx.pos.y + preOffset.y) * scale.y + postOffset.y;
     }
 }
 
