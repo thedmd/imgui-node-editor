@@ -104,9 +104,6 @@
     <ClInclude Include="Editor\NodeEditor.h">
       <Filter>Editor</Filter>
     </ClInclude>
-    <ClInclude Include="Editor\Common\Types.h">
-      <Filter>Editor\Common</Filter>
-    </ClInclude>
     <ClInclude Include="Editor\Common\ImGuiInterop.h">
       <Filter>Editor\Common</Filter>
     </ClInclude>
@@ -116,10 +113,13 @@
     <ClInclude Include="Editor\NodeEditor\NodeEditorImpl.h">
       <Filter>Editor\NodeEditor</Filter>
     </ClInclude>
+    <ClInclude Include="Editor\Common\Math.h">
+      <Filter>Editor\Common</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="Configuration.props" />
-    <None Include="Editor\Common\Types.inl">
+    <None Include="Editor\Common\Math.inl">
       <Filter>Editor\Common</Filter>
     </None>
   </ItemGroup>

@@ -1,12 +1,26 @@
-#pragma once
-#include "../Common/ImGuiInterop.h"
-namespace ax { using namespace ImGuiInterop; }
-#include "../Common/Types.h"
-#include "../NodeEditor.h"
-#define PICOJSON_USE_LOCALE 0
-#include "picojson.h"
-#include <vector>
+//------------------------------------------------------------------------------
+// LICENSE
+//   This software is dual-licensed to the public domain and under the following
+//   license: you are granted a perpetual, irrevocable license to copy, modify,
+//   publish, and distribute this file as you see fit.
+//
+// CREDITS
+//   Written by Michal Cichon
+//------------------------------------------------------------------------------
+# pragma once
 
+
+//------------------------------------------------------------------------------
+# include "../Common/ImGuiInterop.h"
+namespace ax { using namespace ImGuiInterop; }
+# include "../Common/Math.h"
+# include "../NodeEditor.h"
+# define PICOJSON_USE_LOCALE 0
+# include "picojson.h"
+# include <vector>
+
+
+//------------------------------------------------------------------------------
 namespace ax {
 namespace NodeEditor {
 namespace Detail {

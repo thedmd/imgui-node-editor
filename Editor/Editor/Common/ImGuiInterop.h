@@ -1,10 +1,23 @@
-#pragma once
-#include "imgui/imgui.h"
-#include "Types.h"
+//------------------------------------------------------------------------------
+// LICENSE
+//   This software is dual-licensed to the public domain and under the following
+//   license: you are granted a perpetual, irrevocable license to copy, modify,
+//   publish, and distribute this file as you see fit.
+//
+// CREDITS
+//   Written by Michal Cichon
+//------------------------------------------------------------------------------
+# pragma once
+# include "imgui/imgui.h"
+# include "Math.h"
 
+
+//------------------------------------------------------------------------------
 namespace ax {
 namespace ImGuiInterop {
 
+
+//------------------------------------------------------------------------------
 static inline bool operator==(const ImVec2& lhs, const ImVec2& rhs) { return lhs.x == rhs.x && lhs.y == rhs.y; }
 static inline bool operator!=(const ImVec2& lhs, const ImVec2& rhs) { return lhs.x != rhs.x || lhs.y != rhs.y; }
 static inline ImVec2 operator+(const ImVec2& lhs) { return ImVec2( lhs.x,  lhs.y); }
@@ -25,5 +38,8 @@ static inline ImVec2 to_imvec(const pointf& value)  { return ImVec2(value.x, val
 static inline ImVec2 to_imvec(const size& value)    { return ImVec2(static_cast<float>(value.w), static_cast<float>(value.h)); }
 static inline ImVec2 to_imvec(const sizef& value)   { return ImVec2(value.w, value.h); }
 static inline rect   ImGui_GetItemRect()            { return rect(to_point(ImGui::GetItemRectMin()), to_point(ImGui::GetItemRectMax())); }
+
+
+//------------------------------------------------------------------------------
 } // namespace ImGuiInterop
 } // namespace ax

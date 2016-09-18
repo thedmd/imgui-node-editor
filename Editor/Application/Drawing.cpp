@@ -1,5 +1,5 @@
 #include "drawing.h"
-#include "../Editor/Common/Types.h"
+#include "../Editor/Common/Math.h"
 #include "../Editor/Common/ImGuiInterop.h"
 //#include "Application/imgui_impl_dx11.h"
 #include <cmath>

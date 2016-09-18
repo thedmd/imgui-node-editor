@@ -1,5 +1,13 @@
 //------------------------------------------------------------------------------
-// Math!
+// 2D friendly math library
+//
+// LICENSE
+//   This software is dual-licensed to the public domain and under the following
+//   license: you are granted a perpetual, irrevocable license to copy, modify,
+//   publish, and distribute this file as you see fit.
+//
+// CREDITS
+//   Written by Michal Cichon
 //------------------------------------------------------------------------------
 # if !defined(__AX_MATH_2D_H__)
 # define __AX_MATH_2D_H__
@@ -1240,7 +1248,7 @@ inline V ease_out_quad(V b, V c, T t)
 
 
 //------------------------------------------------------------------------------
-# include "Types.inl"
+# include "Math.inl"
 
 
 //------------------------------------------------------------------------------

@@ -4,7 +4,7 @@
 #include <map>
 #include <algorithm>
 #include <utility>
-#include "Editor/Common/Types.h"
+#include "Editor/Common/Math.h"
 #include "Editor/Common/ImGuiInterop.h"
 #include "Editor/NodeEditor.h"
 #include "Editor/Utilities/Builders.h"
