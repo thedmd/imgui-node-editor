@@ -68,6 +68,7 @@ private:
     rect        NodeRect;
     rect        HeaderRect;
     rect        ContentRect;
+    bool        HasHeader;
 };
 
 
