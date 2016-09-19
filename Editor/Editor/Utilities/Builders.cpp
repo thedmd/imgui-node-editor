@@ -1,4 +1,4 @@
-//------------------------------------------------------------------------------
+﻿//------------------------------------------------------------------------------
 // LICENSE
 //   This software is dual-licensed to the public domain and under the following
 //   license: you are granted a perpetual, irrevocable license to copy, modify,
@@ -127,13 +127,18 @@ void util::BlueprintNodeBuilder::EndInput()
     EndPin();
 }
 
-void util::BlueprintNodeBuilder::Output(int id)
+void util::BlueprintNodeBuilder::Middle()
 {
     if (CurrentStage == Stage::Begin)
         SetStage(Stage::Content);
 
+    SetStage(Stage::Middle);
+}
+
+void util::BlueprintNodeBuilder::Output(int id)
+{
     if (CurrentStage == Stage::Begin)
-        SetStage(Stage::Input);
+        SetStage(Stage::Content);
 
     const auto applyPadding = (CurrentStage == Stage::Output);
 
@@ -189,6 +194,10 @@ bool util::BlueprintNodeBuilder::SetStage(Stage stage)
             ImGui::EndVertical();
             break;
 
+        case Stage::Middle:
+            ImGui::EndVertical();
+            break;
+
         case Stage::Output:
             ed::PopStyleVar(2);
 
@@ -211,6 +220,9 @@ bool util::BlueprintNodeBuilder::SetStage(Stage stage)
             break;
 
         case Stage::Content:
+            if (oldStage == Stage::Begin)
+                ImGui::Spring(0);
+
             ImGui::BeginHorizontal("content");
             ImGui::Spring(0, 0);
             break;
@@ -220,6 +232,11 @@ bool util::BlueprintNodeBuilder::SetStage(Stage stage)
 
             ed::PushStyleVar(ed::StyleVar_PivotAlignment, ImVec2(0, 0.5f));
             ed::PushStyleVar(ed::StyleVar_PivotSize, ImVec2(0, 0));
+            break;
+
+        case Stage::Middle:
+            ImGui::Spring(1);
+            ImGui::BeginVertical("middle", ImVec2(0, 0), 1.0f);
             break;
 
         case Stage::Output:

@@ -1,4 +1,4 @@
-//------------------------------------------------------------------------------
+﻿//------------------------------------------------------------------------------
 // LICENSE
 //   This software is dual-licensed to the public domain and under the following
 //   license: you are granted a perpetual, irrevocable license to copy, modify,
@@ -35,8 +35,11 @@ struct BlueprintNodeBuilder
     void Input(int id);
     void EndInput();
 
+    void Middle();
+
     void Output(int id);
     void EndOutput();
+
 
 private:
     enum class Stage
@@ -47,6 +50,7 @@ private:
         Content,
         Input,
         Output,
+        Middle,
         End
     };
 
