@@ -468,7 +468,8 @@ void ed::Pin::Draw(ImDrawList* drawList, DrawFlags flags)
             ImGui::PopStyleVar();
         }
 
-        Node->Draw(drawList, flags);
+        if (!Editor->IsSelected(Node))
+            Node->Draw(drawList, flags);
     }
 }
 
@@ -1040,9 +1041,12 @@ void ed::EditorContext::End()
     // to hold twice as much of channels and place them in
     // node drawing order.
     {
+        // Copy group nodes
+        auto liveNodeCount = std::count_if(Nodes.begin(), Nodes.end(), [](Node* node) { return node->IsLive; });
+
         // Reserve two additional channels for sorted list of channels
         auto nodeChannelCount = drawList->_ChannelsCount;
-        ImDrawList_ChannelsGrow(drawList, (drawList->_ChannelsCount - 1) * 2 + 1 + c_LinkChannelCount);
+        ImDrawList_ChannelsGrow(drawList, drawList->_ChannelsCount + c_ChannelsPerNode * liveNodeCount + c_LinkChannelCount);
 
         int targetChannel = nodeChannelCount;
 
@@ -3972,9 +3976,21 @@ void ed::DeleteItemsAction::End()
     InInteraction = false;
 }
 
-bool ed::DeleteItemsAction::QueryLink(int* linkId)
+bool ed::DeleteItemsAction::QueryLink(int* linkId, int* startId, int* endId)
 {
-    return QueryItem(linkId, Link);
+    if (!QueryItem(linkId, Link))
+        return false;
+
+    if (startId || endId)
+    {
+        auto link = Editor->FindLink(*linkId);
+        if (startId)
+            *startId = link->StartPin->ID;
+        if (endId)
+            *endId = link->EndPin->ID;
+    }
+
+    return true;
 }
 
 bool ed::DeleteItemsAction::QueryNode(int* nodeId)

@@ -255,7 +255,7 @@ void RejectNewItem(const ImVec4& color, float thickness = 1.0f);
 void EndCreate();
 
 bool BeginDelete();
-bool QueryDeletedLink(int* linkId);
+bool QueryDeletedLink(int* linkId, int* startId = nullptr, int* endId = nullptr);
 bool QueryDeletedNode(int* nodeId);
 bool AcceptDeletedItem();
 void RejectDeletedItem();

@@ -824,7 +824,7 @@ struct DeleteItemsAction final: EditorAction
     bool Begin();
     void End();
 
-    bool QueryLink(int* linkId);
+    bool QueryLink(int* linkId, int* startId = nullptr, int* endId = nullptr);
     bool QueryNode(int* nodeId);
 
     bool AcceptItem();

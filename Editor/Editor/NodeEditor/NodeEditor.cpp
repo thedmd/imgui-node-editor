@@ -300,11 +300,11 @@ bool ax::NodeEditor::BeginDelete()
     return context.Begin();
 }
 
-bool ax::NodeEditor::QueryDeletedLink(int* linkId)
+bool ax::NodeEditor::QueryDeletedLink(int* linkId, int* startId, int* endId)
 {
     auto& context = s_Editor->GetItemDeleter();
 
-    return context.QueryLink(linkId);
+    return context.QueryLink(linkId, startId, endId);
 }
 
 bool ax::NodeEditor::QueryDeletedNode(int* nodeId)
