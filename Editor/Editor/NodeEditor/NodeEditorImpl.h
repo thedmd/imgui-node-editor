@@ -1,4 +1,4 @@
-//------------------------------------------------------------------------------
+﻿//------------------------------------------------------------------------------
 // LICENSE
 //   This software is dual-licensed to the public domain and under the following
 //   license: you are granted a perpetual, irrevocable license to copy, modify,
@@ -1077,6 +1077,7 @@ private:
     vector<Animation*>  LastLiveAnimations;
 
     ImVec2              MousePosBackup;
+    ImVec2              MousePosPrevBackup;
     ImVec2              MouseClickPosBackup[5];
 
     Canvas              Canvas;

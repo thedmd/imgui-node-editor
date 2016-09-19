@@ -1,4 +1,4 @@
-//------------------------------------------------------------------------------
+﻿//------------------------------------------------------------------------------
 // LICENSE
 //   This software is dual-licensed to the public domain and under the following
 //   license: you are granted a perpetual, irrevocable license to copy, modify,
@@ -785,6 +785,7 @@ ed::EditorContext::EditorContext(const ax::NodeEditor::Config* config):
     SelectionId(1),
     LastActiveLink(nullptr),
     MousePosBackup(0, 0),
+    MousePosPrevBackup(0, 0),
     MouseClickPosBackup(),
     Canvas(),
     SuspendCount(0),
@@ -838,6 +839,8 @@ void ed::EditorContext::Begin(const char* id, const ImVec2& size)
         ImGuiWindowFlags_NoScrollbar |
         ImGuiWindowFlags_NoScrollWithMouse);
 
+    ImGui::CaptureKeyboardFromApp();
+
     //
     if (CurrentAction && CurrentAction->IsDragging() && NavigateAction.MoveOverEdge())
     {
@@ -859,6 +862,7 @@ void ed::EditorContext::Begin(const char* id, const ImVec2& size)
     // Save mouse positions
     auto& io = ImGui::GetIO();
     MousePosBackup = io.MousePos;
+    MousePosPrevBackup = io.MousePosPrev;
     for (int i = 0; i < 5; ++i)
         MouseClickPosBackup[i] = io.MouseClickedPos[i];
 
@@ -1129,7 +1133,7 @@ void ed::EditorContext::End()
         drawList->AddRect(Canvas.WindowScreenPos,                Canvas.WindowScreenPos + Canvas.WindowScreenSize,                ImColor(borderColor),      style.WindowRounding);
     }
 
-    //ShowMetrics(control);
+    ShowMetrics(control);
 
     // fringe scale
     ImGui::PopStyleVar();
@@ -1818,6 +1822,7 @@ void ed::EditorContext::CaptureMouse()
     auto& io = ImGui::GetIO();
 
     io.MousePos = Canvas.FromScreen(MousePosBackup);
+    io.MousePosPrev = Canvas.FromScreen(MousePosPrevBackup);
 
     for (int i = 0; i < 5; ++i)
         io.MouseClickedPos[i] = Canvas.FromScreen(MouseClickPosBackup[i]);
@@ -1828,6 +1833,7 @@ void ed::EditorContext::ReleaseMouse()
     auto& io = ImGui::GetIO();
 
     io.MousePos = MousePosBackup;
+    io.MousePosPrev = MousePosPrevBackup;
 
     for (int i = 0; i < 5; ++i)
         io.MouseClickedPos[i] = MouseClickPosBackup[i];
