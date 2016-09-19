@@ -672,6 +672,7 @@ struct SelectAction final: EditorAction
 
     bool            SelectGroups;
     bool            SelectLinkMode;
+    bool            CommitSelection;
     ImVec2          StartPoint;
     ImVec2          EndPoint;
     vector<Object*> CandidateObjects;

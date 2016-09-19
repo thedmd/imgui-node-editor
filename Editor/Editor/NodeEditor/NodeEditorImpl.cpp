@@ -900,42 +900,6 @@ void ed::EditorContext::End()
     auto  drawList    = ImGui::GetWindowDrawList();
     auto& editorStyle = GetStyle();
 
-    const bool isSelecting = CurrentAction && CurrentAction->AsSelect() != nullptr;
-    const bool isDragging  = CurrentAction && CurrentAction->AsDrag()   != nullptr;
-    const bool isSizing    = CurrentAction && CurrentAction->AsSize()   != nullptr;
-
-    // Draw nodes
-    for (auto node : Nodes)
-        if (node->IsLive && node->IsVisible())
-            node->Draw(drawList);
-
-    // Draw links
-    for (auto link : Links)
-        if (link->IsLive && link->IsVisible())
-            link->Draw(drawList);
-
-    // Highlight selected objects
-    {
-        auto selectedObjects = &SelectedObjects;
-        if (auto selectAction = CurrentAction ? CurrentAction->AsSelect() : nullptr)
-            selectedObjects = &selectAction->CandidateObjects;
-
-        for (auto selectedObject : *selectedObjects)
-            if (selectedObject->IsVisible())
-                selectedObject->Draw(drawList, Object::Selected);
-    }
-
-    if (!isSelecting)
-    {
-        auto hoveredObject = isDragging || isSizing ? control.ActiveObject : control.HotObject;
-        if (hoveredObject && !IsSelected(hoveredObject) && hoveredObject->IsVisible())
-            hoveredObject->Draw(drawList, Object::Hovered);
-    }
-
-    // Draw animations
-    for (auto controller : AnimationControllers)
-        controller->Draw(drawList);
-
     if (CurrentAction && !CurrentAction->Process(control))
         CurrentAction = nullptr;
 
@@ -987,6 +951,42 @@ void ed::EditorContext::End()
 
     // Draw selection rectangle
     SelectAction.Draw(drawList);
+
+    const bool isSelecting = CurrentAction && CurrentAction->AsSelect() != nullptr;
+    const bool isDragging  = CurrentAction && CurrentAction->AsDrag()   != nullptr;
+    const bool isSizing    = CurrentAction && CurrentAction->AsSize()   != nullptr;
+
+    // Draw nodes
+    for (auto node : Nodes)
+        if (node->IsLive && node->IsVisible())
+            node->Draw(drawList);
+
+    // Draw links
+    for (auto link : Links)
+        if (link->IsLive && link->IsVisible())
+            link->Draw(drawList);
+
+    // Highlight selected objects
+    {
+        auto selectedObjects = &SelectedObjects;
+        if (auto selectAction = CurrentAction ? CurrentAction->AsSelect() : nullptr)
+            selectedObjects = &selectAction->CandidateObjects;
+
+        for (auto selectedObject : *selectedObjects)
+            if (selectedObject->IsVisible())
+                selectedObject->Draw(drawList, Object::Selected);
+    }
+
+    if (!isSelecting)
+    {
+        auto hoveredObject = isDragging || isSizing ? control.ActiveObject : control.HotObject;
+        if (hoveredObject && !IsSelected(hoveredObject) && hoveredObject->IsVisible())
+            hoveredObject->Draw(drawList, Object::Hovered);
+    }
+
+    // Draw animations
+    for (auto controller : AnimationControllers)
+        controller->Draw(drawList);
 
     bool sortGroups = false;
     if (control.ActiveNode)
@@ -3189,6 +3189,7 @@ ed::SelectAction::SelectAction(EditorContext* editor):
     IsActive(false),
     SelectGroups(false),
     SelectLinkMode(false),
+    CommitSelection(false),
     StartPoint(),
     Animation(editor)
 {
@@ -3255,6 +3256,17 @@ ed::EditorAction::AcceptResult ed::SelectAction::Accept(const Control& control)
 
 bool ed::SelectAction::Process(const Control& control)
 {
+    if (CommitSelection)
+    {
+        Editor->ClearSelection();
+        for (auto object : CandidateObjects)
+            Editor->SelectObject(object);
+
+        CandidateObjects.clear();
+
+        CommitSelection = false;
+    }
+
     if (!IsActive)
         return false;
 
@@ -3303,15 +3315,11 @@ bool ed::SelectAction::Process(const Control& control)
     }
     else
     {
-        Editor->ClearSelection();
-        for (auto object : CandidateObjects)
-            Editor->SelectObject(object);
-
-        CandidateObjects.clear();
-
         IsActive = false;
 
         Animation.Play(c_SelectionFadeOutDuration);
+
+        CommitSelection = true;
 
         return true;
     }
