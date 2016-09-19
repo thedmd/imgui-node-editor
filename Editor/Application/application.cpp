@@ -53,6 +53,7 @@ enum class PinKind
 enum class NodeType
 {
     Blueprint,
+    Simple,
     Tree,
     Comment
 };
@@ -303,6 +304,32 @@ static Node* SpawnSetTimerNode()
     return &s_Nodes.back();
 }
 
+static Node* SpawnLessNode()
+{
+    s_Nodes.emplace_back(GetNextId(), "<", ImColor(128, 195, 248));
+    s_Nodes.back().Type = NodeType::Simple;
+    s_Nodes.back().Inputs.emplace_back(GetNextId(), "", PinType::Float);
+    s_Nodes.back().Inputs.emplace_back(GetNextId(), "", PinType::Float);
+    s_Nodes.back().Outputs.emplace_back(GetNextId(), "", PinType::Float);
+
+    BuildNode(&s_Nodes.back());
+
+    return &s_Nodes.back();
+}
+
+static Node* SpawnWeirdNode()
+{
+    s_Nodes.emplace_back(GetNextId(), "o.O", ImColor(128, 195, 248));
+    s_Nodes.back().Type = NodeType::Simple;
+    s_Nodes.back().Inputs.emplace_back(GetNextId(), "", PinType::Float);
+    s_Nodes.back().Outputs.emplace_back(GetNextId(), "", PinType::Float);
+    s_Nodes.back().Outputs.emplace_back(GetNextId(), "", PinType::Float);
+
+    BuildNode(&s_Nodes.back());
+
+    return &s_Nodes.back();
+}
+
 static Node* SpawnTraceByChannelNode()
 {
     s_Nodes.emplace_back(GetNextId(), "Single Line Trace by Channel", ImColor(255, 128, 64));
@@ -413,6 +440,9 @@ void Application_Initialize()
 
     SpawnComment();
     SpawnComment();
+
+    SpawnLessNode();
+    SpawnWeirdNode();
 
     BuildNodes();
 
@@ -800,8 +830,10 @@ void Application_Frame()
 
         for (auto& node : s_Nodes)
         {
-            if (node.Type != NodeType::Blueprint)
+            if (node.Type != NodeType::Blueprint && node.Type != NodeType::Simple)
                 continue;
+
+            const auto isSimple = node.Type == NodeType::Simple;
 
             bool hasOutputDelegates = false;
             for (auto& output : node.Outputs)
@@ -809,49 +841,52 @@ void Application_Frame()
                     hasOutputDelegates = true;
 
             builder.Begin(node.ID);
-                builder.Header(node.Color);
-                    ImGui::Spring(0);
-                    ImGui::TextUnformatted(node.Name.c_str());
-                    ImGui::Spring(1);
-                    ImGui::Dummy(ImVec2(0, 28));
-                    if (hasOutputDelegates)
-                    {
-                        ImGui::BeginVertical("delegates", ImVec2(0, 28));
-                        ImGui::Spring(1, 0);
-                        for (auto& output : node.Outputs)
-                        {
-                            if (output.Type != PinType::Delegate)
-                                continue;
-
-                            auto alpha = ImGui::GetStyle().Alpha;
-                            if (newLinkPin && !CanCreateLink(newLinkPin, &output) && &output != newLinkPin)
-                                alpha = alpha * (48.0f / 255.0f);
-
-                            ed::BeginPin(output.ID, ed::PinKind::Source);
-                            ed::PinPivotAlignment(ImVec2(1.0f, 0.5f));
-                            ed::PinPivotSize(ImVec2(0, 0));
-                            ImGui::BeginHorizontal(output.ID);
-                            ImGui::PushStyleVar(ImGuiStyleVar_Alpha, alpha);
-                            if (!output.Name.empty())
-                            {
-                                ImGui::TextUnformatted(output.Name.c_str());
-                                ImGui::Spring(0);
-                            }
-                            DrawPinIcon(output, IsPinLinked(output.ID), (int)(alpha * 255));
-                            ImGui::Spring(0, ImGui::GetStyle().ItemSpacing.x / 2);
-                            ImGui::EndHorizontal();
-                            ImGui::PopStyleVar();
-                            ed::EndPin();
-
-                            //DrawItemRect(ImColor(255, 0, 0));
-                        }
-                        ImGui::Spring(1, 0);
-                        ImGui::EndVertical();
-                        ImGui::Spring(0, ImGui::GetStyle().ItemSpacing.x / 2);
-                    }
-                    else
+                if (!isSimple)
+                {
+                    builder.Header(node.Color);
                         ImGui::Spring(0);
-                builder.EndHeader();
+                        ImGui::TextUnformatted(node.Name.c_str());
+                        ImGui::Spring(1);
+                        ImGui::Dummy(ImVec2(0, 28));
+                        if (hasOutputDelegates)
+                        {
+                            ImGui::BeginVertical("delegates", ImVec2(0, 28));
+                            ImGui::Spring(1, 0);
+                            for (auto& output : node.Outputs)
+                            {
+                                if (output.Type != PinType::Delegate)
+                                    continue;
+
+                                auto alpha = ImGui::GetStyle().Alpha;
+                                if (newLinkPin && !CanCreateLink(newLinkPin, &output) && &output != newLinkPin)
+                                    alpha = alpha * (48.0f / 255.0f);
+
+                                ed::BeginPin(output.ID, ed::PinKind::Source);
+                                ed::PinPivotAlignment(ImVec2(1.0f, 0.5f));
+                                ed::PinPivotSize(ImVec2(0, 0));
+                                ImGui::BeginHorizontal(output.ID);
+                                ImGui::PushStyleVar(ImGuiStyleVar_Alpha, alpha);
+                                if (!output.Name.empty())
+                                {
+                                    ImGui::TextUnformatted(output.Name.c_str());
+                                    ImGui::Spring(0);
+                                }
+                                DrawPinIcon(output, IsPinLinked(output.ID), (int)(alpha * 255));
+                                ImGui::Spring(0, ImGui::GetStyle().ItemSpacing.x / 2);
+                                ImGui::EndHorizontal();
+                                ImGui::PopStyleVar();
+                                ed::EndPin();
+
+                                //DrawItemRect(ImColor(255, 0, 0));
+                            }
+                            ImGui::Spring(1, 0);
+                            ImGui::EndVertical();
+                            ImGui::Spring(0, ImGui::GetStyle().ItemSpacing.x / 2);
+                        }
+                        else
+                            ImGui::Spring(0);
+                    builder.EndHeader();
+                }
 
                 for (auto& input : node.Inputs)
                 {
@@ -877,9 +912,18 @@ void Application_Frame()
                     builder.EndInput();
                 }
 
+                if (isSimple)
+                {
+                    builder.Middle();
+
+                    ImGui::Spring(1, 0);
+                    ImGui::TextUnformatted(node.Name.c_str());
+                    ImGui::Spring(1, 0);
+                }
+
                 for (auto& output : node.Outputs)
                 {
-                    if (output.Type == PinType::Delegate)
+                    if (!isSimple && output.Type == PinType::Delegate)
                         continue;
 
                     auto alpha = ImGui::GetStyle().Alpha;
@@ -1313,6 +1357,10 @@ void Application_Frame()
             node = SpawnDoNNode();
         if (ImGui::MenuItem("Set Timer"))
             node = SpawnSetTimerNode();
+        if (ImGui::MenuItem("Less"))
+            node = SpawnLessNode();
+        if (ImGui::MenuItem("Weird"))
+            node = SpawnWeirdNode();
         if (ImGui::MenuItem("Trace by Channel"))
             node = SpawnTraceByChannelNode();
         ImGui::Separator();
