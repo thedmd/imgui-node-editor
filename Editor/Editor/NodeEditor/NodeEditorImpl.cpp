@@ -900,10 +900,9 @@ void ed::EditorContext::End()
     auto  drawList    = ImGui::GetWindowDrawList();
     auto& editorStyle = GetStyle();
 
-
     const bool isSelecting = CurrentAction && CurrentAction->AsSelect() != nullptr;
-    const bool isDragging = CurrentAction && CurrentAction->AsDrag() != nullptr;
-    const bool isSizing = CurrentAction && CurrentAction->AsSize() != nullptr;
+    const bool isDragging  = CurrentAction && CurrentAction->AsDrag()   != nullptr;
+    const bool isSizing    = CurrentAction && CurrentAction->AsSize()   != nullptr;
 
     // Draw nodes
     for (auto node : Nodes)
@@ -928,7 +927,12 @@ void ed::EditorContext::End()
 
     if (!isSelecting)
     {
-        auto hoveredObject = isDragging || isSizing ? control.ActiveObject : control.HotObject;
+        auto hoveredObject = control.HotObject;
+        if (auto dragAction = CurrentAction ? CurrentAction->AsDrag() : nullptr)
+            hoveredObject = dragAction->DraggedObject;
+        if (auto sizeAction = CurrentAction ? CurrentAction->AsSize() : nullptr)
+            hoveredObject = sizeAction->SizedNode;
+
         if (hoveredObject && !IsSelected(hoveredObject) && hoveredObject->IsVisible())
             hoveredObject->Draw(drawList, Object::Hovered);
     }
@@ -2859,6 +2863,7 @@ int ed::NavigateAction::MatchZoomIndex(int direction)
 ed::SizeAction::SizeAction(EditorContext* editor):
     EditorAction(editor),
     IsActive(false),
+    Clean(false),
     SizedNode(nullptr),
     Pivot(rect_region::center),
     Cursor(ImGuiMouseCursor_Arrow)
@@ -2902,6 +2907,19 @@ ed::EditorAction::AcceptResult ed::SizeAction::Accept(const Control& control)
 
 bool ed::SizeAction::Process(const Control& control)
 {
+    if (Clean)
+    {
+        Clean = false;
+
+        if (SizedNode->Bounds.location != StartBounds.location || SizedNode->GroupBounds.location != StartGroupBounds.location)
+            Editor->MakeDirty(SaveReasonFlags::Position, SizedNode);
+
+        if (SizedNode->Bounds.size != StartBounds.size || SizedNode->GroupBounds.size != StartGroupBounds.size)
+            Editor->MakeDirty(SaveReasonFlags::Size, SizedNode);
+
+        SizedNode = nullptr;
+    }
+
     if (!IsActive)
         return false;
 
@@ -2982,13 +3000,7 @@ bool ed::SizeAction::Process(const Control& control)
     }
     else if (!control.ActiveNode)
     {
-        if (SizedNode->Bounds.location != StartBounds.location || SizedNode->GroupBounds.location != StartGroupBounds.location)
-            Editor->MakeDirty(SaveReasonFlags::Position, SizedNode);
-
-        if (SizedNode->Bounds.size != StartBounds.size || SizedNode->GroupBounds.size != StartGroupBounds.size)
-            Editor->MakeDirty(SaveReasonFlags::Size, SizedNode);
-
-        SizedNode = nullptr;
+        Clean = true;
         IsActive = false;
         return true;
     }
@@ -3076,6 +3088,7 @@ ImGuiMouseCursor ed::SizeAction::ChooseCursor(ax::rect_region region)
 ed::DragAction::DragAction(EditorContext* editor):
     EditorAction(editor),
     IsActive(false),
+    Clear(false),
     DraggedObject(nullptr)
 {
 }
@@ -3131,6 +3144,21 @@ ed::EditorAction::AcceptResult ed::DragAction::Accept(const Control& control)
 
 bool ed::DragAction::Process(const Control& control)
 {
+    if (Clear)
+    {
+        Clear = false;
+
+        for (auto object : Objects)
+        {
+            if (object->EndDrag())
+                Editor->MakeDirty(SaveReasonFlags::Position, object->AsNode());
+        }
+
+        Objects.resize(0);
+
+        DraggedObject = nullptr;
+    }
+
     if (!IsActive)
         return false;
 
@@ -3143,15 +3171,8 @@ bool ed::DragAction::Process(const Control& control)
     }
     else if (!control.ActiveObject)
     {
-        for (auto object : Objects)
-        {
-            if (object->EndDrag())
-                Editor->MakeDirty(SaveReasonFlags::Position, object->AsNode());
-        }
+        Clear = true;
 
-        Objects.resize(0);
-
-        DraggedObject = nullptr;
         IsActive = false;
         return true;
     }

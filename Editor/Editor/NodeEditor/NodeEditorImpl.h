@@ -612,6 +612,7 @@ private:
 struct SizeAction final: EditorAction
 {
     bool  IsActive;
+    bool  Clean;
     Node* SizedNode;
 
     SizeAction(EditorContext* editor);
@@ -647,6 +648,7 @@ private:
 struct DragAction final: EditorAction
 {
     bool            IsActive;
+    bool            Clear;
     Object*         DraggedObject;
     vector<Object*> Objects;
 
