@@ -450,7 +450,6 @@ void Application_Initialize()
      s_Links.push_back(Link(GetNextId(), s_Nodes[5].Outputs[0].ID, s_Nodes[7].Inputs[0].ID));
 
     s_HeaderBackground = ImGui_LoadTexture("../Data/BlueprintBackground.png");
-    s_SampleImage      = ImGui_LoadTexture("../Data/Lena512.png");
     s_SaveIcon         = ImGui_LoadTexture("../Data/ic_save_white_24dp.png");
     s_RestoreIcon      = ImGui_LoadTexture("../Data/ic_restore_white_24dp.png");
 
@@ -471,7 +470,6 @@ void Application_Finalize()
 
     releaseTexture(s_RestoreIcon);
     releaseTexture(s_SaveIcon);
-    releaseTexture(s_SampleImage);
     releaseTexture(s_HeaderBackground);
 
     if (m_Editor)
@@ -1407,14 +1405,6 @@ void Application_Frame()
         createNewNode = false;
     ImGui::PopStyleVar();
     ed::Resume();
-
-//     static float rounding = 5.0f;
-//
-//     auto drawList = ImGui::GetWindowDrawList();
-//     drawList->AddRectFilled(ImVec2(100, 100), ImVec2(100, 100) + ImVec2(512, 512), IM_COL32(255, 255, 255, 255), 30.0f, 7);
-//     drawList->AddImage(s_SampleImage, ImVec2(100, 100), ImVec2(100, 100) + ImVec2(512, 512), ImVec2(0, 0), ImVec2(1, 1), IM_COL32(255, 255, 255, 255), rounding, 7);
-//
-//     ImGui::SliderFloat("Rounding", &rounding, 0.0f, 50.0f);
 
     // ImGui_PushGizmo()
 
