@@ -1,4 +1,4 @@
-﻿//------------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 // LICENSE
 //   This software is dual-licensed to the public domain and under the following
 //   license: you are granted a perpetual, irrevocable license to copy, modify,
@@ -16,7 +16,7 @@ namespace ax { using namespace ImGuiInterop; }
 # include "../Common/Math.h"
 # include "../NodeEditor.h"
 # define PICOJSON_USE_LOCALE 0
-# include "picojson.h"
+# include "Contrib/picojson/picojson.h"
 # include <vector>
 
 
@@ -57,6 +57,24 @@ struct Node;
 struct Pin;
 struct Link;
 
+template <typename T>
+struct ObjectWrapper
+{
+    int  ID;
+    T*   Object;
+
+          T* operator->()        { return Object; }
+    const T* operator->() const  { return Object; }
+
+    operator T*()             { return Object; }
+    operator const T*() const { return Object; }
+
+    bool operator<(const ObjectWrapper& rhs) const
+    {
+        return ID < rhs.ID;
+    }
+};
+
 struct Object
 {
     enum DrawFlags
@@ -89,13 +107,17 @@ struct Object
         return ImGui::IsRectVisible(to_imvec(bounds.top_left()), to_imvec(bounds.bottom_right()));
     }
 
+    virtual void Reset() { IsLive = false; }
+
     virtual void Draw(ImDrawList* drawList, DrawFlags flags = None) = 0;
 
     virtual bool AcceptDrag() { return false; }
     virtual void UpdateDrag(const ax::point& offset) { }
     virtual bool EndDrag() { return false; }
+    virtual ax::point DragStartLocation() { return (ax::point)GetBounds().location; }
 
     virtual bool IsDraggable() { bool result = AcceptDrag(); EndDrag(); return result; }
+    virtual bool IsSelectable() { return false; }
 
     virtual bool TestHit(const ImVec2& point, float extraThickness = 0.0f) const
     {
@@ -142,12 +164,23 @@ struct Pin final: Object
     float   Radius;
     float   ArrowSize;
     float   ArrowWidth;
+    bool    HasConnection;
+    bool    HadConnection;
 
     Pin(EditorContext* editor, int id, PinKind kind):
         Object(editor, id), Kind(kind), Node(nullptr), Bounds(), PreviousPin(nullptr),
         Color(IM_COL32_WHITE), BorderColor(IM_COL32_BLACK), BorderWidth(0), Rounding(0),
-        Corners(0), Dir(0, 0), Strength(0), Radius(0), ArrowSize(0), ArrowWidth(0)
+        Corners(0), Dir(0, 0), Strength(0), Radius(0), ArrowSize(0), ArrowWidth(0),
+        HasConnection(false), HadConnection(false)
     {
+    }
+
+    virtual void Reset() override final
+    {
+        HadConnection = HasConnection && IsLive;
+        HasConnection = false;
+
+        __super::Reset();
     }
 
     virtual void Draw(ImDrawList* drawList, DrawFlags flags = None) override final;
@@ -186,6 +219,7 @@ struct Node final: Object
     rect     GroupBounds;
 
     bool     RestoreState;
+    bool     CenterOnScreen;
 
     Node(EditorContext* editor, int id):
         Object(editor, id),
@@ -199,18 +233,24 @@ struct Node final: Object
         BorderWidth(0),
         Rounding(0),
         GroupBounds(),
-        RestoreState(false)
+        RestoreState(false),
+        CenterOnScreen(false)
     {
     }
 
     bool AcceptDrag() override final;
     void UpdateDrag(const ax::point& offset) override final;
     bool EndDrag() override final; // return true, when changed
+    ax::point DragStartLocation() override final { return DragStart; }
+
+    virtual bool IsSelectable() { return true; }
 
     virtual void Draw(ImDrawList* drawList, DrawFlags flags = None) override final;
     void DrawBorder(ImDrawList* drawList, ImU32 color, float thickness = 1.0f);
 
     void GetGroupedNodes(std::vector<Node*>& result, bool append = false);
+
+    void CenterOnScreenInNextFrame() { CenterOnScreen = true; }
 
     virtual ax::rectf GetBounds() const override final { return static_cast<rectf>(Bounds); }
 
@@ -230,6 +270,8 @@ struct Link final: Object
         Object(editor, id), StartPin(nullptr), EndPin(nullptr), Color(IM_COL32_WHITE), Thickness(1.0f)
     {
     }
+
+    virtual bool IsSelectable() { return true; }
 
     virtual void Draw(ImDrawList* drawList, DrawFlags flags = None) override final;
     void Draw(ImDrawList* drawList, ImU32 color, float extraThickness = 0.0f) const;
@@ -299,36 +341,46 @@ struct Control
     Object* HotObject;
     Object* ActiveObject;
     Object* ClickedObject;
+    Object* DoubleClickedObject;
     Node*   HotNode;
     Node*   ActiveNode;
     Node*   ClickedNode;
+    Node*   DoubleClickedNode;
     Pin*    HotPin;
     Pin*    ActivePin;
     Pin*    ClickedPin;
+    Pin*    DoubleClickedPin;
     Link*   HotLink;
     Link*   ActiveLink;
     Link*   ClickedLink;
+    Link*   DoubleClickedLink;
     bool    BackgroundHot;
     bool    BackgroundActive;
     bool    BackgroundClicked;
+    bool    BackgroundDoubleClicked;
 
-    Control(Object* hotObject, Object* activeObject, Object* clickedObject,
-        bool backgroundHot, bool backgroundActive, bool backgroundClicked):
+    Control(Object* hotObject, Object* activeObject, Object* clickedObject, Object* doubleClickedObject,
+        bool backgroundHot, bool backgroundActive, bool backgroundClicked, bool backgroundDoubleClicked):
         HotObject(hotObject),
         ActiveObject(activeObject),
         ClickedObject(clickedObject),
+        DoubleClickedObject(doubleClickedObject),
         HotNode(nullptr),
         ActiveNode(nullptr),
         ClickedNode(nullptr),
+        DoubleClickedNode(nullptr),
         HotPin(nullptr),
         ActivePin(nullptr),
         ClickedPin(nullptr),
+        DoubleClickedPin(nullptr),
         HotLink(nullptr),
         ActiveLink(nullptr),
         ClickedLink(nullptr),
+        DoubleClickedLink(nullptr),
         BackgroundHot(backgroundHot),
         BackgroundActive(backgroundActive),
-        BackgroundClicked(backgroundClicked)
+        BackgroundClicked(backgroundClicked),
+        BackgroundDoubleClicked(backgroundDoubleClicked)
     {
         if (hotObject)
         {
@@ -353,6 +405,13 @@ struct Control
             ClickedPin   = clickedObject->AsPin();
             ClickedLink  = clickedObject->AsLink();
         }
+
+        if (doubleClickedObject)
+        {
+            DoubleClickedNode = doubleClickedObject->AsNode();
+            DoubleClickedPin  = doubleClickedObject->AsPin();
+            DoubleClickedLink = doubleClickedObject->AsLink();
+        }
     }
 };
 
@@ -372,7 +431,7 @@ struct Canvas
     Canvas();
     Canvas(ImVec2 position, ImVec2 size, ImVec2 scale, ImVec2 origin);
 
-    ax::rectf GetVisibleBounds();
+    ax::rectf GetVisibleBounds() const;
 
     ImVec2 FromScreen(ImVec2 point) const;
     ImVec2 ToScreen(ImVec2 point) const;
@@ -387,6 +446,7 @@ struct SelectAction;
 struct CreateItemAction;
 struct DeleteItemsAction;
 struct ContextMenuAction;
+struct ShortcutAction;
 
 struct AnimationController;
 struct FlowAnimationController;
@@ -534,13 +594,14 @@ struct EditorAction
 
     virtual void ShowMetrics() {}
 
-    virtual NavigateAction*    AsNavigate()    { return nullptr; }
-    virtual SizeAction*        AsSize()        { return nullptr; }
-    virtual DragAction*        AsDrag()        { return nullptr; }
-    virtual SelectAction*      AsSelect()      { return nullptr; }
-    virtual CreateItemAction*  AsCreateItem()  { return nullptr; }
-    virtual DeleteItemsAction* AsDeleteItems() { return nullptr; }
-    virtual ContextMenuAction* AsContextMenu() { return nullptr; }
+    virtual NavigateAction*     AsNavigate()     { return nullptr; }
+    virtual SizeAction*         AsSize()         { return nullptr; }
+    virtual DragAction*         AsDrag()         { return nullptr; }
+    virtual SelectAction*       AsSelect()       { return nullptr; }
+    virtual CreateItemAction*   AsCreateItem()   { return nullptr; }
+    virtual DeleteItemsAction*  AsDeleteItems()  { return nullptr; }
+    virtual ContextMenuAction*  AsContextMenu()  { return nullptr; }
+    virtual ShortcutAction* AsCutCopyPaste() { return nullptr; }
 
     EditorContext* Editor;
 };
@@ -722,6 +783,37 @@ struct ContextMenuAction final: EditorAction
     bool ShowPinContextMenu(int* pinId);
     bool ShowLinkContextMenu(int* linkId);
     bool ShowBackgroundContextMenu();
+};
+
+struct ShortcutAction final: EditorAction
+{
+    enum Action { None, Cut, Copy, Paste, Duplicate, CreateNode };
+
+    bool            IsActive;
+    bool            InAction;
+    Action          CurrentAction;
+    vector<Object*> Context;
+
+    ShortcutAction(EditorContext* editor);
+
+    virtual const char* GetName() const override final { return "Shortcut"; }
+
+    virtual AcceptResult Accept(const Control& control) override final;
+    virtual bool Process(const Control& control) override final;
+    virtual void Reject() override final;
+
+    virtual void ShowMetrics() override final;
+
+    virtual ShortcutAction* AsCutCopyPaste() override final { return this; }
+
+    bool Begin();
+    void End();
+
+    bool AcceptCut();
+    bool AcceptCopy();
+    bool AcceptPaste();
+    bool AcceptDuplicate();
+    bool AcceptCreateNode();
 };
 
 struct CreateItemAction final : EditorAction
@@ -941,8 +1033,11 @@ struct Config: ax::NodeEditor::Config
 
     std::string Load();
     std::string LoadNode(int nodeId);
+
+    void BeginSave();
     bool Save(const std::string& data, SaveReasonFlags flags);
     bool SaveNode(int nodeId, const std::string& data, SaveReasonFlags flags);
+    void EndSave();
 };
 
 struct EditorContext
@@ -965,6 +1060,7 @@ struct EditorContext
     CreateItemAction& GetItemCreator() { return CreateItemAction; }
     DeleteItemsAction& GetItemDeleter() { return DeleteItemsAction; }
     ContextMenuAction& GetContextMenu() { return ContextMenuAction; }
+    ShortcutAction& GetShortcut() { return ShortcutAction; }
 
     const Canvas& GetCanvas() const { return Canvas; }
 
@@ -993,6 +1089,8 @@ struct EditorContext
 
     void FindLinksForNode(int nodeId, vector<Link*>& result, bool add = false);
 
+    bool PinHadAnyLinks(int pinId);
+
     ImVec2 ToCanvas(ImVec2 point) { return Canvas.FromScreen(point); }
     ImVec2 ToScreen(ImVec2 point) { return Canvas.ToScreen(point); }
 
@@ -1001,6 +1099,8 @@ struct EditorContext
     void Suspend();
     void Resume();
     bool IsSuspended();
+
+    bool IsActive();
 
     void MakeDirty(SaveReasonFlags reason);
     void MakeDirty(SaveReasonFlags reason, Node* node);
@@ -1032,6 +1132,18 @@ struct EditorContext
         return bounds;
     }
 
+    template <typename T>
+    ax::rectf GetBounds(const std::vector<ObjectWrapper<T>>& objects)
+    {
+        ax::rectf bounds;
+
+        for (auto object : objects)
+            if (object.Object->IsLive)
+                bounds = make_union(bounds, object.Object->GetBounds());
+
+        return bounds;
+    }
+
     ax::rectf GetSelectionBounds() { return GetBounds(SelectedObjects); }
     ax::rectf GetContentBounds() { return GetBounds(Nodes); }
 
@@ -1047,6 +1159,23 @@ struct EditorContext
 
     void SetUserContext(bool globalSpace = false);
 
+    void EnableShortcuts(bool enable);
+    bool AreShortcutsEnabled();
+
+    int GetDoubleClickedNode()       const { return DoubleClickedNode;       }
+    int GetDoubleClickedPin()        const { return DoubleClickedPin;        }
+    int GetDoubleClickedLink()       const { return DoubleClickedLink;       }
+    bool IsBackgroundClicked()       const { return BackgroundClicked;       }
+    bool IsBackgroundDoubleClicked() const { return BackgroundDoubleClicked; }
+
+    ax::point AlignPointToGrid(const ax::point& p) const
+    {
+        if (!ImGui::GetIO().KeyAlt)
+            return p - ax::point(((p.x + 0) % 16) - 0, ((p.y + 0) % 16) - 0);
+        else
+            return p;
+    }
+
 private:
     void LoadSettings();
     void SaveSettings();
@@ -1061,12 +1190,15 @@ private:
     void UpdateAnimations();
 
     bool                IsFirstFrame;
+    bool                IsWindowActive;
+
+    bool                ShortcutsEnabled;
 
     Style               Style;
 
-    vector<Node*>       Nodes;
-    vector<Pin*>        Pins;
-    vector<Link*>       Links;
+    vector<ObjectWrapper<Node>> Nodes;
+    vector<ObjectWrapper<Pin>>  Pins;
+    vector<ObjectWrapper<Link>> Links;
 
     vector<Object*>     SelectedObjects;
 
@@ -1096,11 +1228,18 @@ private:
     DragAction          DragAction;
     SelectAction        SelectAction;
     ContextMenuAction   ContextMenuAction;
+    ShortcutAction      ShortcutAction;
     CreateItemAction    CreateItemAction;
     DeleteItemsAction   DeleteItemsAction;
 
     vector<AnimationController*> AnimationControllers;
     FlowAnimationController      FlowAnimationController;
+
+    int                 DoubleClickedNode;
+    int                 DoubleClickedPin;
+    int                 DoubleClickedLink;
+    bool                BackgroundClicked;
+    bool                BackgroundDoubleClicked;
 
     bool                IsInitialized;
     Settings            Settings;

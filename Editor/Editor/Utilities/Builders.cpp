@@ -1,4 +1,4 @@
-﻿//------------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 // LICENSE
 //   This software is dual-licensed to the public domain and under the following
 //   license: you are granted a perpetual, irrevocable license to copy, modify,
@@ -148,7 +148,7 @@ void util::BlueprintNodeBuilder::Output(int id)
 
     SetStage(Stage::Output);
 
-    if (HasHeader && applyPadding)
+    if (applyPadding)
         ImGui::Spring(0);
 
     Pin(id, PinKind::Source);
@@ -215,11 +215,7 @@ bool util::BlueprintNodeBuilder::SetStage(Stage stage)
         case Stage::Output:
             ed::PopStyleVar(2);
 
-            if (HasHeader)
-                ImGui::Spring(1);
-            else
-                ImGui::Spring(1, 0);
-
+            ImGui::Spring(1, 0);
             ImGui::EndVertical();
 
             // #debug
@@ -268,7 +264,10 @@ bool util::BlueprintNodeBuilder::SetStage(Stage stage)
             break;
 
         case Stage::Output:
-            ImGui::Spring(1);
+            if (oldStage == Stage::Middle || oldStage == Stage::Input)
+                ImGui::Spring(1);
+            else
+                ImGui::Spring(1, 0);
             ImGui::BeginVertical("outputs", ImVec2(0, 0), 1.0f);
 
             ed::PushStyleVar(ed::StyleVar_PivotAlignment, ImVec2(1.0f, 0.5f));

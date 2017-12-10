@@ -77,6 +77,7 @@ extern IMGUI_API ImGuiContext*  GImGui;     // current implicit ImGui context po
 
 #define IM_ARRAYSIZE(_ARR)      ((int)(sizeof(_ARR)/sizeof(*_ARR)))
 #define IM_PI                   3.14159265358979323846f
+#define IM_OFFSETOF(_TYPE,_ELM) ((size_t)&(((_TYPE*)0)->_ELM))
 
 // Helpers: UTF-8 <> wchar
 IMGUI_API int           ImTextStrToUtf8(char* buf, int buf_size, const ImWchar* in_text, const ImWchar* in_text_end);      // return output UTF-8 bytes count
@@ -218,7 +219,8 @@ enum ImGuiPlotType
 enum ImGuiDataType
 {
     ImGuiDataType_Int,
-    ImGuiDataType_Float
+    ImGuiDataType_Float,
+    ImGuiDataType_Float2,
 };
 
 // 2D axis aligned bounding-box
@@ -267,14 +269,17 @@ struct IMGUI_API ImRect
 struct ImGuiColMod
 {
     ImGuiCol    Col;
-    ImVec4      PreviousValue;
+    ImVec4      BackupValue;
 };
 
-// Stacked style modifier, backup of modified data so we can restore it
+// Stacked style modifier, backup of modified data so we can restore it. Data type inferred from the variable.
 struct ImGuiStyleMod
 {
-    ImGuiStyleVar   Var;
-    ImVec2          PreviousValue;
+    ImGuiStyleVar   VarIdx;
+    union           { int BackupInt[2]; float BackupFloat[2]; };
+    ImGuiStyleMod(ImGuiStyleVar idx, int v)     { VarIdx = idx; BackupInt[0] = v; }
+    ImGuiStyleMod(ImGuiStyleVar idx, float v)   { VarIdx = idx; BackupFloat[0] = v; }
+    ImGuiStyleMod(ImGuiStyleVar idx, ImVec2 v)  { VarIdx = idx; BackupFloat[0] = v.x; BackupFloat[1] = v.y; }
 };
 
 // Stacked data for BeginGroup()/EndGroup()
@@ -286,7 +291,29 @@ struct ImGuiGroupData
     ImVec2      BackupCurrentLineSize;
     float       BackupCurrentLineTextBaseOffset;
     float       BackupLogLinePosY;
+    bool        BackupActiveIdIsAlive;
     bool        AdvanceCursor;
+};
+
+// Stacked data for PushHitTest()/PopHitTest()
+struct ImGuiHitTestData
+{
+    ImGuiHitTestCallback Callback;
+    void*                UserData;
+
+    ImGuiHitTestData()                                              : Callback(nullptr),  UserData(nullptr)  {}
+    ImGuiHitTestData(ImGuiHitTestCallback callback, void* userData) : Callback(callback), UserData(userData) {}
+
+    void Reset()
+    {
+        *this = Empty();
+    }
+
+    static inline ImGuiHitTestData Empty()
+    {
+        ImGuiHitTestData data;
+        return data;
+    }
 };
 
 // Per column data for Columns()
@@ -450,6 +477,7 @@ struct ImGuiContext
     ImGuiSetCond            SetNextWindowSizeCond;
     ImGuiSetCond            SetNextWindowContentSizeCond;
     ImGuiSetCond            SetNextWindowCollapsedCond;
+    ImGuiSetCond            SetNextWindowHitTestCond;
     ImRect                  SetNextWindowSizeConstraintRect;           // Valid if 'SetNextWindowSizeConstraint' is true
     ImGuiSizeConstraintCallback SetNextWindowSizeConstraintCallback;
     void*                       SetNextWindowSizeConstraintCallbackUserData;
@@ -457,6 +485,7 @@ struct ImGuiContext
     bool                    SetNextWindowFocus;
     bool                    SetNextTreeNodeOpenVal;
     ImGuiSetCond            SetNextTreeNodeOpenCond;
+    ImGuiHitTestData        SetNextWindowHitTest;
 
     // Render
     ImDrawData              RenderDrawData;                     // Main ImDrawData instance to pass render information to the user
@@ -531,11 +560,13 @@ struct ImGuiContext
         SetNextWindowSizeCond = 0;
         SetNextWindowContentSizeCond = 0;
         SetNextWindowCollapsedCond = 0;
+        SetNextWindowHitTestCond = 0;
         SetNextWindowFocus = false;
         SetNextWindowSizeConstraintCallback = NULL;
         SetNextWindowSizeConstraintCallbackUserData = NULL;
         SetNextTreeNodeOpenVal = false;
         SetNextTreeNodeOpenCond = 0;
+        SetNextWindowHitTest.Reset();
 
         ScalarAsInputTextId = 0;
         DragCurrentValue = 0.0f;
@@ -599,10 +630,12 @@ struct IMGUI_API ImGuiDrawContext
     float                   TextWrapPos;            // == TextWrapPosStack.back() [empty == -1.0f]
     bool                    AllowKeyboardFocus;     // == AllowKeyboardFocusStack.back() [empty == true]
     bool                    ButtonRepeat;           // == ButtonRepeatStack.back() [empty == false]
+    ImGuiHitTestData        HitTest;
     ImVector<float>         ItemWidthStack;
     ImVector<float>         TextWrapPosStack;
     ImVector<bool>          AllowKeyboardFocusStack;
     ImVector<bool>          ButtonRepeatStack;
+    ImVector<ImGuiHitTestData> HitTestStack;
     ImVector<ImGuiGroupData>GroupStack;
     ImGuiColorEditMode      ColorEditMode;
     int                     StackSizesBackup[7];    // Store size of various stacks for asserting
@@ -638,6 +671,8 @@ struct IMGUI_API ImGuiDrawContext
         CurrentLayout = NULL;
         ItemWidth = 0.0f;
         ButtonRepeat = false;
+        HitTest.Callback = NULL;
+        HitTest.UserData = NULL;
         AllowKeyboardFocus = true;
         TextWrapPos = -1.0f;
         ColorEditMode = ImGuiColorEditMode_RGB;
@@ -692,6 +727,7 @@ struct IMGUI_API ImGuiWindow
     int                     SetWindowSizeAllowFlags;            // bit ImGuiSetCond_*** specify if SetWindowSize() call will succeed with this particular flag.
     int                     SetWindowCollapsedAllowFlags;       // bit ImGuiSetCond_*** specify if SetWindowCollapsed() call will succeed with this particular flag.
     bool                    SetWindowPosCenterWanted;
+    ImGuiHitTestData        WindowHitTest;
 
     ImGuiDrawContext        DC;                                 // Temporary per-window data, reset at the beginning of the frame
     ImVector<ImGuiID>       IDStack;                            // ID stack. ID are hashes seeded with the value at the top of the stack
@@ -767,11 +803,11 @@ namespace ImGui
     IMGUI_API void          OpenPopupEx(const char* str_id, bool reopen_existing);
 
     // NB: All position are in absolute pixels coordinates (not window coordinates)
-    // FIXME: All those functions are a mess and needs to be refactored into something decent. Avoid use outside of imgui.cpp!
+    // FIXME: All those functions are a mess and needs to be refactored into something decent. AVOID USING OUTSIDE OF IMGUI.CPP! NOT FOR PUBLIC CONSUMPTION.
     // We need: a sort of symbol library, preferably baked into font atlas when possible + decent text rendering helpers.
     IMGUI_API void          RenderText(ImVec2 pos, const char* text, const char* text_end = NULL, bool hide_text_after_hash = true);
     IMGUI_API void          RenderTextWrapped(ImVec2 pos, const char* text, const char* text_end, float wrap_width);
-    IMGUI_API void          RenderTextClipped(const ImVec2& pos_min, const ImVec2& pos_max, const char* text, const char* text_end, const ImVec2* text_size_if_known, ImGuiAlign align = ImGuiAlign_Default, const ImVec2* clip_min = NULL, const ImVec2* clip_max = NULL);
+    IMGUI_API void          RenderTextClipped(const ImVec2& pos_min, const ImVec2& pos_max, const char* text, const char* text_end, const ImVec2* text_size_if_known, const ImVec2& align = ImVec2(0,0), const ImRect* clip_rect = NULL);
     IMGUI_API void          RenderFrame(ImVec2 p_min, ImVec2 p_max, ImU32 fill_col, bool border = true, float rounding = 0.0f);
     IMGUI_API void          RenderCollapseTriangle(ImVec2 pos, bool is_open, float scale = 1.0f, bool shadow = false);
     IMGUI_API void          RenderBullet(ImVec2 pos);

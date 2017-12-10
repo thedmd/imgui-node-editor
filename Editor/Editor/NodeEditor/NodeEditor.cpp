@@ -16,6 +16,33 @@ static ax::NodeEditor::Detail::EditorContext* s_Editor = nullptr;
 
 
 //------------------------------------------------------------------------------
+template <typename C, typename F>
+static int BuildIdList(C& container, int* list, int listSize, F&& accept)
+{
+    if (list != nullptr)
+    {
+        int count = 0;
+        for (auto object : container)
+        {
+            if (listSize <= 0)
+                break;
+
+            if (accept(object))
+            {
+                list[count] = object->ID;
+                ++count;
+                --listSize;
+            }
+        }
+
+        return count;
+    }
+    else
+        return static_cast<int>(std::count_if(container.begin(), container.end(), accept));
+}
+
+
+//------------------------------------------------------------------------------
 ax::NodeEditor::EditorContext* ax::NodeEditor::CreateEditor(const Config* config)
 {
     return reinterpret_cast<ax::NodeEditor::EditorContext*>(new ax::NodeEditor::Detail::EditorContext(config));
@@ -350,6 +377,12 @@ ImVec2 ax::NodeEditor::GetNodeSize(int nodeId)
     return s_Editor->GetNodeSize(nodeId);
 }
 
+void ax::NodeEditor::CenterNodeOnScreen(int nodeId)
+{
+    if (auto node = s_Editor->FindNode(nodeId))
+        node->CenterOnScreenInNextFrame();
+}
+
 void ax::NodeEditor::RestoreNodeState(int nodeId)
 {
     if (auto node = s_Editor->FindNode(nodeId))
@@ -371,6 +404,11 @@ bool ax::NodeEditor::IsSuspended()
     return s_Editor->IsSuspended();
 }
 
+bool ax::NodeEditor::IsActive()
+{
+    return s_Editor->IsActive();
+}
+
 bool ax::NodeEditor::HasSelectionChanged()
 {
     return s_Editor->HasSelectionChanged();
@@ -383,40 +421,18 @@ int ax::NodeEditor::GetSelectedObjectCount()
 
 int ax::NodeEditor::GetSelectedNodes(int* nodes, int size)
 {
-    int count = 0;
-    for (auto object : s_Editor->GetSelectedObjects())
+    return BuildIdList(s_Editor->GetSelectedObjects(), nodes, size, [](auto object)
     {
-        if (size <= 0)
-            break;
-
-        if (auto node = object->AsNode())
-        {
-            nodes[count] = node->ID;
-            ++count;
-            --size;
-        }
-    }
-
-    return count;
+        return object->AsNode() != nullptr;
+    });
 }
 
 int ax::NodeEditor::GetSelectedLinks(int* links, int size)
 {
-    int count = 0;
-    for (auto object : s_Editor->GetSelectedObjects())
+    return BuildIdList(s_Editor->GetSelectedObjects(), links, size, [](auto object)
     {
-        if (size <= 0)
-            break;
-
-        if (auto link = object->AsLink())
-        {
-            links[count] = link->ID;
-            ++count;
-            --size;
-        }
-    }
-
-    return count;
+        return object->AsLink() != nullptr;
+    });
 }
 
 void ax::NodeEditor::ClearSelection()
@@ -502,4 +518,120 @@ bool ax::NodeEditor::ShowLinkContextMenu(int* linkId)
 bool ax::NodeEditor::ShowBackgroundContextMenu()
 {
     return s_Editor->GetContextMenu().ShowBackgroundContextMenu();
+}
+
+void ax::NodeEditor::EnableShortcuts(bool enable)
+{
+    s_Editor->EnableShortcuts(enable);
+}
+
+bool ax::NodeEditor::AreShortcutsEnabled()
+{
+    return s_Editor->AreShortcutsEnabled();
+}
+
+bool ax::NodeEditor::BeginShortcut()
+{
+    return s_Editor->GetShortcut().Begin();
+}
+
+bool ax::NodeEditor::AcceptCut()
+{
+    return s_Editor->GetShortcut().AcceptCut();
+}
+
+bool ax::NodeEditor::AcceptCopy()
+{
+    return s_Editor->GetShortcut().AcceptCopy();
+}
+
+bool ax::NodeEditor::AcceptPaste()
+{
+    return s_Editor->GetShortcut().AcceptPaste();
+}
+
+bool ax::NodeEditor::AcceptDuplicate()
+{
+    return s_Editor->GetShortcut().AcceptDuplicate();
+}
+
+bool ax::NodeEditor::AcceptCreateNode()
+{
+    return s_Editor->GetShortcut().AcceptCreateNode();
+}
+
+int ax::NodeEditor::GetActionContextSize()
+{
+    return static_cast<int>(s_Editor->GetShortcut().Context.size());
+}
+
+int ax::NodeEditor::GetActionContextNodes(int* nodes, int size)
+{
+    return BuildIdList(s_Editor->GetSelectedObjects(), nodes, size, [](auto object)
+    {
+        return object->AsNode() != nullptr;
+    });
+}
+
+int ax::NodeEditor::GetActionContextLinks(int* links, int size)
+{
+    return BuildIdList(s_Editor->GetSelectedObjects(), links, size, [](auto object)
+    {
+        return object->AsLink() != nullptr;
+    });
+}
+
+void ax::NodeEditor::EndShortcut()
+{
+    return s_Editor->GetShortcut().End();
+}
+
+float ax::NodeEditor::GetCurrentZoom()
+{
+    return s_Editor->GetCanvas().InvZoom.y;
+}
+
+int ax::NodeEditor::GetDoubleClickedNode()
+{
+    return s_Editor->GetDoubleClickedNode();
+}
+
+int ax::NodeEditor::GetDoubleClickedPin()
+{
+    return s_Editor->GetDoubleClickedPin();
+}
+
+int ax::NodeEditor::GetDoubleClickedLink()
+{
+    return s_Editor->GetDoubleClickedLink();
+}
+
+bool ax::NodeEditor::IsBackgroundClicked()
+{
+    return s_Editor->IsBackgroundClicked();
+}
+
+bool ax::NodeEditor::IsBackgroundDoubleClicked()
+{
+    return s_Editor->IsBackgroundDoubleClicked();
+}
+
+bool ax::NodeEditor::PinHadAnyLinks(int pinId)
+{
+    return s_Editor->PinHadAnyLinks(pinId);
+}
+
+ImVec2 ax::NodeEditor::GetScreenSize()
+{
+    return s_Editor->GetCanvas().WindowScreenSize;
+}
+
+ImVec2 ax::NodeEditor::ScreenToCanvas(const ImVec2& pos)
+{
+    return s_Editor->ToCanvas(pos);
+}
+
+ImVec2 ax::NodeEditor::CanvasToScreen(const ImVec2& pos)
+{
+    return s_Editor->ToScreen(pos);
 }

@@ -51,9 +51,6 @@
     <ClCompile Include="Application\widgets.cpp">
       <Filter>Application</Filter>
     </ClCompile>
-    <ClCompile Include="Application\drawing.cpp">
-      <Filter>Application</Filter>
-    </ClCompile>
     <ClCompile Include="Editor\Utilities\Builders.cpp">
       <Filter>Editor\Utilities</Filter>
     </ClCompile>
@@ -62,6 +59,12 @@
     </ClCompile>
     <ClCompile Include="Editor\NodeEditor\NodeEditorImpl.cpp">
       <Filter>Editor\NodeEditor</Filter>
+    </ClCompile>
+    <ClCompile Include="Application\application_simple.cpp">
+      <Filter>Application</Filter>
+    </ClCompile>
+    <ClCompile Include="Editor\Utilities\Drawing.cpp">
+      <Filter>Editor\Utilities</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -98,9 +101,6 @@
     <ClInclude Include="Application\widgets.h">
       <Filter>Application</Filter>
     </ClInclude>
-    <ClInclude Include="Application\drawing.h">
-      <Filter>Application</Filter>
-    </ClInclude>
     <ClInclude Include="Editor\NodeEditor.h">
       <Filter>Editor</Filter>
     </ClInclude>
@@ -115,6 +115,9 @@
     </ClInclude>
     <ClInclude Include="Editor\Common\Math.h">
       <Filter>Editor\Common</Filter>
+    </ClInclude>
+    <ClInclude Include="Editor\Utilities\Drawing.h">
+      <Filter>Editor\Utilities</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

@@ -1,4 +1,4 @@
-﻿// dear imgui, v1.50 WIP
+// dear imgui, v1.50 WIP
 // (headers)
 
 // See imgui.cpp file for documentation.
@@ -61,6 +61,7 @@ struct ImGuiTextEditCallbackData;   // Shared state of ImGui::InputText() when u
 struct ImGuiSizeConstraintCallbackData;// Structure used to constraint window size in custom ways when using custom ImGuiSizeConstraintCallback (rare/advanced use)
 struct ImGuiListClipper;            // Helper to manually clip large list of items
 struct ImGuiContext;                // ImGui context (opaque)
+struct ImVec2;
 
 // Typedefs and Enumerations (declared as int for compatibility and to not pollute the top of this file)
 typedef unsigned int ImU32;         // 32-bit unsigned integer (typically used to store packed colors)
@@ -70,7 +71,6 @@ typedef void* ImTextureID;          // user data to identify a texture (this is 
 typedef int ImGuiCol;               // a color identifier for styling       // enum ImGuiCol_
 typedef int ImGuiStyleVar;          // a variable identifier for styling    // enum ImGuiStyleVar_
 typedef int ImGuiKey;               // a key identifier (ImGui-side enum)   // enum ImGuiKey_
-typedef int ImGuiAlign;             // alignment                            // enum ImGuiAlign_
 typedef int ImGuiColorEditMode;     // color edit mode for ColorEdit*()     // enum ImGuiColorEditMode_
 typedef int ImGuiMouseCursor;       // a mouse cursor identifier            // enum ImGuiMouseCursor_
 typedef int ImGuiWindowFlags;       // window flags for Begin*()            // enum ImGuiWindowFlags_
@@ -80,6 +80,7 @@ typedef int ImGuiSelectableFlags;   // flags for Selectable()               // e
 typedef int ImGuiTreeNodeFlags;     // flags for TreeNode*(), Collapsing*() // enum ImGuiTreeNodeFlags_
 typedef int (*ImGuiTextEditCallback)(ImGuiTextEditCallbackData *data);
 typedef void (*ImGuiSizeConstraintCallback)(ImGuiSizeConstraintCallbackData* data);
+typedef bool(*ImGuiHitTestCallback)(const ImVec2& point, const ImVec2& min, const ImVec2& max, void* user_data);
 
 // Others helpers at bottom of the file:
 // class ImVector<>                 // Lightweight std::vector like class.
@@ -103,6 +104,27 @@ struct ImVec4
 #ifdef IM_VEC4_CLASS_EXTRA          // Define constructor and implicit cast operators in imconfig.h to convert back<>forth from your math types and ImVec4.
     IM_VEC4_CLASS_EXTRA
 #endif
+};
+
+struct ImMatrix
+{
+    float m00, m01, m11, m10, x, y;
+    ImMatrix() { m00 = m11 = 1.0f; m01 = m10 = x = y = 0.0f; }
+    ImMatrix(float _m00, float _m01, float _m10, float _m11, float _x, float _y) { m00 = _m00; m01 = _m01; m11 = _m11; m10 = _m10;  x = _x; y = _y; }
+#ifdef IM_MATRIX_CLASS_EXTRA          // Define constructor and implicit cast operators in imconfig.h to convert back<>forth from your math types and ImMatrix.
+    IM_MATRIX_CLASS_EXTRA
+#endif
+
+    static inline ImMatrix Combine(const ImMatrix& lhs, const ImMatrix& rhs)
+    {
+        return ImMatrix(
+            lhs.m00 * rhs.m00 + lhs.m10 * rhs.m01,
+            lhs.m01 * rhs.m00 + lhs.m11 * rhs.m01,
+            lhs.m00 * rhs.m10 + lhs.m10 * rhs.m11,
+            lhs.m01 * rhs.m10 + lhs.m11 * rhs.m11,
+            lhs.m00 * rhs.x   + lhs.m10 * rhs.y   + lhs.x,
+            lhs.m01 * rhs.x   + lhs.m11 * rhs.y   + lhs.y);
+    }
 };
 
 // ImGui end-user API
@@ -154,10 +176,12 @@ namespace ImGui
     IMGUI_API void          SetWindowSize(const ImVec2& size, ImGuiSetCond cond = 0);           // (not recommended) set current window size - call within Begin()/End(). set to ImVec2(0,0) to force an auto-fit. prefer using SetNextWindowSize(), as this may incur tearing and minor side-effects.    
     IMGUI_API void          SetWindowCollapsed(bool collapsed, ImGuiSetCond cond = 0);          // (not recommended) set current window collapsed state. prefer using SetNextWindowCollapsed().
     IMGUI_API void          SetWindowFocus();                                                   // (not recommended) set current window to be focused / front-most. prefer using SetNextWindowFocus().
+    IMGUI_API void          SetNextWindowHitTest(ImGuiHitTestCallback callback, void* user_data = NULL);
     IMGUI_API void          SetWindowPos(const char* name, const ImVec2& pos, ImGuiSetCond cond = 0);      // set named window position.
     IMGUI_API void          SetWindowSize(const char* name, const ImVec2& size, ImGuiSetCond cond = 0);    // set named window size. set axis to 0.0f to force an auto-fit on this axis.
     IMGUI_API void          SetWindowCollapsed(const char* name, bool collapsed, ImGuiSetCond cond = 0);   // set named window collapsed state
     IMGUI_API void          SetWindowFocus(const char* name);                                              // set named window to be focused / front-most. use NULL to remove focus.
+    IMGUI_API void          SetWindowHitTest(const char* name, ImGuiHitTestCallback callback, void* user_data = NULL);
 
     IMGUI_API float         GetScrollX();                                                       // get scrolling amount [0..GetScrollMaxX()]
     IMGUI_API float         GetScrollY();                                                       // get scrolling amount [0..GetScrollMaxY()]
@@ -195,6 +219,8 @@ namespace ImGui
     IMGUI_API void          PopAllowKeyboardFocus();
     IMGUI_API void          PushButtonRepeat(bool repeat);                                      // in 'repeat' mode, Button*() functions return repeated true in a typematic manner (uses io.KeyRepeatDelay/io.KeyRepeatRate for now). Note that you can call IsItemActive() after any Button() to tell if the button is held in the current frame.
     IMGUI_API void          PopButtonRepeat();
+    IMGUI_API void          PushHitTest(ImGuiHitTestCallback callback, void* user_data = NULL);
+    IMGUI_API void          PopHitTest();
 
     // Cursor / Layout
     IMGUI_API void          Separator();                                                        // horizontal line
@@ -344,7 +370,7 @@ namespace ImGui
     IMGUI_API void          TreePush(const void* ptr_id = NULL);                                    // "
     IMGUI_API void          TreePop();                                                              // ~ Unindent()+PopId()
     IMGUI_API void          TreeAdvanceToLabelPos();                                                // advance cursor x position by GetTreeNodeToLabelSpacing()
-    IMGUI_API float         GetTreeNodeToLabelSpacing();                                            // horizontal distance preceeding label when using TreeNode*() or Bullet() == (g.FontSize + style.FramePadding.x*2) for a regular unframed TreeNode
+    IMGUI_API float         GetTreeNodeToLabelSpacing();                                            // horizontal distance preceding label when using TreeNode*() or Bullet() == (g.FontSize + style.FramePadding.x*2) for a regular unframed TreeNode
     IMGUI_API void          SetNextTreeNodeOpen(bool is_open, ImGuiSetCond cond = 0);               // set next TreeNode/CollapsingHeader open state.
     IMGUI_API bool          CollapsingHeader(const char* label, ImGuiTreeNodeFlags flags = 0);      // if returning 'true' the header is open. doesn't indent nor push on ID stack. user doesn't have to call TreePop().
     IMGUI_API bool          CollapsingHeader(const char* label, bool* p_open, ImGuiTreeNodeFlags flags = 0); // when 'p_open' isn't NULL, display an additional small close button on upper right of the header
@@ -475,6 +501,8 @@ namespace ImGui
     IMGUI_API ImGuiContext* GetCurrentContext();
     IMGUI_API void          SetCurrentContext(ImGuiContext* ctx);
 
+    IMGUI_API ImDrawList*   GetOverlayDrawList();
+
     // Obsolete (will be removed)
 #ifndef IMGUI_DISABLE_OBSOLETE_FUNCTIONS
     static inline bool      CollapsingHeader(const char* label, const char* str_id, bool framed = true, bool default_open = false) { (void)str_id; (void)framed; ImGuiTreeNodeFlags default_open_flags = 1<<5; return CollapsingHeader(label, (default_open ? default_open_flags : 0)); } // OBSOLETE 1.49+
@@ -586,13 +614,55 @@ enum ImGuiKey_
     ImGuiKey_Backspace, // for text edit
     ImGuiKey_Enter,     // for text edit
     ImGuiKey_Escape,    // for text edit
+    ImGuiKey_0,         //
+    ImGuiKey_1,         //
+    ImGuiKey_2,         //
+    ImGuiKey_3,         //
+    ImGuiKey_4,         //
+    ImGuiKey_5,         //
+    ImGuiKey_6,         //
+    ImGuiKey_7,         //
+    ImGuiKey_8,         //
+    ImGuiKey_9,         //
     ImGuiKey_A,         // for text edit CTRL+A: select all
+    ImGuiKey_B,         //
     ImGuiKey_C,         // for text edit CTRL+C: copy
+    ImGuiKey_D,         //
+    ImGuiKey_E,         //
+    ImGuiKey_F,         //
+    ImGuiKey_G,         //
+    ImGuiKey_H,         //
+    ImGuiKey_I,         //
+    ImGuiKey_J,         //
+    ImGuiKey_K,         //
+    ImGuiKey_L,         //
+    ImGuiKey_M,         //
+    ImGuiKey_N,         //
+    ImGuiKey_O,         //
+    ImGuiKey_P,         //
+    ImGuiKey_Q,         //
+    ImGuiKey_R,         //
+    ImGuiKey_S,         //
+    ImGuiKey_T,         //
+    ImGuiKey_U,         //
     ImGuiKey_V,         // for text edit CTRL+V: paste
+    ImGuiKey_W,         //
     ImGuiKey_X,         // for text edit CTRL+X: cut
     ImGuiKey_Y,         // for text edit CTRL+Y: redo
     ImGuiKey_Z,         // for text edit CTRL+Z: undo
-    ImGuiKey_F,         //
+    ImGuiKey_Space,     //
+    ImGuiKey_F1,        //
+    ImGuiKey_F2,        //
+    ImGuiKey_F3,        //
+    ImGuiKey_F4,        //
+    ImGuiKey_F5,        //
+    ImGuiKey_F6,        //
+    ImGuiKey_F7,        //
+    ImGuiKey_F8,        //
+    ImGuiKey_F9,        //
+    ImGuiKey_F10,       //
+    ImGuiKey_F11,       //
+    ImGuiKey_F12,       //
     ImGuiKey_COUNT
 };
 
@@ -660,18 +730,10 @@ enum ImGuiStyleVar_
     ImGuiStyleVar_ItemInnerSpacing,    // ImVec2
     ImGuiStyleVar_IndentSpacing,       // float
     ImGuiStyleVar_GrabMinSize,         // float
+    ImGuiStyleVar_AntiAliasFringeScale,// float
+    ImGuiStyleVar_ButtonTextAlign,     // flags ImGuiAlign_*
     ImGuiStyleVar_LayoutAlign,         // float
-    ImGuiStyleVar_AntiAliasFringeScale // float
-};
-
-enum ImGuiAlign_
-{
-    ImGuiAlign_Left     = 1 << 0,
-    ImGuiAlign_Center   = 1 << 1,
-    ImGuiAlign_Right    = 1 << 2,
-    ImGuiAlign_Top      = 1 << 3,
-    ImGuiAlign_VCenter  = 1 << 4,
-    ImGuiAlign_Default  = ImGuiAlign_Left | ImGuiAlign_Top
+    ImGuiStyleVar_Count_
 };
 
 // Enumeration for ColorEditMode()
@@ -714,7 +776,7 @@ struct ImGuiStyle
     ImVec2      WindowPadding;              // Padding within a window
     ImVec2      WindowMinSize;              // Minimum window size
     float       WindowRounding;             // Radius of window corners rounding. Set to 0.0f to have rectangular windows
-    ImGuiAlign  WindowTitleAlign;           // Alignment for title bar text
+    ImVec2      WindowTitleAlign;           // Alignment for title bar text. Defaults to (0.0f,0.5f) for left-aligned,vertically centered.
     float       ChildWindowRounding;        // Radius of child window corners rounding. Set to 0.0f to have rectangular windows
     ImVec2      FramePadding;               // Padding within a framed rectangle (used by most widgets)
     float       FrameRounding;              // Radius of frame corners rounding. Set to 0.0f to have rectangular frame (used by most widgets).
@@ -725,9 +787,10 @@ struct ImGuiStyle
     float       ColumnsMinSpacing;          // Minimum horizontal spacing between two columns
     float       ScrollbarSize;              // Width of the vertical scrollbar, Height of the horizontal scrollbar
     float       ScrollbarRounding;          // Radius of grab corners for scrollbar
-    float       GrabMinSize;                // Minimum width/height of a grab box for slider/scrollbar
+    float       GrabMinSize;                // Minimum width/height of a grab box for slider/scrollbar.
     float       GrabRounding;               // Radius of grabs corners rounding. Set to 0.0f to have rectangular slider grabs.
     float       LayoutAlign;                // Element alignment inside horizontal and vertical layouts (0.0f - left/top, 1.0f - right/bottom, 0.5f - center).
+    ImVec2      ButtonTextAlign;            // Alignment of button text when button is larger than text. Defaults to (0.5f,0.5f) for horizontally+vertically centered.
     ImVec2      DisplayWindowPadding;       // Window positions are clamped to be visible within the display area by at least this amount. Only covers regular windows.
     ImVec2      DisplaySafeAreaPadding;     // If you cannot see the edge of your screen (e.g. on a TV) increase the safe area padding. Covers popups/tooltips as well regular windows.
     bool        AntiAliasedLines;           // Enable anti-aliasing on lines/borders. Disable if you are really tight on CPU/GPU.
@@ -793,6 +856,11 @@ struct ImGuiIO
     // (default to use native imm32 api on Windows)
     void        (*ImeSetInputScreenPosFn)(int x, int y);
     void*       ImeWindowHandle;            // (Windows) Set this to your HWND to get automatic IME cursor positioning.
+
+    // Optional: save or load configuration.
+    void        (*SaveIniCb)(const char* buffer, size_t size, void* userData);
+    size_t      (*LoadIniCb)(char* buffer, size_t size, void* userData);
+    void*       IniCbUserData;
 
     //------------------------------------------------------------------
     // Input - Fill before calling NewFrame()
@@ -1185,6 +1253,14 @@ struct ImDrawChannel
     ImVector<ImDrawIdx>     IdxBuffer;
 };
 
+struct ImDrawTransformation
+{
+    unsigned int            VtxStartIdx;
+    ImMatrix                Transformation;
+    float                   LastInvTransformationScale;
+    ImVec2                  LastHalfPixel;
+};
+
 // Draw command list
 // This is the low-level list of polygons that ImGui functions are filling. At the end of the frame, all command lists are passed to your ImGuiIO::RenderDrawListFn function for rendering.
 // At the moment, each ImGui window contains its own ImDrawList but they could potentially be merged in the future.
@@ -1209,6 +1285,9 @@ struct ImDrawList
     int                     _ChannelsCurrent;   // [Internal] current channel number (0)
     int                     _ChannelsCount;     // [Internal] number of active channels (1+)
     ImVector<ImDrawChannel> _Channels;          // [Internal] draw channels for columns API (not resized down so _ChannelsCount may be smaller than _Channels.Size)
+    ImVector<ImDrawTransformation> _TransformationStack;
+    float                   _InvTransformationScale;
+    ImVec2                  _HalfPixel;
 
     ImDrawList() { _OwnerName = NULL; Clear(); }
     ~ImDrawList() { ClearFreeMemory(); }
@@ -1217,6 +1296,9 @@ struct ImDrawList
     IMGUI_API void  PopClipRect();
     IMGUI_API void  PushTextureID(const ImTextureID& texture_id);
     IMGUI_API void  PopTextureID();
+
+    IMGUI_API void  PushTransformation(const ImMatrix& transformation);
+    IMGUI_API void  PopTransformation();
 
     // Primitives
     IMGUI_API void  AddLine(const ImVec2& a, const ImVec2& b, ImU32 col, float thickness = 1.0f);

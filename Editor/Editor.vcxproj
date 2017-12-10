@@ -106,6 +106,7 @@
       <PreprocessorDefinitions>_WINDOWS;_CRT_SECURE_NO_WARNINGS;WIN32;_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <SDLCheck>true</SDLCheck>
       <AdditionalIncludeDirectories>$(Picojson_Include);$(DXSDK_Include);$(ProjectDir)</AdditionalIncludeDirectories>
+      <LanguageStandard>stdcpplatest</LanguageStandard>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -123,6 +124,7 @@
       <PreprocessorDefinitions>_WINDOWS;_CRT_SECURE_NO_WARNINGS;_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <SDLCheck>true</SDLCheck>
       <AdditionalIncludeDirectories>$(Picojson_Include);$(DXSDK_Include);$(ProjectDir)</AdditionalIncludeDirectories>
+      <LanguageStandard>stdcpplatest</LanguageStandard>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -142,6 +144,7 @@
       <PreprocessorDefinitions>_WINDOWS;_CRT_SECURE_NO_WARNINGS;WIN32;NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <SDLCheck>true</SDLCheck>
       <AdditionalIncludeDirectories>$(Picojson_Include);$(DXSDK_Include);$(ProjectDir)</AdditionalIncludeDirectories>
+      <LanguageStandard>stdcpplatest</LanguageStandard>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -163,6 +166,7 @@
       <PreprocessorDefinitions>_WINDOWS;_CRT_SECURE_NO_WARNINGS;NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <SDLCheck>true</SDLCheck>
       <AdditionalIncludeDirectories>$(Picojson_Include);$(DXSDK_Include);$(ProjectDir)</AdditionalIncludeDirectories>
+      <LanguageStandard>stdcpplatest</LanguageStandard>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -175,12 +179,18 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="..\External\DXSDK\src\dxerr.cpp" />
-    <ClCompile Include="Application\drawing.cpp" />
+    <ClCompile Include="Application\application_simple.cpp">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+    </ClCompile>
     <ClCompile Include="Application\imgui_impl_dx11.cpp" />
     <ClCompile Include="Application\widgets.cpp" />
     <ClCompile Include="Editor\Utilities\Builders.cpp" />
     <ClCompile Include="Editor\NodeEditor\NodeEditorImpl.cpp" />
     <ClCompile Include="Editor\NodeEditor\NodeEditor.cpp" />
+    <ClCompile Include="Editor\Utilities\Drawing.cpp" />
     <ClCompile Include="ImGui\imgui.cpp" />
     <ClCompile Include="ImGui\imgui_demo.cpp" />
     <ClCompile Include="ImGui\imgui_draw.cpp" />
@@ -188,7 +198,6 @@
     <ClCompile Include="Application\application.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="Application\drawing.h" />
     <ClInclude Include="Application\imgui_impl_dx11.h" />
     <ClInclude Include="Application\widgets.h" />
     <ClInclude Include="Editor\Utilities\Builders.h" />
@@ -196,6 +205,7 @@
     <ClInclude Include="Editor\NodeEditor\NodeEditorImpl.h" />
     <ClInclude Include="Editor\Common\ImGuiInterop.h" />
     <ClInclude Include="Editor\Common\Math.h" />
+    <ClInclude Include="Editor\Utilities\Drawing.h" />
     <ClInclude Include="ImGui\imconfig.h" />
     <ClInclude Include="ImGui\imgui.h" />
     <ClInclude Include="ImGui\imgui_internal.h" />

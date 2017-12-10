@@ -130,6 +130,9 @@ void ImDrawList::Clear()
     _Path.resize(0);
     _ChannelsCurrent = 0;
     _ChannelsCount = 1;
+    _TransformationStack.resize(0);
+    _InvTransformationScale = 1.0f;
+    _HalfPixel = ImVec2(0.5f, 0.5f);
     // NB: Do not clear channels so our allocations are re-used after the first frame.
 }
 
@@ -153,6 +156,7 @@ void ImDrawList::ClearFreeMemory()
         _Channels[i].IdxBuffer.clear();
     }
     _Channels.clear();
+    _TransformationStack.clear();
 }
 
 // Use macros because C++ is a terrible language, we want guaranteed inline, no code in header, and no overhead in Debug mode
@@ -270,6 +274,59 @@ void ImDrawList::PopTextureID()
     _TextureIdStack.pop_back();
     UpdateTextureID();
 }
+
+void ImDrawList::PushTransformation(const ImMatrix& transformation)
+{
+    ImDrawTransformation tr;
+    tr.Transformation             = transformation;
+    tr.VtxStartIdx                = _VtxCurrentIdx;
+    tr.LastInvTransformationScale = _InvTransformationScale;
+    tr.LastHalfPixel              = _HalfPixel;
+    _TransformationStack.push_back(tr);
+
+    const float scaleX = sqrtf(
+        transformation.m00 * transformation.m00 +
+        transformation.m01 * transformation.m01);
+
+    const float scaleY = sqrtf(
+        transformation.m10 * transformation.m10 +
+        transformation.m11 * transformation.m11);
+
+    const float scale = (scaleX + scaleY) * 0.5f;
+
+    const float invScale = scale > 0.0f ? (1.0f / scale) : 1.0f;
+
+    _InvTransformationScale = _InvTransformationScale * invScale;
+    _HalfPixel              = _HalfPixel              * invScale;
+}
+
+void ImDrawList::PopTransformation()
+{
+    IM_ASSERT(_TransformationStack.Size > 0);
+    const ImDrawTransformation& tr = _TransformationStack.back();
+    if (tr.VtxStartIdx < _VtxCurrentIdx)
+    {
+        const ImMatrix& m = tr.Transformation;
+
+        ImDrawVert* const vertexBegin = VtxBuffer.Data + tr.VtxStartIdx;
+        ImDrawVert* const vertexEnd   = VtxBuffer.Data + _VtxCurrentIdx;
+
+        for (ImDrawVert* vertex = vertexBegin; vertex != vertexEnd; ++vertex)
+        {
+            const float x = vertex->pos.x;
+            const float y = vertex->pos.y;
+
+            vertex->pos.x = m.m00 * x + m.m10 * y + m.x;
+            vertex->pos.y = m.m01 * x + m.m11 * y + m.y;
+        }
+    }
+
+    _InvTransformationScale = tr.LastInvTransformationScale;
+    _HalfPixel              = tr.LastHalfPixel;
+
+    _TransformationStack.pop_back();
+}
+
 
 void ImDrawList::ChannelsSplit(int channels_count)
 {
@@ -446,11 +503,13 @@ void ImDrawList::AddPolyline(const ImVec2* points, const int points_count, ImU32
     if (!closed)
         count = points_count-1;
 
+    thickness *= _InvTransformationScale;
+
     const bool thick_line = thickness > 1.0f;
     if (anti_aliased)
     {
         // Anti-aliased stroke
-        const float AA_SIZE = 1.0f * GImGui->Style.AntiAliasFringeScale;
+        const float AA_SIZE = 1.0f * GImGui->Style.AntiAliasFringeScale * _InvTransformationScale;
         const ImU32 col_trans = col & IM_COL32(255,255,255,0);
 
         const int idx_count = thick_line ? count*18 : count*12;
@@ -623,7 +682,7 @@ void ImDrawList::AddConvexPolyFilled(const ImVec2* points, const int points_coun
     if (anti_aliased)
     {
         // Anti-aliased Fill
-        const float AA_SIZE = 1.0f * GImGui->Style.AntiAliasFringeScale;
+        const float AA_SIZE = 1.0f * GImGui->Style.AntiAliasFringeScale * _InvTransformationScale;
         const ImU32 col_trans = col & IM_COL32(255, 255, 255, 0);
         const int idx_count = (points_count-2)*3 + points_count*6;
         const int vtx_count = (points_count*2);
@@ -821,8 +880,8 @@ void ImDrawList::AddLine(const ImVec2& a, const ImVec2& b, ImU32 col, float thic
 {
     if ((col >> 24) == 0)
         return;
-    PathLineTo(a + ImVec2(0.5f,0.5f));
-    PathLineTo(b + ImVec2(0.5f,0.5f));
+    PathLineTo(a + _HalfPixel);
+    PathLineTo(b + _HalfPixel);
     PathStroke(col, false, thickness);
 }
 
@@ -831,7 +890,7 @@ void ImDrawList::AddRect(const ImVec2& a, const ImVec2& b, ImU32 col, float roun
 {
     if ((col >> 24) == 0)
         return;
-    PathRect(a + ImVec2(0.5f,0.5f), b - ImVec2(0.5f,0.5f), rounding, rounding_corners);
+    PathRect(a + _HalfPixel, b - _HalfPixel, rounding, rounding_corners);
     PathStroke(col, true, thickness);
 }
 
@@ -918,7 +977,7 @@ void ImDrawList::AddCircle(const ImVec2& centre, float radius, ImU32 col, int nu
         return;
 
     const float a_max = IM_PI*2.0f * ((float)num_segments - 1.0f) / (float)num_segments;
-    PathArcTo(centre, radius-0.5f, 0.0f, a_max, num_segments);
+    PathArcTo(centre, radius- _HalfPixel.x, 0.0f, a_max, num_segments);
     PathStroke(col, true, thickness);
 }
 
@@ -1875,7 +1934,7 @@ const char* ImFont::CalcWordWrapPositionA(float scale, const char* text, const c
             }
         }
 
-        const float char_width = ((int)c < IndexXAdvance.Size) ? IndexXAdvance[(int)c] * scale : FallbackXAdvance;
+        const float char_width = ((int)c < IndexXAdvance.Size ? IndexXAdvance[(int)c] : FallbackXAdvance) * scale;
         if (ImCharIsSpace(c))
         {
             if (inside_word)
@@ -2358,7 +2417,7 @@ static const char proggy_clean_ttf_compressed_data_base85[11980+1] =
     "%(?A%R$f<->Zts'^kn=-^@c4%-pY6qI%J%1IGxfLU9CP8cbPlXv);C=b),<2mOvP8up,UVf3839acAWAW-W?#ao/^#%KYo8fRULNd2.>%m]UK:n%r$'sw]J;5pAoO_#2mO3n,'=H5(et"
     "Hg*`+RLgv>=4U8guD$I%D:W>-r5V*%j*W:Kvej.Lp$<M-SGZ':+Q_k+uvOSLiEo(<aD/K<CCc`'Lx>'?;++O'>()jLR-^u68PHm8ZFWe+ej8h:9r6L*0//c&iH&R8pRbA#Kjm%upV1g:"
     "a_#Ur7FuA#(tRh#.Y5K+@?3<-8m0$PEn;J:rh6?I6uG<-`wMU'ircp0LaE_OtlMb&1#6T.#FDKu#1Lw%u%+GM+X'e?YLfjM[VO0MbuFp7;>Q&#WIo)0@F%q7c#4XAXN-U&VB<HFF*qL("
-    "$/V,;(kXZejWO`<[5??ewY(*9=%wDc;,u<'9t3W-(H1th3+G]ucQ]kLs7df($/*JL]@*t7Bu_G3_7mp7<iaQjO@.kLg;x3B0lqp7Hf,^Ze7-##@/c58Mo(3;knp0%)A7?-W+eI'o8)b<"
+    "$/V,;(kXZejWO`<[5?\?ewY(*9=%wDc;,u<'9t3W-(H1th3+G]ucQ]kLs7df($/*JL]@*t7Bu_G3_7mp7<iaQjO@.kLg;x3B0lqp7Hf,^Ze7-##@/c58Mo(3;knp0%)A7?-W+eI'o8)b<"
     "nKnw'Ho8C=Y>pqB>0ie&jhZ[?iLR@@_AvA-iQC(=ksRZRVp7`.=+NpBC%rh&3]R:8XDmE5^V8O(x<<aG/1N$#FX$0V5Y6x'aErI3I$7x%E`v<-BY,)%-?Psf*l?%C3.mM(=/M0:JxG'?"
     "7WhH%o'a<-80g0NBxoO(GH<dM]n.+%q@jH?f.UsJ2Ggs&4<-e47&Kl+f//9@`b+?.TeN_&B8Ss?v;^Trk;f#YvJkl&w$]>-+k?'(<S:68tq*WoDfZu';mM?8X[ma8W%*`-=;D.(nc7/;"
     ")g:T1=^J$&BRV(-lTmNB6xqB[@0*o.erM*<SWF]u2=st-*(6v>^](H.aREZSi,#1:[IXaZFOm<-ui#qUq2$##Ri;u75OK#(RtaW-K-F`S+cF]uN`-KMQ%rP/Xri.LRcB##=YL3BgM/3M"

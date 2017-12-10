@@ -26,7 +26,8 @@ enum class SaveReasonFlags: int
     Navigation = 0x00000001,
     Position   = 0x00000002,
     Size       = 0x00000004,
-    Selection  = 0x00000008
+    Selection  = 0x00000008,
+    User       = 0x00000010
 };
 
 inline SaveReasonFlags operator |(SaveReasonFlags lhs, SaveReasonFlags rhs) { return static_cast<SaveReasonFlags>(static_cast<int>(lhs) | static_cast<int>(rhs)); }
@@ -38,9 +39,13 @@ typedef size_t      (*ConfigLoadSettings)(char* data, void* userPointer);
 typedef bool        (*ConfigSaveNodeSettings)(int nodeId, const char* data, size_t size, SaveReasonFlags reason, void* userPointer);
 typedef size_t      (*ConfigLoadNodeSettings)(int nodeId, char* data, void* userPointer);
 
+typedef void        (*ConfigSession)(void* userPointer);
+
 struct Config
 {
     const char*             SettingsFile;
+    ConfigSession           BeginSaveSession;
+    ConfigSession           EndSaveSession;
     ConfigSaveSettings      SaveSettings;
     ConfigLoadSettings      LoadSettings;
     ConfigSaveNodeSettings  SaveNodeSettings;
@@ -49,6 +54,8 @@ struct Config
 
     Config():
         SettingsFile("NodeEditor.json"),
+        BeginSaveSession(nullptr),
+        EndSaveSession(nullptr),
         SaveSettings(nullptr),
         LoadSettings(nullptr),
         SaveNodeSettings(nullptr),
@@ -264,12 +271,15 @@ void EndDelete();
 void SetNodePosition(int nodeId, const ImVec2& editorPosition);
 ImVec2 GetNodePosition(int nodeId);
 ImVec2 GetNodeSize(int nodeId);
+void CenterNodeOnScreen(int nodeId);
 
 void RestoreNodeState(int nodeId);
 
 void Suspend();
 void Resume();
 bool IsSuspended();
+
+bool IsActive();
 
 bool HasSelectionChanged();
 int  GetSelectedObjectCount();
@@ -292,6 +302,33 @@ bool ShowPinContextMenu(int* pinId);
 bool ShowLinkContextMenu(int* linkId);
 bool ShowBackgroundContextMenu();
 
+void EnableShortcuts(bool enable);
+bool AreShortcutsEnabled();
+
+bool BeginShortcut();
+bool AcceptCut();
+bool AcceptCopy();
+bool AcceptPaste();
+bool AcceptDuplicate();
+bool AcceptCreateNode();
+int  GetActionContextSize();
+int  GetActionContextNodes(int* nodes, int size);
+int  GetActionContextLinks(int* links, int size);
+void EndShortcut();
+
+float GetCurrentZoom();
+
+int GetDoubleClickedNode();
+int GetDoubleClickedPin();
+int GetDoubleClickedLink();
+bool IsBackgroundClicked();
+bool IsBackgroundDoubleClicked();
+
+bool PinHadAnyLinks(int pinId);
+
+ImVec2 GetScreenSize();
+ImVec2 ScreenToCanvas(const ImVec2& pos);
+ImVec2 CanvasToScreen(const ImVec2& pos);
 
 //------------------------------------------------------------------------------
 } // namespace Editor

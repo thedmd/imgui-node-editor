@@ -4,3 +4,4 @@ bin
 *.VC.opendb
 *.user
 *.ini
+*.json
