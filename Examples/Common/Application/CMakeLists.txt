@@ -1,0 +1,46 @@
+
+set(_Application_Sources
+    Include/Application.h
+)
+
+if (WIN32)
+    list(APPEND _Application_Sources
+        Source/DX11/Entry.cpp
+        Source/DX11/imgui_impl_dx11.cpp
+        Source/DX11/imgui_impl_dx11.h
+    )
+endif()
+
+
+
+source_group("" FILES ${_Application_Sources})
+source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${_Application_Sources})
+
+add_library(Application STATIC ${_Application_Sources})
+
+target_include_directories(Application PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/Include)
+target_link_libraries(Application PRIVATE ImGui NodeEditor Shared stb_image)
+
+if (WIN32)
+    set(_DXSDK_Dir  ${CMAKE_SOURCE_DIR}/ThirdParty/DXSDK)
+    set(_DXSDK_Arch x86)
+    if (${CMAKE_SIZEOF_VOID_P} EQUAL 8)
+        set(_DXSDK_Arch x64)
+    endif()
+
+    add_library(dxerr STATIC ${_DXSDK_Dir}/src/dxerr.cpp)
+    target_include_directories(dxerr PUBLIC "${_DXSDK_Dir}/include")
+    set_property(TARGET dxerr PROPERTY FOLDER "ThirdParty")
+
+    add_library(d3dx11 UNKNOWN IMPORTED)
+    set_target_properties(d3dx11 PROPERTIES
+        IMPORTED_LOCATION               "${_DXSDK_Dir}/lib/${_DXSDK_Arch}/d3dx11.lib"
+        IMPORTED_LOCATION_DEBUG         "${_DXSDK_Dir}/lib/${_DXSDK_Arch}/d3dx11d.lib"
+        INTERFACE_INCLUDE_DIRECTORIES   "${_DXSDK_Dir}/include"
+        INTERFACE_LINK_LIBRARIES        "$<$<CONFIG:Debug>:dxerr>"
+    )
+
+    target_link_libraries(Application PRIVATE ImGui NodeEditor Shared d3d11.lib d3dcompiler.lib d3dx11)
+endif()
+
+set_property(TARGET Application PROPERTY FOLDER "Examples/Common")

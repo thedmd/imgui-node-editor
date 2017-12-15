@@ -1,4 +1,5 @@
 .vs
+.build
 bin
 *.VC.db
 *.VC.opendb

@@ -10,19 +10,26 @@ Project purpose is to serve as a basis for more complex solutions like blueprint
 
 ## Code
 
-Editor was developed in Visual Studio and updated to Visual Studio 2017, solution file is provided.
+Editor code is in `NodeEditor` directory alone. Project can be build with examples with help of CMake 3.8:
+```
+    cmake -H. -BBuild -G "Visual Studio 15 2017 Win64"
+    cmake --build Build --config Release
+```
+You will find examples in `Build\Bin` directory.
 
-**Node**: Editor code has pending refactor. Since almost a year has passed without time to do it, please don't tell me code style is horrible. It was and still is a prototype.
+Source code target to be comatible with C++11. Due to last minute pulls it require C++17. This requirement will soon be removed. Sorry for inconvenience.
+
+**Note**: Editor code has pending refactor. Since almost a year has passed without time to do it, please don't tell me code style is horrible. It was and still is a prototype.
 
 ### Public API
 
-Public API of node editor is located in [NodeEditor.h](Editor\Editor\NodeEditor.h). For an examples of usage, please see [application.cpp](Editor\Application\application.cpp).
+Public API of node editor is located in [NodeEditor.h](NodeEditor/Include/NodeEditor.h). For an examples of usage, please see [Examples](Examples).
 
-Minimal example of simple node can be found in [application_simple.cpp](Editor\Application\application_simple.cpp).
+Minimal example of simple node can be found in [Simple.cpp](Examples/00-Simple/Simple.cpp).
 If you do not see any node, press 'F' in editor to focus on content.
 ```cpp
-# include "application.h"
-# include "Editor/NodeEditor.h"
+# include "Application.h"
+# include "NodeEditor.h"
 
 namespace ed = ax::NodeEditor;
 
@@ -64,7 +71,7 @@ void Application_Frame()
 
 Result:
 
-![application_simple.png](Screenshots/application_simple.png)
+![00-Simple.png](Screenshots/00-Simple.png)
 
 
 ### Dependencies
