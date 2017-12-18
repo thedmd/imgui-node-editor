@@ -29,7 +29,7 @@ static int BuildIdList(C& container, int* list, int listSize, F&& accept)
 
             if (accept(object))
             {
-                list[count] = object->ID;
+                list[count] = object->m_ID;
                 ++count;
                 --listSize;
             }
@@ -562,7 +562,7 @@ bool ax::NodeEditor::AcceptCreateNode()
 
 int ax::NodeEditor::GetActionContextSize()
 {
-    return static_cast<int>(s_Editor->GetShortcut().Context.size());
+    return static_cast<int>(s_Editor->GetShortcut().m_Context.size());
 }
 
 int ax::NodeEditor::GetActionContextNodes(int* nodes, int size)

@@ -89,7 +89,7 @@ void ed::Log(const char* fmt, ...)
 //------------------------------------------------------------------------------
 static bool IsGroup(const ed::Node* node)
 {
-    if (node && node->Type == ed::NodeType::Group)
+    if (node && node->m_Type == ed::NodeType::Group)
         return true;
     else
         return false;
@@ -455,32 +455,32 @@ void ed::Pin::Draw(ImDrawList* drawList, DrawFlags flags)
 {
     if (flags & Hovered)
     {
-        drawList->ChannelsSetCurrent(Node->Channel + c_NodePinChannel);
+        drawList->ChannelsSetCurrent(m_Node->m_Channel + c_NodePinChannel);
 
-        drawList->AddRectFilled(to_imvec(Bounds.top_left()), to_imvec(Bounds.bottom_right()),
-            Color, Rounding, Corners);
+        drawList->AddRectFilled(to_imvec(m_Bounds.top_left()), to_imvec(m_Bounds.bottom_right()),
+            m_Color, m_Rounding, m_Corners);
 
-        if (BorderWidth > 0.0f)
+        if (m_BorderWidth > 0.0f)
         {
             ImGui::PushStyleVar(ImGuiStyleVar_AntiAliasFringeScale, 1.0f);
-            drawList->AddRect(to_imvec(Bounds.top_left()), to_imvec(Bounds.bottom_right()),
-                BorderColor, Rounding, Corners, BorderWidth);
+            drawList->AddRect(to_imvec(m_Bounds.top_left()), to_imvec(m_Bounds.bottom_right()),
+                m_BorderColor, m_Rounding, m_Corners, m_BorderWidth);
             ImGui::PopStyleVar();
         }
 
-        if (!Editor->IsSelected(Node))
-            Node->Draw(drawList, flags);
+        if (!Editor->IsSelected(m_Node))
+            m_Node->Draw(drawList, flags);
     }
 }
 
 ImVec2 ed::Pin::GetClosestPoint(const ImVec2& p) const
 {
-    return to_imvec(Pivot.get_closest_point(to_pointf(p), true, Radius + ArrowSize));
+    return to_imvec(m_Pivot.get_closest_point(to_pointf(p), true, m_Radius + m_ArrowSize));
 }
 
 ax::line_f ed::Pin::GetClosestLine(const Pin* pin) const
 {
-    return Pivot.get_closest_line(pin->Pivot, Radius + ArrowSize, pin->Radius + pin->ArrowSize);
+    return m_Pivot.get_closest_line(pin->m_Pivot, m_Radius + m_ArrowSize, pin->m_Radius + pin->m_ArrowSize);
 }
 
 
@@ -493,59 +493,59 @@ ax::line_f ed::Pin::GetClosestLine(const Pin* pin) const
 //------------------------------------------------------------------------------
 bool ed::Node::AcceptDrag()
 {
-    DragStart = Bounds.location;
+    m_DragStart = m_Bounds.location;
     return true;
 }
 
 void ed::Node::UpdateDrag(const ax::point& offset)
 {
-    Bounds.location = DragStart + offset;
+    m_Bounds.location = m_DragStart + offset;
 }
 
 bool ed::Node::EndDrag()
 {
-    return Bounds.location != DragStart;
+    return m_Bounds.location != m_DragStart;
 }
 
 void ed::Node::Draw(ImDrawList* drawList, DrawFlags flags)
 {
     if (flags == Detail::Object::None)
     {
-        drawList->ChannelsSetCurrent(Channel + c_NodeBackgroundChannel);
+        drawList->ChannelsSetCurrent(m_Channel + c_NodeBackgroundChannel);
 
         drawList->AddRectFilled(
-            to_imvec(Bounds.top_left()),
-            to_imvec(Bounds.bottom_right()),
-            Color, Rounding);
+            to_imvec(m_Bounds.top_left()),
+            to_imvec(m_Bounds.bottom_right()),
+            m_Color, m_Rounding);
 
         if (IsGroup(this))
         {
             drawList->AddRectFilled(
-                to_imvec(GroupBounds.top_left()),
-                to_imvec(GroupBounds.bottom_right()),
-                GroupColor, GroupRounding);
+                to_imvec(m_GroupBounds.top_left()),
+                to_imvec(m_GroupBounds.bottom_right()),
+                m_GroupColor, m_GroupRounding);
 
-            if (GroupBorderWidth > 0.0f)
+            if (m_GroupBorderWidth > 0.0f)
             {
                 ImGui::PushStyleVar(ImGuiStyleVar_AntiAliasFringeScale, 1.0f);
 
                 drawList->AddRect(
-                    to_imvec(GroupBounds.top_left()),
-                    to_imvec(GroupBounds.bottom_right()),
-                    GroupBorderColor, GroupRounding, 15, GroupBorderWidth);
+                    to_imvec(m_GroupBounds.top_left()),
+                    to_imvec(m_GroupBounds.bottom_right()),
+                    m_GroupBorderColor, m_GroupRounding, 15, m_GroupBorderWidth);
 
                 ImGui::PopStyleVar();
             }
         }
 
-        DrawBorder(drawList, BorderColor, BorderWidth);
+        DrawBorder(drawList, m_BorderColor, m_BorderWidth);
     }
     else if (flags & Selected)
     {
         const auto  borderColor = Editor->GetColor(StyleColor_SelNodeBorder);
         const auto& editorStyle = Editor->GetStyle();
 
-        drawList->ChannelsSetCurrent(Channel + c_NodeBaseChannel);
+        drawList->ChannelsSetCurrent(m_Channel + c_NodeBaseChannel);
 
         DrawBorder(drawList, borderColor, editorStyle.SelectedNodeBorderWidth);
     }
@@ -554,7 +554,7 @@ void ed::Node::Draw(ImDrawList* drawList, DrawFlags flags)
         const auto  borderColor = Editor->GetColor(StyleColor_HovNodeBorder);
         const auto& editorStyle = Editor->GetStyle();
 
-        drawList->ChannelsSetCurrent(Channel + c_NodeBaseChannel);
+        drawList->ChannelsSetCurrent(m_Channel + c_NodeBaseChannel);
 
         DrawBorder(drawList, borderColor, editorStyle.HoveredNodeBorderWidth);
     }
@@ -564,8 +564,8 @@ void ed::Node::DrawBorder(ImDrawList* drawList, ImU32 color, float thickness)
 {
     if (thickness > 0.0f)
     {
-        drawList->AddRect(to_imvec(Bounds.top_left()), to_imvec(Bounds.bottom_right()),
-            color, Rounding, 15, thickness);
+        drawList->AddRect(to_imvec(m_Bounds.top_left()), to_imvec(m_Bounds.bottom_right()),
+            color, m_Rounding, 15, thickness);
     }
 }
 
@@ -578,7 +578,7 @@ void ed::Node::GetGroupedNodes(std::vector<Node*>& result, bool append)
         return;
 
     const auto firstNodeIndex = result.size();
-    Editor->FindNodesInRect(static_cast<ax::rectf>(GroupBounds), result, true, false);
+    Editor->FindNodesInRect(static_cast<ax::rectf>(m_GroupBounds), result, true, false);
 
     for (auto index = firstNodeIndex; index < result.size(); ++index)
         result[index]->GetGroupedNodes(result, true);
@@ -598,7 +598,7 @@ void ed::Link::Draw(ImDrawList* drawList, DrawFlags flags)
     {
         drawList->ChannelsSetCurrent(c_LinkChannel_Links);
 
-        Draw(drawList, Color, 0.0f);
+        Draw(drawList, m_Color, 0.0f);
     }
     else if (flags & Selected)
     {
@@ -620,24 +620,24 @@ void ed::Link::Draw(ImDrawList* drawList, DrawFlags flags)
 
 void ed::Link::Draw(ImDrawList* drawList, ImU32 color, float extraThickness) const
 {
-    if (!IsLive)
+    if (!m_IsLive)
         return;
 
     const auto curve = GetCurve();
 
-    ImDrawList_AddBezierWithArrows(drawList, curve, Thickness + extraThickness,
-        StartPin && StartPin->ArrowSize  > 0.0f ? StartPin->ArrowSize  + extraThickness : 0.0f,
-        StartPin && StartPin->ArrowWidth > 0.0f ? StartPin->ArrowWidth + extraThickness : 0.0f,
-          EndPin &&   EndPin->ArrowSize  > 0.0f ?   EndPin->ArrowSize  + extraThickness : 0.0f,
-          EndPin &&   EndPin->ArrowWidth > 0.0f ?   EndPin->ArrowWidth + extraThickness : 0.0f,
+    ImDrawList_AddBezierWithArrows(drawList, curve, m_Thickness + extraThickness,
+        m_StartPin && m_StartPin->m_ArrowSize  > 0.0f ? m_StartPin->m_ArrowSize  + extraThickness : 0.0f,
+        m_StartPin && m_StartPin->m_ArrowWidth > 0.0f ? m_StartPin->m_ArrowWidth + extraThickness : 0.0f,
+          m_EndPin &&   m_EndPin->m_ArrowSize  > 0.0f ?   m_EndPin->m_ArrowSize  + extraThickness : 0.0f,
+          m_EndPin &&   m_EndPin->m_ArrowWidth > 0.0f ?   m_EndPin->m_ArrowWidth + extraThickness : 0.0f,
         true, color, 1.0f);
 }
 
 void ed::Link::UpdateEndpoints()
 {
-    const auto line = StartPin->GetClosestLine(EndPin);
-    Start = to_imvec(line.a);
-    End   = to_imvec(line.b);
+    const auto line = m_StartPin->GetClosestLine(m_EndPin);
+    m_Start = to_imvec(line.a);
+    m_End   = to_imvec(line.b);
 }
 
 ax::cubic_bezier_t ed::Link::GetCurve() const
@@ -655,17 +655,17 @@ ax::cubic_bezier_t ed::Link::GetCurve() const
         return strength;
     };
 
-    const auto startStrength = easeLinkStrength(Start, End, StartPin->Strength);
-    const auto   endStrength = easeLinkStrength(Start, End,   EndPin->Strength);
-    const auto           cp0 = Start + StartPin->Dir * startStrength;
-    const auto           cp1 =   End +   EndPin->Dir *   endStrength;
+    const auto startStrength = easeLinkStrength(m_Start, m_End, m_StartPin->m_Strength);
+    const auto   endStrength = easeLinkStrength(m_Start, m_End,   m_EndPin->m_Strength);
+    const auto           cp0 = m_Start + m_StartPin->m_Dir * startStrength;
+    const auto           cp1 =   m_End +   m_EndPin->m_Dir *   endStrength;
 
-    return ax::cubic_bezier_t { to_pointf(Start), to_pointf(cp0), to_pointf(cp1), to_pointf(End) };
+    return ax::cubic_bezier_t { to_pointf(m_Start), to_pointf(cp0), to_pointf(cp1), to_pointf(m_End) };
 }
 
 bool ed::Link::TestHit(const ImVec2& point, float extraThickness) const
 {
-    if (!IsLive)
+    if (!m_IsLive)
         return false;
 
     auto bounds = GetBounds();
@@ -678,12 +678,12 @@ bool ed::Link::TestHit(const ImVec2& point, float extraThickness) const
     const auto bezier = GetCurve();
     const auto result = cubic_bezier_project_point(to_pointf(point), bezier.p0, bezier.p1, bezier.p2, bezier.p3, 50);
 
-    return result.distance <= Thickness + extraThickness;
+    return result.distance <= m_Thickness + extraThickness;
 }
 
 bool ed::Link::TestHit(const ax::rectf& rect, bool allowIntersect) const
 {
-    if (!IsLive)
+    if (!m_IsLive)
         return false;
 
     const auto bounds = GetBounds();
@@ -716,7 +716,7 @@ bool ed::Link::TestHit(const ax::rectf& rect, bool allowIntersect) const
 
 ax::rectf ed::Link::GetBounds() const
 {
-    if (IsLive)
+    if (m_IsLive)
     {
         const auto curve = GetCurve();
         auto bounds = cubic_bezier_bounding_rect(curve.p0, curve.p1, curve.p2, curve.p3);
@@ -733,11 +733,11 @@ ax::rectf ed::Link::GetBounds() const
             bounds.h = 1.0f;
         }
 
-        if (StartPin->ArrowSize)
+        if (m_StartPin->m_ArrowSize)
         {
             const auto start_dir = curve.tangent(0.0f).normalized();
             const auto p0 = curve.p0;
-            const auto p1 = curve.p0 - start_dir * StartPin->ArrowSize;
+            const auto p1 = curve.p0 - start_dir * m_StartPin->m_ArrowSize;
             const auto min = p0.cwise_min(p1);
             const auto max = p0.cwise_max(p1);
             auto arrowBounds = rectf(min, max);
@@ -746,11 +746,11 @@ ax::rectf ed::Link::GetBounds() const
             bounds = make_union(bounds, arrowBounds);
         }
 
-        if (EndPin->ArrowSize)
+        if (m_EndPin->m_ArrowSize)
         {
             const auto end_dir = curve.tangent(0.0f).normalized();
             const auto p0 = curve.p3;
-            const auto p1 = curve.p3 + end_dir * EndPin->ArrowSize;
+            const auto p1 = curve.p3 + end_dir * m_EndPin->m_ArrowSize;
             const auto min = p0.cwise_min(p1);
             const auto max = p0.cwise_max(p1);
             auto arrowBounds = rectf(min, max);
@@ -774,68 +774,68 @@ ax::rectf ed::Link::GetBounds() const
 //
 //------------------------------------------------------------------------------
 ed::EditorContext::EditorContext(const ax::NodeEditor::Config* config):
-    IsFirstFrame(true),
-    IsWindowActive(false),
-    ShortcutsEnabled(true),
-    Style(),
-    Nodes(),
-    Pins(),
-    Links(),
-    SelectionId(1),
-    LastActiveLink(nullptr),
-    MousePosBackup(0, 0),
-    MousePosPrevBackup(0, 0),
-    MouseClickPosBackup(),
-    Canvas(),
-    SuspendCount(0),
-    NodeBuilder(this),
-    HintBuilder(this),
-    CurrentAction(nullptr),
-    NavigateAction(this),
-    SizeAction(this),
-    DragAction(this),
-    SelectAction(this),
-    ContextMenuAction(this),
-    ShortcutAction(this),
-    CreateItemAction(this),
-    DeleteItemsAction(this),
-    AnimationControllers{ &FlowAnimationController },
-    FlowAnimationController(this),
-    DoubleClickedNode(0),
-    DoubleClickedPin(0),
-    DoubleClickedLink(0),
-    BackgroundClicked(false),
-    BackgroundDoubleClicked(false),
-    IsInitialized(false),
-    Settings(),
-    Config(config)
+    m_IsFirstFrame(true),
+    m_IsWindowActive(false),
+    m_ShortcutsEnabled(true),
+    m_Style(),
+    m_Nodes(),
+    m_Pins(),
+    m_Links(),
+    m_SelectionId(1),
+    m_LastActiveLink(nullptr),
+    m_MousePosBackup(0, 0),
+    m_MousePosPrevBackup(0, 0),
+    m_MouseClickPosBackup(),
+    m_Canvas(),
+    m_SuspendCount(0),
+    m_NodeBuilder(this),
+    m_HintBuilder(this),
+    m_CurrentAction(nullptr),
+    m_NavigateAction(this),
+    m_SizeAction(this),
+    m_DragAction(this),
+    m_SelectAction(this),
+    m_ContextMenuAction(this),
+    m_ShortcutAction(this),
+    m_CreateItemAction(this),
+    m_DeleteItemsAction(this),
+    m_AnimationControllers{ &m_FlowAnimationController },
+    m_FlowAnimationController(this),
+    m_DoubleClickedNode(0),
+    m_DoubleClickedPin(0),
+    m_DoubleClickedLink(0),
+    m_BackgroundClicked(false),
+    m_BackgroundDoubleClicked(false),
+    m_IsInitialized(false),
+    m_Settings(),
+    m_Config(config)
 {
 }
 
 ed::EditorContext::~EditorContext()
 {
-    if (IsInitialized)
+    if (m_IsInitialized)
         SaveSettings();
 
-    for (auto link  : Links)  delete link.Object;
-    for (auto pin   : Pins)   delete pin.Object;
-    for (auto node  : Nodes)  delete node.Object;
+    for (auto link  : m_Links)  delete link.m_Object;
+    for (auto pin   : m_Pins)   delete pin.m_Object;
+    for (auto node  : m_Nodes)  delete node.m_Object;
 }
 
 void ed::EditorContext::Begin(const char* id, const ImVec2& size)
 {
-    if (!IsInitialized)
+    if (!m_IsInitialized)
     {
         LoadSettings();
-        IsInitialized = true;
+        m_IsInitialized = true;
     }
 
     //ImGui::LogToClipboard();
     //Log("---- begin ----");
 
-    for (auto node  : Nodes)   node->Reset();
-    for (auto pin   : Pins)     pin->Reset();
-    for (auto link  : Links)   link->Reset();
+    for (auto node  : m_Nodes)   node->Reset();
+    for (auto pin   : m_Pins)     pin->Reset();
+    for (auto link  : m_Links)   link->Reset();
 
     ImGui::PushStyleColor(ImGuiCol_ChildWindowBg, ImColor(0, 0, 0, 0));
     ImGui::BeginChild(id, size, false,
@@ -845,32 +845,32 @@ void ed::EditorContext::Begin(const char* id, const ImVec2& size)
 
     ImGui::CaptureKeyboardFromApp();
 
-    IsWindowActive = ImGui::IsWindowFocused();
+    m_IsWindowActive = ImGui::IsWindowFocused();
 
     //
-    if (CurrentAction && CurrentAction->IsDragging() && NavigateAction.MoveOverEdge())
+    if (m_CurrentAction && m_CurrentAction->IsDragging() && m_NavigateAction.MoveOverEdge())
     {
         auto& io = ImGui::GetIO();
-        auto offset = NavigateAction.GetMoveOffset();
+        auto offset = m_NavigateAction.GetMoveOffset();
         for (int i = 0; i < 5; ++i)
             io.MouseClickedPos[i] = io.MouseClickedPos[i] - offset;
     }
     else
-        NavigateAction.StopMoveOverEdge();
+        m_NavigateAction.StopMoveOverEdge();
 
     // Setup canvas
-    NavigateAction.SetWindow(ImGui::GetWindowPos(), ImGui::GetWindowSize());
+    m_NavigateAction.SetWindow(ImGui::GetWindowPos(), ImGui::GetWindowSize());
 
-    Canvas = NavigateAction.GetCanvas();
+    m_Canvas = m_NavigateAction.GetCanvas();
 
-    ImGui::PushStyleVar(ImGuiStyleVar_AntiAliasFringeScale, std::min(std::max(Canvas.InvZoom.x, Canvas.InvZoom.y), 1.0f));
+    ImGui::PushStyleVar(ImGuiStyleVar_AntiAliasFringeScale, std::min(std::max(m_Canvas.InvZoom.x, m_Canvas.InvZoom.y), 1.0f));
 
     // Save mouse positions
     auto& io = ImGui::GetIO();
-    MousePosBackup = io.MousePos;
-    MousePosPrevBackup = io.MousePosPrev;
+    m_MousePosBackup = io.MousePos;
+    m_MousePosPrevBackup = io.MousePosPrev;
     for (int i = 0; i < 5; ++i)
-        MouseClickPosBackup[i] = io.MouseClickedPos[i];
+        m_MouseClickPosBackup[i] = io.MouseClickedPos[i];
 
     // #debug
     //auto drawList2 = ImGui::GetWindowDrawList();
@@ -878,8 +878,8 @@ void ed::EditorContext::Begin(const char* id, const ImVec2& size)
     //drawList2->AddRect(Canvas.FromClient(ImVec2(0, 0)), Canvas.FromClient(ImVec2(0, 0)) + Canvas.ClientSize, IM_COL32(255, 0, 255, 255), 0, 15, 4.0f);
     //drawList2->PopClipRect();
 
-    auto clipMin = Canvas.FromScreen(Canvas.WindowScreenPos);
-    auto clipMax = Canvas.FromScreen(Canvas.WindowScreenPos) + Canvas.ClientSize;
+    auto clipMin = m_Canvas.FromScreen(m_Canvas.WindowScreenPos);
+    auto clipMax = m_Canvas.FromScreen(m_Canvas.WindowScreenPos) + m_Canvas.ClientSize;
 
     // #debug #clip
     //ImGui::Text("CLIP = { x=%g y=%g w=%g h=%g r=%g b=%g }",
@@ -894,48 +894,48 @@ void ed::EditorContext::Begin(const char* id, const ImVec2& size)
     ImDrawList_ChannelsGrow(drawList, c_NodeStartChannel);
 
     if (HasSelectionChanged())
-        ++SelectionId;
+        ++m_SelectionId;
 
-    LastSelectedObjects = SelectedObjects;
+    m_LastSelectedObjects = m_SelectedObjects;
 }
 
 void ed::EditorContext::End()
 {
     //auto& io          = ImGui::GetIO();
-    auto  control     = BuildControl(CurrentAction && CurrentAction->IsDragging()); // NavigateAction.IsMovingOverEdge()
+    auto  control     = BuildControl(m_CurrentAction && m_CurrentAction->IsDragging()); // NavigateAction.IsMovingOverEdge()
     auto  drawList    = ImGui::GetWindowDrawList();
     //auto& editorStyle = GetStyle();
 
-    DoubleClickedNode       = control.DoubleClickedNode ? control.DoubleClickedNode->ID : 0;
-    DoubleClickedPin        = control.DoubleClickedPin  ? control.DoubleClickedPin->ID  : 0;
-    DoubleClickedLink       = control.DoubleClickedLink ? control.DoubleClickedLink->ID : 0;
-    BackgroundClicked       = control.BackgroundClicked;
-    BackgroundDoubleClicked = control.BackgroundDoubleClicked;
+    m_DoubleClickedNode       = control.DoubleClickedNode ? control.DoubleClickedNode->m_ID : 0;
+    m_DoubleClickedPin        = control.DoubleClickedPin  ? control.DoubleClickedPin->m_ID  : 0;
+    m_DoubleClickedLink       = control.DoubleClickedLink ? control.DoubleClickedLink->m_ID : 0;
+    m_BackgroundClicked       = control.BackgroundClicked;
+    m_BackgroundDoubleClicked = control.BackgroundDoubleClicked;
 
     //if (DoubleClickedNode) LOG_TRACE(0, "DOUBLE CLICK NODE: %d", DoubleClickedNode);
     //if (DoubleClickedPin)  LOG_TRACE(0, "DOUBLE CLICK PIN:  %d", DoubleClickedPin);
     //if (DoubleClickedLink) LOG_TRACE(0, "DOUBLE CLICK LINK: %d", DoubleClickedLink);
     //if (BackgroundDoubleClicked) LOG_TRACE(0, "DOUBLE CLICK BACKGROUND", DoubleClickedLink);
 
-    const bool isSelecting = CurrentAction && CurrentAction->AsSelect() != nullptr;
-    const bool isDragging  = CurrentAction && CurrentAction->AsDrag()   != nullptr;
+    const bool isSelecting = m_CurrentAction && m_CurrentAction->AsSelect() != nullptr;
+    const bool isDragging  = m_CurrentAction && m_CurrentAction->AsDrag()   != nullptr;
     //const bool isSizing    = CurrentAction && CurrentAction->AsSize()   != nullptr;
 
     // Draw nodes
-    for (auto node : Nodes)
-        if (node->IsLive && node->IsVisible())
+    for (auto node : m_Nodes)
+        if (node->m_IsLive && node->IsVisible())
             node->Draw(drawList);
 
     // Draw links
-    for (auto link : Links)
-        if (link->IsLive && link->IsVisible())
+    for (auto link : m_Links)
+        if (link->m_IsLive && link->IsVisible())
             link->Draw(drawList);
 
     // Highlight selected objects
     {
-        auto selectedObjects = &SelectedObjects;
-        if (auto selectAction = CurrentAction ? CurrentAction->AsSelect() : nullptr)
-            selectedObjects = &selectAction->CandidateObjects;
+        auto selectedObjects = &m_SelectedObjects;
+        if (auto selectAction = m_CurrentAction ? m_CurrentAction->AsSelect() : nullptr)
+            selectedObjects = &selectAction->m_CandidateObjects;
 
         for (auto selectedObject : *selectedObjects)
             if (selectedObject->IsVisible())
@@ -945,28 +945,28 @@ void ed::EditorContext::End()
     if (!isSelecting)
     {
         auto hoveredObject = control.HotObject;
-        if (auto dragAction = CurrentAction ? CurrentAction->AsDrag() : nullptr)
-            hoveredObject = dragAction->DraggedObject;
-        if (auto sizeAction = CurrentAction ? CurrentAction->AsSize() : nullptr)
-            hoveredObject = sizeAction->SizedNode;
+        if (auto dragAction = m_CurrentAction ? m_CurrentAction->AsDrag() : nullptr)
+            hoveredObject = dragAction->m_DraggedObject;
+        if (auto sizeAction = m_CurrentAction ? m_CurrentAction->AsSize() : nullptr)
+            hoveredObject = sizeAction->m_SizedNode;
 
         if (hoveredObject && !IsSelected(hoveredObject) && hoveredObject->IsVisible())
             hoveredObject->Draw(drawList, Object::Hovered);
     }
 
     // Draw animations
-    for (auto controller : AnimationControllers)
+    for (auto controller : m_AnimationControllers)
         controller->Draw(drawList);
 
-    if (CurrentAction && !CurrentAction->Process(control))
-        CurrentAction = nullptr;
+    if (m_CurrentAction && !m_CurrentAction->Process(control))
+        m_CurrentAction = nullptr;
 
-    if (NavigateAction.IsActive)
-        NavigateAction.Process(control);
+    if (m_NavigateAction.m_IsActive)
+        m_NavigateAction.Process(control);
     else
-        NavigateAction.Accept(control);
+        m_NavigateAction.Accept(control);
 
-    if (nullptr == CurrentAction)
+    if (nullptr == m_CurrentAction)
     {
         EditorAction* possibleAction   = nullptr;
 
@@ -984,33 +984,33 @@ void ed::EditorContext::End()
             return false;
         };
 
-        if (accept(ContextMenuAction))
-            CurrentAction = &ContextMenuAction;
-        else if (accept(ShortcutAction))
-            CurrentAction = &ShortcutAction;
-        else if (accept(SizeAction))
-            CurrentAction = &SizeAction;
-        else if (accept(DragAction))
-            CurrentAction = &DragAction;
-        else if (accept(SelectAction))
-            CurrentAction = &SelectAction;
-        else if (accept(CreateItemAction))
-            CurrentAction = &CreateItemAction;
-        else if (accept(DeleteItemsAction))
-            CurrentAction = &DeleteItemsAction;
+        if (accept(m_ContextMenuAction))
+            m_CurrentAction = &m_ContextMenuAction;
+        else if (accept(m_ShortcutAction))
+            m_CurrentAction = &m_ShortcutAction;
+        else if (accept(m_SizeAction))
+            m_CurrentAction = &m_SizeAction;
+        else if (accept(m_DragAction))
+            m_CurrentAction = &m_DragAction;
+        else if (accept(m_SelectAction))
+            m_CurrentAction = &m_SelectAction;
+        else if (accept(m_CreateItemAction))
+            m_CurrentAction = &m_CreateItemAction;
+        else if (accept(m_DeleteItemsAction))
+            m_CurrentAction = &m_DeleteItemsAction;
 
         if (possibleAction)
             ImGui::SetMouseCursor(possibleAction->GetCursor());
 
-        if (CurrentAction && possibleAction)
+        if (m_CurrentAction && possibleAction)
             possibleAction->Reject();
     }
 
-    if (CurrentAction)
-        ImGui::SetMouseCursor(CurrentAction->GetCursor());
+    if (m_CurrentAction)
+        ImGui::SetMouseCursor(m_CurrentAction->GetCursor());
 
     // Draw selection rectangle
-    SelectAction.Draw(drawList);
+    m_SelectAction.Draw(drawList);
 
     bool sortGroups = false;
     if (control.ActiveNode)
@@ -1018,16 +1018,16 @@ void ed::EditorContext::End()
         if (!IsGroup(control.ActiveNode))
         {
             // Bring active node to front
-            auto activeNodeIt = std::find(Nodes.begin(), Nodes.end(), control.ActiveNode);
-            std::rotate(activeNodeIt, activeNodeIt + 1, Nodes.end());
+            auto activeNodeIt = std::find(m_Nodes.begin(), m_Nodes.end(), control.ActiveNode);
+            std::rotate(activeNodeIt, activeNodeIt + 1, m_Nodes.end());
         }
-        else if (!isDragging && CurrentAction && CurrentAction->AsDrag())
+        else if (!isDragging && m_CurrentAction && m_CurrentAction->AsDrag())
         {
             // Bring content of dragged group to front
             std::vector<Node*> nodes;
             control.ActiveNode->GetGroupedNodes(nodes);
 
-            std::stable_partition(Nodes.begin(), Nodes.end(), [&nodes](Node* node)
+            std::stable_partition(m_Nodes.begin(), m_Nodes.end(), [&nodes](Node* node)
             {
                 return std::find(nodes.begin(), nodes.end(), node) == nodes.end();
             });
@@ -1037,16 +1037,16 @@ void ed::EditorContext::End()
     }
 
     // Sort nodes if bounds of node changed
-    if (sortGroups || ((Settings.DirtyReason & (SaveReasonFlags::Position | SaveReasonFlags::Size)) != SaveReasonFlags::None))
+    if (sortGroups || ((m_Settings.m_DirtyReason & (SaveReasonFlags::Position | SaveReasonFlags::Size)) != SaveReasonFlags::None))
     {
         // Bring all groups before regular nodes
-        auto groupsItEnd = std::stable_partition(Nodes.begin(), Nodes.end(), IsGroup);
+        auto groupsItEnd = std::stable_partition(m_Nodes.begin(), m_Nodes.end(), IsGroup);
 
         // Sort groups by area
-        std::sort(Nodes.begin(), groupsItEnd, [this](Node* lhs, Node* rhs)
+        std::sort(m_Nodes.begin(), groupsItEnd, [this](Node* lhs, Node* rhs)
         {
-            const auto& lhsSize = lhs == SizeAction.SizedNode ? SizeAction.GetStartGroupBounds().size : lhs->GroupBounds.size;
-            const auto& rhsSize = rhs == SizeAction.SizedNode ? SizeAction.GetStartGroupBounds().size : rhs->GroupBounds.size;
+            const auto& lhsSize = lhs == m_SizeAction.m_SizedNode ? m_SizeAction.GetStartGroupBounds().size : lhs->m_GroupBounds.size;
+            const auto& rhsSize = rhs == m_SizeAction.m_SizedNode ? m_SizeAction.GetStartGroupBounds().size : rhs->m_GroupBounds.size;
 
             const auto lhsArea = lhsSize.w * lhsSize.h;
             const auto rhsArea = rhsSize.w * rhsSize.h;
@@ -1060,7 +1060,7 @@ void ed::EditorContext::End()
     // node drawing order.
     {
         // Copy group nodes
-        auto liveNodeCount = std::count_if(Nodes.begin(), Nodes.end(), [](Node* node) { return node->IsLive; });
+        auto liveNodeCount = std::count_if(m_Nodes.begin(), m_Nodes.end(), [](Node* node) { return node->m_IsLive; });
 
         // Reserve two additional channels for sorted list of channels
         auto nodeChannelCount = drawList->_ChannelsCount;
@@ -1070,27 +1070,27 @@ void ed::EditorContext::End()
 
         auto copyNode = [&targetChannel, drawList](Node* node)
         {
-            if (!node->IsLive)
+            if (!node->m_IsLive)
                 return;
 
             for (int i = 0; i < c_ChannelsPerNode; ++i)
-                ImDrawList_SwapChannels(drawList, node->Channel + i, targetChannel + i);
+                ImDrawList_SwapChannels(drawList, node->m_Channel + i, targetChannel + i);
 
-            node->Channel = targetChannel;
+            node->m_Channel = targetChannel;
             targetChannel += c_ChannelsPerNode;
         };
 
-        auto groupsItEnd = std::find_if(Nodes.begin(), Nodes.end(), [](Node* node) { return !IsGroup(node); });
+        auto groupsItEnd = std::find_if(m_Nodes.begin(), m_Nodes.end(), [](Node* node) { return !IsGroup(node); });
 
         // Copy group nodes
-        std::for_each(Nodes.begin(), groupsItEnd, copyNode);
+        std::for_each(m_Nodes.begin(), groupsItEnd, copyNode);
 
         // Copy links
         for (int i = 0; i < c_LinkChannelCount; ++i, ++targetChannel)
             ImDrawList_SwapChannels(drawList, c_LinkStartChannel + i, targetChannel);
 
         // Copy normal nodes
-        std::for_each(groupsItEnd, Nodes.end(), copyNode);
+        std::for_each(groupsItEnd, m_Nodes.end(), copyNode);
     }
 
     ImGui::PopClipRect();
@@ -1101,21 +1101,21 @@ void ed::EditorContext::End()
 
         drawList->ChannelsSetCurrent(c_UserChannel_Grid);
 
-        ImGui::PushClipRect(Canvas.WindowScreenPos + ImVec2(1, 1), Canvas.WindowScreenPos + Canvas.WindowScreenSize - ImVec2(1, 1), false);
+        ImGui::PushClipRect(m_Canvas.WindowScreenPos + ImVec2(1, 1), m_Canvas.WindowScreenPos + m_Canvas.WindowScreenSize - ImVec2(1, 1), false);
 
-        ImVec2 offset    = Canvas.ClientOrigin;
+        ImVec2 offset    = m_Canvas.ClientOrigin;
         ImU32 GRID_COLOR = GetColor(StyleColor_Grid);
-        float GRID_SX    = 32.0f * Canvas.Zoom.x;
-        float GRID_SY    = 32.0f * Canvas.Zoom.y;
+        float GRID_SX    = 32.0f * m_Canvas.Zoom.x;
+        float GRID_SY    = 32.0f * m_Canvas.Zoom.y;
         //ImVec2 win_pos   = Canvas.WindowScreenPos;
         //ImVec2 canvas_sz = Canvas.WindowScreenSize;
 
-        drawList->AddRectFilled(Canvas.WindowScreenPos, Canvas.WindowScreenPos + Canvas.WindowScreenSize, GetColor(StyleColor_Bg), style.WindowRounding);
+        drawList->AddRectFilled(m_Canvas.WindowScreenPos, m_Canvas.WindowScreenPos + m_Canvas.WindowScreenSize, GetColor(StyleColor_Bg), style.WindowRounding);
 
-        for (float x = fmodf(offset.x, GRID_SX); x < Canvas.WindowScreenSize.x; x += GRID_SX)
-            drawList->AddLine(ImVec2(x, 0.0f) + Canvas.WindowScreenPos, ImVec2(x, Canvas.WindowScreenSize.y) + Canvas.WindowScreenPos, GRID_COLOR);
-        for (float y = fmodf(offset.y, GRID_SY); y < Canvas.WindowScreenSize.y; y += GRID_SY)
-            drawList->AddLine(ImVec2(0.0f, y) + Canvas.WindowScreenPos, ImVec2(Canvas.WindowScreenSize.x, y) + Canvas.WindowScreenPos, GRID_COLOR);
+        for (float x = fmodf(offset.x, GRID_SX); x < m_Canvas.WindowScreenSize.x; x += GRID_SX)
+            drawList->AddLine(ImVec2(x, 0.0f) + m_Canvas.WindowScreenPos, ImVec2(x, m_Canvas.WindowScreenSize.y) + m_Canvas.WindowScreenPos, GRID_COLOR);
+        for (float y = fmodf(offset.y, GRID_SY); y < m_Canvas.WindowScreenSize.y; y += GRID_SY)
+            drawList->AddLine(ImVec2(0.0f, y) + m_Canvas.WindowScreenPos, ImVec2(m_Canvas.WindowScreenSize.x, y) + m_Canvas.WindowScreenPos, GRID_COLOR);
 
         ImGui::PopClipRect();
     }
@@ -1130,14 +1130,14 @@ void ed::EditorContext::End()
 
     {
         auto preOffset  = ImVec2(0, 0);
-        auto postOffset = Canvas.WindowScreenPos + Canvas.ClientOrigin;
-        auto scale      = Canvas.Zoom;
+        auto postOffset = m_Canvas.WindowScreenPos + m_Canvas.ClientOrigin;
+        auto scale      = m_Canvas.Zoom;
 
         ImDrawList_TransformChannels(drawList,                        0,                            1, preOffset, scale, postOffset);
         ImDrawList_TransformChannels(drawList, c_BackgroundChannelStart, drawList->_ChannelsCount - 1, preOffset, scale, postOffset);
 
-        auto clipTranslation = Canvas.WindowScreenPos - Canvas.FromScreen(Canvas.WindowScreenPos);
-        ImGui::PushClipRect(Canvas.WindowScreenPos + ImVec2(1, 1), Canvas.WindowScreenPos + Canvas.WindowScreenSize - ImVec2(1, 1), false);
+        auto clipTranslation = m_Canvas.WindowScreenPos - m_Canvas.FromScreen(m_Canvas.WindowScreenPos);
+        ImGui::PushClipRect(m_Canvas.WindowScreenPos + ImVec2(1, 1), m_Canvas.WindowScreenPos + m_Canvas.WindowScreenSize - ImVec2(1, 1), false);
         ImDrawList_TranslateAndClampClipRects(drawList,                        0,                            1, clipTranslation);
         ImDrawList_TranslateAndClampClipRects(drawList, c_BackgroundChannelStart, drawList->_ChannelsCount - 1, clipTranslation);
         ImGui::PopClipRect();
@@ -1167,8 +1167,8 @@ void ed::EditorContext::End()
         auto& style = ImGui::GetStyle();
         auto borderShadoColor = style.Colors[ImGuiCol_BorderShadow];
         auto borderColor      = style.Colors[ImGuiCol_Border];
-        drawList->AddRect(Canvas.WindowScreenPos + ImVec2(1, 1), Canvas.WindowScreenPos + Canvas.WindowScreenSize + ImVec2(1, 1), ImColor(borderShadoColor), style.WindowRounding);
-        drawList->AddRect(Canvas.WindowScreenPos,                Canvas.WindowScreenPos + Canvas.WindowScreenSize,                ImColor(borderColor),      style.WindowRounding);
+        drawList->AddRect(m_Canvas.WindowScreenPos + ImVec2(1, 1), m_Canvas.WindowScreenPos + m_Canvas.WindowScreenSize + ImVec2(1, 1), ImColor(borderShadoColor), style.WindowRounding);
+        drawList->AddRect(m_Canvas.WindowScreenPos,                m_Canvas.WindowScreenPos + m_Canvas.WindowScreenSize,                ImColor(borderColor),      style.WindowRounding);
     }
 
     // ShowMetrics(control);
@@ -1181,10 +1181,10 @@ void ed::EditorContext::End()
 
     ReleaseMouse();
 
-    if (!CurrentAction && IsFirstFrame && !Settings.Selection.empty())
+    if (!m_CurrentAction && m_IsFirstFrame && !m_Settings.m_Selection.empty())
     {
         ClearSelection();
-        for (int id : Settings.Selection)
+        for (int id : m_Settings.m_Selection)
             if (auto object = FindObject(id))
                 SelectObject(object);
     }
@@ -1192,10 +1192,10 @@ void ed::EditorContext::End()
     if (HasSelectionChanged())
         MakeDirty(SaveReasonFlags::Selection);
 
-    if (Settings.IsDirty && !CurrentAction)
+    if (m_Settings.m_IsDirty && !m_CurrentAction)
         SaveSettings();
 
-    IsFirstFrame = false;
+    m_IsFirstFrame = false;
 }
 
 bool ed::EditorContext::DoLink(int id, int startPinId, int endPinId, ImU32 color, float thickness)
@@ -1205,18 +1205,18 @@ bool ed::EditorContext::DoLink(int id, int startPinId, int endPinId, ImU32 color
     auto startPin = FindPin(startPinId);
     auto endPin   = FindPin(endPinId);
 
-    if (!startPin || !startPin->IsLive || !endPin || !endPin->IsLive)
+    if (!startPin || !startPin->m_IsLive || !endPin || !endPin->m_IsLive)
         return false;
 
-    startPin->HasConnection = true;
-      endPin->HasConnection = true;
+    startPin->m_HasConnection = true;
+      endPin->m_HasConnection = true;
 
     auto link           = GetLink(id);
-    link->StartPin      = startPin;
-    link->EndPin        = endPin;
-    link->Color         = color;
-    link->Thickness     = thickness;
-    link->IsLive        = true;
+    link->m_StartPin      = startPin;
+    link->m_EndPin        = endPin;
+    link->m_Color         = color;
+    link->m_Thickness     = thickness;
+    link->m_IsLive        = true;
 
     link->UpdateEndpoints();
 
@@ -1229,13 +1229,13 @@ void ed::EditorContext::SetNodePosition(int nodeId, const ImVec2& position)
     if (!node)
     {
         node = CreateNode(nodeId);
-        node->IsLive = false;
+        node->m_IsLive = false;
     }
 
     auto newPosition = to_point(position);
-    if (node->Bounds.location != newPosition)
+    if (node->m_Bounds.location != newPosition)
     {
-        node->Bounds.location = to_point(position);
+        node->m_Bounds.location = to_point(position);
         MakeDirty(NodeEditor::SaveReasonFlags::Position, node);
     }
 }
@@ -1246,7 +1246,7 @@ ImVec2 ed::EditorContext::GetNodePosition(int nodeId)
     if (!node)
         return ImVec2(FLT_MAX, FLT_MAX);
 
-    return to_imvec(node->Bounds.location);
+    return to_imvec(node->m_Bounds.location);
 }
 
 ImVec2 ed::EditorContext::GetNodeSize(int nodeId)
@@ -1255,47 +1255,47 @@ ImVec2 ed::EditorContext::GetNodeSize(int nodeId)
     if (!node)
         return ImVec2(0, 0);
 
-    return to_imvec(node->Bounds.size);
+    return to_imvec(node->m_Bounds.size);
 }
 
 void ed::EditorContext::MarkNodeToRestoreState(Node* node)
 {
-    node->RestoreState = true;
+    node->m_RestoreState = true;
 }
 
 void ed::EditorContext::RestoreNodeState(Node* node)
 {
-    auto settings = Settings.FindNode(node->ID);
+    auto settings = m_Settings.FindNode(node->m_ID);
     if (!settings)
         return;
 
     // Load state from config (if possible)
-    if (!NodeSettings::Parse(Config.LoadNode(node->ID), *settings))
+    if (!NodeSettings::Parse(m_Config.LoadNode(node->m_ID), *settings))
         return;
 
-    auto diff = to_point(settings->Location) - node->Bounds.location;
+    auto diff = to_point(settings->m_Location) - node->m_Bounds.location;
 
-    node->Bounds.location      += diff;
-    node->Bounds.size           = to_size(settings->Size);
-    node->GroupBounds.location += diff;
-    node->GroupBounds.size      = to_size(settings->GroupSize);
+    node->m_Bounds.location      += diff;
+    node->m_Bounds.size           = to_size(settings->m_Size);
+    node->m_GroupBounds.location += diff;
+    node->m_GroupBounds.size      = to_size(settings->m_GroupSize);
 }
 
 void ed::EditorContext::ClearSelection()
 {
-    SelectedObjects.clear();
+    m_SelectedObjects.clear();
 }
 
 void ed::EditorContext::SelectObject(Object* object)
 {
-    SelectedObjects.push_back(object);
+    m_SelectedObjects.push_back(object);
 }
 
 void ed::EditorContext::DeselectObject(Object* object)
 {
-    auto objectIt = std::find(SelectedObjects.begin(), SelectedObjects.end(), object);
-    if (objectIt != SelectedObjects.end())
-        SelectedObjects.erase(objectIt);
+    auto objectIt = std::find(m_SelectedObjects.begin(), m_SelectedObjects.end(), object);
+    if (objectIt != m_SelectedObjects.end())
+        m_SelectedObjects.erase(objectIt);
 }
 
 void ed::EditorContext::SetSelectedObject(Object* object)
@@ -1314,17 +1314,17 @@ void ed::EditorContext::ToggleObjectSelection(Object* object)
 
 bool ed::EditorContext::IsSelected(Object* object)
 {
-    return std::find(SelectedObjects.begin(), SelectedObjects.end(), object) != SelectedObjects.end();
+    return std::find(m_SelectedObjects.begin(), m_SelectedObjects.end(), object) != m_SelectedObjects.end();
 }
 
 const ed::vector<ed::Object*>& ed::EditorContext::GetSelectedObjects()
 {
-    return SelectedObjects;
+    return m_SelectedObjects;
 }
 
 bool ed::EditorContext::IsAnyNodeSelected()
 {
-    for (auto object : SelectedObjects)
+    for (auto object : m_SelectedObjects)
         if (object->AsNode())
             return true;
 
@@ -1333,7 +1333,7 @@ bool ed::EditorContext::IsAnyNodeSelected()
 
 bool ed::EditorContext::IsAnyLinkSelected()
 {
-    for (auto object : SelectedObjects)
+    for (auto object : m_SelectedObjects)
         if (object->AsLink())
             return true;
 
@@ -1342,12 +1342,12 @@ bool ed::EditorContext::IsAnyLinkSelected()
 
 bool ed::EditorContext::HasSelectionChanged()
 {
-    return LastSelectedObjects != SelectedObjects;
+    return m_LastSelectedObjects != m_SelectedObjects;
 }
 
 ed::Node* ed::EditorContext::FindNodeAt(const ImVec2& p)
 {
-    for (auto node : Nodes)
+    for (auto node : m_Nodes)
         if (node->TestHit(p))
             return node;
 
@@ -1362,7 +1362,7 @@ void ed::EditorContext::FindNodesInRect(const ax::rectf& r, vector<Node*>& resul
     if (r.is_empty())
         return;
 
-    for (auto node : Nodes)
+    for (auto node : m_Nodes)
         if (node->TestHit(r, includeIntersecting))
             result.push_back(node);
 }
@@ -1375,7 +1375,7 @@ void ed::EditorContext::FindLinksInRect(const ax::rectf& r, vector<Link*>& resul
     if (r.is_empty())
         return;
 
-    for (auto link : Links)
+    for (auto link : m_Links)
         if (link->TestHit(r))
             result.push_back(link);
 }
@@ -1385,12 +1385,12 @@ void ed::EditorContext::FindLinksForNode(int nodeId, vector<Link*>& result, bool
     if (!add)
         result.clear();
 
-    for (auto link : Links)
+    for (auto link : m_Links)
     {
-        if (!link->IsLive)
+        if (!link->m_IsLive)
             continue;
 
-        if (link->StartPin->Node->ID == nodeId || link->EndPin->Node->ID == nodeId)
+        if (link->m_StartPin->m_Node->m_ID == nodeId || link->m_EndPin->m_Node->m_ID == nodeId)
             result.push_back(link);
     }
 }
@@ -1398,49 +1398,49 @@ void ed::EditorContext::FindLinksForNode(int nodeId, vector<Link*>& result, bool
 bool ed::EditorContext::PinHadAnyLinks(int pinId)
 {
     auto pin = FindPin(pinId);
-    if (!pin || !pin->IsLive)
+    if (!pin || !pin->m_IsLive)
         return false;
 
-    return pin->HasConnection || pin->HadConnection;
+    return pin->m_HasConnection || pin->m_HadConnection;
 }
 
 void ed::EditorContext::NotifyLinkDeleted(Link* link)
 {
-    if (LastActiveLink == link)
-        LastActiveLink = nullptr;
+    if (m_LastActiveLink == link)
+        m_LastActiveLink = nullptr;
 }
 
 void ed::EditorContext::Suspend()
 {
     //assert(!IsSuspended);
-    if (0 == SuspendCount++)
+    if (0 == m_SuspendCount++)
         ReleaseMouse();
 }
 
 void ed::EditorContext::Resume()
 {
-    assert(SuspendCount > 0);
+    assert(m_SuspendCount > 0);
 
-    if (0 == --SuspendCount)
+    if (0 == --m_SuspendCount)
         CaptureMouse();
 }
 
 bool ed::EditorContext::IsSuspended()
 {
-    return SuspendCount > 0;
+    return m_SuspendCount > 0;
 }
 
 bool ed::EditorContext::IsActive()
 {
-    return IsWindowActive;
+    return m_IsWindowActive;
 }
 
 ed::Pin* ed::EditorContext::CreatePin(int id, PinKind kind)
 {
     assert(nullptr == FindObject(id));
     auto pin = new Pin(this, id, kind);
-    Pins.push_back({id, pin});
-    std::sort(Pins.begin(), Pins.end());
+    m_Pins.push_back({id, pin});
+    std::sort(m_Pins.begin(), m_Pins.end());
     return pin;
 }
 
@@ -1448,28 +1448,28 @@ ed::Node* ed::EditorContext::CreateNode(int id)
 {
     assert(nullptr == FindObject(id));
     auto node = new Node(this, id);
-    Nodes.push_back({id, node});
+    m_Nodes.push_back({id, node});
     //std::sort(Nodes.begin(), Nodes.end());
 
-    auto settings = Settings.FindNode(id);
+    auto settings = m_Settings.FindNode(id);
     if (!settings)
-        settings = Settings.AddNode(id);
+        settings = m_Settings.AddNode(id);
 
-    if (!settings->WasUsed)
+    if (!settings->m_WasUsed)
     {
-        settings->WasUsed = true;
+        settings->m_WasUsed = true;
         RestoreNodeState(node);
     }
 
-    node->Bounds.location  = to_point(settings->Location);
+    node->m_Bounds.location  = to_point(settings->m_Location);
 
-    if (settings->GroupSize.x > 0 || settings->GroupSize.y > 0)
+    if (settings->m_GroupSize.x > 0 || settings->m_GroupSize.y > 0)
     {
-        node->Type             = NodeType::Group;
-        node->GroupBounds.size = to_size(settings->GroupSize);
+        node->m_Type             = NodeType::Group;
+        node->m_GroupBounds.size = to_size(settings->m_GroupSize);
     }
 
-    node->IsLive = false;
+    node->m_IsLive = false;
 
     return node;
 }
@@ -1478,8 +1478,8 @@ ed::Link* ed::EditorContext::CreateLink(int id)
 {
     assert(nullptr == FindObject(id));
     auto link = new Link(this, id);
-    Links.push_back({id, link});
-    std::sort(Links.begin(), Links.end());
+    m_Links.push_back({id, link});
+    std::sort(m_Links.begin(), m_Links.end());
 
     return link;
 }
@@ -1502,15 +1502,15 @@ static inline auto FindItemInLinear(C& container, int id)
     auto start = container.data();
     auto end   = container.data() + container.size();
     for (auto it = start; it < end; ++it)
-        if ((*it).ID == id)
-            return it->Object;
+        if ((*it).m_ID == id)
+            return it->m_Object;
 # else
     for (auto item : container)
-        if (item.ID == id)
-            return item.Object;
+        if (item.m_ID == id)
+            return item.m_Object;
 # endif
 
-   return static_cast<decltype(container[0].Object)>(nullptr);
+   return static_cast<decltype(container[0].m_Object)>(nullptr);
 }
 
 template <typename C>
@@ -1531,25 +1531,25 @@ static inline auto FindItemIn(C& container, int id)
     auto first = container.cbegin();
     auto last  = container.cend();
     auto it    = std::lower_bound(first, last, key);
-    if (it != last && (key.ID == it->ID))
-        return it->Object;
+    if (it != last && (key.m_ID == it->m_ID))
+        return it->m_Object;
     else
-        return static_cast<decltype(it->Object)>(nullptr);
+        return static_cast<decltype(it->m_Object)>(nullptr);
 }
 
 ed::Node* ed::EditorContext::FindNode(int id)
 {
-    return FindItemInLinear(Nodes, id);
+    return FindItemInLinear(m_Nodes, id);
 }
 
 ed::Pin* ed::EditorContext::FindPin(int id)
 {
-    return FindItemIn(Pins, id);
+    return FindItemIn(m_Pins, id);
 }
 
 ed::Link* ed::EditorContext::FindLink(int id)
 {
-    return FindItemIn(Links, id);
+    return FindItemIn(m_Links, id);
 }
 
 ed::Node* ed::EditorContext::GetNode(int id)
@@ -1564,7 +1564,7 @@ ed::Pin* ed::EditorContext::GetPin(int id, PinKind kind)
 {
     if (auto pin = FindPin(id))
     {
-        pin->Kind = kind;
+        pin->m_Kind = kind;
         return pin;
     }
     else
@@ -1581,57 +1581,57 @@ ed::Link* ed::EditorContext::GetLink(int id)
 
 void ed::EditorContext::LoadSettings()
 {
-    ed::Settings::Parse(Config.Load(), Settings);
+    ed::Settings::Parse(m_Config.Load(), m_Settings);
 
-    NavigateAction.Scroll = Settings.ViewScroll;
-    NavigateAction.Zoom   = Settings.ViewZoom;
+    m_NavigateAction.m_Scroll = m_Settings.m_ViewScroll;
+    m_NavigateAction.m_Zoom   = m_Settings.m_ViewZoom;
 }
 
 void ed::EditorContext::SaveSettings()
 {
-    Config.BeginSave();
+    m_Config.BeginSave();
 
-    for (auto& node : Nodes)
+    for (auto& node : m_Nodes)
     {
-        auto settings = Settings.FindNode(node->ID);
-        settings->Location = to_imvec(node->Bounds.location);
-        settings->Size     = to_imvec(node->Bounds.size);
+        auto settings = m_Settings.FindNode(node->m_ID);
+        settings->m_Location = to_imvec(node->m_Bounds.location);
+        settings->m_Size     = to_imvec(node->m_Bounds.size);
         if (IsGroup(node))
-            settings->GroupSize = to_imvec(node->GroupBounds.size);
+            settings->m_GroupSize = to_imvec(node->m_GroupBounds.size);
 
-        if (!node->RestoreState && settings->IsDirty && Config.SaveNodeSettings)
+        if (!node->m_RestoreState && settings->m_IsDirty && m_Config.SaveNodeSettings)
         {
-            if (Config.SaveNode(node->ID, json::value(settings->Serialize()).serialize(), settings->DirtyReason))
+            if (m_Config.SaveNode(node->m_ID, json::value(settings->Serialize()).serialize(), settings->m_DirtyReason))
                 settings->ClearDirty();
         }
     }
 
-    Settings.Selection.resize(0);
-    for (auto& object : SelectedObjects)
-        Settings.Selection.push_back(object->ID);
+    m_Settings.m_Selection.resize(0);
+    for (auto& object : m_SelectedObjects)
+        m_Settings.m_Selection.push_back(object->m_ID);
 
-    Settings.ViewScroll = NavigateAction.Scroll;
-    Settings.ViewZoom   = NavigateAction.Zoom;
+    m_Settings.m_ViewScroll = m_NavigateAction.m_Scroll;
+    m_Settings.m_ViewZoom   = m_NavigateAction.m_Zoom;
 
-    if (Config.Save(Settings.Serialize(), Settings.DirtyReason))
-        Settings.ClearDirty();
+    if (m_Config.Save(m_Settings.Serialize(), m_Settings.m_DirtyReason))
+        m_Settings.ClearDirty();
 
-    Config.EndSave();
+    m_Config.EndSave();
 }
 
 void ed::EditorContext::MakeDirty(SaveReasonFlags reason)
 {
-    Settings.MakeDirty(reason);
+    m_Settings.MakeDirty(reason);
 }
 
 void ed::EditorContext::MakeDirty(SaveReasonFlags reason, Node* node)
 {
-    Settings.MakeDirty(reason, node);
+    m_Settings.MakeDirty(reason, node);
 }
 
 ed::Link* ed::EditorContext::FindLinkAt(const ax::point& p)
 {
-    for (auto& link : Links)
+    for (auto& link : m_Links)
         if (link->TestHit(to_imvec(p), c_LinkSelectThickness))
             return link;
 
@@ -1640,34 +1640,34 @@ ed::Link* ed::EditorContext::FindLinkAt(const ax::point& p)
 
 ImU32 ed::EditorContext::GetColor(StyleColor colorIndex) const
 {
-    return ImColor(Style.Colors[colorIndex]);
+    return ImColor(m_Style.Colors[colorIndex]);
 }
 
 ImU32 ed::EditorContext::GetColor(StyleColor colorIndex, float alpha) const
 {
-    auto color = Style.Colors[colorIndex];
+    auto color = m_Style.Colors[colorIndex];
     return ImColor(color.x, color.y, color.z, color.w * alpha);
 }
 
 void ed::EditorContext::RegisterAnimation(Animation* animation)
 {
-    LiveAnimations.push_back(animation);
+    m_LiveAnimations.push_back(animation);
 }
 
 void ed::EditorContext::UnregisterAnimation(Animation* animation)
 {
-    auto it = std::find(LiveAnimations.begin(), LiveAnimations.end(), animation);
-    if (it != LiveAnimations.end())
-        LiveAnimations.erase(it);
+    auto it = std::find(m_LiveAnimations.begin(), m_LiveAnimations.end(), animation);
+    if (it != m_LiveAnimations.end())
+        m_LiveAnimations.erase(it);
 }
 
 void ed::EditorContext::UpdateAnimations()
 {
-    LastLiveAnimations = LiveAnimations;
+    m_LastLiveAnimations = m_LiveAnimations;
 
-    for (auto animation : LastLiveAnimations)
+    for (auto animation : m_LastLiveAnimations)
     {
-        const bool isLive = (std::find(LiveAnimations.begin(), LiveAnimations.end(), animation) != LiveAnimations.end());
+        const bool isLive = (std::find(m_LiveAnimations.begin(), m_LiveAnimations.end(), animation) != m_LiveAnimations.end());
 
         if (isLive)
             animation->Update();
@@ -1676,7 +1676,7 @@ void ed::EditorContext::UpdateAnimations()
 
 void ed::EditorContext::Flow(Link* link)
 {
-    FlowAnimationController.Flow(link);
+    m_FlowAnimationController.Flow(link);
 }
 
 void ed::EditorContext::SetUserContext(bool globalSpace)
@@ -1686,7 +1686,7 @@ void ed::EditorContext::SetUserContext(bool globalSpace)
     // Move drawing cursor to mouse location and prepare layer for
     // content added by user.
     if (globalSpace)
-        ImGui::SetCursorScreenPos(Canvas.ToScreen(mousePos));
+        ImGui::SetCursorScreenPos(m_Canvas.ToScreen(mousePos));
     else
         ImGui::SetCursorScreenPos(ImVec2(floorf(mousePos.x), floorf(mousePos.y)));
 
@@ -1699,12 +1699,12 @@ void ed::EditorContext::SetUserContext(bool globalSpace)
 
 void ed::EditorContext::EnableShortcuts(bool enable)
 {
-    ShortcutsEnabled = enable;
+    m_ShortcutsEnabled = enable;
 }
 
 bool ed::EditorContext::AreShortcutsEnabled()
 {
-    return ShortcutsEnabled;
+    return m_ShortcutsEnabled;
 }
 
 ed::Control ed::EditorContext::BuildControl(bool allowOffscreen)
@@ -1715,7 +1715,7 @@ ed::Control ed::EditorContext::BuildControl(bool allowOffscreen)
     const auto mousePos = to_point(ImGui::GetMousePos());
 
     // Expand clip rectangle to always contain cursor
-    auto editorRect = rect(to_point(Canvas.FromClient(ImVec2(0, 0))), to_size(Canvas.ClientSize));
+    auto editorRect = rect(to_point(m_Canvas.FromClient(ImVec2(0, 0))), to_size(m_Canvas.ClientSize));
     auto isMouseOffscreen = allowOffscreen && !editorRect.contains(mousePos);
     if (isMouseOffscreen)
     {
@@ -1769,42 +1769,42 @@ ed::Control ed::EditorContext::BuildControl(bool allowOffscreen)
     };
 
     // Process live nodes and pins.
-    for (auto nodeIt = Nodes.rbegin(), nodeItEnd = Nodes.rend(); nodeIt != nodeItEnd; ++nodeIt)
+    for (auto nodeIt = m_Nodes.rbegin(), nodeItEnd = m_Nodes.rend(); nodeIt != nodeItEnd; ++nodeIt)
     {
         auto node = *nodeIt;
 
-        if (!node->IsLive) continue;
+        if (!node->m_IsLive) continue;
 
         // Check for interactions with live pins in node before
         // processing node itself. Pins does not overlap each other
         // and all are within node bounds.
-        for (auto pin = node->LastPin; pin; pin = pin->PreviousPin)
+        for (auto pin = node->m_LastPin; pin; pin = pin->m_PreviousPin)
         {
-            if (!pin->IsLive) continue;
+            if (!pin->m_IsLive) continue;
 
-            checkInteractionsInArea(pin->ID, pin->Bounds, pin);
+            checkInteractionsInArea(pin->m_ID, pin->m_Bounds, pin);
         }
 
         // Check for interactions with node.
-        if (node->Type == NodeType::Group)
+        if (node->m_Type == NodeType::Group)
         {
             // Node with a hole
-            ImGui::PushID(node->ID);
+            ImGui::PushID(node->m_ID);
 
-            const auto top    = node->GroupBounds.top()  - node->Bounds.top();
-            const auto left   = node->GroupBounds.left() - node->Bounds.left();
-            const auto bottom = node->Bounds.bottom()    - node->GroupBounds.bottom();
-            const auto right  = node->Bounds.right()     - node->GroupBounds.right();
+            const auto top    = node->m_GroupBounds.top()  - node->m_Bounds.top();
+            const auto left   = node->m_GroupBounds.left() - node->m_Bounds.left();
+            const auto bottom = node->m_Bounds.bottom()    - node->m_GroupBounds.bottom();
+            const auto right  = node->m_Bounds.right()     - node->m_GroupBounds.right();
 
-            checkInteractionsInArea(1, rect(node->Bounds.left(),  node->Bounds.top(),             node->Bounds.w, top),    node);
-            checkInteractionsInArea(2, rect(node->Bounds.left(),  node->Bounds.bottom() - bottom, node->Bounds.w, bottom), node);
-            checkInteractionsInArea(3, rect(node->Bounds.left(),  node->Bounds.top() + top,       left, node->Bounds.h - top - bottom), node);
-            checkInteractionsInArea(4, rect(node->Bounds.right() - right, node->Bounds.top() + top, right, node->Bounds.h - top - bottom), node);
+            checkInteractionsInArea(1, rect(node->m_Bounds.left(),  node->m_Bounds.top(),             node->m_Bounds.w, top),    node);
+            checkInteractionsInArea(2, rect(node->m_Bounds.left(),  node->m_Bounds.bottom() - bottom, node->m_Bounds.w, bottom), node);
+            checkInteractionsInArea(3, rect(node->m_Bounds.left(),  node->m_Bounds.top() + top,       left, node->m_Bounds.h - top - bottom), node);
+            checkInteractionsInArea(4, rect(node->m_Bounds.right() - right, node->m_Bounds.top() + top, right, node->m_Bounds.h - top - bottom), node);
 
             ImGui::PopID();
         }
         else
-            checkInteractionsInArea(node->ID, node->Bounds, node);
+            checkInteractionsInArea(node->m_ID, node->m_Bounds, node);
     }
 
     // Links are not regular widgets and must be done manually since
@@ -1835,15 +1835,15 @@ ed::Control ed::EditorContext::BuildControl(bool allowOffscreen)
 
     // ImGui take care of tracking active items. With link
     // we must do this ourself.
-    if (!isDragging && isBackgroundActive && hotLink && !LastActiveLink)
-        LastActiveLink = hotLink;
-    if (isBackgroundActive && LastActiveLink)
+    if (!isDragging && isBackgroundActive && hotLink && !m_LastActiveLink)
+        m_LastActiveLink = hotLink;
+    if (isBackgroundActive && m_LastActiveLink)
     {
-        activeObject       = LastActiveLink;
+        activeObject       = m_LastActiveLink;
         isBackgroundActive = false;
     }
-    else if (!isBackgroundActive && LastActiveLink)
-        LastActiveLink = nullptr;
+    else if (!isBackgroundActive && m_LastActiveLink)
+        m_LastActiveLink = nullptr;
 
     // Steal click from backgrounds if link is hovered.
     if (!isDragging && backgroundClicked && hotLink)
@@ -1867,7 +1867,7 @@ void ed::EditorContext::ShowMetrics(const Control& control)
 {
     auto& io = ImGui::GetIO();
 
-    ImGui::SetCursorScreenPos(Canvas.WindowScreenPos);
+    ImGui::SetCursorScreenPos(m_Canvas.WindowScreenPos);
     auto getObjectName = [](Object* object)
     {
         if (!object) return "";
@@ -1897,41 +1897,41 @@ void ed::EditorContext::ShowMetrics(const Control& control)
             return "<unknown>";
     };
 
-    auto liveNodeCount  = (int)std::count_if(Nodes.begin(),  Nodes.end(),  [](Node*  node)  { return  node->IsLive; });
-    auto livePinCount   = (int)std::count_if(Pins.begin(),   Pins.end(),   [](Pin*   pin)   { return   pin->IsLive; });
-    auto liveLinkCount  = (int)std::count_if(Links.begin(),  Links.end(),  [](Link*  link)  { return  link->IsLive; });
+    auto liveNodeCount  = (int)std::count_if(m_Nodes.begin(),  m_Nodes.end(),  [](Node*  node)  { return  node->m_IsLive; });
+    auto livePinCount   = (int)std::count_if(m_Pins.begin(),   m_Pins.end(),   [](Pin*   pin)   { return   pin->m_IsLive; });
+    auto liveLinkCount  = (int)std::count_if(m_Links.begin(),  m_Links.end(),  [](Link*  link)  { return  link->m_IsLive; });
 
     ImGui::SetCursorPos(ImVec2(10, 10));
     ImGui::BeginGroup();
     ImGui::Text("Is Editor Active: %s", ImGui::IsWindowHovered() ? "true" : "false");
-    ImGui::Text("Window Position: { x=%g y=%g }", Canvas.WindowScreenPos.x, Canvas.WindowScreenPos.y);
-    ImGui::Text("Window Size: { w=%g h=%g }", Canvas.WindowScreenSize.x, Canvas.WindowScreenSize.y);
-    ImGui::Text("Canvas Size: { w=%g h=%g }", Canvas.ClientSize.x, Canvas.ClientSize.y);
-    ImGui::Text("Mouse: { x=%.0f y=%.0f } global: { x=%g y=%g }", io.MousePos.x, io.MousePos.y, MousePosBackup.x, MousePosBackup.y);
+    ImGui::Text("Window Position: { x=%g y=%g }", m_Canvas.WindowScreenPos.x, m_Canvas.WindowScreenPos.y);
+    ImGui::Text("Window Size: { w=%g h=%g }", m_Canvas.WindowScreenSize.x, m_Canvas.WindowScreenSize.y);
+    ImGui::Text("Canvas Size: { w=%g h=%g }", m_Canvas.ClientSize.x, m_Canvas.ClientSize.y);
+    ImGui::Text("Mouse: { x=%.0f y=%.0f } global: { x=%g y=%g }", io.MousePos.x, io.MousePos.y, m_MousePosBackup.x, m_MousePosBackup.y);
     ImGui::Text("Live Nodes: %d", liveNodeCount);
     ImGui::Text("Live Pins: %d", livePinCount);
     ImGui::Text("Live Links: %d", liveLinkCount);
-    ImGui::Text("Hot Object: %s (%d)", getHotObjectName(), control.HotObject ? control.HotObject->ID : 0);
+    ImGui::Text("Hot Object: %s (%d)", getHotObjectName(), control.HotObject ? control.HotObject->m_ID : 0);
     if (auto node = control.HotObject ? control.HotObject->AsNode() : nullptr)
     {
         ImGui::SameLine();
-        ImGui::Text("{ x=%d y=%d w=%d h=%d }", node->Bounds.x, node->Bounds.y, node->Bounds.w, node->Bounds.h);
+        ImGui::Text("{ x=%d y=%d w=%d h=%d }", node->m_Bounds.x, node->m_Bounds.y, node->m_Bounds.w, node->m_Bounds.h);
     }
-    ImGui::Text("Active Object: %s (%d)", getActiveObjectName(), control.ActiveObject ? control.ActiveObject->ID : 0);
+    ImGui::Text("Active Object: %s (%d)", getActiveObjectName(), control.ActiveObject ? control.ActiveObject->m_ID : 0);
     if (auto node = control.ActiveObject ? control.ActiveObject->AsNode() : nullptr)
     {
         ImGui::SameLine();
-        ImGui::Text("{ x=%d y=%d w=%d h=%d }", node->Bounds.x, node->Bounds.y, node->Bounds.w, node->Bounds.h);
+        ImGui::Text("{ x=%d y=%d w=%d h=%d }", node->m_Bounds.x, node->m_Bounds.y, node->m_Bounds.w, node->m_Bounds.h);
     }
-    ImGui::Text("Action: %s", CurrentAction ? CurrentAction->GetName() : "<none>");
-    ImGui::Text("Action Is Dragging: %s", CurrentAction && CurrentAction->IsDragging() ? "Yes" : "No");
-    NavigateAction.ShowMetrics();
-    SizeAction.ShowMetrics();
-    DragAction.ShowMetrics();
-    SelectAction.ShowMetrics();
-    ContextMenuAction.ShowMetrics();
-    CreateItemAction.ShowMetrics();
-    DeleteItemsAction.ShowMetrics();
+    ImGui::Text("Action: %s", m_CurrentAction ? m_CurrentAction->GetName() : "<none>");
+    ImGui::Text("Action Is Dragging: %s", m_CurrentAction && m_CurrentAction->IsDragging() ? "Yes" : "No");
+    m_NavigateAction.ShowMetrics();
+    m_SizeAction.ShowMetrics();
+    m_DragAction.ShowMetrics();
+    m_SelectAction.ShowMetrics();
+    m_ContextMenuAction.ShowMetrics();
+    m_CreateItemAction.ShowMetrics();
+    m_DeleteItemsAction.ShowMetrics();
     ImGui::EndGroup();
 }
 
@@ -1939,22 +1939,22 @@ void ed::EditorContext::CaptureMouse()
 {
     auto& io = ImGui::GetIO();
 
-    io.MousePos = Canvas.FromScreen(MousePosBackup);
-    io.MousePosPrev = Canvas.FromScreen(MousePosPrevBackup);
+    io.MousePos = m_Canvas.FromScreen(m_MousePosBackup);
+    io.MousePosPrev = m_Canvas.FromScreen(m_MousePosPrevBackup);
 
     for (int i = 0; i < 5; ++i)
-        io.MouseClickedPos[i] = Canvas.FromScreen(MouseClickPosBackup[i]);
+        io.MouseClickedPos[i] = m_Canvas.FromScreen(m_MouseClickPosBackup[i]);
 }
 
 void ed::EditorContext::ReleaseMouse()
 {
     auto& io = ImGui::GetIO();
 
-    io.MousePos = MousePosBackup;
-    io.MousePosPrev = MousePosPrevBackup;
+    io.MousePos = m_MousePosBackup;
+    io.MousePosPrev = m_MousePosPrevBackup;
 
     for (int i = 0; i < 5; ++i)
-        io.MouseClickedPos[i] = MouseClickPosBackup[i];
+        io.MouseClickedPos[i] = m_MouseClickPosBackup[i];
 }
 
 
@@ -1967,14 +1967,14 @@ void ed::EditorContext::ReleaseMouse()
 //------------------------------------------------------------------------------
 void ed::NodeSettings::ClearDirty()
 {
-    IsDirty     = false;
-    DirtyReason = SaveReasonFlags::None;
+    m_IsDirty     = false;
+    m_DirtyReason = SaveReasonFlags::None;
 }
 
 void ed::NodeSettings::MakeDirty(SaveReasonFlags reason)
 {
-    IsDirty     = true;
-    DirtyReason = DirtyReason | reason;
+    m_IsDirty     = true;
+    m_DirtyReason = m_DirtyReason | reason;
 }
 
 ed::json::object ed::NodeSettings::Serialize()
@@ -1988,11 +1988,11 @@ ed::json::object ed::NodeSettings::Serialize()
     };
 
     json::object nodeData;
-    nodeData["location"] = json::value(serializeVector(Location));
-    nodeData["size"]     = json::value(serializeVector(Size));
+    nodeData["location"] = json::value(serializeVector(m_Location));
+    nodeData["size"]     = json::value(serializeVector(m_Size));
 
-    if (GroupSize.x > 0 || GroupSize.y > 0)
-        nodeData["group_size"] = json::value(serializeVector(GroupSize));
+    if (m_GroupSize.x > 0 || m_GroupSize.y > 0)
+        nodeData["group_size"] = json::value(serializeVector(m_GroupSize));
 
     return nodeData;
 }
@@ -2032,10 +2032,10 @@ bool ed::NodeSettings::Parse(const json::value& data, NodeSettings& result)
         return false;
     };
 
-    if (!tryParseVector(data.get("location"), result.Location))
+    if (!tryParseVector(data.get("location"), result.m_Location))
         return false;
 
-    if (data.contains("group_size") && !tryParseVector(data.get("group_size"), result.GroupSize))
+    if (data.contains("group_size") && !tryParseVector(data.get("group_size"), result.m_GroupSize))
         return false;
 
     return true;
@@ -2051,14 +2051,14 @@ bool ed::NodeSettings::Parse(const json::value& data, NodeSettings& result)
 //------------------------------------------------------------------------------
 ed::NodeSettings* ed::Settings::AddNode(int id)
 {
-    Nodes.push_back(NodeSettings(id));
-    return &Nodes.back();
+    m_Nodes.push_back(NodeSettings(id));
+    return &m_Nodes.back();
 }
 
 ed::NodeSettings* ed::Settings::FindNode(int id)
 {
-    for (auto& settings : Nodes)
-        if (settings.ID == id)
+    for (auto& settings : m_Nodes)
+        if (settings.m_ID == id)
             return &settings;
 
     return nullptr;
@@ -2068,28 +2068,28 @@ void ed::Settings::ClearDirty(Node* node)
 {
     if (node)
     {
-        auto settings = FindNode(node->ID);
+        auto settings = FindNode(node->m_ID);
         assert(settings);
         settings->ClearDirty();
     }
     else
     {
-        IsDirty     = false;
-        DirtyReason = SaveReasonFlags::None;
+        m_IsDirty     = false;
+        m_DirtyReason = SaveReasonFlags::None;
 
-        for (auto& node : Nodes)
+        for (auto& node : m_Nodes)
             node.ClearDirty();
     }
 }
 
 void ed::Settings::MakeDirty(SaveReasonFlags reason, Node* node)
 {
-    IsDirty     = true;
-    DirtyReason = DirtyReason | reason;
+    m_IsDirty     = true;
+    m_DirtyReason = m_DirtyReason | reason;
 
     if (node)
     {
-        auto settings = FindNode(node->ID);
+        auto settings = FindNode(node->m_ID);
         assert(settings);
 
         settings->MakeDirty(reason);
@@ -2107,19 +2107,19 @@ std::string ed::Settings::Serialize()
     };
 
     json::object nodes;
-    for (auto& node : Nodes)
+    for (auto& node : m_Nodes)
     {
-        if (node.WasUsed)
-            nodes[std::to_string(node.ID)] = json::value(node.Serialize());
+        if (node.m_WasUsed)
+            nodes[std::to_string(node.m_ID)] = json::value(node.Serialize());
     }
 
     json::array selection;
-    for (auto& id : Selection)
+    for (auto& id : m_Selection)
         selection.push_back(json::value(static_cast<double>(id)));
 
     json::object view;
-    view["scroll"] = json::value(serializeVector(ViewScroll));
-    view["zoom"]   = json::value((double)ViewZoom);
+    view["scroll"] = json::value(serializeVector(m_ViewScroll));
+    view["zoom"]   = json::value((double)m_ViewZoom);
 
     json::object settings;
     settings["nodes"]     = json::value(std::move(nodes));
@@ -2184,12 +2184,12 @@ bool ed::Settings::Parse(const char* data, const char* dataEnd, Settings& settin
     {
         const auto selectionArray = selectionValue.get<json::array>();
 
-        result.Selection.reserve(selectionArray.size());
-        result.Selection.resize(0);
+        result.m_Selection.reserve(selectionArray.size());
+        result.m_Selection.resize(0);
         for (auto& selection : selectionArray)
         {
             if (selection.is<double>())
-                result.Selection.push_back(static_cast<int>(selection.get<double>()));
+                result.m_Selection.push_back(static_cast<int>(selection.get<double>()));
         }
     }
 
@@ -2199,10 +2199,10 @@ bool ed::Settings::Parse(const char* data, const char* dataEnd, Settings& settin
         auto& viewScrollValue = viewValue.get("scroll");
         auto& viewZoomValue = viewValue.get("zoom");
 
-        if (!tryParseVector(viewScrollValue, result.ViewScroll))
-            result.ViewScroll = ImVec2(0, 0);
+        if (!tryParseVector(viewScrollValue, result.m_ViewScroll))
+            result.m_ViewScroll = ImVec2(0, 0);
 
-        result.ViewZoom = viewZoomValue.is<double>() ? static_cast<float>(viewZoomValue.get<double>()) : 1.0f;
+        result.m_ViewZoom = viewZoomValue.is<double>() ? static_cast<float>(viewZoomValue.get<double>()) : 1.0f;
     }
 
     settings = std::move(result);
@@ -2290,9 +2290,9 @@ ImVec2 ed::Canvas::ToClient(ImVec2 point) const
 //------------------------------------------------------------------------------
 ed::Animation::Animation(EditorContext* editor):
     Editor(editor),
-    State(Stopped),
-    Time(0.0f),
-    Duration(0.0f)
+    m_State(Stopped),
+    m_Time(0.0f),
+    m_Duration(0.0f)
 {
 }
 
@@ -2306,12 +2306,12 @@ void ed::Animation::Play(float duration)
     if (IsPlaying())
         Stop();
 
-    State = Playing;
+    m_State = Playing;
     if (duration < 0)
         duration = 0.0f;
 
-    Time     = 0.0f;
-    Duration = duration;
+    m_Time     = 0.0f;
+    m_Duration = duration;
 
     OnPlay();
 
@@ -2326,7 +2326,7 @@ void ed::Animation::Stop()
     if (!IsPlaying())
         return;
 
-    State = Stopped;
+    m_State = Stopped;
 
     Editor->UnregisterAnimation(this);
 
@@ -2348,8 +2348,8 @@ void ed::Animation::Update()
     if (!IsPlaying())
         return;
 
-    Time += std::max(0.0f, ImGui::GetIO().DeltaTime);
-    if (Time < Duration)
+    m_Time += std::max(0.0f, ImGui::GetIO().DeltaTime);
+    if (m_Time < m_Duration)
     {
         const float progress = GetProgress();
         OnUpdate(progress);
@@ -2379,18 +2379,18 @@ void ed::NavigateAnimation::NavigateTo(const ImVec2& target, float targetZoom, f
 {
     Stop();
 
-    Start      = Action.Scroll;
-    StartZoom  = Action.Zoom;
-    Target     = target;
-    TargetZoom = targetZoom;
+    m_Start      = Action.m_Scroll;
+    m_StartZoom  = Action.m_Zoom;
+    m_Target     = target;
+    m_TargetZoom = targetZoom;
 
     Play(duration);
 }
 
 void ed::NavigateAnimation::OnUpdate(float progress)
 {
-    Action.Scroll = easing::ease_out_quad(Start, Target - Start, progress);
-    Action.Zoom   = easing::ease_out_quad(StartZoom, TargetZoom - StartZoom, progress);
+    Action.m_Scroll = easing::ease_out_quad(m_Start, m_Target - m_Start, progress);
+    Action.m_Zoom   = easing::ease_out_quad(m_StartZoom, m_TargetZoom - m_StartZoom, progress);
 }
 
 void ed::NavigateAnimation::OnStop()
@@ -2400,8 +2400,8 @@ void ed::NavigateAnimation::OnStop()
 
 void ed::NavigateAnimation::OnFinish()
 {
-    Action.Scroll = Target;
-    Action.Zoom   = TargetZoom;
+    Action.m_Scroll = m_Target;
+    Action.m_Zoom   = m_TargetZoom;
 
     Editor->MakeDirty(SaveReasonFlags::Navigation);
 }
@@ -2417,9 +2417,9 @@ void ed::NavigateAnimation::OnFinish()
 ed::FlowAnimation::FlowAnimation(FlowAnimationController* controller):
     Animation(controller->Editor),
     Controller(controller),
-    Link(nullptr),
-    Offset(0.0f),
-    PathLength(0.0f)
+    m_Link(nullptr),
+    m_Offset(0.0f),
+    m_PathLength(0.0f)
 {
 }
 
@@ -2427,31 +2427,31 @@ void ed::FlowAnimation::Flow(ed::Link* link, float markerDistance, float speed, 
 {
     Stop();
 
-    if (Link != link)
+    if (m_Link != link)
     {
-        Offset = 0.0f;
+        m_Offset = 0.0f;
         ClearPath();
     }
 
-    if (MarkerDistance != markerDistance)
+    if (m_MarkerDistance != markerDistance)
         ClearPath();
 
-    MarkerDistance = markerDistance;
-    Speed          = speed;
-    Link           = link;
+    m_MarkerDistance = markerDistance;
+    m_Speed          = speed;
+    m_Link           = link;
 
     Play(duration);
 }
 
 void ed::FlowAnimation::Draw(ImDrawList* drawList)
 {
-    if (!IsPlaying() || !IsLinkValid() || !Link->IsVisible())
+    if (!IsPlaying() || !IsLinkValid() || !m_Link->IsVisible())
         return;
 
     if (!IsPathValid())
         UpdatePath();
 
-    Offset = fmodf(Offset, MarkerDistance);
+    m_Offset = fmodf(m_Offset, m_MarkerDistance);
 
     const auto progress    = GetProgress();
 
@@ -2459,7 +2459,7 @@ void ed::FlowAnimation::Draw(ImDrawList* drawList)
     const auto flowColor = Editor->GetColor(StyleColor_Flow, flowAlpha);
     //const auto flowPath  = Link->GetCurve();
 
-    Link->Draw(drawList, flowColor, 2.0f);
+    m_Link->Draw(drawList, flowColor, 2.0f);
 
     if (IsPathValid())
     {
@@ -2469,19 +2469,19 @@ void ed::FlowAnimation::Draw(ImDrawList* drawList)
         const auto markerRadius = 4.0f * (1.0f - progress) + 2.0f;
         const auto markerColor  = Editor->GetColor(StyleColor_FlowMarker, markerAlpha);
 
-        for (float d = Offset; d < PathLength; d += MarkerDistance)
+        for (float d = m_Offset; d < m_PathLength; d += m_MarkerDistance)
             drawList->AddCircleFilled(SamplePath(d), markerRadius, markerColor);
     }
 }
 
 bool ed::FlowAnimation::IsLinkValid() const
 {
-    return Link && Link->IsLive;
+    return m_Link && m_Link->m_IsLive;
 }
 
 bool ed::FlowAnimation::IsPathValid() const
 {
-    return Path.size() > 1 && PathLength > 0.0f && Link->Start == LastStart && Link->End == LastEnd;
+    return m_Path.size() > 1 && m_PathLength > 0.0f && m_Link->m_Start == m_LastStart && m_Link->m_End == m_LastEnd;
 }
 
 void ed::FlowAnimation::UpdatePath()
@@ -2492,38 +2492,38 @@ void ed::FlowAnimation::UpdatePath()
         return;
     }
 
-    const auto curve  = Link->GetCurve();
+    const auto curve  = m_Link->GetCurve();
 
-    LastStart  = Link->Start;
-    LastEnd    = Link->End;
-    PathLength = cubic_bezier_length(curve.p0, curve.p1, curve.p2, curve.p3);
+    m_LastStart  = m_Link->m_Start;
+    m_LastEnd    = m_Link->m_End;
+    m_PathLength = cubic_bezier_length(curve.p0, curve.p1, curve.p2, curve.p3);
 
     auto collectPointsCallback = [this](bezier_fixed_step_result_t& result)
     {
-        Path.push_back(CurvePoint{ result.length, to_imvec(result.point) });
+        m_Path.push_back(CurvePoint{ result.length, to_imvec(result.point) });
     };
 
-    const auto step = std::max(MarkerDistance * 0.5f, 15.0f);
+    const auto step = std::max(m_MarkerDistance * 0.5f, 15.0f);
 
-    Path.resize(0);
+    m_Path.resize(0);
     cubic_bezier_fixed_step(collectPointsCallback, curve.p0, curve.p1, curve.p2, curve.p3, step, false, 0.5f, 0.001f);
 }
 
 void ed::FlowAnimation::ClearPath()
 {
-    vector<CurvePoint>().swap(Path);
-    PathLength = 0.0f;
+    vector<CurvePoint>().swap(m_Path);
+    m_PathLength = 0.0f;
 }
 
 ImVec2 ed::FlowAnimation::SamplePath(float distance)
 {
     //distance = std::max(0.0f, std::min(distance, PathLength));
 
-    auto endPointIt = std::find_if(Path.begin(), Path.end(), [distance](const CurvePoint& p) { return distance < p.Distance; });
-    if (endPointIt == Path.end())
-        endPointIt = Path.end() - 1;
-    else if (endPointIt == Path.begin())
-        endPointIt = Path.begin() + 1;
+    auto endPointIt = std::find_if(m_Path.begin(), m_Path.end(), [distance](const CurvePoint& p) { return distance < p.Distance; });
+    if (endPointIt == m_Path.end())
+        endPointIt = m_Path.end() - 1;
+    else if (endPointIt == m_Path.begin())
+        endPointIt = m_Path.begin() + 1;
 
     const auto& start = endPointIt[-1];
     const auto& end   = *endPointIt;
@@ -2534,7 +2534,7 @@ ImVec2 ed::FlowAnimation::SamplePath(float distance)
 
 void ed::FlowAnimation::OnUpdate(float progress)
 {
-    Offset += Speed * ImGui::GetIO().DeltaTime;
+    m_Offset += m_Speed * ImGui::GetIO().DeltaTime;
 }
 
 void ed::FlowAnimation::OnStop()
@@ -2557,13 +2557,13 @@ ed::FlowAnimationController::FlowAnimationController(EditorContext* editor):
 
 ed::FlowAnimationController::~FlowAnimationController()
 {
-    for (auto animation : Animations)
+    for (auto animation : m_Animations)
         delete animation;
 }
 
 void ed::FlowAnimationController::Flow(Link* link)
 {
-    if (!link || !link->IsLive)
+    if (!link || !link->m_IsLive)
         return;
 
     auto& editorStyle = GetStyle();
@@ -2575,12 +2575,12 @@ void ed::FlowAnimationController::Flow(Link* link)
 
 void ed::FlowAnimationController::Draw(ImDrawList* drawList)
 {
-    if (Animations.empty())
+    if (m_Animations.empty())
         return;
 
     drawList->ChannelsSetCurrent(c_LinkChannel_Flow);
 
-    for (auto animation : Animations)
+    for (auto animation : m_Animations)
         animation->Draw(drawList);
 }
 
@@ -2588,22 +2588,22 @@ ed::FlowAnimation* ed::FlowAnimationController::GetOrCreate(Link* link)
 {
     // Return live animation which match target link
     {
-        auto animationIt = std::find_if(Animations.begin(), Animations.end(), [link](FlowAnimation* animation) { return animation->Link == link; });
-        if (animationIt != Animations.end())
+        auto animationIt = std::find_if(m_Animations.begin(), m_Animations.end(), [link](FlowAnimation* animation) { return animation->m_Link == link; });
+        if (animationIt != m_Animations.end())
             return *animationIt;
     }
 
     // There are no live animations for target link, try to reuse inactive old one
-    if (!FreePool.empty())
+    if (!m_FreePool.empty())
     {
-        auto animation = FreePool.back();
-        FreePool.pop_back();
+        auto animation = m_FreePool.back();
+        m_FreePool.pop_back();
         return animation;
     }
 
     // Cache miss, allocate new one
     auto animation = new FlowAnimation(this);
-    Animations.push_back(animation);
+    m_Animations.push_back(animation);
 
     return animation;
 }
@@ -2628,35 +2628,35 @@ const int ed::NavigateAction::s_ZoomLevelCount = sizeof(s_ZoomLevels) / sizeof(*
 
 ed::NavigateAction::NavigateAction(EditorContext* editor):
     EditorAction(editor),
-    IsActive(false),
-    Zoom(1),
-    Scroll(0, 0),
-    ScrollStart(0, 0),
-    ScrollDelta(0, 0),
-    WindowScreenPos(0, 0),
-    WindowScreenSize(0, 0),
-    Animation(editor, *this),
-    Reason(NavigationReason::Unknown),
-    LastSelectionId(0),
-    LastObject(nullptr),
-    MovingOverEdge(false),
-    MoveOffset(0, 0)
+    m_IsActive(false),
+    m_Zoom(1),
+    m_Scroll(0, 0),
+    m_ScrollStart(0, 0),
+    m_ScrollDelta(0, 0),
+    m_WindowScreenPos(0, 0),
+    m_WindowScreenSize(0, 0),
+    m_Animation(editor, *this),
+    m_Reason(NavigationReason::Unknown),
+    m_LastSelectionId(0),
+    m_LastObject(nullptr),
+    m_MovingOverEdge(false),
+    m_MoveOffset(0, 0)
 {
 }
 
 ed::EditorAction::AcceptResult ed::NavigateAction::Accept(const Control& control)
 {
-    assert(!IsActive);
+    assert(!m_IsActive);
 
-    if (IsActive)
+    if (m_IsActive)
         return False;
 
     if (ImGui::IsWindowHovered() /*&& !ImGui::IsAnyItemActive()*/ && ImGui::IsMouseDragging(c_ScrollButtonIndex, 0.0f))
     {
-        IsActive    = true;
-        ScrollStart = Scroll;
-        ScrollDelta = ImGui::GetMouseDragDelta(c_ScrollButtonIndex);
-        Scroll      = ScrollStart - ScrollDelta * Zoom;
+        m_IsActive    = true;
+        m_ScrollStart = m_Scroll;
+        m_ScrollDelta = ImGui::GetMouseDragDelta(c_ScrollButtonIndex);
+        m_Scroll      = m_ScrollStart - m_ScrollDelta * m_Zoom;
     }
 
     auto& io = ImGui::GetIO();
@@ -2670,7 +2670,7 @@ ed::EditorAction::AcceptResult ed::NavigateAction::Accept(const Control& control
             if (control.HotObject)
             {
                 if (auto pin = control.HotObject->AsPin())
-                    return pin->Node;
+                    return pin->m_Node;
                 else
                     return control.HotObject;
             }
@@ -2687,9 +2687,9 @@ ed::EditorAction::AcceptResult ed::NavigateAction::Accept(const Control& control
         bool navigateToContent = false;
         if (!Editor->GetSelectedObjects().empty())
         {
-            if (Reason != NavigationReason::Selection || LastSelectionId != Editor->GetSelectionId() || allowZoomIn)
+            if (m_Reason != NavigationReason::Selection || m_LastSelectionId != Editor->GetSelectionId() || allowZoomIn)
             {
-                LastSelectionId = Editor->GetSelectionId();
+                m_LastSelectionId = Editor->GetSelectionId();
                 NavigateTo(Editor->GetSelectionBounds(), allowZoomIn, -1.0f, NavigationReason::Selection);
             }
             else
@@ -2697,9 +2697,9 @@ ed::EditorAction::AcceptResult ed::NavigateAction::Accept(const Control& control
         }
         else if(auto hotObject = findHotObjectToZoom())
         {
-            if (Reason != NavigationReason::Object || LastObject != hotObject || allowZoomIn)
+            if (m_Reason != NavigationReason::Object || m_LastObject != hotObject || allowZoomIn)
             {
-                LastObject = hotObject;
+                m_LastObject = hotObject;
                 auto bounds = hotObject->GetBounds();
                 NavigateTo(bounds, allowZoomIn, -1.0f, NavigationReason::Object);
             }
@@ -2720,34 +2720,34 @@ ed::EditorAction::AcceptResult ed::NavigateAction::Accept(const Control& control
     if (HandleZoom(control))
         return True;
 
-    return IsActive ? True : False;
+    return m_IsActive ? True : False;
 }
 
 bool ed::NavigateAction::Process(const Control& control)
 {
-    if (!IsActive)
+    if (!m_IsActive)
         return false;
 
     if (ImGui::IsMouseDragging(c_ScrollButtonIndex, 0.0f))
     {
-        ScrollDelta = ImGui::GetMouseDragDelta(c_ScrollButtonIndex);
-        Scroll      = ScrollStart - ScrollDelta * Zoom;
+        m_ScrollDelta = ImGui::GetMouseDragDelta(c_ScrollButtonIndex);
+        m_Scroll      = m_ScrollStart - m_ScrollDelta * m_Zoom;
 
 //         if (IsActive && Animation.IsPlaying())
 //             Animation.Target = Animation.Target - ScrollDelta * Animation.TargetZoom;
     }
     else
     {
-        if (Scroll != ScrollStart)
+        if (m_Scroll != m_ScrollStart)
             Editor->MakeDirty(SaveReasonFlags::Navigation);
 
-        IsActive = false;
+        m_IsActive = false;
     }
 
     // #TODO: Handle zoom while scrolling
     // HandleZoom(control);
 
-    return IsActive;
+    return m_IsActive;
 }
 
 bool ed::NavigateAction::HandleZoom(const Control& control)
@@ -2760,29 +2760,29 @@ bool ed::NavigateAction::HandleZoom(const Control& control)
     if (!io.MouseWheel || (!allowOffscreen && !ImGui::IsWindowHovered()))// && !ImGui::IsAnyItemActive())
         return false;
 
-    auto savedScroll = Scroll;
-    auto savedZoom   = Zoom;
+    auto savedScroll = m_Scroll;
+    auto savedZoom   = m_Zoom;
 
-    Animation.Finish();
+    m_Animation.Finish();
 
     auto mousePos = io.MousePos;
     auto steps    = (int)io.MouseWheel;
     auto newZoom  = MatchZoom(steps, s_ZoomLevels[steps < 0 ? 0 : s_ZoomLevelCount - 1]);
 
     auto oldCanvas = GetCanvas(false);
-    Zoom = newZoom;
+    m_Zoom = newZoom;
     auto newCanvas = GetCanvas(false);
 
     auto screenPos = oldCanvas.ToScreen(mousePos);
     auto canvasPos = newCanvas.FromScreen(screenPos);
 
-    auto offset       = (canvasPos - mousePos) * Zoom;
-    auto targetScroll = Scroll - offset;
+    auto offset       = (canvasPos - mousePos) * m_Zoom;
+    auto targetScroll = m_Scroll - offset;
 
-    if (Scroll != savedScroll || Zoom != savedZoom)
+    if (m_Scroll != savedScroll || m_Zoom != savedZoom)
     {
-        Scroll = savedScroll;
-        Zoom = savedZoom;
+        m_Scroll = savedScroll;
+        m_Zoom = savedZoom;
 
         Editor->MakeDirty(SaveReasonFlags::Navigation);
     }
@@ -2797,9 +2797,9 @@ void ed::NavigateAction::ShowMetrics()
     EditorAction::ShowMetrics();
 
     ImGui::Text("%s:", GetName());
-    ImGui::Text("    Active: %s", IsActive ? "yes" : "no");
-    ImGui::Text("    Scroll: { x=%g y=%g }", Scroll.x, Scroll.y);
-    ImGui::Text("    Zoom: %g", Zoom);
+    ImGui::Text("    Active: %s", m_IsActive ? "yes" : "no");
+    ImGui::Text("    Scroll: { x=%g y=%g }", m_Scroll.x, m_Scroll.y);
+    ImGui::Text("    Zoom: %g", m_Zoom);
 }
 
 void ed::NavigateAction::NavigateTo(const ax::rectf& bounds, bool zoomIn, float duration, NavigationReason reason)
@@ -2820,51 +2820,51 @@ void ed::NavigateAction::NavigateTo(const ax::rectf& bounds, bool zoomIn, float 
     const auto zoomChange          = maxRatio ? 1.0f / (zoomIn ? maxRatio : std::max(maxRatio, 1.0f)) : 1.0f;
 
     auto action = *this;
-    action.Zoom *= zoomChange;
+    action.m_Zoom *= zoomChange;
 
     const auto targetBounds    = action.GetCanvas(false).GetVisibleBounds();
     const auto selectionCenter = to_imvec(selectionBounds.center());
     const auto targetCenter    = to_imvec(targetBounds.center());
     const auto offset          = selectionCenter - targetCenter;
 
-    action.Scroll = action.Scroll + offset * action.Zoom;
+    action.m_Scroll = action.m_Scroll + offset * action.m_Zoom;
 
-    const auto scrollOffset = action.Scroll - Scroll;
-    const auto zoomOffset   = action.Zoom   - Zoom;
+    const auto scrollOffset = action.m_Scroll - m_Scroll;
+    const auto zoomOffset   = action.m_Zoom   - m_Zoom;
 
     const auto epsilon = 1e-4f;
 
     if (fabsf(scrollOffset.x) < epsilon && fabsf(scrollOffset.y) < epsilon && fabsf(zoomOffset) < epsilon)
-        NavigateTo(action.Scroll, action.Zoom, 0, reason);
+        NavigateTo(action.m_Scroll, action.m_Zoom, 0, reason);
     else
-        NavigateTo(action.Scroll, action.Zoom, GetStyle().ScrollDuration, reason);
+        NavigateTo(action.m_Scroll, action.m_Zoom, GetStyle().ScrollDuration, reason);
 }
 
 void ed::NavigateAction::NavigateTo(const ImVec2& target, float targetZoom, float duration, NavigationReason reason)
 {
-    Reason = reason;
+    m_Reason = reason;
 
-    Animation.NavigateTo(target, targetZoom, duration);
+    m_Animation.NavigateTo(target, targetZoom, duration);
 }
 
 void ed::NavigateAction::StopNavigation()
 {
-    Animation.Stop();
+    m_Animation.Stop();
 }
 
 void ed::NavigateAction::FinishNavigation()
 {
-    Animation.Finish();
+    m_Animation.Finish();
 }
 
 bool ed::NavigateAction::MoveOverEdge()
 {
     // Don't interrupt non-edge animations
-    if (Animation.IsPlaying())
+    if (m_Animation.IsPlaying())
         return false;
 
           auto& io            = ImGui::GetIO();
-    const auto screenRect     = ax::rectf(to_pointf(WindowScreenPos), to_sizef(WindowScreenSize));
+    const auto screenRect     = ax::rectf(to_pointf(m_WindowScreenPos), to_sizef(m_WindowScreenSize));
     const auto screenMousePos = to_pointf(io.MousePos);
 
     // Mouse is over screen, do nothing
@@ -2875,41 +2875,41 @@ bool ed::NavigateAction::MoveOverEdge()
     const auto direction         = screenPointOnEdge - screenMousePos;
     const auto offset            = to_imvec(-direction) * io.DeltaTime * 10.0f;
 
-    Scroll = Scroll + offset;
+    m_Scroll = m_Scroll + offset;
 
-    MoveOffset     = offset;
-    MovingOverEdge = true;
+    m_MoveOffset     = offset;
+    m_MovingOverEdge = true;
 
     return true;
 }
 
 void ed::NavigateAction::StopMoveOverEdge()
 {
-    if (MovingOverEdge)
+    if (m_MovingOverEdge)
     {
         Editor->MakeDirty(SaveReasonFlags::Navigation);
 
-        MoveOffset     = ImVec2(0, 0);
-        MovingOverEdge = false;
+        m_MoveOffset     = ImVec2(0, 0);
+        m_MovingOverEdge = false;
     }
 }
 
 void ed::NavigateAction::SetWindow(ImVec2 position, ImVec2 size)
 {
-    WindowScreenPos  = position;
-    WindowScreenSize = size;
+    m_WindowScreenPos  = position;
+    m_WindowScreenSize = size;
 }
 
 ed::Canvas ed::NavigateAction::GetCanvas(bool alignToPixels)
 {
-    ImVec2 origin = -Scroll;
+    ImVec2 origin = -m_Scroll;
     if (alignToPixels)
     {
         origin.x = floorf(origin.x);
         origin.y = floorf(origin.y);
     }
 
-    return Canvas(WindowScreenPos, WindowScreenSize, ImVec2(Zoom, Zoom), origin);
+    return Canvas(m_WindowScreenPos, m_WindowScreenSize, ImVec2(m_Zoom, m_Zoom), origin);
 }
 
 float ed::NavigateAction::MatchZoom(int steps, float fallbackZoom)
@@ -2919,7 +2919,7 @@ float ed::NavigateAction::MatchZoom(int steps, float fallbackZoom)
         return fallbackZoom;
 
     auto currentZoom = s_ZoomLevels[currentZoomIndex];
-    if (fabsf(currentZoom - Zoom) > 0.001f)
+    if (fabsf(currentZoom - m_Zoom) > 0.001f)
         return currentZoom;
 
     auto newIndex = currentZoomIndex + steps;
@@ -2936,7 +2936,7 @@ int ed::NavigateAction::MatchZoomIndex(int direction)
 
     for (int i = 0; i < s_ZoomLevelCount; ++i)
     {
-        auto distance = fabsf(s_ZoomLevels[i] - Zoom);
+        auto distance = fabsf(s_ZoomLevels[i] - m_Zoom);
         if (distance < bestDistance || bestIndex < 0)
         {
             bestDistance = distance;
@@ -2975,19 +2975,19 @@ int ed::NavigateAction::MatchZoomIndex(int direction)
 //------------------------------------------------------------------------------
 ed::SizeAction::SizeAction(EditorContext* editor):
     EditorAction(editor),
-    IsActive(false),
-    Clean(false),
-    SizedNode(nullptr),
-    Pivot(rect_region::center),
-    Cursor(ImGuiMouseCursor_Arrow)
+    m_IsActive(false),
+    m_Clean(false),
+    m_SizedNode(nullptr),
+    m_Pivot(rect_region::center),
+    m_Cursor(ImGuiMouseCursor_Arrow)
 {
 }
 
 ed::EditorAction::AcceptResult ed::SizeAction::Accept(const Control& control)
 {
-    assert(!IsActive);
+    assert(!m_IsActive);
 
-    if (IsActive)
+    if (m_IsActive)
         return False;
 
     if (control.ActiveNode && IsGroup(control.ActiveNode) && ImGui::IsMouseDragging(0, 0))
@@ -2998,126 +2998,126 @@ ed::EditorAction::AcceptResult ed::SizeAction::Accept(const Control& control)
         auto pivot = GetRegion(control.ActiveNode);
         if (pivot != rect_region::center)
         {
-            StartBounds      = control.ActiveNode->Bounds;
-            StartGroupBounds = control.ActiveNode->GroupBounds;
-            LastSize         = control.ActiveNode->Bounds.size;
-            LastDragOffset   = point(0, 0);
-            Stable           = true;
-            Pivot            = pivot;
-            Cursor           = ChooseCursor(Pivot);
-            SizedNode        = control.ActiveNode;
-            IsActive         = true;
+            m_StartBounds      = control.ActiveNode->m_Bounds;
+            m_StartGroupBounds = control.ActiveNode->m_GroupBounds;
+            m_LastSize         = control.ActiveNode->m_Bounds.size;
+            m_LastDragOffset   = point(0, 0);
+            m_Stable           = true;
+            m_Pivot            = pivot;
+            m_Cursor           = ChooseCursor(m_Pivot);
+            m_SizedNode        = control.ActiveNode;
+            m_IsActive         = true;
         }
     }
     else if (control.HotNode && IsGroup(control.HotNode))
     {
-        Cursor = ChooseCursor(GetRegion(control.HotNode));
+        m_Cursor = ChooseCursor(GetRegion(control.HotNode));
         return Possible;
     }
 
-    return IsActive ? True : False;
+    return m_IsActive ? True : False;
 }
 
 bool ed::SizeAction::Process(const Control& control)
 {
-    if (Clean)
+    if (m_Clean)
     {
-        Clean = false;
+        m_Clean = false;
 
-        if (SizedNode->Bounds.location != StartBounds.location || SizedNode->GroupBounds.location != StartGroupBounds.location)
-            Editor->MakeDirty(SaveReasonFlags::Position | SaveReasonFlags::User, SizedNode);
+        if (m_SizedNode->m_Bounds.location != m_StartBounds.location || m_SizedNode->m_GroupBounds.location != m_StartGroupBounds.location)
+            Editor->MakeDirty(SaveReasonFlags::Position | SaveReasonFlags::User, m_SizedNode);
 
-        if (SizedNode->Bounds.size != StartBounds.size || SizedNode->GroupBounds.size != StartGroupBounds.size)
-            Editor->MakeDirty(SaveReasonFlags::Size | SaveReasonFlags::User, SizedNode);
+        if (m_SizedNode->m_Bounds.size != m_StartBounds.size || m_SizedNode->m_GroupBounds.size != m_StartGroupBounds.size)
+            Editor->MakeDirty(SaveReasonFlags::Size | SaveReasonFlags::User, m_SizedNode);
 
-        SizedNode = nullptr;
+        m_SizedNode = nullptr;
     }
 
-    if (!IsActive)
+    if (!m_IsActive)
         return false;
 
-    if (control.ActiveNode == SizedNode || !Stable)
+    if (control.ActiveNode == m_SizedNode || !m_Stable)
     {
-        const auto dragOffset = (control.ActiveNode == SizedNode) ? to_point(ImGui::GetMouseDragDelta(0, 0.0f)) : LastDragOffset;
-        LastDragOffset = dragOffset;
+        const auto dragOffset = (control.ActiveNode == m_SizedNode) ? to_point(ImGui::GetMouseDragDelta(0, 0.0f)) : m_LastDragOffset;
+        m_LastDragOffset = dragOffset;
 
         // Calculate new rect size
-        auto p0 = StartBounds.top_left();
-        auto p1 = StartBounds.bottom_right();
+        auto p0 = m_StartBounds.top_left();
+        auto p1 = m_StartBounds.bottom_right();
 
-        if ((Pivot & rect_region::top) == rect_region::top)
+        if ((m_Pivot & rect_region::top) == rect_region::top)
             p0.y = std::min(p0.y + dragOffset.y, p1.y);
-        if ((Pivot & rect_region::bottom) == rect_region::bottom)
+        if ((m_Pivot & rect_region::bottom) == rect_region::bottom)
             p1.y = std::max(p1.y + dragOffset.y, p0.y);
-        if ((Pivot & rect_region::left) == rect_region::left)
+        if ((m_Pivot & rect_region::left) == rect_region::left)
             p0.x = std::min(p0.x + dragOffset.x, p1.x);
-        if ((Pivot & rect_region::right) == rect_region::right)
+        if ((m_Pivot & rect_region::right) == rect_region::right)
             p1.x = std::max(p1.x + dragOffset.x, p0.x);
 
         auto newBounds = ax::rect(p0, p1);
 
-        Stable = true;
+        m_Stable = true;
 
         // Apply dynamic minimum size constrains. It will always be one frame off
-        if (SizedNode->Bounds.w > LastSize.w)
+        if (m_SizedNode->m_Bounds.w > m_LastSize.w)
         {
-            if ((Pivot & rect_region::left) == rect_region::left)
+            if ((m_Pivot & rect_region::left) == rect_region::left)
             {
-                  LastSize.w = newBounds.w;
-                 newBounds.w = SizedNode->Bounds.w;
-                 newBounds.x = StartBounds.right() - newBounds.w;
+                  m_LastSize.w = newBounds.w;
+                 newBounds.w = m_SizedNode->m_Bounds.w;
+                 newBounds.x = m_StartBounds.right() - newBounds.w;
             }
             else
             {
-                  LastSize.w = newBounds.w;
-                 newBounds.w = SizedNode->Bounds.w;
+                  m_LastSize.w = newBounds.w;
+                 newBounds.w = m_SizedNode->m_Bounds.w;
             }
         }
         else
         {
-            if (LastSize.w != newBounds.w)
-                Stable &= false;
+            if (m_LastSize.w != newBounds.w)
+                m_Stable &= false;
 
-            LastSize.w = newBounds.w;
+            m_LastSize.w = newBounds.w;
         }
 
-        if (SizedNode->Bounds.h > LastSize.h)
+        if (m_SizedNode->m_Bounds.h > m_LastSize.h)
         {
-            if ((Pivot & rect_region::top) == rect_region::top)
+            if ((m_Pivot & rect_region::top) == rect_region::top)
             {
-                 LastSize.h = newBounds.h;
-                newBounds.h = SizedNode->Bounds.h;
-                newBounds.y = StartBounds.bottom() - newBounds.h;
+                 m_LastSize.h = newBounds.h;
+                newBounds.h = m_SizedNode->m_Bounds.h;
+                newBounds.y = m_StartBounds.bottom() - newBounds.h;
             }
             else
             {
-                 LastSize.h = newBounds.h;
-                newBounds.h = SizedNode->Bounds.h;
+                 m_LastSize.h = newBounds.h;
+                newBounds.h = m_SizedNode->m_Bounds.h;
             }
         }
         else
         {
-            if (LastSize.h != newBounds.h)
-                Stable &= false;
+            if (m_LastSize.h != newBounds.h)
+                m_Stable &= false;
 
-            LastSize.h = newBounds.h;
+            m_LastSize.h = newBounds.h;
         }
 
-        SizedNode->Bounds      = newBounds;
-        SizedNode->GroupBounds = newBounds.expanded(
-            StartBounds.left()        - StartGroupBounds.left(),
-            StartBounds.top()         - StartGroupBounds.top(),
-            StartGroupBounds.right()  - StartBounds.right(),
-            StartGroupBounds.bottom() - StartBounds.bottom());
+        m_SizedNode->m_Bounds      = newBounds;
+        m_SizedNode->m_GroupBounds = newBounds.expanded(
+            m_StartBounds.left()        - m_StartGroupBounds.left(),
+            m_StartBounds.top()         - m_StartGroupBounds.top(),
+            m_StartGroupBounds.right()  - m_StartBounds.right(),
+            m_StartGroupBounds.bottom() - m_StartBounds.bottom());
     }
     else if (!control.ActiveNode)
     {
-        Clean = true;
-        IsActive = false;
+        m_Clean = true;
+        m_IsActive = false;
         return true;
     }
 
-    return IsActive;
+    return m_IsActive;
 }
 
 void ed::SizeAction::ShowMetrics()
@@ -3134,16 +3134,16 @@ void ed::SizeAction::ShowMetrics()
     };
 
     ImGui::Text("%s:", GetName());
-    ImGui::Text("    Active: %s", IsActive ? "yes" : "no");
-    ImGui::Text("    Node: %s (%d)", getObjectName(SizedNode), SizedNode ? SizedNode->ID : 0);
-    if (SizedNode && IsActive)
+    ImGui::Text("    Active: %s", m_IsActive ? "yes" : "no");
+    ImGui::Text("    Node: %s (%d)", getObjectName(m_SizedNode), m_SizedNode ? m_SizedNode->m_ID : 0);
+    if (m_SizedNode && m_IsActive)
     {
-        ImGui::Text("    Bounds: { x=%d y=%d w=%d h=%d }", SizedNode->Bounds.x, SizedNode->Bounds.y, SizedNode->Bounds.w, SizedNode->Bounds.h);
-        ImGui::Text("    Group Bounds: { x=%d y=%d w=%d h=%d }", SizedNode->GroupBounds.x, SizedNode->GroupBounds.y, SizedNode->GroupBounds.w, SizedNode->GroupBounds.h);
-        ImGui::Text("    Start Bounds: { x=%d y=%d w=%d h=%d }", StartBounds.x, StartBounds.y, StartBounds.w, StartBounds.h);
-        ImGui::Text("    Start Group Bounds: { x=%d y=%d w=%d h=%d }", StartGroupBounds.x, StartGroupBounds.y, StartGroupBounds.w, StartGroupBounds.h);
-        ImGui::Text("    Last Size: { w=%d h=%d }", LastSize.w, LastSize.h);
-        ImGui::Text("    Stable: %s", Stable ? "Yes" : "No");
+        ImGui::Text("    Bounds: { x=%d y=%d w=%d h=%d }", m_SizedNode->m_Bounds.x, m_SizedNode->m_Bounds.y, m_SizedNode->m_Bounds.w, m_SizedNode->m_Bounds.h);
+        ImGui::Text("    Group Bounds: { x=%d y=%d w=%d h=%d }", m_SizedNode->m_GroupBounds.x, m_SizedNode->m_GroupBounds.y, m_SizedNode->m_GroupBounds.w, m_SizedNode->m_GroupBounds.h);
+        ImGui::Text("    Start Bounds: { x=%d y=%d w=%d h=%d }", m_StartBounds.x, m_StartBounds.y, m_StartBounds.w, m_StartBounds.h);
+        ImGui::Text("    Start Group Bounds: { x=%d y=%d w=%d h=%d }", m_StartGroupBounds.x, m_StartGroupBounds.y, m_StartGroupBounds.w, m_StartGroupBounds.h);
+        ImGui::Text("    Last Size: { w=%d h=%d }", m_LastSize.w, m_LastSize.h);
+        ImGui::Text("    Stable: %s", m_Stable ? "Yes" : "No");
     }
 }
 
@@ -3154,7 +3154,7 @@ ax::rect_region ed::SizeAction::GetRegion(Node* node)
 
     rect_region region = rect_region::center;
     const auto mousePos = to_point(ImGui::GetMousePos());
-    const auto closestPoint = node->Bounds.get_closest_point_hollow(to_point(ImGui::GetMousePos()), static_cast<int>(node->Rounding), &region);
+    const auto closestPoint = node->m_Bounds.get_closest_point_hollow(to_point(ImGui::GetMousePos()), static_cast<int>(node->m_Rounding), &region);
 
     auto distance = (mousePos - closestPoint).length_sq();
     if (distance > (c_GroupSelectThickness * c_GroupSelectThickness))
@@ -3199,17 +3199,17 @@ ImGuiMouseCursor ed::SizeAction::ChooseCursor(ax::rect_region region)
 //------------------------------------------------------------------------------
 ed::DragAction::DragAction(EditorContext* editor):
     EditorAction(editor),
-    IsActive(false),
-    Clear(false),
-    DraggedObject(nullptr)
+    m_IsActive(false),
+    m_Clear(false),
+    m_DraggedObject(nullptr)
 {
 }
 
 ed::EditorAction::AcceptResult ed::DragAction::Accept(const Control& control)
 {
-    assert(!IsActive);
+    assert(!m_IsActive);
 
-    if (IsActive)
+    if (m_IsActive)
         return False;
 
     if (control.ActiveObject && ImGui::IsMouseDragging(0))
@@ -3217,72 +3217,72 @@ ed::EditorAction::AcceptResult ed::DragAction::Accept(const Control& control)
         if (!control.ActiveObject->AcceptDrag())
             return False;
 
-        DraggedObject = control.ActiveObject;
+        m_DraggedObject = control.ActiveObject;
 
-        Objects.resize(0);
-        Objects.push_back(DraggedObject);
+        m_Objects.resize(0);
+        m_Objects.push_back(m_DraggedObject);
 
-        if (Editor->IsSelected(DraggedObject))
+        if (Editor->IsSelected(m_DraggedObject))
         {
             for (auto selectedObject : Editor->GetSelectedObjects())
                 if (auto selectedNode = selectedObject->AsNode())
-                    if (selectedNode != DraggedObject && selectedNode->AcceptDrag())
-                        Objects.push_back(selectedNode);
+                    if (selectedNode != m_DraggedObject && selectedNode->AcceptDrag())
+                        m_Objects.push_back(selectedNode);
         }
 
         auto& io = ImGui::GetIO();
         if (!io.KeyShift)
         {
             std::vector<Node*> groupedNodes;
-            for (auto object : Objects)
+            for (auto object : m_Objects)
                 if (auto node = object->AsNode())
                     node->GetGroupedNodes(groupedNodes, true);
 
             auto isAlreadyPicked = [this](Node* node)
             {
-                return std::find(Objects.begin(), Objects.end(), node) != Objects.end();
+                return std::find(m_Objects.begin(), m_Objects.end(), node) != m_Objects.end();
             };
 
             for (auto candidate : groupedNodes)
                 if (!isAlreadyPicked(candidate) && candidate->AcceptDrag())
-                    Objects.push_back(candidate);
+                    m_Objects.push_back(candidate);
         }
 
-        IsActive = true;
+        m_IsActive = true;
     }
 
-    return IsActive ? True : False;
+    return m_IsActive ? True : False;
 }
 
 bool ed::DragAction::Process(const Control& control)
 {
-    if (Clear)
+    if (m_Clear)
     {
-        Clear = false;
+        m_Clear = false;
 
-        for (auto object : Objects)
+        for (auto object : m_Objects)
         {
             if (object->EndDrag())
                 Editor->MakeDirty(SaveReasonFlags::Position | SaveReasonFlags::User, object->AsNode());
         }
 
-        Objects.resize(0);
+        m_Objects.resize(0);
 
-        DraggedObject = nullptr;
+        m_DraggedObject = nullptr;
     }
 
-    if (!IsActive)
+    if (!m_IsActive)
         return false;
 
-    if (control.ActiveObject == DraggedObject)
+    if (control.ActiveObject == m_DraggedObject)
     {
         auto dragOffset = to_point(ImGui::GetMouseDragDelta(0, 0.0f));
 
-        auto draggedOrigin  = (ax::point)DraggedObject->DragStartLocation();
+        auto draggedOrigin  = (ax::point)m_DraggedObject->DragStartLocation();
         auto alignPivot     = point(0, 0);
 
         // TODO: Move this experimental alignment to closes pivot out of internals to node API
-        if (auto draggedNode = DraggedObject->AsNode())
+        if (auto draggedNode = m_DraggedObject->AsNode())
         {
             int x = INT_MAX;
             int y = INT_MAX;
@@ -3305,9 +3305,9 @@ bool ed::DragAction::Process(const Control& control)
                 }
             };
 
-            for (auto pin = draggedNode->LastPin; pin; pin = pin->PreviousPin)
+            for (auto pin = draggedNode->m_LastPin; pin; pin = pin->m_PreviousPin)
             {
-                auto pivot = (point)pin->Pivot.center() - draggedNode->Bounds.top_left();
+                auto pivot = (point)pin->m_Pivot.center() - draggedNode->m_Bounds.top_left();
                 testPivot(pivot);
             }
 
@@ -3319,18 +3319,18 @@ bool ed::DragAction::Process(const Control& control)
         if (!ImGui::GetIO().KeyAlt)
             dragOffset = alignedOffset;
 
-        for (auto object : Objects)
+        for (auto object : m_Objects)
             object->UpdateDrag(dragOffset);
     }
     else if (!control.ActiveObject)
     {
-        Clear = true;
+        m_Clear = true;
 
-        IsActive = false;
+        m_IsActive = false;
         return true;
     }
 
-    return IsActive;
+    return m_IsActive;
 }
 
 void ed::DragAction::ShowMetrics()
@@ -3347,8 +3347,8 @@ void ed::DragAction::ShowMetrics()
     };
 
     ImGui::Text("%s:", GetName());
-    ImGui::Text("    Active: %s", IsActive ? "yes" : "no");
-    ImGui::Text("    Node: %s (%d)", getObjectName(DraggedObject), DraggedObject ? DraggedObject->ID : 0);
+    ImGui::Text("    Active: %s", m_IsActive ? "yes" : "no");
+    ImGui::Text("    Node: %s (%d)", getObjectName(m_DraggedObject), m_DraggedObject ? m_DraggedObject->m_ID : 0);
 }
 
 
@@ -3361,43 +3361,43 @@ void ed::DragAction::ShowMetrics()
 //------------------------------------------------------------------------------
 ed::SelectAction::SelectAction(EditorContext* editor):
     EditorAction(editor),
-    IsActive(false),
-    SelectGroups(false),
-    SelectLinkMode(false),
-    CommitSelection(false),
-    StartPoint(),
-    Animation(editor)
+    m_IsActive(false),
+    m_SelectGroups(false),
+    m_SelectLinkMode(false),
+    m_CommitSelection(false),
+    m_StartPoint(),
+    m_Animation(editor)
 {
 }
 
 ed::EditorAction::AcceptResult ed::SelectAction::Accept(const Control& control)
 {
-    assert(!IsActive);
+    assert(!m_IsActive);
 
-    if (IsActive)
+    if (m_IsActive)
         return False;
 
     auto& io = ImGui::GetIO();
-    SelectGroups   = io.KeyShift;
-    SelectLinkMode = io.KeyAlt;
+    m_SelectGroups   = io.KeyShift;
+    m_SelectLinkMode = io.KeyAlt;
 
-    SelectedObjectsAtStart.clear();
+    m_SelectedObjectsAtStart.clear();
 
     if (control.BackgroundActive && ImGui::IsMouseDragging(0, 1))
     {
-        IsActive = true;
-        StartPoint = ImGui::GetMousePos();
-        EndPoint   = StartPoint;
+        m_IsActive = true;
+        m_StartPoint = ImGui::GetMousePos();
+        m_EndPoint   = m_StartPoint;
 
         // Links and nodes cannot be selected together
-        if ((SelectLinkMode && Editor->IsAnyNodeSelected()) ||
-           (!SelectLinkMode && Editor->IsAnyLinkSelected()))
+        if ((m_SelectLinkMode && Editor->IsAnyNodeSelected()) ||
+           (!m_SelectLinkMode && Editor->IsAnyLinkSelected()))
         {
             Editor->ClearSelection();
         }
 
         if (io.KeyCtrl)
-            SelectedObjectsAtStart = Editor->GetSelectedObjects();
+            m_SelectedObjectsAtStart = Editor->GetSelectedObjects();
     }
     else if (control.BackgroundClicked)
     {
@@ -3423,34 +3423,34 @@ ed::EditorAction::AcceptResult ed::SelectAction::Accept(const Control& control)
         }
     }
 
-    if (IsActive)
-        Animation.Stop();
+    if (m_IsActive)
+        m_Animation.Stop();
 
-    return IsActive ? True : False;
+    return m_IsActive ? True : False;
 }
 
 bool ed::SelectAction::Process(const Control& control)
 {
-    if (CommitSelection)
+    if (m_CommitSelection)
     {
         Editor->ClearSelection();
-        for (auto object : CandidateObjects)
+        for (auto object : m_CandidateObjects)
             Editor->SelectObject(object);
 
-        CandidateObjects.clear();
+        m_CandidateObjects.clear();
 
-        CommitSelection = false;
+        m_CommitSelection = false;
     }
 
-    if (!IsActive)
+    if (!m_IsActive)
         return false;
 
     if (ImGui::IsMouseDragging(0, 0))
     {
-        EndPoint = ImGui::GetMousePos();
+        m_EndPoint = ImGui::GetMousePos();
 
-        auto topLeft     = ImVec2(std::min(StartPoint.x, EndPoint.x), std::min(StartPoint.y, EndPoint.y));
-        auto bottomRight = ImVec2(std::max(StartPoint.x, EndPoint.x), std::max(StartPoint.y, EndPoint.y));
+        auto topLeft     = ImVec2(std::min(m_StartPoint.x, m_EndPoint.x), std::min(m_StartPoint.y, m_EndPoint.y));
+        auto bottomRight = ImVec2(std::max(m_StartPoint.x, m_EndPoint.x), std::max(m_StartPoint.y, m_EndPoint.y));
         auto rect        = ax::rectf(to_pointf(topLeft), to_pointf(bottomRight));
         if (rect.w <= 0)
             rect.w = 1;
@@ -3460,44 +3460,44 @@ bool ed::SelectAction::Process(const Control& control)
         vector<Node*> nodes;
         vector<Link*> links;
 
-        if (SelectLinkMode)
+        if (m_SelectLinkMode)
         {
             Editor->FindLinksInRect(rect, links);
-            CandidateObjects.assign(links.begin(), links.end());
+            m_CandidateObjects.assign(links.begin(), links.end());
         }
         else
         {
             Editor->FindNodesInRect(rect, nodes);
-            CandidateObjects.assign(nodes.begin(), nodes.end());
+            m_CandidateObjects.assign(nodes.begin(), nodes.end());
 
-            if (SelectGroups)
+            if (m_SelectGroups)
             {
-                auto endIt = std::remove_if(CandidateObjects.begin(), CandidateObjects.end(), [](Object* object) { return !IsGroup(object->AsNode()); });
-                CandidateObjects.erase(endIt, CandidateObjects.end());
+                auto endIt = std::remove_if(m_CandidateObjects.begin(), m_CandidateObjects.end(), [](Object* object) { return !IsGroup(object->AsNode()); });
+                m_CandidateObjects.erase(endIt, m_CandidateObjects.end());
             }
             else
             {
-                auto endIt = std::remove_if(CandidateObjects.begin(), CandidateObjects.end(), [](Object* object) { return IsGroup(object->AsNode()); });
-                CandidateObjects.erase(endIt, CandidateObjects.end());
+                auto endIt = std::remove_if(m_CandidateObjects.begin(), m_CandidateObjects.end(), [](Object* object) { return IsGroup(object->AsNode()); });
+                m_CandidateObjects.erase(endIt, m_CandidateObjects.end());
             }
         }
 
-        CandidateObjects.insert(CandidateObjects.end(), SelectedObjectsAtStart.begin(), SelectedObjectsAtStart.end());
-        std::sort(CandidateObjects.begin(), CandidateObjects.end());
-        CandidateObjects.erase(std::unique(CandidateObjects.begin(), CandidateObjects.end()), CandidateObjects.end());
+        m_CandidateObjects.insert(m_CandidateObjects.end(), m_SelectedObjectsAtStart.begin(), m_SelectedObjectsAtStart.end());
+        std::sort(m_CandidateObjects.begin(), m_CandidateObjects.end());
+        m_CandidateObjects.erase(std::unique(m_CandidateObjects.begin(), m_CandidateObjects.end()), m_CandidateObjects.end());
     }
     else
     {
-        IsActive = false;
+        m_IsActive = false;
 
-        Animation.Play(c_SelectionFadeOutDuration);
+        m_Animation.Play(c_SelectionFadeOutDuration);
 
-        CommitSelection = true;
+        m_CommitSelection = true;
 
         return true;
     }
 
-    return IsActive;
+    return m_IsActive;
 }
 
 void ed::SelectAction::ShowMetrics()
@@ -3505,23 +3505,23 @@ void ed::SelectAction::ShowMetrics()
     EditorAction::ShowMetrics();
 
     ImGui::Text("%s:", GetName());
-    ImGui::Text("    Active: %s", IsActive ? "yes" : "no");
+    ImGui::Text("    Active: %s", m_IsActive ? "yes" : "no");
 }
 
 void ed::SelectAction::Draw(ImDrawList* drawList)
 {
-    if (!IsActive && !Animation.IsPlaying())
+    if (!m_IsActive && !m_Animation.IsPlaying())
         return;
 
-    const auto alpha = Animation.IsPlaying() ? easing::ease_out_quad(1.0f, -1.0f, Animation.GetProgress()) : 1.0f;
+    const auto alpha = m_Animation.IsPlaying() ? easing::ease_out_quad(1.0f, -1.0f, m_Animation.GetProgress()) : 1.0f;
 
-    const auto fillColor    = Editor->GetColor(SelectLinkMode ? StyleColor_LinkSelRect       : StyleColor_NodeSelRect, alpha);
-    const auto outlineColor = Editor->GetColor(SelectLinkMode ? StyleColor_LinkSelRectBorder : StyleColor_NodeSelRectBorder, alpha);
+    const auto fillColor    = Editor->GetColor(m_SelectLinkMode ? StyleColor_LinkSelRect       : StyleColor_NodeSelRect, alpha);
+    const auto outlineColor = Editor->GetColor(m_SelectLinkMode ? StyleColor_LinkSelRectBorder : StyleColor_NodeSelRectBorder, alpha);
 
     drawList->ChannelsSetCurrent(c_BackgroundChannel_SelectionRect);
 
-    auto min  = ImVec2(std::min(StartPoint.x, EndPoint.x), std::min(StartPoint.y, EndPoint.y));
-    auto max  = ImVec2(std::max(StartPoint.x, EndPoint.x), std::max(StartPoint.y, EndPoint.y));
+    auto min  = ImVec2(std::min(m_StartPoint.x, m_EndPoint.x), std::min(m_StartPoint.y, m_EndPoint.y));
+    auto max  = ImVec2(std::max(m_StartPoint.x, m_EndPoint.x), std::max(m_StartPoint.y, m_EndPoint.y));
 
     drawList->AddRectFilled(min, max, fillColor);
     ImGui::PushStyleVar(ImGuiStyleVar_AntiAliasFringeScale, 1.0f);
@@ -3539,9 +3539,9 @@ void ed::SelectAction::Draw(ImDrawList* drawList)
 //------------------------------------------------------------------------------
 ed::ContextMenuAction::ContextMenuAction(EditorContext* editor):
     EditorAction(editor),
-    CandidateMenu(Menu::None),
-    CurrentMenu(Menu::None),
-    ContextId(0)
+    m_CandidateMenu(Menu::None),
+    m_CurrentMenu(Menu::None),
+    m_ContextId(0)
 {
 }
 
@@ -3566,28 +3566,28 @@ ed::EditorAction::AcceptResult ed::ContextMenuAction::Accept(const Control& cont
                 candidateMenu = Link;
 
             if (candidateMenu != None)
-                contextId = hotObejct->ID;
+                contextId = hotObejct->m_ID;
         }
         else if (control.BackgroundHot)
             candidateMenu = Background;
 
         if (isPressed)
         {
-            CandidateMenu = candidateMenu;
-            ContextId     = contextId;
+            m_CandidateMenu = candidateMenu;
+            m_ContextId     = contextId;
             return Possible;
         }
-        else if (isReleased && CandidateMenu == candidateMenu && ContextId == contextId)
+        else if (isReleased && m_CandidateMenu == candidateMenu && m_ContextId == contextId)
         {
-            CurrentMenu   = CandidateMenu;
-            CandidateMenu = ContextMenuAction::None;
+            m_CurrentMenu   = m_CandidateMenu;
+            m_CandidateMenu = ContextMenuAction::None;
             return True;
         }
         else
         {
-            CandidateMenu = None;
-            CurrentMenu   = None;
-            ContextId     = 0;
+            m_CandidateMenu = None;
+            m_CurrentMenu   = None;
+            m_ContextId     = 0;
             return False;
         }
     }
@@ -3597,17 +3597,17 @@ ed::EditorAction::AcceptResult ed::ContextMenuAction::Accept(const Control& cont
 
 bool ed::ContextMenuAction::Process(const Control& control)
 {
-    CandidateMenu = None;
-    CurrentMenu   = None;
-    ContextId     = 0;
+    m_CandidateMenu = None;
+    m_CurrentMenu   = None;
+    m_ContextId     = 0;
     return false;
 }
 
 void ed::ContextMenuAction::Reject()
 {
-    CandidateMenu = None;
-    CurrentMenu   = None;
-    ContextId     = 0;
+    m_CandidateMenu = None;
+    m_CurrentMenu   = None;
+    m_ContextId     = 0;
 }
 
 void ed::ContextMenuAction::ShowMetrics()
@@ -3629,42 +3629,42 @@ void ed::ContextMenuAction::ShowMetrics()
 
 
     ImGui::Text("%s:", GetName());
-    ImGui::Text("    Menu: %s", getMenuName(CurrentMenu));
+    ImGui::Text("    Menu: %s", getMenuName(m_CurrentMenu));
 }
 
 bool ed::ContextMenuAction::ShowNodeContextMenu(int* nodeId)
 {
-    if (CurrentMenu != Node)
+    if (m_CurrentMenu != Node)
         return false;
 
-    *nodeId = ContextId;
+    *nodeId = m_ContextId;
     Editor->SetUserContext();
     return true;
 }
 
 bool ed::ContextMenuAction::ShowPinContextMenu(int* pinId)
 {
-    if (CurrentMenu != Pin)
+    if (m_CurrentMenu != Pin)
         return false;
 
-    *pinId = ContextId;
+    *pinId = m_ContextId;
     Editor->SetUserContext();
     return true;
 }
 
 bool ed::ContextMenuAction::ShowLinkContextMenu(int* linkId)
 {
-    if (CurrentMenu != Link)
+    if (m_CurrentMenu != Link)
         return false;
 
-    *linkId = ContextId;
+    *linkId = m_ContextId;
     Editor->SetUserContext();
     return true;
 }
 
 bool ed::ContextMenuAction::ShowBackgroundContextMenu()
 {
-    if (CurrentMenu != Background)
+    if (m_CurrentMenu != Background)
         return false;
 
     Editor->SetUserContext();
@@ -3681,10 +3681,10 @@ bool ed::ContextMenuAction::ShowBackgroundContextMenu()
 //------------------------------------------------------------------------------
 ed::ShortcutAction::ShortcutAction(EditorContext* editor):
     EditorAction(editor),
-    IsActive(false),
-    InAction(false),
-    CurrentAction(Action::None),
-    Context()
+    m_IsActive(false),
+    m_InAction(false),
+    m_CurrentAction(Action::None),
+    m_Context()
 {
 }
 
@@ -3716,11 +3716,11 @@ ed::EditorAction::AcceptResult ed::ShortcutAction::Accept(const Control& control
             {
                 // #TODO: Find a way to simplify logic.
 
-                Context.assign(selection.begin(), selection.end());
+                m_Context.assign(selection.begin(), selection.end());
 
                 // Expand groups
                 vector<Node*> extra;
-                for (auto object : Context)
+                for (auto object : m_Context)
                 {
                     auto node = object->AsNode();
                     if (IsGroup(node))
@@ -3730,17 +3730,17 @@ ed::EditorAction::AcceptResult ed::ShortcutAction::Accept(const Control& control
                 // Apply groups and remove duplicates
                 if (!extra.empty())
                 {
-                    Context.insert(Context.end(), extra.begin(), extra.end());
-                    std::sort(Context.begin(), Context.end());
-                    Context.erase(std::unique(Context.begin(), Context.end()), Context.end());
+                    m_Context.insert(m_Context.end(), extra.begin(), extra.end());
+                    std::sort(m_Context.begin(), m_Context.end());
+                    m_Context.erase(std::unique(m_Context.begin(), m_Context.end()), m_Context.end());
                 }
             }
             else if (control.HotObject && control.HotObject->IsSelectable() && !IsGroup(control.HotObject->AsNode()))
             {
-                Context.push_back(control.HotObject);
+                m_Context.push_back(control.HotObject);
             }
 
-            if (Context.empty())
+            if (m_Context.empty())
                 return False;
 
             // Does copying only links make sense?
@@ -3749,14 +3749,14 @@ ed::EditorAction::AcceptResult ed::ShortcutAction::Accept(const Control& control
             //    return False;
 
             // If no links are selected, pick all links between nodes within context
-            const auto hasAnyLinks = std::any_of(Context.begin(), Context.end(), [](Object* object) { return object->AsLink() != nullptr; });
-            if (!hasAnyLinks && Context.size() > 1) // one node cannot make connection to anything
+            const auto hasAnyLinks = std::any_of(m_Context.begin(), m_Context.end(), [](Object* object) { return object->AsLink() != nullptr; });
+            if (!hasAnyLinks && m_Context.size() > 1) // one node cannot make connection to anything
             {
                 // Collect nodes in sorted vector viable for binary search
                 std::vector<ObjectWrapper<Node>> nodes;
 
-                nodes.reserve(Context.size());
-                std::for_each(Context.begin(), Context.end(), [&nodes](Object* object) { if (auto node = object->AsNode()) nodes.push_back({node->ID, node}); });
+                nodes.reserve(m_Context.size());
+                std::for_each(m_Context.begin(), m_Context.end(), [&nodes](Object* object) { if (auto node = object->AsNode()) nodes.push_back({node->m_ID, node}); });
 
                 std::sort(nodes.begin(), nodes.end());
 
@@ -3769,7 +3769,7 @@ ed::EditorAction::AcceptResult ed::ShortcutAction::Accept(const Control& control
                 std::vector<Link*> links;
 
                 for (auto node : nodes)
-                    Editor->FindLinksForNode(node.ID, links, true);
+                    Editor->FindLinksForNode(node.m_ID, links, true);
 
                 // Remove duplicates
                 std::sort(links.begin(), links.end());
@@ -3778,18 +3778,18 @@ ed::EditorAction::AcceptResult ed::ShortcutAction::Accept(const Control& control
                 // Drop out of context links
                 links.erase(std::remove_if(links.begin(), links.end(), [&isNodeInContext](Link* link)
                 {
-                    return !isNodeInContext(link->StartPin->Node->ID) || !isNodeInContext(link->EndPin->Node->ID);
+                    return !isNodeInContext(link->m_StartPin->m_Node->m_ID) || !isNodeInContext(link->m_EndPin->m_Node->m_ID);
                 }), links.end());
 
                 // Append links and remove duplicates
-                Context.insert(Context.end(), links.begin(), links.end());
+                m_Context.insert(m_Context.end(), links.begin(), links.end());
             }
         }
         else
-            Context.resize(0);
+            m_Context.resize(0);
 
-        IsActive      = true;
-        CurrentAction = candidateAction;
+        m_IsActive      = true;
+        m_CurrentAction = candidateAction;
 
         return True;
     }
@@ -3799,17 +3799,17 @@ ed::EditorAction::AcceptResult ed::ShortcutAction::Accept(const Control& control
 
 bool ed::ShortcutAction::Process(const Control& control)
 {
-    IsActive        = false;
-    CurrentAction   = None;
-    Context.resize(0);
+    m_IsActive        = false;
+    m_CurrentAction   = None;
+    m_Context.resize(0);
     return false;
 }
 
 void ed::ShortcutAction::Reject()
 {
-    IsActive        = false;
-    CurrentAction   = None;
-    Context.resize(0);
+    m_IsActive        = false;
+    m_CurrentAction   = None;
+    m_Context.resize(0);
 }
 
 void ed::ShortcutAction::ShowMetrics()
@@ -3831,50 +3831,50 @@ void ed::ShortcutAction::ShowMetrics()
     };
 
     ImGui::Text("%s:", GetName());
-    ImGui::Text("    Action: %s", getActionName(CurrentAction));
+    ImGui::Text("    Action: %s", getActionName(m_CurrentAction));
 }
 
 bool ed::ShortcutAction::Begin()
 {
-    if (IsActive)
-        InAction = true;
-    return IsActive;
+    if (m_IsActive)
+        m_InAction = true;
+    return m_IsActive;
 }
 
 void ed::ShortcutAction::End()
 {
-    if (IsActive)
-        InAction = false;
+    if (m_IsActive)
+        m_InAction = false;
 }
 
 bool ed::ShortcutAction::AcceptCut()
 {
-    assert(InAction);
-    return CurrentAction == Cut;
+    assert(m_InAction);
+    return m_CurrentAction == Cut;
 }
 
 bool ed::ShortcutAction::AcceptCopy()
 {
-    assert(InAction);
-    return CurrentAction == Copy;
+    assert(m_InAction);
+    return m_CurrentAction == Copy;
 }
 
 bool ed::ShortcutAction::AcceptPaste()
 {
-    assert(InAction);
-    return CurrentAction == Paste;
+    assert(m_InAction);
+    return m_CurrentAction == Paste;
 }
 
 bool ed::ShortcutAction::AcceptDuplicate()
 {
-    assert(InAction);
-    return CurrentAction == Duplicate;
+    assert(m_InAction);
+    return m_CurrentAction == Duplicate;
 }
 
 bool ed::ShortcutAction::AcceptCreateNode()
 {
-    assert(InAction);
-    return CurrentAction == CreateNode;
+    assert(m_InAction);
+    return m_CurrentAction == CreateNode;
 }
 
 
@@ -3887,73 +3887,73 @@ bool ed::ShortcutAction::AcceptCreateNode()
 //------------------------------------------------------------------------------
 ed::CreateItemAction::CreateItemAction(EditorContext* editor):
     EditorAction(editor),
-    InActive(false),
-    NextStage(None),
-    CurrentStage(None),
-    ItemType(NoItem),
-    UserAction(Unknown),
-    LinkColor(IM_COL32_WHITE),
-    LinkThickness(1.0f),
-    LinkStart(nullptr),
-    LinkEnd(nullptr),
+    m_InActive(false),
+    m_NextStage(None),
+    m_CurrentStage(None),
+    m_ItemType(NoItem),
+    m_UserAction(Unknown),
+    m_LinkColor(IM_COL32_WHITE),
+    m_LinkThickness(1.0f),
+    m_LinkStart(nullptr),
+    m_LinkEnd(nullptr),
 
-    IsActive(false),
-    DraggedPin(nullptr),
+    m_IsActive(false),
+    m_DraggedPin(nullptr),
 
-    IsInGlobalSpace(false)
+    m_IsInGlobalSpace(false)
 {
 }
 
 ed::EditorAction::AcceptResult ed::CreateItemAction::Accept(const Control& control)
 {
-    assert(!IsActive);
+    assert(!m_IsActive);
 
-    if (IsActive)
+    if (m_IsActive)
         return EditorAction::False;
 
     if (control.ActivePin && ImGui::IsMouseDragging(0))
     {
-        DraggedPin = control.ActivePin;
-        DragStart(DraggedPin);
+        m_DraggedPin = control.ActivePin;
+        DragStart(m_DraggedPin);
 
         Editor->ClearSelection();
     }
     else
         return EditorAction::False;
 
-    IsActive = true;
+    m_IsActive = true;
 
     return EditorAction::True;
 }
 
 bool ed::CreateItemAction::Process(const Control& control)
 {
-    assert(IsActive);
+    assert(m_IsActive);
 
-    if (!IsActive)
+    if (!m_IsActive)
         return false;
 
-    if (DraggedPin && control.ActivePin == DraggedPin && (CurrentStage == Possible))
+    if (m_DraggedPin && control.ActivePin == m_DraggedPin && (m_CurrentStage == Possible))
     {
-        const auto draggingFromSource = (DraggedPin->Kind == PinKind::Source);
+        const auto draggingFromSource = (m_DraggedPin->m_Kind == PinKind::Source);
 
         ed::Pin cursorPin(Editor, 0, draggingFromSource ? PinKind::Target : PinKind::Source);
-        cursorPin.Pivot    = ax::rectf(to_pointf(ImGui::GetMousePos()), sizef(0, 0));
-        cursorPin.Dir      = -DraggedPin->Dir;
-        cursorPin.Strength =  DraggedPin->Strength;
+        cursorPin.m_Pivot    = ax::rectf(to_pointf(ImGui::GetMousePos()), sizef(0, 0));
+        cursorPin.m_Dir      = -m_DraggedPin->m_Dir;
+        cursorPin.m_Strength =  m_DraggedPin->m_Strength;
 
         ed::Link candidate(Editor, 0);
-        candidate.Color    = LinkColor;
-        candidate.StartPin = draggingFromSource ? DraggedPin : &cursorPin;
-        candidate.EndPin   = draggingFromSource ? &cursorPin : DraggedPin;
+        candidate.m_Color    = m_LinkColor;
+        candidate.m_StartPin = draggingFromSource ? m_DraggedPin : &cursorPin;
+        candidate.m_EndPin   = draggingFromSource ? &cursorPin : m_DraggedPin;
 
-        ed::Pin*& freePin  = draggingFromSource ? candidate.EndPin : candidate.StartPin;
+        ed::Pin*& freePin  = draggingFromSource ? candidate.m_EndPin : candidate.m_StartPin;
 
         if (control.HotPin)
         {
             DropPin(control.HotPin);
 
-            if (UserAction == UserAccept)
+            if (m_UserAction == UserAccept)
                 freePin = control.HotPin;
         }
         else if (control.BackgroundHot)
@@ -3965,21 +3965,21 @@ bool ed::CreateItemAction::Process(const Control& control)
         drawList->ChannelsSetCurrent(c_LinkChannel_NewLink);
 
         candidate.UpdateEndpoints();
-        candidate.Draw(drawList, LinkColor, LinkThickness);
+        candidate.Draw(drawList, m_LinkColor, m_LinkThickness);
     }
-    else if (CurrentStage == Possible || !control.ActivePin)
+    else if (m_CurrentStage == Possible || !control.ActivePin)
     {
         if (!ImGui::IsWindowHovered())
         {
-            DraggedPin = nullptr;
+            m_DraggedPin = nullptr;
             DropNothing();
         }
 
         DragEnd();
-        IsActive = false;
+        m_IsActive = false;
     }
 
-    return IsActive;
+    return m_IsActive;
 }
 
 void ed::CreateItemAction::ShowMetrics()
@@ -4020,28 +4020,28 @@ void ed::CreateItemAction::ShowMetrics()
     };
 
     ImGui::Text("%s:", GetName());
-    ImGui::Text("    Stage: %s", getStageName(CurrentStage));
-    ImGui::Text("    User Action: %s", getActionName(UserAction));
-    ImGui::Text("    Item Type: %s", getItemName(ItemType));
+    ImGui::Text("    Stage: %s", getStageName(m_CurrentStage));
+    ImGui::Text("    User Action: %s", getActionName(m_UserAction));
+    ImGui::Text("    Item Type: %s", getItemName(m_ItemType));
 }
 
 void ed::CreateItemAction::SetStyle(ImU32 color, float thickness)
 {
-    LinkColor     = color;
-    LinkThickness = thickness;
+    m_LinkColor     = color;
+    m_LinkThickness = thickness;
 }
 
 bool ed::CreateItemAction::Begin()
 {
-    IM_ASSERT(false == InActive);
+    IM_ASSERT(false == m_InActive);
 
-    InActive        = true;
-    CurrentStage    = NextStage;
-    UserAction      = Unknown;
-    LinkColor       = IM_COL32_WHITE;
-    LinkThickness   = 1.0f;
+    m_InActive        = true;
+    m_CurrentStage    = m_NextStage;
+    m_UserAction      = Unknown;
+    m_LinkColor       = IM_COL32_WHITE;
+    m_LinkThickness   = 1.0f;
 
-    if (CurrentStage == None)
+    if (m_CurrentStage == None)
         return false;
 
     return true;
@@ -4049,94 +4049,94 @@ bool ed::CreateItemAction::Begin()
 
 void ed::CreateItemAction::End()
 {
-    IM_ASSERT(InActive);
+    IM_ASSERT(m_InActive);
 
-    if (IsInGlobalSpace)
+    if (m_IsInGlobalSpace)
     {
         ImGui::PopClipRect();
-        IsInGlobalSpace = false;
+        m_IsInGlobalSpace = false;
     }
 
-    InActive = false;
+    m_InActive = false;
 }
 
 void ed::CreateItemAction::DragStart(Pin* startPin)
 {
-    IM_ASSERT(!InActive);
+    IM_ASSERT(!m_InActive);
 
-    NextStage = Possible;
-    LinkStart = startPin;
-    LinkEnd   = nullptr;
+    m_NextStage = Possible;
+    m_LinkStart = startPin;
+    m_LinkEnd   = nullptr;
 }
 
 void ed::CreateItemAction::DragEnd()
 {
-    IM_ASSERT(!InActive);
+    IM_ASSERT(!m_InActive);
 
-    if (CurrentStage == Possible && UserAction == UserAccept)
+    if (m_CurrentStage == Possible && m_UserAction == UserAccept)
     {
-        NextStage = Create;
+        m_NextStage = Create;
     }
     else
     {
-        NextStage = None;
-        ItemType  = NoItem;
-        LinkStart = nullptr;
-        LinkEnd   = nullptr;
+        m_NextStage = None;
+        m_ItemType  = NoItem;
+        m_LinkStart = nullptr;
+        m_LinkEnd   = nullptr;
     }
 }
 
 void ed::CreateItemAction::DropPin(Pin* endPin)
 {
-    IM_ASSERT(!InActive);
+    IM_ASSERT(!m_InActive);
 
-    ItemType = Link;
-    LinkEnd  = endPin;
+    m_ItemType = Link;
+    m_LinkEnd  = endPin;
 }
 
 void ed::CreateItemAction::DropNode()
 {
-    IM_ASSERT(!InActive);
+    IM_ASSERT(!m_InActive);
 
-    ItemType = Node;
-    LinkEnd  = nullptr;
+    m_ItemType = Node;
+    m_LinkEnd  = nullptr;
 }
 
 void ed::CreateItemAction::DropNothing()
 {
-    IM_ASSERT(!InActive);
+    IM_ASSERT(!m_InActive);
 
-    ItemType = NoItem;
-    LinkEnd  = nullptr;
+    m_ItemType = NoItem;
+    m_LinkEnd  = nullptr;
 }
 
 ed::CreateItemAction::Result ed::CreateItemAction::RejectItem()
 {
-    IM_ASSERT(InActive);
+    IM_ASSERT(m_InActive);
 
-    if (!InActive || CurrentStage == None || ItemType == NoItem)
+    if (!m_InActive || m_CurrentStage == None || m_ItemType == NoItem)
         return Indeterminate;
 
-    UserAction = UserReject;
+    m_UserAction = UserReject;
 
     return True;
 }
 
 ed::CreateItemAction::Result ed::CreateItemAction::AcceptItem()
 {
-    IM_ASSERT(InActive);
+    IM_ASSERT(m_InActive);
 
-    if (!InActive || CurrentStage == None || ItemType == NoItem)
+    if (!m_InActive || m_CurrentStage == None || m_ItemType == NoItem)
         return Indeterminate;
 
-    UserAction = UserAccept;
+    m_UserAction = UserAccept;
 
-    if (CurrentStage == Create)
+    if (m_CurrentStage == Create)
     {
-        NextStage = None;
-        ItemType  = NoItem;
-        LinkStart = nullptr;
-        LinkEnd   = nullptr;
+        m_NextStage = None;
+        m_ItemType  = NoItem;
+        m_LinkStart = nullptr;
+        m_LinkEnd   = nullptr;
         return True;
     }
     else
@@ -4145,24 +4145,24 @@ ed::CreateItemAction::Result ed::CreateItemAction::AcceptItem()
 
 ed::CreateItemAction::Result ed::CreateItemAction::QueryLink(int* startId, int* endId)
 {
-    IM_ASSERT(InActive);
+    IM_ASSERT(m_InActive);
 
-    if (!InActive || CurrentStage == None || ItemType != Link)
+    if (!m_InActive || m_CurrentStage == None || m_ItemType != Link)
         return Indeterminate;
 
-    int linkStartId = LinkStart->ID;
-    int linkEndId   = LinkEnd->ID;
+    int linkStartId = m_LinkStart->m_ID;
+    int linkEndId   = m_LinkEnd->m_ID;
 
     *startId = linkStartId;
     *endId   = linkEndId;
 
     Editor->SetUserContext(true);
 
-    if (!IsInGlobalSpace)
+    if (!m_IsInGlobalSpace)
     {
         auto& canvas = Editor->GetCanvas();
         ImGui::PushClipRect(canvas.WindowScreenPos + ImVec2(1, 1), canvas.WindowScreenPos + canvas.WindowScreenSize - ImVec2(1, 1), false);
-        IsInGlobalSpace = true;
+        m_IsInGlobalSpace = true;
     }
 
     return True;
@@ -4170,20 +4170,20 @@ ed::CreateItemAction::Result ed::CreateItemAction::QueryLink(int* startId, int* 
 
 ed::CreateItemAction::Result ed::CreateItemAction::QueryNode(int* pinId)
 {
-    IM_ASSERT(InActive);
+    IM_ASSERT(m_InActive);
 
-    if (!InActive || CurrentStage == None || ItemType != Node)
+    if (!m_InActive || m_CurrentStage == None || m_ItemType != Node)
         return Indeterminate;
 
-    *pinId = LinkStart ? LinkStart->ID : 0;
+    *pinId = m_LinkStart ? m_LinkStart->m_ID : 0;
 
     Editor->SetUserContext(true);
 
-    if (!IsInGlobalSpace)
+    if (!m_IsInGlobalSpace)
     {
         auto& canvas = Editor->GetCanvas();
         ImGui::PushClipRect(canvas.WindowScreenPos + ImVec2(1, 1), canvas.WindowScreenPos + canvas.WindowScreenSize - ImVec2(1, 1), false);
-        IsInGlobalSpace = true;
+        m_IsInGlobalSpace = true;
     }
 
     return True;
@@ -4199,36 +4199,36 @@ ed::CreateItemAction::Result ed::CreateItemAction::QueryNode(int* pinId)
 //------------------------------------------------------------------------------
 ed::DeleteItemsAction::DeleteItemsAction(EditorContext* editor):
     EditorAction(editor),
-    IsActive(false),
-    InInteraction(false),
-    CurrentItemType(Unknown),
-    UserAction(Undetermined)
+    m_IsActive(false),
+    m_InInteraction(false),
+    m_CurrentItemType(Unknown),
+    m_UserAction(Undetermined)
 {
 }
 
 ed::EditorAction::AcceptResult ed::DeleteItemsAction::Accept(const Control& control)
 {
-    assert(!IsActive);
+    assert(!m_IsActive);
 
-    if (IsActive)
+    if (m_IsActive)
         return False;
 
     auto addDeadLinks = [this]()
     {
         vector<ed::Link*> links;
-        for (auto object : CandidateObjects)
+        for (auto object : m_CandidateObjects)
         {
             auto node = object->AsNode();
             if (!node)
                 continue;
 
-            Editor->FindLinksForNode(node->ID, links, true);
+            Editor->FindLinksForNode(node->m_ID, links, true);
         }
         if (!links.empty())
         {
             std::sort(links.begin(), links.end());
             links.erase(std::unique(links.begin(), links.end()), links.end());
-            CandidateObjects.insert(CandidateObjects.end(), links.begin(), links.end());
+            m_CandidateObjects.insert(m_CandidateObjects.end(), links.begin(), links.end());
         }
     };
 
@@ -4238,44 +4238,44 @@ ed::EditorAction::AcceptResult ed::DeleteItemsAction::Accept(const Control& cont
         auto& selection = Editor->GetSelectedObjects();
         if (!selection.empty())
         {
-            CandidateObjects = selection;
+            m_CandidateObjects = selection;
             addDeadLinks();
-            IsActive = true;
+            m_IsActive = true;
             return True;
         }
     }
     else if (control.ClickedLink && io.KeyAlt)
     {
-        CandidateObjects.clear();
-        CandidateObjects.push_back(control.ClickedLink);
-        IsActive = true;
+        m_CandidateObjects.clear();
+        m_CandidateObjects.push_back(control.ClickedLink);
+        m_IsActive = true;
         return True;
     }
 
-    else if (!ManuallyDeletedObjects.empty())
+    else if (!m_ManuallyDeletedObjects.empty())
     {
-        CandidateObjects = ManuallyDeletedObjects;
-        ManuallyDeletedObjects.clear();
+        m_CandidateObjects = m_ManuallyDeletedObjects;
+        m_ManuallyDeletedObjects.clear();
         addDeadLinks();
-        IsActive = true;
+        m_IsActive = true;
         return True;
     }
 
-    return IsActive ? True : False;
+    return m_IsActive ? True : False;
 }
 
 bool ed::DeleteItemsAction::Process(const Control& control)
 {
-    if (!IsActive)
+    if (!m_IsActive)
         return false;
 
-    if (CandidateObjects.empty())
+    if (m_CandidateObjects.empty())
     {
-        IsActive = false;
+        m_IsActive = false;
         return true;
     }
 
-    return IsActive;
+    return m_IsActive;
 }
 
 void ed::DeleteItemsAction::ShowMetrics()
@@ -4292,7 +4292,7 @@ void ed::DeleteItemsAction::ShowMetrics()
     //};
 
     ImGui::Text("%s:", GetName());
-    ImGui::Text("    Active: %s", IsActive ? "yes" : "no");
+    ImGui::Text("    Active: %s", m_IsActive ? "yes" : "no");
     //ImGui::Text("    Node: %s (%d)", getObjectName(DeleteItemsgedNode), DeleteItemsgedNode ? DeleteItemsgedNode->ID : 0);
 }
 
@@ -4301,32 +4301,32 @@ bool ed::DeleteItemsAction::Add(Object* object)
     if (Editor->GetCurrentAction() != nullptr)
         return false;
 
-    ManuallyDeletedObjects.push_back(object);
+    m_ManuallyDeletedObjects.push_back(object);
 
     return true;
 }
 
 bool ed::DeleteItemsAction::Begin()
 {
-    if (!IsActive)
+    if (!m_IsActive)
         return false;
 
-    assert(!InInteraction);
-    InInteraction = true;
+    assert(!m_InInteraction);
+    m_InInteraction = true;
 
-    CurrentItemType = Unknown;
-    UserAction      = Undetermined;
+    m_CurrentItemType = Unknown;
+    m_UserAction      = Undetermined;
 
-    return IsActive;
+    return m_IsActive;
 }
 
 void ed::DeleteItemsAction::End()
 {
-    if (!IsActive)
+    if (!m_IsActive)
         return;
 
-    assert(InInteraction);
-    InInteraction = false;
+    assert(m_InInteraction);
+    m_InInteraction = false;
 }
 
 bool ed::DeleteItemsAction::QueryLink(int* linkId, int* startId, int* endId)
@@ -4338,9 +4338,9 @@ bool ed::DeleteItemsAction::QueryLink(int* linkId, int* startId, int* endId)
     {
         auto link = Editor->FindLink(*linkId);
         if (startId)
-            *startId = link->StartPin->ID;
+            *startId = link->m_StartPin->m_ID;
         if (endId)
-            *endId = link->EndPin->ID;
+            *endId = link->m_EndPin->m_ID;
     }
 
     return true;
@@ -4353,30 +4353,30 @@ bool ed::DeleteItemsAction::QueryNode(int* nodeId)
 
 bool ed::DeleteItemsAction::QueryItem(int* itemId, IteratorType itemType)
 {
-    if (!InInteraction)
+    if (!m_InInteraction)
         return false;
 
-    if (CurrentItemType != itemType)
+    if (m_CurrentItemType != itemType)
     {
-        CurrentItemType    = itemType;
-        CandidateItemIndex = 0;
+        m_CurrentItemType    = itemType;
+        m_CandidateItemIndex = 0;
     }
-    else if (UserAction == Undetermined)
+    else if (m_UserAction == Undetermined)
     {
         RejectItem();
     }
 
-    UserAction = Undetermined;
+    m_UserAction = Undetermined;
 
-    auto itemCount = (int)CandidateObjects.size();
-    while (CandidateItemIndex < itemCount)
+    auto itemCount = (int)m_CandidateObjects.size();
+    while (m_CandidateItemIndex < itemCount)
     {
-        auto item = CandidateObjects[CandidateItemIndex];
+        auto item = m_CandidateObjects[m_CandidateItemIndex];
         if (itemType == Node)
         {
             if (auto node = item->AsNode())
             {
-                *itemId = node->ID;
+                *itemId = node->m_ID;
                 return true;
             }
         }
@@ -4384,26 +4384,26 @@ bool ed::DeleteItemsAction::QueryItem(int* itemId, IteratorType itemType)
         {
             if (auto link = item->AsLink())
             {
-                *itemId = link->ID;
+                *itemId = link->m_ID;
                 return true;
             }
         }
 
-        ++CandidateItemIndex;
+        ++m_CandidateItemIndex;
     }
 
-    if (CandidateItemIndex == itemCount)
-        CurrentItemType = Unknown;
+    if (m_CandidateItemIndex == itemCount)
+        m_CurrentItemType = Unknown;
 
     return false;
 }
 
 bool ed::DeleteItemsAction::AcceptItem()
 {
-    if (!InInteraction)
+    if (!m_InInteraction)
         return false;
 
-    UserAction = Accepted;
+    m_UserAction = Accepted;
 
     RemoveItem();
 
@@ -4412,22 +4412,22 @@ bool ed::DeleteItemsAction::AcceptItem()
 
 void ed::DeleteItemsAction::RejectItem()
 {
-    if (!InInteraction)
+    if (!m_InInteraction)
         return;
 
-    UserAction = Rejected;
+    m_UserAction = Rejected;
 
     RemoveItem();
 }
 
 void ed::DeleteItemsAction::RemoveItem()
 {
-    auto item = CandidateObjects[CandidateItemIndex];
-    CandidateObjects.erase(CandidateObjects.begin() + CandidateItemIndex);
+    auto item = m_CandidateObjects[m_CandidateItemIndex];
+    m_CandidateObjects.erase(m_CandidateObjects.begin() + m_CandidateItemIndex);
 
     Editor->DeselectObject(item);
 
-    if (CurrentItemType == Link)
+    if (m_CurrentItemType == Link)
         Editor->NotifyLinkDeleted(item->AsLink());
 }
 
@@ -4441,80 +4441,80 @@ void ed::DeleteItemsAction::RemoveItem()
 //------------------------------------------------------------------------------
 ed::NodeBuilder::NodeBuilder(EditorContext* editor):
     Editor(editor),
-    CurrentNode(nullptr),
-    CurrentPin(nullptr)
+    m_CurrentNode(nullptr),
+    m_CurrentPin(nullptr)
 {
 }
 
 void ed::NodeBuilder::Begin(int nodeId)
 {
-    assert(nullptr == CurrentNode);
+    assert(nullptr == m_CurrentNode);
 
-    CurrentNode = Editor->GetNode(nodeId);
+    m_CurrentNode = Editor->GetNode(nodeId);
 
-    if (CurrentNode->RestoreState)
+    if (m_CurrentNode->m_RestoreState)
     {
-        Editor->RestoreNodeState(CurrentNode);
-        CurrentNode->RestoreState = false;
+        Editor->RestoreNodeState(m_CurrentNode);
+        m_CurrentNode->m_RestoreState = false;
     }
 
-    if (CurrentNode->CenterOnScreen)
+    if (m_CurrentNode->m_CenterOnScreen)
     {
         auto bounds = Editor->GetCanvas().GetVisibleBounds();
-        auto offset = static_cast<ax::point>(bounds.centerf() -  CurrentNode->Bounds.centerf());
+        auto offset = static_cast<ax::point>(bounds.centerf() -  m_CurrentNode->m_Bounds.centerf());
 
         if (offset.length_sq() > 0)
         {
-            if (::IsGroup(CurrentNode))
+            if (::IsGroup(m_CurrentNode))
             {
                 std::vector<Node*> groupedNodes;
-                CurrentNode->GetGroupedNodes(groupedNodes);
-                groupedNodes.push_back(CurrentNode);
+                m_CurrentNode->GetGroupedNodes(groupedNodes);
+                groupedNodes.push_back(m_CurrentNode);
 
                 for (auto node : groupedNodes)
                 {
-                    node->Bounds.location += offset;
-                    node->GroupBounds.location += offset;
+                    node->m_Bounds.location += offset;
+                    node->m_GroupBounds.location += offset;
                     Editor->MakeDirty(SaveReasonFlags::Position | SaveReasonFlags::User, node);
                 }
             }
             else
             {
-                CurrentNode->Bounds.location += offset;
-                CurrentNode->GroupBounds.location += offset;
-                Editor->MakeDirty(SaveReasonFlags::Position | SaveReasonFlags::User, CurrentNode);
+                m_CurrentNode->m_Bounds.location += offset;
+                m_CurrentNode->m_GroupBounds.location += offset;
+                Editor->MakeDirty(SaveReasonFlags::Position | SaveReasonFlags::User, m_CurrentNode);
             }
         }
 
-        CurrentNode->CenterOnScreen = false;
+        m_CurrentNode->m_CenterOnScreen = false;
     }
 
     // Position node on screen
-    ImGui::SetCursorScreenPos(to_imvec(CurrentNode->Bounds.location));
+    ImGui::SetCursorScreenPos(to_imvec(m_CurrentNode->m_Bounds.location));
 
     auto& editorStyle = Editor->GetStyle();
 
     const auto alpha = ImGui::GetStyle().Alpha;
 
-    CurrentNode->IsLive           = true;
-    CurrentNode->LastPin          = nullptr;
-    CurrentNode->Color            = Editor->GetColor(StyleColor_NodeBg, alpha);
-    CurrentNode->BorderColor      = Editor->GetColor(StyleColor_NodeBorder, alpha);
-    CurrentNode->BorderWidth      = editorStyle.NodeBorderWidth;
-    CurrentNode->Rounding         = editorStyle.NodeRounding;
-    CurrentNode->GroupColor       = Editor->GetColor(StyleColor_GroupBg, alpha);
-    CurrentNode->GroupBorderColor = Editor->GetColor(StyleColor_GroupBorder, alpha);
-    CurrentNode->GroupBorderWidth = editorStyle.GroupBorderWidth;
-    CurrentNode->GroupRounding    = editorStyle.GroupRounding;
+    m_CurrentNode->m_IsLive           = true;
+    m_CurrentNode->m_LastPin          = nullptr;
+    m_CurrentNode->m_Color            = Editor->GetColor(StyleColor_NodeBg, alpha);
+    m_CurrentNode->m_BorderColor      = Editor->GetColor(StyleColor_NodeBorder, alpha);
+    m_CurrentNode->m_BorderWidth      = editorStyle.NodeBorderWidth;
+    m_CurrentNode->m_Rounding         = editorStyle.NodeRounding;
+    m_CurrentNode->m_GroupColor       = Editor->GetColor(StyleColor_GroupBg, alpha);
+    m_CurrentNode->m_GroupBorderColor = Editor->GetColor(StyleColor_GroupBorder, alpha);
+    m_CurrentNode->m_GroupBorderWidth = editorStyle.GroupBorderWidth;
+    m_CurrentNode->m_GroupRounding    = editorStyle.GroupRounding;
 
-    IsGroup = false;
+    m_IsGroup = false;
 
     // Grow channel list and select user channel
     if (auto drawList = ImGui::GetWindowDrawList())
     {
-        CurrentNode->Channel = drawList->_ChannelsCount;
+        m_CurrentNode->m_Channel = drawList->_ChannelsCount;
         ImDrawList_ChannelsGrow(drawList, drawList->_ChannelsCount + c_ChannelsPerNode);
-        drawList->ChannelsSetCurrent(CurrentNode->Channel + c_NodeContentChannel);
+        drawList->ChannelsSetCurrent(m_CurrentNode->m_Channel + c_NodeContentChannel);
     }
 
     // Begin outer group
@@ -4530,7 +4530,7 @@ void ed::NodeBuilder::Begin(int nodeId)
 
 void ed::NodeBuilder::End()
 {
-    assert(nullptr != CurrentNode);
+    assert(nullptr != m_CurrentNode);
 
     // Apply frame padding. This must be done in this convoluted way if outer group
     // size must contain inner group padding.
@@ -4546,157 +4546,157 @@ void ed::NodeBuilder::End()
     // End outer group.
     ImGui::EndGroup();
 
-    NodeRect = ImGui_GetItemRect();
+    m_NodeRect = ImGui_GetItemRect();
 
-    if (CurrentNode->Bounds.size != NodeRect.size)
+    if (m_CurrentNode->m_Bounds.size != m_NodeRect.size)
     {
-        CurrentNode->Bounds.size = NodeRect.size;
-        Editor->MakeDirty(SaveReasonFlags::Size, CurrentNode);
+        m_CurrentNode->m_Bounds.size = m_NodeRect.size;
+        Editor->MakeDirty(SaveReasonFlags::Size, m_CurrentNode);
     }
 
-    if (IsGroup)
+    if (m_IsGroup)
     {
         // Groups cannot have pins. Discard them.
-        for (auto pin = CurrentNode->LastPin; pin; pin = pin->PreviousPin)
+        for (auto pin = m_CurrentNode->m_LastPin; pin; pin = pin->m_PreviousPin)
             pin->Reset();
 
-        CurrentNode->Type        = NodeType::Group;
-        CurrentNode->GroupBounds = GroupBounds;
-        CurrentNode->LastPin     = nullptr;
+        m_CurrentNode->m_Type        = NodeType::Group;
+        m_CurrentNode->m_GroupBounds = m_GroupBounds;
+        m_CurrentNode->m_LastPin     = nullptr;
     }
     else
-        CurrentNode->Type        = NodeType::Node;
+        m_CurrentNode->m_Type        = NodeType::Node;
 
-    CurrentNode = nullptr;
+    m_CurrentNode = nullptr;
 }
 
 void ed::NodeBuilder::BeginPin(int pinId, PinKind kind)
 {
-    assert(nullptr != CurrentNode);
-    assert(nullptr == CurrentPin);
-    assert(false   == IsGroup);
+    assert(nullptr != m_CurrentNode);
+    assert(nullptr == m_CurrentPin);
+    assert(false   == m_IsGroup);
 
     auto& editorStyle = Editor->GetStyle();
 
-    CurrentPin = Editor->GetPin(pinId, kind);
-    CurrentPin->Node = CurrentNode;
+    m_CurrentPin = Editor->GetPin(pinId, kind);
+    m_CurrentPin->m_Node = m_CurrentNode;
 
-    CurrentPin->IsLive      = true;
-    CurrentPin->Color       = Editor->GetColor(StyleColor_PinRect);
-    CurrentPin->BorderColor = Editor->GetColor(StyleColor_PinRectBorder);
-    CurrentPin->BorderWidth = editorStyle.PinBorderWidth;
-    CurrentPin->Rounding    = editorStyle.PinRounding;
-    CurrentPin->Corners     = static_cast<int>(editorStyle.PinCorners);
-    CurrentPin->Radius      = editorStyle.PinRadius;
-    CurrentPin->ArrowSize   = editorStyle.PinArrowSize;
-    CurrentPin->ArrowWidth  = editorStyle.PinArrowWidth;
-    CurrentPin->Dir         = kind == PinKind::Source ? editorStyle.SourceDirection : editorStyle.TargetDirection;
-    CurrentPin->Strength    = editorStyle.LinkStrength;
+    m_CurrentPin->m_IsLive      = true;
+    m_CurrentPin->m_Color       = Editor->GetColor(StyleColor_PinRect);
+    m_CurrentPin->m_BorderColor = Editor->GetColor(StyleColor_PinRectBorder);
+    m_CurrentPin->m_BorderWidth = editorStyle.PinBorderWidth;
+    m_CurrentPin->m_Rounding    = editorStyle.PinRounding;
+    m_CurrentPin->m_Corners     = static_cast<int>(editorStyle.PinCorners);
+    m_CurrentPin->m_Radius      = editorStyle.PinRadius;
+    m_CurrentPin->m_ArrowSize   = editorStyle.PinArrowSize;
+    m_CurrentPin->m_ArrowWidth  = editorStyle.PinArrowWidth;
+    m_CurrentPin->m_Dir         = kind == PinKind::Source ? editorStyle.SourceDirection : editorStyle.TargetDirection;
+    m_CurrentPin->m_Strength    = editorStyle.LinkStrength;
 
-    CurrentPin->PreviousPin = CurrentNode->LastPin;
-    CurrentNode->LastPin    = CurrentPin;
+    m_CurrentPin->m_PreviousPin = m_CurrentNode->m_LastPin;
+    m_CurrentNode->m_LastPin    = m_CurrentPin;
 
-    PivotAlignment          = editorStyle.PivotAlignment;
-    PivotSize               = editorStyle.PivotSize;
-    PivotScale              = editorStyle.PivotScale;
-    ResolvePinRect          = true;
-    ResolvePivot            = true;
+    m_PivotAlignment          = editorStyle.PivotAlignment;
+    m_PivotSize               = editorStyle.PivotSize;
+    m_PivotScale              = editorStyle.PivotScale;
+    m_ResolvePinRect          = true;
+    m_ResolvePivot            = true;
 
     ImGui::BeginGroup();
 }
 
 void ed::NodeBuilder::EndPin()
 {
-    assert(nullptr != CurrentPin);
+    assert(nullptr != m_CurrentPin);
 
     ImGui::EndGroup();
 
-    if (ResolvePinRect)
-        CurrentPin->Bounds = ImGui_GetItemRect();
+    if (m_ResolvePinRect)
+        m_CurrentPin->m_Bounds = ImGui_GetItemRect();
 
-    if (ResolvePivot)
+    if (m_ResolvePivot)
     {
-        auto& pinRect = CurrentPin->Bounds;
+        auto& pinRect = m_CurrentPin->m_Bounds;
 
-        if (PivotSize.x < 0)
-            PivotSize.x = static_cast<float>(pinRect.size.w);
-        if (PivotSize.y < 0)
-            PivotSize.y = static_cast<float>(pinRect.size.h);
+        if (m_PivotSize.x < 0)
+            m_PivotSize.x = static_cast<float>(pinRect.size.w);
+        if (m_PivotSize.y < 0)
+            m_PivotSize.y = static_cast<float>(pinRect.size.h);
 
-        CurrentPin->Pivot.location = static_cast<pointf>(to_pointf(pinRect.top_left()) + static_cast<pointf>(pinRect.size).cwise_product(to_pointf(PivotAlignment)));
-        CurrentPin->Pivot.size     = static_cast<sizef>((to_pointf(PivotSize).cwise_product(to_pointf(PivotScale))));
+        m_CurrentPin->m_Pivot.location = static_cast<pointf>(to_pointf(pinRect.top_left()) + static_cast<pointf>(pinRect.size).cwise_product(to_pointf(m_PivotAlignment)));
+        m_CurrentPin->m_Pivot.size     = static_cast<sizef>((to_pointf(m_PivotSize).cwise_product(to_pointf(m_PivotScale))));
     }
 
-    CurrentPin = nullptr;
+    m_CurrentPin = nullptr;
 }
 
 void ed::NodeBuilder::PinRect(const ImVec2& a, const ImVec2& b)
 {
-    assert(nullptr != CurrentPin);
+    assert(nullptr != m_CurrentPin);
 
-    CurrentPin->Bounds = rect(to_point(a), to_size(b - a));
-    ResolvePinRect     = false;
+    m_CurrentPin->m_Bounds = rect(to_point(a), to_size(b - a));
+    m_ResolvePinRect     = false;
 }
 
 void ed::NodeBuilder::PinPivotRect(const ImVec2& a, const ImVec2& b)
 {
-    assert(nullptr != CurrentPin);
+    assert(nullptr != m_CurrentPin);
 
-    CurrentPin->Pivot = rectf(to_pointf(a), to_sizef(b - a));
-    ResolvePivot      = false;
+    m_CurrentPin->m_Pivot = rectf(to_pointf(a), to_sizef(b - a));
+    m_ResolvePivot      = false;
 }
 
 void ed::NodeBuilder::PinPivotSize(const ImVec2& size)
 {
-    assert(nullptr != CurrentPin);
+    assert(nullptr != m_CurrentPin);
 
-    PivotSize    = size;
-    ResolvePivot = true;
+    m_PivotSize    = size;
+    m_ResolvePivot = true;
 }
 
 void ed::NodeBuilder::PinPivotScale(const ImVec2& scale)
 {
-    assert(nullptr != CurrentPin);
+    assert(nullptr != m_CurrentPin);
 
-    PivotScale   = scale;
-    ResolvePivot = true;
+    m_PivotScale   = scale;
+    m_ResolvePivot = true;
 }
 
 void ed::NodeBuilder::PinPivotAlignment(const ImVec2& alignment)
 {
-    assert(nullptr != CurrentPin);
+    assert(nullptr != m_CurrentPin);
 
-    PivotAlignment = alignment;
-    ResolvePivot   = true;
+    m_PivotAlignment = alignment;
+    m_ResolvePivot   = true;
 }
 
 void ed::NodeBuilder::Group(const ImVec2& size)
 {
-    assert(nullptr != CurrentNode);
-    assert(nullptr == CurrentPin);
-    assert(false   == IsGroup);
+    assert(nullptr != m_CurrentNode);
+    assert(nullptr == m_CurrentPin);
+    assert(false   == m_IsGroup);
 
-    IsGroup = true;
+    m_IsGroup = true;
 
-    if (::IsGroup(CurrentNode))
-        ImGui::Dummy(to_imvec(CurrentNode->GroupBounds.size));
+    if (IsGroup(m_CurrentNode))
+        ImGui::Dummy(to_imvec(m_CurrentNode->m_GroupBounds.size));
     else
         ImGui::Dummy(size);
 
-    GroupBounds = ImGui_GetItemRect();
+    m_GroupBounds = ImGui_GetItemRect();
 }
 
 ImDrawList* ed::NodeBuilder::GetUserBackgroundDrawList() const
 {
-    return GetUserBackgroundDrawList(CurrentNode);
+    return GetUserBackgroundDrawList(m_CurrentNode);
 }
 
 ImDrawList* ed::NodeBuilder::GetUserBackgroundDrawList(Node* node) const
 {
-    if (node && node->IsLive)
+    if (node && node->m_IsLive)
     {
         auto drawList = ImGui::GetWindowDrawList();
-        drawList->ChannelsSetCurrent(node->Channel + c_NodeUserBackgroundChannel);
+        drawList->ChannelsSetCurrent(node->m_Channel + c_NodeUserBackgroundChannel);
         return drawList;
     }
     else
@@ -4713,14 +4713,14 @@ ImDrawList* ed::NodeBuilder::GetUserBackgroundDrawList(Node* node) const
 //------------------------------------------------------------------------------
 ed::HintBuilder::HintBuilder(EditorContext* editor):
     Editor(editor),
-    IsActive(false),
-    CurrentNode(nullptr)
+    m_IsActive(false),
+    m_CurrentNode(nullptr)
 {
 }
 
 bool ed::HintBuilder::Begin(int nodeId)
 {
-    assert(nullptr == CurrentNode);
+    assert(nullptr == m_CurrentNode);
 
     auto& canvas = Editor->GetCanvas();
 
@@ -4734,7 +4734,7 @@ bool ed::HintBuilder::Begin(int nodeId)
     if (!IsGroup(node))
         return false;
 
-    CurrentNode = node;
+    m_CurrentNode = node;
 
     Editor->Suspend();
 
@@ -4749,14 +4749,14 @@ bool ed::HintBuilder::Begin(int nodeId)
     ImGui::PushStyleVar(ImGuiStyleVar_AntiAliasFringeScale, 1.0f);
     ImGui::PushStyleVar(ImGuiStyleVar_Alpha, alpha);
 
-    IsActive = true;
+    m_IsActive = true;
 
     return true;
 }
 
 void ed::HintBuilder::End()
 {
-    if (!IsActive)
+    if (!m_IsActive)
         return;
 
     ImGui::PopClipRect();
@@ -4765,27 +4765,27 @@ void ed::HintBuilder::End()
 
     Editor->Resume();
 
-    IsActive    = false;
-    CurrentNode = nullptr;
+    m_IsActive    = false;
+    m_CurrentNode = nullptr;
 }
 
 ImVec2 ed::HintBuilder::GetGroupMin()
 {
-    assert(nullptr != CurrentNode);
+    assert(nullptr != m_CurrentNode);
 
-    return Editor->GetCanvas().ToScreen(to_imvec(CurrentNode->Bounds.top_left()));
+    return Editor->GetCanvas().ToScreen(to_imvec(m_CurrentNode->m_Bounds.top_left()));
 }
 
 ImVec2 ed::HintBuilder::GetGroupMax()
 {
-    assert(nullptr != CurrentNode);
+    assert(nullptr != m_CurrentNode);
 
-    return Editor->GetCanvas().ToScreen(to_imvec(CurrentNode->Bounds.bottom_right()));
+    return Editor->GetCanvas().ToScreen(to_imvec(m_CurrentNode->m_Bounds.bottom_right()));
 }
 
 ImDrawList* ed::HintBuilder::GetForegroundDrawList()
 {
-    assert(nullptr != CurrentNode);
+    assert(nullptr != m_CurrentNode);
 
     auto drawList = ImGui::GetWindowDrawList();
 
@@ -4796,7 +4796,7 @@ ImDrawList* ed::HintBuilder::GetForegroundDrawList()
 
 ImDrawList* ed::HintBuilder::GetBackgroundDrawList()
 {
-    assert(nullptr != CurrentNode);
+    assert(nullptr != m_CurrentNode);
 
     auto drawList = ImGui::GetWindowDrawList();
 
@@ -4818,7 +4818,7 @@ void ed::Style::PushColor(StyleColor colorIndex, const ImVec4& color)
     ColorModifier modifier;
     modifier.Index = colorIndex;
     modifier.Value = Colors[colorIndex];
-    ColorStack.push_back(modifier);
+    m_ColorStack.push_back(modifier);
     Colors[colorIndex] = color;
 }
 
@@ -4826,9 +4826,9 @@ void ed::Style::PopColor(int count)
 {
     while (count > 0)
     {
-        auto& modifier = ColorStack.back();
+        auto& modifier = m_ColorStack.back();
         Colors[modifier.Index] = modifier.Value;
-        ColorStack.pop_back();
+        m_ColorStack.pop_back();
         --count;
     }
 }
@@ -4841,7 +4841,7 @@ void ed::Style::PushVar(StyleVar varIndex, float value)
     modifier.Index = varIndex;
     modifier.Value = ImVec4(*var, 0, 0, 0);
     *var = value;
-    VarStack.push_back(modifier);
+    m_VarStack.push_back(modifier);
 }
 
 void ed::Style::PushVar(StyleVar varIndex, const ImVec2& value)
@@ -4852,7 +4852,7 @@ void ed::Style::PushVar(StyleVar varIndex, const ImVec2& value)
     modifier.Index = varIndex;
     modifier.Value = ImVec4(var->x, var->y, 0, 0);
     *var = value;
-    VarStack.push_back(modifier);
+    m_VarStack.push_back(modifier);
 }
 
 void ed::Style::PushVar(StyleVar varIndex, const ImVec4& value)
@@ -4863,21 +4863,21 @@ void ed::Style::PushVar(StyleVar varIndex, const ImVec4& value)
     modifier.Index = varIndex;
     modifier.Value = *var;
     *var = value;
-    VarStack.push_back(modifier);
+    m_VarStack.push_back(modifier);
 }
 
 void ed::Style::PopVar(int count)
 {
     while (count > 0)
     {
-        auto& modifier = VarStack.back();
+        auto& modifier = m_VarStack.back();
         if (auto v = GetVarFloatAddr(modifier.Index))
             *v = modifier.Value.x;
         else if (auto v = GetVarVec2Addr(modifier.Index))
             *v = ImVec2(modifier.Value.x, modifier.Value.y);
         else if (auto v = GetVarVec4Addr(modifier.Index))
             *v = modifier.Value;
-        VarStack.pop_back();
+        m_VarStack.pop_back();
         --count;
     }
 }

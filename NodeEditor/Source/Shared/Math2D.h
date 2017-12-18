@@ -859,7 +859,7 @@ inline int cubic_bezier_line_intersect(const pointf& p0, const pointf& p1, const
         }
     }
 
-    return result - results;
+    return static_cast<int>(result - results);
 }
 
 inline rectf cubic_bezier_bounding_rect(const pointf& p0, const pointf& p1, const pointf& p2, const pointf& p3)
