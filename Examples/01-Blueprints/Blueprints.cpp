@@ -1,4 +1,4 @@
-﻿#include "application.h"
+#include "Application.h"
 #include <string>
 #include <vector>
 #include <map>
@@ -14,7 +14,6 @@ namespace ed = ax::NodeEditor;
 namespace util = ax::NodeEditor::Utilities;
 
 using namespace ax;
-using namespace ax::ImGuiInterop;
 
 using ax::Widgets::IconType;
 
@@ -112,7 +111,7 @@ static const int            s_PinIconSize = 24;
 static std::vector<Node>    s_Nodes;
 static std::vector<Link>    s_Links;
 static ImTextureID          s_HeaderBackground = nullptr;
-static ImTextureID          s_SampleImage = nullptr;
+//static ImTextureID          s_SampleImage = nullptr;
 static ImTextureID          s_SaveIcon = nullptr;
 static ImTextureID          s_RestoreIcon = nullptr;
 
@@ -206,21 +205,21 @@ static bool CanCreateLink(Pin* a, Pin* b)
     return true;
 }
 
-static void DrawItemRect(ImColor color, float expand = 0.0f)
-{
-    ImGui::GetWindowDrawList()->AddRect(
-        ImGui::GetItemRectMin() - ImVec2(expand, expand),
-        ImGui::GetItemRectMax() + ImVec2(expand, expand),
-        color);
-};
+//static void DrawItemRect(ImColor color, float expand = 0.0f)
+//{
+//    ImGui::GetWindowDrawList()->AddRect(
+//        ImGui::GetItemRectMin() - ImVec2(expand, expand),
+//        ImGui::GetItemRectMax() + ImVec2(expand, expand),
+//        color);
+//};
 
-static void FillItemRect(ImColor color, float expand = 0.0f, float rounding = 0.0f)
-{
-    ImGui::GetWindowDrawList()->AddRectFilled(
-        ImGui::GetItemRectMin() - ImVec2(expand, expand),
-        ImGui::GetItemRectMax() + ImVec2(expand, expand),
-        color, rounding);
-};
+//static void FillItemRect(ImColor color, float expand = 0.0f, float rounding = 0.0f)
+//{
+//    ImGui::GetWindowDrawList()->AddRectFilled(
+//        ImGui::GetItemRectMin() - ImVec2(expand, expand),
+//        ImGui::GetItemRectMax() + ImVec2(expand, expand),
+//        color, rounding);
+//};
 
 static void BuildNode(Node* node)
 {
@@ -456,7 +455,7 @@ void Application_Initialize()
     s_RestoreIcon      = Application_LoadTexture("Data/ic_restore_white_24dp.png");
 
 
-    auto& io = ImGui::GetIO();
+    //auto& io = ImGui::GetIO();
 }
 
 void Application_Finalize()
@@ -805,7 +804,7 @@ void Application_Frame()
 
     ed::SetCurrentEditor(m_Editor);
 
-    auto& style = ImGui::GetStyle();
+    //auto& style = ImGui::GetStyle();
 
     static int  contextId      = 0;
     static bool createNewNode  = false;
@@ -1049,16 +1048,16 @@ void Application_Frame()
 
             auto drawList = ed::GetNodeBackgroundDrawList(node.ID);
 
-            const auto fringeScale = ImGui::GetStyle().AntiAliasFringeScale;
-            const auto unitSize    = 1.0f / fringeScale;
+            //const auto fringeScale = ImGui::GetStyle().AntiAliasFringeScale;
+            //const auto unitSize    = 1.0f / fringeScale;
 
-            const auto ImDrawList_AddRect = [](ImDrawList* drawList, const ImVec2& a, const ImVec2& b, ImU32 col, float rounding, int rounding_corners, float thickness)
-            {
-                if ((col >> 24) == 0)
-                    return;
-                drawList->PathRect(a, b, rounding, rounding_corners);
-                drawList->PathStroke(col, true, thickness);
-            };
+            //const auto ImDrawList_AddRect = [](ImDrawList* drawList, const ImVec2& a, const ImVec2& b, ImU32 col, float rounding, int rounding_corners, float thickness)
+            //{
+            //    if ((col >> 24) == 0)
+            //        return;
+            //    drawList->PathRect(a, b, rounding, rounding_corners);
+            //    drawList->PathStroke(col, true, thickness);
+            //};
 
             drawList->AddRectFilled(to_imvec(inputsRect.top_left()) + ImVec2(0, 1), to_imvec(inputsRect.bottom_right()),
                 IM_COL32((int)(255 * pinBackground.x), (int)(255 * pinBackground.y), (int)(255 * pinBackground.z), inputAlpha), 4.0f, 12);
@@ -1111,7 +1110,7 @@ void Application_Frame()
                 ImGui::PushStyleVar(ImGuiStyleVar_Alpha, commentAlpha * ImGui::GetStyle().Alpha);
 
                 auto min = ed::GetGroupMin();
-                auto max = ed::GetGroupMax();
+                //auto max = ed::GetGroupMax();
 
                 ImGui::SetCursorScreenPos(min - ImVec2(-8, ImGui::GetTextLineHeightWithSpacing() + 4));
                 ImGui::BeginGroup();

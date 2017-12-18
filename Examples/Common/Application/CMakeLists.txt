@@ -9,6 +9,15 @@ if (WIN32)
         Source/DX11/imgui_impl_dx11.cpp
         Source/DX11/imgui_impl_dx11.h
     )
+else()
+    find_package(glfw3 3.2 REQUIRED)
+    find_package(OpenGL REQUIRED)
+
+    list(APPEND _Application_Sources
+        Source/GLFW/Entry.cpp
+        Source/GLFW/imgui_impl_glfw_gl3.cpp
+        Source/GLFW/imgui_impl_glfw_gl3.h
+    )
 endif()
 
 
@@ -41,6 +50,17 @@ if (WIN32)
     )
 
     target_link_libraries(Application PRIVATE ImGui NodeEditor Shared d3d11.lib d3dcompiler.lib d3dx11)
+else()
+    add_subdirectory(${CMAKE_SOURCE_DIR}/ThirdParty/gl3w ${CMAKE_BINARY_DIR}/ThirdParty/gl3w)
+
+    target_include_directories(Application PRIVATE ${OPENGL_INCLUDE_DIR})
+    target_link_libraries(Application PRIVATE ${OPENGL_gl_LIBRARY} gl3w glfw)
+
+    if (APPLE)
+        target_link_libraries(Application PRIVATE
+            "-framework CoreFoundation"
+        )
+    endif()
 endif()
 
 set_property(TARGET Application PROPERTY FOLDER "Examples/Common")

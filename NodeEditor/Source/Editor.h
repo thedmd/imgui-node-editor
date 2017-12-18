@@ -12,7 +12,6 @@
 
 //------------------------------------------------------------------------------
 # include "Shared/Interop.h"
-namespace ax { using namespace ImGuiInterop; }
 # include "Shared/Math2D.h"
 # include "NodeEditor.h"
 # define PICOJSON_USE_LOCALE 0
@@ -180,7 +179,7 @@ struct Pin final: Object
         HadConnection = HasConnection && IsLive;
         HasConnection = false;
 
-        __super::Reset();
+        Object::Reset();
     }
 
     virtual void Draw(ImDrawList* drawList, DrawFlags flags = None) override final;
@@ -243,7 +242,7 @@ struct Node final: Object
     bool EndDrag() override final; // return true, when changed
     ax::point DragStartLocation() override final { return DragStart; }
 
-    virtual bool IsSelectable() { return true; }
+    virtual bool IsSelectable() override { return true; }
 
     virtual void Draw(ImDrawList* drawList, DrawFlags flags = None) override final;
     void DrawBorder(ImDrawList* drawList, ImU32 color, float thickness = 1.0f);
@@ -271,7 +270,7 @@ struct Link final: Object
     {
     }
 
-    virtual bool IsSelectable() { return true; }
+    virtual bool IsSelectable() override { return true; }
 
     virtual void Draw(ImDrawList* drawList, DrawFlags flags = None) override final;
     void Draw(ImDrawList* drawList, ImU32 color, float extraThickness = 0.0f) const;
@@ -1204,7 +1203,6 @@ private:
 
     vector<Object*>     LastSelectedObjects;
     uint64_t            SelectionId;
-    bool                SelectionChanged;
 
     Link*               LastActiveLink;
 

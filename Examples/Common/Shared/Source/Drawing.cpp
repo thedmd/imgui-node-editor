@@ -1,13 +1,11 @@
 //# include "stdafx.h"
 # include "Drawing.h"
-# include "Math.h"
+# include "Math2D.h"
 # include "Interop.h"
 # include <cmath>
 
 void ax::Drawing::DrawIcon(ImDrawList* drawList, const ImVec2& a, const ImVec2& b, IconType type, bool filled, ImU32 color, ImU32 innerColor)
 {
-    using namespace ImGuiInterop;
-
           auto rect           = ax::rect(to_point(a), to_point(b));
     const auto outline_scale  = rect.w / 24.0f;
     const auto extra_segments = roundi(2 * outline_scale); // for full circle
@@ -21,7 +19,7 @@ void ax::Drawing::DrawIcon(ImDrawList* drawList, const ImVec2& a, const ImVec2& 
         const auto margin     = (filled ? 2.0f : 2.0f) * origin_scale;
         const auto rounding   = 0.1f * origin_scale;
         const auto tip_round  = 0.7f; // percentage of triangle edge (for tip)
-        const auto edge_round = 0.7f; // percentage of triangle edge (for corner)
+        //const auto edge_round = 0.7f; // percentage of triangle edge (for corner)
         const auto canvas = rectf(
             rect.x + margin + offset_x,
             rect.y + margin + offset_y,
@@ -33,7 +31,7 @@ void ax::Drawing::DrawIcon(ImDrawList* drawList, const ImVec2& a, const ImVec2& 
         const auto top    = canvas.y + canvas.h            * 0.5f * 0.2f;
         const auto bottom = canvas.y + canvas.h - canvas.h * 0.5f * 0.2f;
         const auto center_y = (top + bottom) * 0.5f;
-        const auto angle = AX_PI * 0.5f * 0.5f * 0.5f;
+        //const auto angle = AX_PI * 0.5f * 0.5f * 0.5f;
 
         const auto tip_top    = ImVec2(canvas.x + canvas.w * 0.5f, top);
         const auto tip_right  = ImVec2(right, center_y);

@@ -23,6 +23,7 @@
 # include <type_traits>
 # include <vector>
 # include <map>
+# include <cmath>
 
 
 //------------------------------------------------------------------------------
@@ -178,7 +179,7 @@ typedef basic_size<float>  sizef;
 template <typename T>
 struct basic_line
 {
-    typedef typename basic_point<T> point_t;
+    typedef basic_point<T> point_t;
 
     union
     {
@@ -207,8 +208,8 @@ struct basic_line
     explicit operator basic_line<P>() const
     {
         return basic_line<P>(
-            static_cast<basic_point<T>>(l.a),
-            static_cast<basic_point<T>>(l.b));
+            static_cast<basic_point<T>>(this->l.a),
+            static_cast<basic_point<T>>(this->l.b));
     }
 };
 
@@ -238,8 +239,8 @@ inline rect_region operator &(rect_region lhs, rect_region rhs) { return static_
 template <typename T>
 struct basic_rect
 {
-    typedef typename basic_point<T> point_t;
-    typedef typename basic_size<T>  size_t;
+    typedef basic_point<T> point_t;
+    typedef basic_size<T>  size_t;
 
     union
     {
@@ -1231,7 +1232,7 @@ namespace easing {
 template <typename V, typename T>
 inline V ease_out_quad(V b, V c, T t)
 {
-    return b - c * t * (t - 2);
+    return b - c * (t * (t - 2));
 }
 
 

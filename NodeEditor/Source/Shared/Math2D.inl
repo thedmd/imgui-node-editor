@@ -566,11 +566,16 @@ inline ax::matrix4 ax::matrix4::transposed() const
 namespace ax {
 namespace detail {
 
+# if defined(__clang__)
+template <typename M, typename T>
+void transform_points(const M& m, basic_point<T>* points, size_t count);
+# else
 template <typename M, typename T>
 inline void transform_points(const M& m, basic_point<T>* points, size_t count)
 {
     static_assert(false, "This combination of matrix type and point type is not supported");
 }
+# endif
 
 template <typename M, typename T>
 inline void transform_vectors(const M& m, basic_point<T>* points, size_t count)

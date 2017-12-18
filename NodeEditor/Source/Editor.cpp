@@ -12,7 +12,6 @@
 # include <string>
 # include <fstream>
 # include <bitset>
-# include <optional>
 
 
 //------------------------------------------------------------------------------
@@ -245,7 +244,6 @@ static void ImDrawList_TranslateAndClampClipRects(ImDrawList* drawList, int begi
 static void ImDrawList_PathBezierOffset(ImDrawList* drawList, float offset, const ImVec2& p0, const ImVec2& p1, const ImVec2& p2, const ImVec2& p3)
 {
     using namespace ax;
-    using namespace ax::ImGuiInterop;
 
     auto acceptPoint = [drawList, offset](const bezier_subdivide_result_t& r)
     {
@@ -255,6 +253,7 @@ static void ImDrawList_PathBezierOffset(ImDrawList* drawList, float offset, cons
     cubic_bezier_subdivide(acceptPoint, to_pointf(p0), to_pointf(p1), to_pointf(p2), to_pointf(p3));
 }
 
+/*
 static void ImDrawList_PolyFillScanFlood(ImDrawList *draw, std::vector<ImVec2>* poly, ImColor color, int gap = 1, float strokeWidth = 1.0f)
 {
     std::vector<ImVec2> scanHits;
@@ -363,13 +362,13 @@ static void ImDrawList_PolyFillScanFlood(ImDrawList *draw, std::vector<ImVec2>* 
     } // for each scan line
     scanHits.clear();
 }
+*/
 
 static void ImDrawList_AddBezierWithArrows(ImDrawList* drawList, const ax::cubic_bezier_t& curve, float thickness,
     float startArrowSize, float startArrowWidth, float endArrowSize, float endArrowWidth,
     bool fill, ImU32 color, float strokeThickness)
 {
     using namespace ax;
-    using namespace ax::ImGuiInterop;
 
     if ((color >> 24) == 0)
         return;
@@ -581,7 +580,7 @@ void ed::Node::GetGroupedNodes(std::vector<Node*>& result, bool append)
     const auto firstNodeIndex = result.size();
     Editor->FindNodesInRect(static_cast<ax::rectf>(GroupBounds), result, true, false);
 
-    for (auto index = firstNodeIndex, lastNodeIndex = result.size(); index < result.size(); ++index)
+    for (auto index = firstNodeIndex; index < result.size(); ++index)
         result[index]->GetGroupedNodes(result, true);
 }
 
@@ -595,8 +594,6 @@ void ed::Node::GetGroupedNodes(std::vector<Node*>& result, bool append)
 //------------------------------------------------------------------------------
 void ed::Link::Draw(ImDrawList* drawList, DrawFlags flags)
 {
-    using namespace ax::ImGuiInterop;
-
     if (flags == None)
     {
         drawList->ChannelsSetCurrent(c_LinkChannel_Links);
@@ -623,8 +620,6 @@ void ed::Link::Draw(ImDrawList* drawList, DrawFlags flags)
 
 void ed::Link::Draw(ImDrawList* drawList, ImU32 color, float extraThickness) const
 {
-    using namespace ax::ImGuiInterop;
-
     if (!IsLive)
         return;
 
@@ -906,10 +901,10 @@ void ed::EditorContext::Begin(const char* id, const ImVec2& size)
 
 void ed::EditorContext::End()
 {
-    auto& io          = ImGui::GetIO();
-    auto  control     = BuildControl(CurrentAction && CurrentAction->IsDragging()  /*NavigateAction.IsMovingOverEdge()*/);
+    //auto& io          = ImGui::GetIO();
+    auto  control     = BuildControl(CurrentAction && CurrentAction->IsDragging()); // NavigateAction.IsMovingOverEdge()
     auto  drawList    = ImGui::GetWindowDrawList();
-    auto& editorStyle = GetStyle();
+    //auto& editorStyle = GetStyle();
 
     DoubleClickedNode       = control.DoubleClickedNode ? control.DoubleClickedNode->ID : 0;
     DoubleClickedPin        = control.DoubleClickedPin  ? control.DoubleClickedPin->ID  : 0;
@@ -924,7 +919,7 @@ void ed::EditorContext::End()
 
     const bool isSelecting = CurrentAction && CurrentAction->AsSelect() != nullptr;
     const bool isDragging  = CurrentAction && CurrentAction->AsDrag()   != nullptr;
-    const bool isSizing    = CurrentAction && CurrentAction->AsSize()   != nullptr;
+    //const bool isSizing    = CurrentAction && CurrentAction->AsSize()   != nullptr;
 
     // Draw nodes
     for (auto node : Nodes)
@@ -1112,8 +1107,8 @@ void ed::EditorContext::End()
         ImU32 GRID_COLOR = GetColor(StyleColor_Grid);
         float GRID_SX    = 32.0f * Canvas.Zoom.x;
         float GRID_SY    = 32.0f * Canvas.Zoom.y;
-        ImVec2 win_pos   = Canvas.WindowScreenPos;
-        ImVec2 canvas_sz = Canvas.WindowScreenSize;
+        //ImVec2 win_pos   = Canvas.WindowScreenPos;
+        //ImVec2 canvas_sz = Canvas.WindowScreenSize;
 
         drawList->AddRectFilled(Canvas.WindowScreenPos, Canvas.WindowScreenPos + Canvas.WindowScreenSize, GetColor(StyleColor_Bg), style.WindowRounding);
 
@@ -1157,7 +1152,7 @@ void ed::EditorContext::End()
     // Move hint channels to top
     {
         auto channelCount = drawList->_ChannelsCount;
-        auto channelsToCopy = 1; //c_UserLayersCount;
+        //auto channelsToCopy = 1; //c_UserLayersCount;
         ImDrawList_ChannelsGrow(drawList, channelCount + 2);
         ImDrawList_SwapChannels(drawList, c_UserChannel_HintsBackground, channelCount + 0);
         ImDrawList_SwapChannels(drawList, c_UserChannel_Hints,           channelCount + 1);
@@ -1205,7 +1200,7 @@ void ed::EditorContext::End()
 
 bool ed::EditorContext::DoLink(int id, int startPinId, int endPinId, ImU32 color, float thickness)
 {
-    auto& editorStyle = GetStyle();
+    //auto& editorStyle = GetStyle();
 
     auto startPin = FindPin(startPinId);
     auto endPin   = FindPin(endPinId);
@@ -1374,8 +1369,6 @@ void ed::EditorContext::FindNodesInRect(const ax::rectf& r, vector<Node*>& resul
 
 void ed::EditorContext::FindLinksInRect(const ax::rectf& r, vector<Link*>& result, bool append)
 {
-    using namespace ImGuiInterop;
-
     if (!append)
         result.resize(0);
 
@@ -1534,7 +1527,7 @@ static inline auto FindItemIn(C& container, int id)
 //        if (item->ID == id)
 //            return item;
 //# endif
-    auto key = C::value_type{ id, nullptr };
+    auto key = typename C::value_type{ id, nullptr };
     auto first = container.cbegin();
     auto last  = container.cend();
     auto it    = std::lower_bound(first, last, key);
@@ -1891,7 +1884,7 @@ void ed::EditorContext::ShowMetrics(const Control& control)
         else if (control.BackgroundHot)
             return "Background";
         else
-            return "<???>";
+            return "<unknown>";
     };
 
     auto getActiveObjectName = [&control, &getObjectName]()
@@ -1901,7 +1894,7 @@ void ed::EditorContext::ShowMetrics(const Control& control)
         else if (control.BackgroundActive)
             return "Background";
         else
-            return "<???>";
+            return "<unknown>";
     };
 
     auto liveNodeCount  = (int)std::count_if(Nodes.begin(),  Nodes.end(),  [](Node*  node)  { return  node->IsLive; });
@@ -2001,7 +1994,7 @@ ed::json::object ed::NodeSettings::Serialize()
     if (GroupSize.x > 0 || GroupSize.y > 0)
         nodeData["group_size"] = json::value(serializeVector(GroupSize));
 
-    return std::move(nodeData);
+    return nodeData;
 }
 
 bool ed::NodeSettings::Parse(const char* data, const char* dataEnd, NodeSettings& settings)
@@ -2169,7 +2162,7 @@ bool ed::Settings::Parse(const char* data, const char* dataEnd, Settings& settin
         return false;
     };
 
-    auto& settingsObject = settingsValue.get<json::object>();
+    //auto& settingsObject = settingsValue.get<json::object>();
 
     auto& nodesValue = settingsValue.get("nodes");
     if (nodesValue.is<json::object>())
@@ -2206,7 +2199,7 @@ bool ed::Settings::Parse(const char* data, const char* dataEnd, Settings& settin
         auto& viewScrollValue = viewValue.get("scroll");
         auto& viewZoomValue = viewValue.get("zoom");
 
-        if (!tryParseVector(viewValue.get("scroll"), result.ViewScroll))
+        if (!tryParseVector(viewScrollValue, result.ViewScroll))
             result.ViewScroll = ImVec2(0, 0);
 
         result.ViewZoom = viewZoomValue.is<double>() ? static_cast<float>(viewZoomValue.get<double>()) : 1.0f;
@@ -2238,8 +2231,8 @@ ed::Canvas::Canvas():
 ed::Canvas::Canvas(ImVec2 position, ImVec2 size, ImVec2 zoom, ImVec2 origin):
     WindowScreenPos(position),
     WindowScreenSize(size),
-    ClientSize(size),
     ClientOrigin(origin),
+    ClientSize(size),
     Zoom(zoom),
     InvZoom(1, 1)
 {
@@ -2464,7 +2457,7 @@ void ed::FlowAnimation::Draw(ImDrawList* drawList)
 
     const auto flowAlpha = 1.0f - progress * progress;
     const auto flowColor = Editor->GetColor(StyleColor_Flow, flowAlpha);
-    const auto flowPath  = Link->GetCurve();
+    //const auto flowPath  = Link->GetCurve();
 
     Link->Draw(drawList, flowColor, 2.0f);
 
@@ -2640,9 +2633,9 @@ ed::NavigateAction::NavigateAction(EditorContext* editor):
     Scroll(0, 0),
     ScrollStart(0, 0),
     ScrollDelta(0, 0),
-    Animation(editor, *this),
     WindowScreenPos(0, 0),
     WindowScreenSize(0, 0),
+    Animation(editor, *this),
     Reason(NavigationReason::Unknown),
     LastSelectionId(0),
     LastObject(nullptr),
@@ -2999,8 +2992,8 @@ ed::EditorAction::AcceptResult ed::SizeAction::Accept(const Control& control)
 
     if (control.ActiveNode && IsGroup(control.ActiveNode) && ImGui::IsMouseDragging(0, 0))
     {
-        const auto mousePos     = to_point(ImGui::GetMousePos());
-        const auto closestPoint = control.ActiveNode->Bounds.get_closest_point_hollow(mousePos, static_cast<int>(control.ActiveNode->Rounding));
+        //const auto mousePos     = to_point(ImGui::GetMousePos());
+        //const auto closestPoint = control.ActiveNode->Bounds.get_closest_point_hollow(mousePos, static_cast<int>(control.ActiveNode->Rounding));
 
         auto pivot = GetRegion(control.ActiveNode);
         if (pivot != rect_region::center)
@@ -3062,7 +3055,6 @@ bool ed::SizeAction::Process(const Control& control)
             p1.x = std::max(p1.x + dragOffset.x, p0.x);
 
         auto newBounds = ax::rect(p0, p1);
-        auto newSize   = newBounds.size;
 
         Stable = true;
 
@@ -3292,21 +3284,21 @@ bool ed::DragAction::Process(const Control& control)
         // TODO: Move this experimental alignment to closes pivot out of internals to node API
         if (auto draggedNode = DraggedObject->AsNode())
         {
-            std::optional<int> x;
-            std::optional<int> y;
+            int x = INT_MAX;
+            int y = INT_MAX;
 
             auto testPivot = [this, &x, &y, &draggedOrigin, &dragOffset, &alignPivot](point pivot)
             {
                 auto initial   = draggedOrigin + dragOffset + pivot;
                 auto candidate = Editor->AlignPointToGrid(initial) - draggedOrigin - pivot;
 
-                if (abs(candidate.x) < abs(x.value_or(INT_MAX)))
+                if (abs(candidate.x) < abs(std::min(x, INT_MAX)))
                 {
                     x = candidate.x;
                     alignPivot.x = pivot.x;
                 }
 
-                if (abs(candidate.y) < abs(y.value_or(INT_MAX)))
+                if (abs(candidate.y) < abs(std::min(y, INT_MAX)))
                 {
                     y = candidate.y;
                     alignPivot.y = pivot.y;
@@ -3315,7 +3307,7 @@ bool ed::DragAction::Process(const Control& control)
 
             for (auto pin = draggedNode->LastPin; pin; pin = pin->PreviousPin)
             {
-                auto pivot     = (point)pin->Pivot.center() - draggedNode->Bounds.top_left();
+                auto pivot = (point)pin->Pivot.center() - draggedNode->Bounds.top_left();
                 testPivot(pivot);
             }
 
@@ -3452,8 +3444,6 @@ bool ed::SelectAction::Process(const Control& control)
 
     if (!IsActive)
         return false;
-
-    using namespace ax::ImGuiInterop;
 
     if (ImGui::IsMouseDragging(0, 0))
     {
@@ -4292,14 +4282,14 @@ void ed::DeleteItemsAction::ShowMetrics()
 {
     EditorAction::ShowMetrics();
 
-    auto getObjectName = [](Object* object)
-    {
-        if (!object) return "";
-        else if (object->AsNode()) return "Node";
-        else if (object->AsPin())  return "Pin";
-        else if (object->AsLink()) return "Link";
-        else return "";
-    };
+    //auto getObjectName = [](Object* object)
+    //{
+    //    if (!object) return "";
+    //    else if (object->AsNode()) return "Node";
+    //    else if (object->AsPin())  return "Pin";
+    //    else if (object->AsLink()) return "Link";
+    //    else return "";
+    //};
 
     ImGui::Text("%s:", GetName());
     ImGui::Text("    Active: %s", IsActive ? "yes" : "no");
@@ -4914,6 +4904,7 @@ const char* ed::Style::GetColorName(StyleColor colorIndex) const
         case StyleColor_FlowMarker: return "FlowMarker";
         case StyleColor_GroupBg: return "GroupBg";
         case StyleColor_GroupBorder: return "GroupBorder";
+        case StyleColor_Count: break;
     }
 
     assert(0);
@@ -4941,33 +4932,30 @@ float* ed::Style::GetVarFloatAddr(StyleVar idx)
         case StyleVar_PinArrowWidth:            return &PinArrowWidth;
         case StyleVar_GroupRounding:            return &GroupRounding;
         case StyleVar_GroupBorderWidth:         return &GroupBorderWidth;
+        default:                                return nullptr;
     }
-
-    return nullptr;
 }
 
 ImVec2* ed::Style::GetVarVec2Addr(StyleVar idx)
 {
     switch (idx)
     {
-        case StyleVar_SourceDirection: return &SourceDirection;
-        case StyleVar_TargetDirection: return &TargetDirection;
-        case StyleVar_PivotAlignment:  return &PivotAlignment;
-        case StyleVar_PivotSize:       return &PivotSize;
-        case StyleVar_PivotScale:      return &PivotScale;
+        case StyleVar_SourceDirection:  return &SourceDirection;
+        case StyleVar_TargetDirection:  return &TargetDirection;
+        case StyleVar_PivotAlignment:   return &PivotAlignment;
+        case StyleVar_PivotSize:        return &PivotSize;
+        case StyleVar_PivotScale:       return &PivotScale;
+        default:                        return nullptr;
     }
-
-    return nullptr;
 }
 
 ImVec4* ed::Style::GetVarVec4Addr(StyleVar idx)
 {
     switch (idx)
     {
-        case StyleVar_NodePadding: return &NodePadding;
+        case StyleVar_NodePadding:  return &NodePadding;
+        default:                    return nullptr;
     }
-
-    return nullptr;
 }
 
 

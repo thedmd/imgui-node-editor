@@ -42,8 +42,6 @@ void util::BlueprintNodeBuilder::Begin(int id)
 
 void util::BlueprintNodeBuilder::End()
 {
-    using namespace ImGuiInterop;
-
     SetStage(Stage::End);
 
     ed::EndNode();
@@ -71,7 +69,7 @@ void util::BlueprintNodeBuilder::End()
 
             auto headerSeparatorRect      = ax::rect(HeaderRect.bottom_left(), ContentRect.top_right());
             auto footerSeparatorRect      = ax::rect(ContentRect.bottom_left(), NodeRect.bottom_right());
-            auto contentWithSeparatorRect = ax::make_union(headerSeparatorRect, footerSeparatorRect);
+            //auto contentWithSeparatorRect = ax::make_union(headerSeparatorRect, footerSeparatorRect);
 
             if (!headerSeparatorRect.is_empty())
             {
@@ -165,8 +163,6 @@ void util::BlueprintNodeBuilder::EndOutput()
 
 bool util::BlueprintNodeBuilder::SetStage(Stage stage)
 {
-    using namespace ImGuiInterop;
-
     if (stage == CurrentStage)
         return false;
 
@@ -225,6 +221,9 @@ bool util::BlueprintNodeBuilder::SetStage(Stage stage)
             break;
 
         case Stage::End:
+            break;
+            
+        case Stage::Invalid:
             break;
     }
 
@@ -286,6 +285,9 @@ bool util::BlueprintNodeBuilder::SetStage(Stage stage)
             //ImGui::Spring(0);
             ImGui::EndVertical();
             NodeRect = ImGui_GetItemRect();
+            break;
+            
+        case Stage::Invalid:
             break;
     }
 
