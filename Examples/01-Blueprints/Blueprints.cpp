@@ -61,7 +61,7 @@ struct Node;
 struct Pin
 {
     int         ID;
-    Node*       Node;
+    ::Node*     Node;
     std::string Name;
     PinType     Type;
     PinKind     Kind;

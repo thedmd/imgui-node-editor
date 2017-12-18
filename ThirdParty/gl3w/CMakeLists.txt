@@ -11,4 +11,8 @@ add_library(gl3w STATIC ${_gl3w_Sources})
 
 target_include_directories(gl3w PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/Include)
 
+if (UNIX)
+    target_link_libraries(gl3w PRIVATE GL dl)
+endif()
+
 set_property(TARGET gl3w PROPERTY FOLDER "ThirdParty")

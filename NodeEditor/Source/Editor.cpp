@@ -12,6 +12,7 @@
 # include <string>
 # include <fstream>
 # include <bitset>
+# include <climits>
 
 
 //------------------------------------------------------------------------------

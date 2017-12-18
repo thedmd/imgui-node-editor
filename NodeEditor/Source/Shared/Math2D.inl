@@ -566,7 +566,7 @@ inline ax::matrix4 ax::matrix4::transposed() const
 namespace ax {
 namespace detail {
 
-# if defined(__clang__)
+# if defined(__clang__) || defined(__GNUC__)
 template <typename M, typename T>
 void transform_points(const M& m, basic_point<T>* points, size_t count);
 # else
