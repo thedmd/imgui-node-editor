@@ -10,9 +10,19 @@ Project purpose is to serve as a basis for more complex solutions like blueprint
 
 ## Code
 
-Editor code is in `NodeEditor` directory alone. Project can be build with examples with help of CMake 3.8:
+Editor code is in `NodeEditor` directory alone. Project can be build with examples with help of CMake 3.8. macOS and Linux require GLFW3 to be installed on your system.
 ```
+Windows:
     cmake -H. -BBuild -G "Visual Studio 15 2017 Win64"
+    
+macOS:
+    cmake -H. -BBuild -G "Xcode"
+    
+Linux:
+    cmake -H. -BBuild -G "Unix Makefiles"
+
+Build:
+    cd Build
     cmake --build Build --config Release
 ```
 You will find examples in `Build\Bin` directory.
