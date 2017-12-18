@@ -8,7 +8,24 @@ function(add_example name)
     source_group("" FILES ${_Example_Sources})
     source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${_Example_Sources})
 
-    add_executable(${name} WIN32 ${_Example_Sources})
+    set(_Example_Type)
+    if (WIN32)
+        set(_Example_Type WIN32)
+    elseif (APPLE)
+        set(_Example_Type MACOSX_BUNDLE)
+
+        file(GLOB _Example_Resources "${CMAKE_SOURCE_DIR}/Data/*")
+        set_source_files_properties(${_Example_Resources} PROPERTIES
+            MACOSX_PACKAGE_LOCATION "Resources/Data"
+        )
+        set(_Example_Icon "${CMAKE_SOURCE_DIR}/Examples/Common/Support/Icon.icns")
+        list(APPEND _Example_Resources ${_Example_Icon})
+        set_source_files_properties(${_Example_Icon} PROPERTIES
+            MACOSX_PACKAGE_LOCATION "Resources"
+        )
+    endif()
+
+    add_executable(${name} ${_Example_Type} ${_Example_Sources} ${_Example_Resources})
 
     target_link_libraries(${name} PRIVATE ImGui NodeEditor Shared Application)
 
@@ -25,6 +42,12 @@ function(add_example name)
         RELWITHDEBINGO_POSTFIX                  _rd
         MINSIZEREL_POSTFIX                      _r
         VS_DEBUGGER_WORKING_DIRECTORY           ${_ExampleBinDir}
+        MACOSX_BUNDLE_INFO_PLIST                "${CMAKE_SOURCE_DIR}/Examples/Common/Support/Info.plist.in"
+        MACOSX_BUNDLE_BUNDLE_NAME               "${PACKAGE_NAME}"
+        MACOSX_BUNDLE_GUI_IDENTIFIER            "com.sandbox.collisions"
+        MACOSX_BUNDLE_LONG_VERSION_STRING       "${PACKAGE_VERSION}"
+        MACOSX_BUNDLE_SHORT_VERSION_STRING      "${PACKAGE_VERSION_MAJOR}.${PACKAGE_VERSION_MINOR}"
+        MACOSX_BUNDLE_ICON_FILE                 Icon.icns
     )
 
     add_custom_command(

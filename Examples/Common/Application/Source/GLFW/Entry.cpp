@@ -9,6 +9,13 @@
 #include <GL/gl3w.h>    // This example is using gl3w to access OpenGL functions (because it is small). You may use glew/glad/glLoadGen/etc. whatever already works for you.
 #include <GLFW/glfw3.h>
 #include "Application.h"
+#include <vector>
+#include <algorithm>
+
+#define STB_IMAGE_IMPLEMENTATION
+extern "C" {
+#include "stb_image.h"
+}
 
 static void error_callback(int error, const char* description)
 {
@@ -17,25 +24,81 @@ static void error_callback(int error, const char* description)
 
 ImTextureID Application_LoadTexture(const char* path)
 {
-    return nullptr;
+    int width = 0, height = 0, component = 0;
+    if (auto data = stbi_load(path, &width, &height, &component, 4))
+    {
+        auto texture = Application_CreateTexture(data, width, height);
+        stbi_image_free(data);
+        return texture;
+    }
+    else
+        return nullptr;
 }
+
+struct ImTexture
+{
+    GLuint TextureID = 0;
+    int    Width     = 0;
+    int    Height    = 0;
+};
+
+static std::vector<ImTexture> g_Textures;
 
 ImTextureID Application_CreateTexture(const void* data, int width, int height)
 {
-    return nullptr;
+    g_Textures.resize(g_Textures.size() + 1);
+    ImTexture& texture = g_Textures.back();
+
+    // Upload texture to graphics system
+    GLint last_texture = 0;
+    glGetIntegerv(GL_TEXTURE_BINDING_2D, &last_texture);
+    glGenTextures(1, &texture.TextureID);
+    glBindTexture(GL_TEXTURE_2D, texture.TextureID);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
+    glBindTexture(GL_TEXTURE_2D, last_texture);
+    
+    texture.Width  = width;
+    texture.Height = height;
+    
+    return reinterpret_cast<ImTextureID>(texture.TextureID);
+}
+
+static std::vector<ImTexture>::iterator Application_FindTexture(ImTextureID texture)
+{
+    auto textureID = static_cast<GLuint>(reinterpret_cast<std::intptr_t>(texture));
+    
+    return std::find_if(g_Textures.begin(), g_Textures.end(), [textureID](ImTexture& texture)
+    {
+        return texture.TextureID == textureID;
+    });
 }
 
 void Application_DestroyTexture(ImTextureID texture)
 {
+    auto textureIt = Application_FindTexture(texture);
+    if (textureIt == g_Textures.end())
+        return;
+    
+    glDeleteTextures(1, &textureIt->TextureID);
+    
+    g_Textures.erase(textureIt);
 }
 
 int Application_GetTextureWidth(ImTextureID texture)
 {
+    auto textureIt = Application_FindTexture(texture);
+    if (textureIt != g_Textures.end())
+        return textureIt->Width;
     return 0;
 }
 
 int Application_GetTextureHeight(ImTextureID texture)
 {
+    auto textureIt = Application_FindTexture(texture);
+    if (textureIt != g_Textures.end())
+        return textureIt->Height;
     return 0;
 }
 
@@ -50,6 +113,8 @@ int main(int, char**)
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 #if __APPLE__
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
+    glfwWindowHint(GLFW_COCOA_RETINA_FRAMEBUFFER, GL_TRUE);
+    glfwWindowHint(GLFW_COCOA_GRAPHICS_SWITCHING, GL_TRUE);
 #endif
     GLFWwindow* window = glfwCreateWindow(1280, 720, "ImGui OpenGL3 example", NULL, NULL);
     glfwMakeContextCurrent(window);
