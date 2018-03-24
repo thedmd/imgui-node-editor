@@ -11,6 +11,7 @@
 #include "Application.h"
 #include <vector>
 #include <algorithm>
+#include <cstdint>
 
 #define STB_IMAGE_IMPLEMENTATION
 extern "C" {
