@@ -2134,7 +2134,7 @@ std::string ed::Settings::Serialize()
 
 bool ed::Settings::Parse(const char* data, const char* dataEnd, Settings& settings)
 {
-    Settings result;
+    Settings result = settings;
 
     json::value settingsValue;
     auto error = json::parse(settingsValue, data, dataEnd);
