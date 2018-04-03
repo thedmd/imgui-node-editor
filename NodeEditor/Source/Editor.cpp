@@ -3936,9 +3936,9 @@ bool ed::CreateItemAction::Process(const Control& control)
 
     if (m_DraggedPin && control.ActivePin == m_DraggedPin && (m_CurrentStage == Possible))
     {
-        const auto draggingFromSource = (m_DraggedPin->m_Kind == PinKind::Source);
+        const auto draggingFromSource = (m_DraggedPin->m_Kind == PinKind::Output);
 
-        ed::Pin cursorPin(Editor, 0, draggingFromSource ? PinKind::Target : PinKind::Source);
+        ed::Pin cursorPin(Editor, 0, draggingFromSource ? PinKind::Input : PinKind::Output);
         cursorPin.m_Pivot    = ax::rectf(to_pointf(ImGui::GetMousePos()), sizef(0, 0));
         cursorPin.m_Dir      = -m_DraggedPin->m_Dir;
         cursorPin.m_Strength =  m_DraggedPin->m_Strength;
@@ -4591,7 +4591,7 @@ void ed::NodeBuilder::BeginPin(int pinId, PinKind kind)
     m_CurrentPin->m_Radius      = editorStyle.PinRadius;
     m_CurrentPin->m_ArrowSize   = editorStyle.PinArrowSize;
     m_CurrentPin->m_ArrowWidth  = editorStyle.PinArrowWidth;
-    m_CurrentPin->m_Dir         = kind == PinKind::Source ? editorStyle.SourceDirection : editorStyle.TargetDirection;
+    m_CurrentPin->m_Dir         = kind == PinKind::Output ? editorStyle.SourceDirection : editorStyle.TargetDirection;
     m_CurrentPin->m_Strength    = editorStyle.LinkStrength;
 
     m_CurrentPin->m_PreviousPin = m_CurrentNode->m_LastPin;

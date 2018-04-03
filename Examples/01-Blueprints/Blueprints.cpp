@@ -44,8 +44,8 @@ enum class PinType
 
 enum class PinKind
 {
-    Source,
-    Target
+    Output,
+    Input
 };
 
 enum class NodeType
@@ -67,7 +67,7 @@ struct Pin
     PinKind     Kind;
 
     Pin(int id, const char* name, PinType type):
-        ID(id), Node(nullptr), Name(name), Type(type), Kind(PinKind::Target)
+        ID(id), Node(nullptr), Name(name), Type(type), Kind(PinKind::Input)
     {
     }
 };
@@ -226,13 +226,13 @@ static void BuildNode(Node* node)
     for (auto& input : node->Inputs)
     {
         input.Node = node;
-        input.Kind = PinKind::Target;
+        input.Kind = PinKind::Input;
     }
 
     for (auto& output : node->Outputs)
     {
         output.Node = node;
-        output.Kind = PinKind::Source;
+        output.Kind = PinKind::Output;
     }
 }
 
@@ -858,7 +858,7 @@ void Application_Frame()
                                 if (newLinkPin && !CanCreateLink(newLinkPin, &output) && &output != newLinkPin)
                                     alpha = alpha * (48.0f / 255.0f);
 
-                                ed::BeginPin(output.ID, ed::PinKind::Source);
+                                ed::BeginPin(output.ID, ed::PinKind::Output);
                                 ed::PinPivotAlignment(ImVec2(1.0f, 0.5f));
                                 ed::PinPivotSize(ImVec2(0, 0));
                                 ImGui::BeginHorizontal(output.ID);
@@ -983,7 +983,7 @@ void Application_Frame()
                     ed::PushStyleVar(ed::StyleVar_PinArrowSize, 10.0f);
                     ed::PushStyleVar(ed::StyleVar_PinArrowWidth, 10.0f);
                     ed::PushStyleVar(ed::StyleVar_PinCorners, 12);
-                    ed::BeginPin(pin.ID, ed::PinKind::Target);
+                    ed::BeginPin(pin.ID, ed::PinKind::Input);
                     ed::PinPivotRect(to_imvec(inputsRect.top_left()), to_imvec(inputsRect.bottom_right()));
                     ed::PinRect(to_imvec(inputsRect.top_left()), to_imvec(inputsRect.bottom_right()));
                     ed::EndPin();
@@ -1025,7 +1025,7 @@ void Application_Frame()
                 outputsRect = ImGui_GetItemRect();
 
                 ed::PushStyleVar(ed::StyleVar_PinCorners, 3);
-                ed::BeginPin(pin.ID, ed::PinKind::Source);
+                ed::BeginPin(pin.ID, ed::PinKind::Output);
                 ed::PinPivotRect(to_imvec(outputsRect.top_left()), to_imvec(outputsRect.bottom_right()));
                 ed::PinRect(to_imvec(outputsRect.top_left()), to_imvec(outputsRect.bottom_right()));
                 ed::EndPin();
@@ -1170,7 +1170,7 @@ void Application_Frame()
 
                     newLinkPin = startPin ? startPin : endPin;
 
-                    if (startPin->Kind == PinKind::Target)
+                    if (startPin->Kind == PinKind::Input)
                     {
                         std::swap(startPin, endPin);
                         std::swap(startPinId, endPinId);
@@ -1379,14 +1379,14 @@ void Application_Frame()
 
             if (auto startPin = newNodeLinkPin)
             {
-                auto& pins = startPin->Kind == PinKind::Target ? node->Outputs : node->Inputs;
+                auto& pins = startPin->Kind == PinKind::Input ? node->Outputs : node->Inputs;
 
                 for (auto& pin : pins)
                 {
                     if (CanCreateLink(startPin, &pin))
                     {
                         auto endPin = &pin;
-                        if (startPin->Kind == PinKind::Target)
+                        if (startPin->Kind == PinKind::Input)
                             std::swap(startPin, endPin);
 
                         s_Links.emplace_back(Link(GetNextId(), startPin->ID, endPin->ID));

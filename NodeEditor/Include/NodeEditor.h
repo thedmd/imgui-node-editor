@@ -69,8 +69,8 @@ struct Config
 //------------------------------------------------------------------------------
 enum class PinKind
 {
-    Target,
-    Source
+    Input,
+    Output
 };
 
 

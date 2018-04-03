@@ -28,11 +28,11 @@ void Application_Frame()
     // Start drawing nodes.
     ed::BeginNode(uniqueId++);
         ImGui::Text("Node A");
-        ed::BeginPin(uniqueId++, ed::PinKind::Target);
+        ed::BeginPin(uniqueId++, ed::PinKind::Input);
             ImGui::Text("-> In");
         ed::EndPin();
         ImGui::SameLine();
-        ed::BeginPin(uniqueId++, ed::PinKind::Source);
+        ed::BeginPin(uniqueId++, ed::PinKind::Output);
             ImGui::Text("Out ->");
         ed::EndPin();
     ed::EndNode();

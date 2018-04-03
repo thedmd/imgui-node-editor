@@ -117,7 +117,7 @@ void util::BlueprintNodeBuilder::Input(int id)
     if (applyPadding)
         ImGui::Spring(0);
 
-    Pin(id, PinKind::Target);
+    Pin(id, PinKind::Input);
 
     ImGui::BeginHorizontal(id);
 }
@@ -149,7 +149,7 @@ void util::BlueprintNodeBuilder::Output(int id)
     if (applyPadding)
         ImGui::Spring(0);
 
-    Pin(id, PinKind::Source);
+    Pin(id, PinKind::Output);
 
     ImGui::BeginHorizontal(id);
 }
