@@ -8,16 +8,24 @@ Project purpose is to serve as a basis for more complex solutions like blueprint
 
 ![Preview](Screenshots/node_editor_overview.gif)
 
+Project is a prototype. What that means in practise:
+ * API will break. Current API does not help user do the right things and require some head banging on the wall to understand it. Can be done much more better.
+ * Code is hacked to test ideas, not to pursue production quality
+ * Relies on modified version of ImGui. There is a goal to use vanila version of ImGui and provide hacked-in code as an extension.
+ * Keeping dependencies minimal is not a priority. In the long run C++14 without non ImGui dependencies should be a minimum. Currently you will find parts of C++17 and use of picojson.
+ * If you have issues with editor, please let me know. I'm not going to promise immediate fix but I for sure will take them into account while reworking code.
+
+
 ## Code
 
 Editor code is in `NodeEditor` directory alone. Project can be build with examples with help of CMake 3.8. macOS and Linux require GLFW3 to be installed on your system.
 ```
 Windows:
     cmake -H. -BBuild -G "Visual Studio 15 2017 Win64"
-    
+
 macOS:
     cmake -H. -BBuild -G "Xcode"
-    
+
 Linux:
     cmake -H. -BBuild -G "Unix Makefiles"
 
