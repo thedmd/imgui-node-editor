@@ -60,7 +60,7 @@ struct Node;
 
 struct Pin
 {
-    int         ID;
+    ed::PinId   ID;
     ::Node*     Node;
     std::string Name;
     PinType     Type;
@@ -74,7 +74,7 @@ struct Pin
 
 struct Node
 {
-    int ID;
+    ed::NodeId ID;
     std::string Name;
     std::vector<Pin> Inputs;
     std::vector<Pin> Outputs;
@@ -93,14 +93,14 @@ struct Node
 
 struct Link
 {
-    int ID;
+    ed::LinkId ID;
 
-    int StartPinID;
-    int EndPinID;
+    ed::PinId StartPinID;
+    ed::PinId EndPinID;
 
     ImColor Color;
 
-    Link(int id, int startPinId, int endPinId):
+    Link(ed::LinkId id, ed::PinId startPinId, ed::PinId endPinId):
         ID(id), StartPinID(startPinId), EndPinID(endPinId), Color(255, 255, 255)
     {
     }
@@ -115,8 +115,16 @@ static ImTextureID          s_HeaderBackground = nullptr;
 static ImTextureID          s_SaveIcon = nullptr;
 static ImTextureID          s_RestoreIcon = nullptr;
 
+struct NodeIdLess
+{
+    bool operator()(const ed::NodeId& lhs, const ed::NodeId& rhs) const
+    {
+        return lhs.ToPointer() < rhs.ToPointer();
+    }
+};
+
 static const float          s_TouchTime = 1.0f;
-static std::map<int, float> s_NodeTouchTime;
+static std::map<ed::NodeId, float, NodeIdLess> s_NodeTouchTime;
 
 static int s_NextId = 1;
 static int GetNextId()
@@ -124,12 +132,22 @@ static int GetNextId()
     return s_NextId++;
 }
 
-static void TouchNode(int id)
+static ed::NodeId GetNextNodeId()
+{
+    return ed::NodeId(GetNextId());
+}
+
+static ed::LinkId GetNextLinkId()
+{
+    return ed::LinkId(GetNextId());
+}
+
+static void TouchNode(ed::NodeId id)
 {
     s_NodeTouchTime[id] = s_TouchTime;
 }
 
-static float GetTouchProgress(int id)
+static float GetTouchProgress(ed::NodeId id)
 {
     auto it = s_NodeTouchTime.find(id);
     if (it != s_NodeTouchTime.end() && it->second > 0.0f)
@@ -148,7 +166,7 @@ static void UpdateTouch()
     }
 }
 
-static Node* FindNode(int id)
+static Node* FindNode(ed::NodeId id)
 {
     for (auto& node : s_Nodes)
         if (node.ID == id)
@@ -157,7 +175,7 @@ static Node* FindNode(int id)
     return nullptr;
 }
 
-static Link* FindLink(int id)
+static Link* FindLink(ed::LinkId id)
 {
     for (auto& link : s_Links)
         if (link.ID == id)
@@ -166,9 +184,9 @@ static Link* FindLink(int id)
     return nullptr;
 }
 
-static Pin* FindPin(int id)
+static Pin* FindPin(ed::PinId id)
 {
-    if (id <= 0)
+    if (!id)
         return nullptr;
 
     for (auto& node : s_Nodes)
@@ -185,9 +203,9 @@ static Pin* FindPin(int id)
     return nullptr;
 }
 
-static bool IsPinLinked(int id)
+static bool IsPinLinked(ed::PinId id)
 {
-    if (id <= 0)
+    if (!id)
         return false;
 
     for (auto& link : s_Links)
@@ -403,7 +421,7 @@ void Application_Initialize()
 
     config.SettingsFile = "Blueprints.json";
 
-    config.LoadNodeSettings = [](int nodeId, char* data, void* userPointer) -> size_t
+    config.LoadNodeSettings = [](ed::NodeId nodeId, char* data, void* userPointer) -> size_t
     {
         auto node = FindNode(nodeId);
         if (!node)
@@ -414,7 +432,7 @@ void Application_Initialize()
         return node->State.size();
     };
 
-    config.SaveNodeSettings = [](int nodeId, const char* data, size_t size, ed::SaveReasonFlags reason, void* userPointer) -> bool
+    config.SaveNodeSettings = [](ed::NodeId nodeId, const char* data, size_t size, ed::SaveReasonFlags reason, void* userPointer) -> bool
     {
         auto node = FindNode(nodeId);
         if (!node)
@@ -451,8 +469,8 @@ void Application_Initialize()
 
     BuildNodes();
 
-    s_Links.push_back(Link(GetNextId(), s_Nodes[5].Outputs[0].ID, s_Nodes[6].Inputs[0].ID));
-    s_Links.push_back(Link(GetNextId(), s_Nodes[5].Outputs[0].ID, s_Nodes[7].Inputs[0].ID));
+    s_Links.push_back(Link(GetNextLinkId(), s_Nodes[5].Outputs[0].ID, s_Nodes[6].Inputs[0].ID));
+    s_Links.push_back(Link(GetNextLinkId(), s_Nodes[5].Outputs[0].ID, s_Nodes[7].Inputs[0].ID));
 
     s_HeaderBackground = Application_LoadTexture("Data/BlueprintBackground.png");
     s_SaveIcon         = Application_LoadTexture("Data/ic_save_white_24dp.png");
@@ -653,12 +671,13 @@ void ShowLeftPane(float paneWidth)
     if (showStyleEditor)
         ShowStyleEditor(&showStyleEditor);
 
-    std::vector<int> selectedNodes, selectedLinks;
+    std::vector<ed::NodeId> selectedNodes;
+    std::vector<ed::LinkId> selectedLinks;
     selectedNodes.resize(ed::GetSelectedObjectCount());
     selectedLinks.resize(ed::GetSelectedObjectCount());
 
-    int nodeCount = ed::GetSelectedNodes(selectedNodes.data(), selectedNodes.size());
-    int linkCount = ed::GetSelectedLinks(selectedLinks.data(), selectedLinks.size());
+    int nodeCount = ed::GetSelectedNodes(selectedNodes.data(), static_cast<int>(selectedNodes.size()));
+    int linkCount = ed::GetSelectedLinks(selectedLinks.data(), static_cast<int>(selectedLinks.size()));
 
     selectedNodes.resize(nodeCount);
     selectedLinks.resize(linkCount);
@@ -677,7 +696,7 @@ void ShowLeftPane(float paneWidth)
     ImGui::Indent();
     for (auto& node : s_Nodes)
     {
-        ImGui::PushID(node.ID);
+        ImGui::PushID(node.ID.ToPointer());
         auto start = ImGui::GetCursorScreenPos();
 
         if (const auto progress = GetTouchProgress(node.ID))
@@ -689,7 +708,7 @@ void ShowLeftPane(float paneWidth)
         }
 
         bool isSelected = std::find(selectedNodes.begin(), selectedNodes.end(), node.ID) != selectedNodes.end();
-        if (ImGui::Selectable((node.Name + "##" + std::to_string(node.ID)).c_str(), &isSelected))
+        if (ImGui::Selectable((node.Name + "##" + std::to_string(reinterpret_cast<uintptr_t>(node.ID.ToPointer()))).c_str(), &isSelected))
         {
             if (io.KeyCtrl)
             {
@@ -706,7 +725,7 @@ void ShowLeftPane(float paneWidth)
         if (ImGui::IsItemHovered() && !node.State.empty())
             ImGui::SetTooltip("State: %s", node.State.c_str());
 
-        auto id = std::string("(") + std::to_string(node.ID) + ")";
+        auto id = std::string("(") + std::to_string(reinterpret_cast<uintptr_t>(node.ID.ToPointer())) + ")";
         auto textSize = ImGui::CalcTextSize(id.c_str(), nullptr);
         auto iconPanelPos = start + ImVec2(
             paneWidth - ImGui::GetStyle().FramePadding.x - ImGui::GetStyle().IndentSpacing - saveIconWidth - restoreIconWidth - ImGui::GetStyle().ItemInnerSpacing.x * 1,
@@ -810,7 +829,9 @@ void Application_Frame()
 
     //auto& style = ImGui::GetStyle();
 
-    static int  contextId      = 0;
+    static ed::NodeId contextNodeId      = 0;
+    static ed::LinkId contextLinkId      = 0;
+    static ed::PinId  contextPinId       = 0;
     static bool createNewNode  = false;
     static Pin* newNodeLinkPin = nullptr;
     static Pin* newLinkPin     = nullptr;
@@ -865,7 +886,7 @@ void Application_Frame()
                                 ed::BeginPin(output.ID, ed::PinKind::Output);
                                 ed::PinPivotAlignment(ImVec2(1.0f, 0.5f));
                                 ed::PinPivotSize(ImVec2(0, 0));
-                                ImGui::BeginHorizontal(output.ID);
+                                ImGui::BeginHorizontal(output.ID.ToPointer());
                                 ImGui::PushStyleVar(ImGuiStyleVar_Alpha, alpha);
                                 if (!output.Name.empty())
                                 {
@@ -971,7 +992,7 @@ void Application_Frame()
             ed::PushStyleVar(ed::StyleVar_PinRadius, 5.0f);
             ed::BeginNode(node.ID);
 
-            ImGui::BeginVertical(node.ID);
+            ImGui::BeginVertical(node.ID.ToPointer());
             ImGui::BeginHorizontal("inputs");
             ImGui::Spring(0, padding * 2);
 
@@ -1166,7 +1187,7 @@ void Application_Frame()
                     ImGui::TextUnformatted(label);
                 };
 
-                int startPinId = 0, endPinId = 0;
+                ed::PinId startPinId = 0, endPinId = 0;
                 if (ed::QueryNewLink(&startPinId, &endPinId))
                 {
                     auto startPin = FindPin(startPinId);
@@ -1213,7 +1234,7 @@ void Application_Frame()
                     }
                 }
 
-                int pinId = 0;
+                ed::PinId pinId = 0;
                 if (ed::QueryNewNode(&pinId))
                 {
                     newLinkPin = FindPin(pinId);
@@ -1236,7 +1257,7 @@ void Application_Frame()
 
             if (ed::BeginDelete())
             {
-                int linkId = 0;
+                ed::LinkId linkId = 0;
                 while (ed::QueryDeletedLink(&linkId))
                 {
                     if (ed::AcceptDeletedItem())
@@ -1247,7 +1268,7 @@ void Application_Frame()
                     }
                 }
 
-                int nodeId = 0;
+                ed::NodeId nodeId = 0;
                 while (ed::QueryDeletedNode(&nodeId))
                 {
                     if (ed::AcceptDeletedItem())
@@ -1264,11 +1285,11 @@ void Application_Frame()
         ImGui::SetCursorScreenPos(cursorTopLeft);
     }
 
-    if (ed::ShowNodeContextMenu(&contextId))
+    if (ed::ShowNodeContextMenu(&contextNodeId))
         ImGui::OpenPopup("Node Context Menu");
-    else if (ed::ShowPinContextMenu(&contextId))
+    else if (ed::ShowPinContextMenu(&contextPinId))
         ImGui::OpenPopup("Pin Context Menu");
-    else if (ed::ShowLinkContextMenu(&contextId))
+    else if (ed::ShowLinkContextMenu(&contextLinkId))
         ImGui::OpenPopup("Link Context Menu");
     else if (ed::ShowBackgroundContextMenu())
     {
@@ -1280,7 +1301,7 @@ void Application_Frame()
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(8, 8));
     if (ImGui::BeginPopup("Node Context Menu"))
     {
-        auto node = FindNode(contextId);
+        auto node = FindNode(contextNodeId);
 
         ImGui::TextUnformatted("Node Context Menu");
         ImGui::Separator();
@@ -1292,16 +1313,16 @@ void Application_Frame()
             ImGui::Text("Outputs: %d", (int)node->Outputs.size());
         }
         else
-            ImGui::Text("Unknown node: %d", contextId);
+            ImGui::Text("Unknown node: %d", contextNodeId);
         ImGui::Separator();
         if (ImGui::MenuItem("Delete"))
-            ed::DeleteNode(contextId);
+            ed::DeleteNode(contextNodeId);
         ImGui::EndPopup();
     }
 
     if (ImGui::BeginPopup("Pin Context Menu"))
     {
-        auto pin = FindPin(contextId);
+        auto pin = FindPin(contextPinId);
 
         ImGui::TextUnformatted("Pin Context Menu");
         ImGui::Separator();
@@ -1314,14 +1335,14 @@ void Application_Frame()
                 ImGui::Text("Node: %s", "<none>");
         }
         else
-            ImGui::Text("Unknown pin: %d", contextId);
+            ImGui::Text("Unknown pin: %d", contextPinId);
 
         ImGui::EndPopup();
     }
 
     if (ImGui::BeginPopup("Link Context Menu"))
     {
-        auto link = FindLink(contextId);
+        auto link = FindLink(contextLinkId);
 
         ImGui::TextUnformatted("Link Context Menu");
         ImGui::Separator();
@@ -1332,10 +1353,10 @@ void Application_Frame()
             ImGui::Text("To: %d", link->EndPinID);
         }
         else
-            ImGui::Text("Unknown link: %d", contextId);
+            ImGui::Text("Unknown link: %d", contextLinkId);
         ImGui::Separator();
         if (ImGui::MenuItem("Delete"))
-            ed::DeleteLink(contextId);
+            ed::DeleteLink(contextLinkId);
         ImGui::EndPopup();
     }
 
@@ -1408,8 +1429,6 @@ void Application_Frame()
         createNewNode = false;
     ImGui::PopStyleVar();
     ed::Resume();
-
-    // ImGui_PushGizmo()
 
 /*
     cubic_bezier_t c;

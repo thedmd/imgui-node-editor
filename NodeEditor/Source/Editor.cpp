@@ -1061,7 +1061,7 @@ void ed::EditorContext::End()
     // node drawing order.
     {
         // Copy group nodes
-        auto liveNodeCount = std::count_if(m_Nodes.begin(), m_Nodes.end(), [](Node* node) { return node->m_IsLive; });
+        auto liveNodeCount = static_cast<int>(std::count_if(m_Nodes.begin(), m_Nodes.end(), [](Node* node) { return node->m_IsLive; }));
 
         // Reserve two additional channels for sorted list of channels
         auto nodeChannelCount = drawList->_ChannelsCount;
@@ -1185,7 +1185,7 @@ void ed::EditorContext::End()
     if (!m_CurrentAction && m_IsFirstFrame && !m_Settings.m_Selection.empty())
     {
         ClearSelection();
-        for (int id : m_Settings.m_Selection)
+        for (auto id : m_Settings.m_Selection)
             if (auto object = FindObject(id))
                 SelectObject(object);
     }
@@ -1199,7 +1199,7 @@ void ed::EditorContext::End()
     m_IsFirstFrame = false;
 }
 
-bool ed::EditorContext::DoLink(int id, int startPinId, int endPinId, ImU32 color, float thickness)
+bool ed::EditorContext::DoLink(LinkId id, PinId startPinId, PinId endPinId, ImU32 color, float thickness)
 {
     //auto& editorStyle = GetStyle();
 
@@ -1224,7 +1224,7 @@ bool ed::EditorContext::DoLink(int id, int startPinId, int endPinId, ImU32 color
     return true;
 }
 
-void ed::EditorContext::SetNodePosition(int nodeId, const ImVec2& position)
+void ed::EditorContext::SetNodePosition(NodeId nodeId, const ImVec2& position)
 {
     auto node = FindNode(nodeId);
     if (!node)
@@ -1241,7 +1241,7 @@ void ed::EditorContext::SetNodePosition(int nodeId, const ImVec2& position)
     }
 }
 
-ImVec2 ed::EditorContext::GetNodePosition(int nodeId)
+ImVec2 ed::EditorContext::GetNodePosition(NodeId nodeId)
 {
     auto node = FindNode(nodeId);
     if (!node)
@@ -1250,7 +1250,7 @@ ImVec2 ed::EditorContext::GetNodePosition(int nodeId)
     return to_imvec(node->m_Bounds.location);
 }
 
-ImVec2 ed::EditorContext::GetNodeSize(int nodeId)
+ImVec2 ed::EditorContext::GetNodeSize(NodeId nodeId)
 {
     auto node = FindNode(nodeId);
     if (!node)
@@ -1381,7 +1381,7 @@ void ed::EditorContext::FindLinksInRect(const ax::rectf& r, vector<Link*>& resul
             result.push_back(link);
 }
 
-void ed::EditorContext::FindLinksForNode(int nodeId, vector<Link*>& result, bool add)
+void ed::EditorContext::FindLinksForNode(NodeId nodeId, vector<Link*>& result, bool add)
 {
     if (!add)
         result.clear();
@@ -1396,7 +1396,7 @@ void ed::EditorContext::FindLinksForNode(int nodeId, vector<Link*>& result, bool
     }
 }
 
-bool ed::EditorContext::PinHadAnyLinks(int pinId)
+bool ed::EditorContext::PinHadAnyLinks(PinId pinId)
 {
     auto pin = FindPin(pinId);
     if (!pin || !pin->m_IsLive)
@@ -1436,7 +1436,7 @@ bool ed::EditorContext::IsActive()
     return m_IsWindowActive;
 }
 
-ed::Pin* ed::EditorContext::CreatePin(int id, PinKind kind)
+ed::Pin* ed::EditorContext::CreatePin(PinId id, PinKind kind)
 {
     assert(nullptr == FindObject(id));
     auto pin = new Pin(this, id, kind);
@@ -1445,7 +1445,7 @@ ed::Pin* ed::EditorContext::CreatePin(int id, PinKind kind)
     return pin;
 }
 
-ed::Node* ed::EditorContext::CreateNode(int id)
+ed::Node* ed::EditorContext::CreateNode(NodeId id)
 {
     assert(nullptr == FindObject(id));
     auto node = new Node(this, id);
@@ -1475,7 +1475,7 @@ ed::Node* ed::EditorContext::CreateNode(int id)
     return node;
 }
 
-ed::Link* ed::EditorContext::CreateLink(int id)
+ed::Link* ed::EditorContext::CreateLink(LinkId id)
 {
     assert(nullptr == FindObject(id));
     auto link = new Link(this, id);
@@ -1485,19 +1485,8 @@ ed::Link* ed::EditorContext::CreateLink(int id)
     return link;
 }
 
-ed::Object* ed::EditorContext::FindObject(int id)
-{
-    if (auto object = FindNode(id))
-        return object;
-    if (auto object = FindPin(id))
-        return object;
-    if (auto object = FindLink(id))
-        return object;
-    return nullptr;
-}
-
-template <typename C>
-static inline auto FindItemInLinear(C& container, int id)
+template <typename C, typename Id>
+static inline auto FindItemInLinear(C& container, Id id)
 {
 # if defined(_DEBUG)
     auto start = container.data();
@@ -1514,8 +1503,8 @@ static inline auto FindItemInLinear(C& container, int id)
    return static_cast<decltype(container[0].m_Object)>(nullptr);
 }
 
-template <typename C>
-static inline auto FindItemIn(C& container, int id)
+template <typename C, typename Id>
+static inline auto FindItemIn(C& container, Id id)
 {
 //# if defined(_DEBUG)
 //    auto start = container.data();
@@ -1538,22 +1527,34 @@ static inline auto FindItemIn(C& container, int id)
         return static_cast<decltype(it->m_Object)>(nullptr);
 }
 
-ed::Node* ed::EditorContext::FindNode(int id)
+ed::Node* ed::EditorContext::FindNode(NodeId id)
 {
     return FindItemInLinear(m_Nodes, id);
 }
 
-ed::Pin* ed::EditorContext::FindPin(int id)
+ed::Pin* ed::EditorContext::FindPin(PinId id)
 {
     return FindItemIn(m_Pins, id);
 }
 
-ed::Link* ed::EditorContext::FindLink(int id)
+ed::Link* ed::EditorContext::FindLink(LinkId id)
 {
     return FindItemIn(m_Links, id);
 }
 
-ed::Node* ed::EditorContext::GetNode(int id)
+ed::Object* ed::EditorContext::FindObject(ObjectId id)
+{
+    if (auto nodeId = id.AsNodeId())
+        return FindNode(nodeId);
+    else if (auto linkId = id.AsLinkId())
+        return FindLink(linkId);
+    else if (auto pinId = id.AsPinId())
+        return FindPin(pinId);
+    else
+        return nullptr;
+}
+
+ed::Node* ed::EditorContext::GetNode(NodeId id)
 {
     auto node = FindNode(id);
     if (!node)
@@ -1561,7 +1562,7 @@ ed::Node* ed::EditorContext::GetNode(int id)
     return node;
 }
 
-ed::Pin* ed::EditorContext::GetPin(int id, PinKind kind)
+ed::Pin* ed::EditorContext::GetPin(PinId id, PinKind kind)
 {
     if (auto pin = FindPin(id))
     {
@@ -1572,7 +1573,7 @@ ed::Pin* ed::EditorContext::GetPin(int id, PinKind kind)
         return CreatePin(id, kind);
 }
 
-ed::Link* ed::EditorContext::GetLink(int id)
+ed::Link* ed::EditorContext::GetLink(LinkId id)
 {
     if (auto link = FindLink(id))
         return link;
@@ -1609,7 +1610,7 @@ void ed::EditorContext::SaveSettings()
 
     m_Settings.m_Selection.resize(0);
     for (auto& object : m_SelectedObjects)
-        m_Settings.m_Selection.push_back(object->m_ID);
+        m_Settings.m_Selection.push_back(object->ID());
 
     m_Settings.m_ViewScroll = m_NavigateAction.m_Scroll;
     m_Settings.m_ViewZoom   = m_NavigateAction.m_Zoom;
@@ -1736,10 +1737,10 @@ ed::Control ed::EditorContext::BuildControl(bool allowOffscreen)
     Object* doubleClickedObject = nullptr;
 
     // Emits invisible button and returns true if it is clicked.
-    auto emitInteractiveArea = [this](int id, const rect& rect)
+    auto emitInteractiveArea = [this](ObjectId id, const rect& rect)
     {
         char idString[33] = { 0 }; // itoa can output 33 bytes maximum
-        snprintf(idString, 32, "%d", id);
+        snprintf(idString, 32, "%p", id.ToPointer());
         ImGui::SetCursorScreenPos(to_imvec(rect.location));
 
         // debug
@@ -1755,7 +1756,7 @@ ed::Control ed::EditorContext::BuildControl(bool allowOffscreen)
     };
 
     // Check input interactions over area.
-    auto checkInteractionsInArea = [&emitInteractiveArea, &hotObject, &activeObject, &clickedObject, &doubleClickedObject](int id, const rect& rect, Object* object)
+    auto checkInteractionsInArea = [&emitInteractiveArea, &hotObject, &activeObject, &clickedObject, &doubleClickedObject](ObjectId id, const rect& rect, Object* object)
     {
         if (emitInteractiveArea(id, rect))
             clickedObject = object;
@@ -1790,17 +1791,17 @@ ed::Control ed::EditorContext::BuildControl(bool allowOffscreen)
         if (node->m_Type == NodeType::Group)
         {
             // Node with a hole
-            ImGui::PushID(node->m_ID);
+            ImGui::PushID(node->m_ID.ToPointer());
 
             const auto top    = node->m_GroupBounds.top()  - node->m_Bounds.top();
             const auto left   = node->m_GroupBounds.left() - node->m_Bounds.left();
             const auto bottom = node->m_Bounds.bottom()    - node->m_GroupBounds.bottom();
             const auto right  = node->m_Bounds.right()     - node->m_GroupBounds.right();
 
-            checkInteractionsInArea(1, rect(node->m_Bounds.left(),  node->m_Bounds.top(),             node->m_Bounds.w, top),    node);
-            checkInteractionsInArea(2, rect(node->m_Bounds.left(),  node->m_Bounds.bottom() - bottom, node->m_Bounds.w, bottom), node);
-            checkInteractionsInArea(3, rect(node->m_Bounds.left(),  node->m_Bounds.top() + top,       left, node->m_Bounds.h - top - bottom), node);
-            checkInteractionsInArea(4, rect(node->m_Bounds.right() - right, node->m_Bounds.top() + top, right, node->m_Bounds.h - top - bottom), node);
+            checkInteractionsInArea(NodeId(1), rect(node->m_Bounds.left(),  node->m_Bounds.top(),             node->m_Bounds.w, top),    node);
+            checkInteractionsInArea(NodeId(2), rect(node->m_Bounds.left(),  node->m_Bounds.bottom() - bottom, node->m_Bounds.w, bottom), node);
+            checkInteractionsInArea(NodeId(3), rect(node->m_Bounds.left(),  node->m_Bounds.top() + top,       left, node->m_Bounds.h - top - bottom), node);
+            checkInteractionsInArea(NodeId(4), rect(node->m_Bounds.right() - right, node->m_Bounds.top() + top, right, node->m_Bounds.h - top - bottom), node);
 
             ImGui::PopID();
         }
@@ -1819,7 +1820,7 @@ ed::Control ed::EditorContext::BuildControl(bool allowOffscreen)
         hotObject = FindLinkAt(mousePos);
 
     // Check for interaction with background.
-    auto backgroundClicked       = emitInteractiveArea(0, editorRect);
+    auto backgroundClicked       = emitInteractiveArea(NodeId(0), editorRect);
     auto backgroundDoubleClicked = !doubleClickedObject && ImGui::IsItemHoveredRect() ? ImGui::IsMouseDoubleClicked(0) : false;
     auto isBackgroundActive      = ImGui::IsItemActive();
     auto isBackgroundHot         = !hotObject;
@@ -1912,13 +1913,13 @@ void ed::EditorContext::ShowMetrics(const Control& control)
     ImGui::Text("Live Nodes: %d", liveNodeCount);
     ImGui::Text("Live Pins: %d", livePinCount);
     ImGui::Text("Live Links: %d", liveLinkCount);
-    ImGui::Text("Hot Object: %s (%d)", getHotObjectName(), control.HotObject ? control.HotObject->m_ID : 0);
+    ImGui::Text("Hot Object: %s (%p)", getHotObjectName(), control.HotObject ? control.HotObject->ID().ToPointer() : nullptr);
     if (auto node = control.HotObject ? control.HotObject->AsNode() : nullptr)
     {
         ImGui::SameLine();
         ImGui::Text("{ x=%d y=%d w=%d h=%d }", node->m_Bounds.x, node->m_Bounds.y, node->m_Bounds.w, node->m_Bounds.h);
     }
-    ImGui::Text("Active Object: %s (%d)", getActiveObjectName(), control.ActiveObject ? control.ActiveObject->m_ID : 0);
+    ImGui::Text("Active Object: %s (%p)", getActiveObjectName(), control.ActiveObject ? control.ActiveObject->ID().ToPointer() : nullptr);
     if (auto node = control.ActiveObject ? control.ActiveObject->AsNode() : nullptr)
     {
         ImGui::SameLine();
@@ -1990,7 +1991,7 @@ ed::json::object ed::NodeSettings::Serialize()
 
     json::object nodeData;
     nodeData["location"] = json::value(serializeVector(m_Location));
-    nodeData["size"]     = json::value(serializeVector(m_Size));
+    // nodeData["size"]     = json::value(serializeVector(m_Size));
 
     if (m_GroupSize.x > 0 || m_GroupSize.y > 0)
         nodeData["group_size"] = json::value(serializeVector(m_GroupSize));
@@ -2050,13 +2051,13 @@ bool ed::NodeSettings::Parse(const json::value& data, NodeSettings& result)
 // Settings
 //
 //------------------------------------------------------------------------------
-ed::NodeSettings* ed::Settings::AddNode(int id)
+ed::NodeSettings* ed::Settings::AddNode(NodeId id)
 {
     m_Nodes.push_back(NodeSettings(id));
     return &m_Nodes.back();
 }
 
-ed::NodeSettings* ed::Settings::FindNode(int id)
+ed::NodeSettings* ed::Settings::FindNode(NodeId id)
 {
     for (auto& settings : m_Nodes)
         if (settings.m_ID == id)
@@ -2107,16 +2108,29 @@ std::string ed::Settings::Serialize()
         return result;
     };
 
+    auto serializeObjectId = [](ObjectId id)
+    {
+        auto value = std::to_string(reinterpret_cast<uintptr_t>(id.ToPointer()));
+        switch (id.Type())
+        {
+            default:
+            case NodeEditor::Detail::ObjectType::None: return value;
+            case NodeEditor::Detail::ObjectType::Node: return "node:" + value;
+            case NodeEditor::Detail::ObjectType::Link: return "link:" + value;
+            case NodeEditor::Detail::ObjectType::Pin:  return "pin:"  + value;
+        }
+    };
+
     json::object nodes;
     for (auto& node : m_Nodes)
     {
         if (node.m_WasUsed)
-            nodes[std::to_string(node.m_ID)] = json::value(node.Serialize());
+            nodes[serializeObjectId(node.m_ID)] = json::value(node.Serialize());
     }
 
     json::array selection;
     for (auto& id : m_Selection)
-        selection.push_back(json::value(static_cast<double>(id)));
+        selection.push_back(json::value(serializeObjectId(id)));
 
     json::object view;
     view["scroll"] = json::value(serializeVector(m_ViewScroll));
@@ -2163,6 +2177,21 @@ bool ed::Settings::Parse(const char* data, const char* dataEnd, Settings& settin
         return false;
     };
 
+    auto deserializeObjectId = [](const std::string& str)
+    {
+        auto separator = str.find_first_of(':');
+        auto idStart   = str.c_str() + ((separator != std::string::npos) ? separator + 1 : 0);
+        auto id        = reinterpret_cast<void*>(strtoull(idStart, nullptr, 16));
+        if (str.compare(0, separator, "node") == 0)
+            return ObjectId(NodeId(id));
+        else if (str.compare(0, separator, "link") == 0)
+            return ObjectId(LinkId(id));
+        else if (str.compare(0, separator, "pin") == 0)
+            return ObjectId(PinId(id));
+        else
+            return ObjectId();
+    };
+
     //auto& settingsObject = settingsValue.get<json::object>();
 
     auto& nodesValue = settingsValue.get("nodes");
@@ -2170,7 +2199,7 @@ bool ed::Settings::Parse(const char* data, const char* dataEnd, Settings& settin
     {
         for (auto& node : nodesValue.get<json::object>())
         {
-            auto id = static_cast<int>(strtoll(node.first.c_str(), nullptr, 10));
+            auto id = deserializeObjectId(node.first.c_str()).AsNodeId();
 
             auto settings = result.FindNode(id);
             if (!settings)
@@ -2190,7 +2219,7 @@ bool ed::Settings::Parse(const char* data, const char* dataEnd, Settings& settin
         for (auto& selection : selectionArray)
         {
             if (selection.is<double>())
-                result.m_Selection.push_back(static_cast<int>(selection.get<double>()));
+                result.m_Selection.push_back(deserializeObjectId(selection.to_str()));
         }
     }
 
@@ -3349,7 +3378,7 @@ void ed::DragAction::ShowMetrics()
 
     ImGui::Text("%s:", GetName());
     ImGui::Text("    Active: %s", m_IsActive ? "yes" : "no");
-    ImGui::Text("    Node: %s (%d)", getObjectName(m_DraggedObject), m_DraggedObject ? m_DraggedObject->m_ID : 0);
+    ImGui::Text("    Node: %s (%p)", getObjectName(m_DraggedObject), m_DraggedObject ? m_DraggedObject->ID().ToPointer() : nullptr);
 }
 
 
@@ -3542,7 +3571,7 @@ ed::ContextMenuAction::ContextMenuAction(EditorContext* editor):
     EditorAction(editor),
     m_CandidateMenu(Menu::None),
     m_CurrentMenu(Menu::None),
-    m_ContextId(0)
+    m_ContextId()
 {
 }
 
@@ -3555,7 +3584,7 @@ ed::EditorAction::AcceptResult ed::ContextMenuAction::Accept(const Control& cont
     if (isPressed || isReleased || isDragging)
     {
         Menu candidateMenu = ContextMenuAction::None;
-        int  contextId     = 0;
+        ObjectId contextId;
 
         if (auto hotObejct = control.HotObject)
         {
@@ -3567,7 +3596,7 @@ ed::EditorAction::AcceptResult ed::ContextMenuAction::Accept(const Control& cont
                 candidateMenu = Link;
 
             if (candidateMenu != None)
-                contextId = hotObejct->m_ID;
+                contextId = hotObejct->ID();
         }
         else if (control.BackgroundHot)
             candidateMenu = Background;
@@ -3588,7 +3617,7 @@ ed::EditorAction::AcceptResult ed::ContextMenuAction::Accept(const Control& cont
         {
             m_CandidateMenu = None;
             m_CurrentMenu   = None;
-            m_ContextId     = 0;
+            m_ContextId     = ObjectId();
             return False;
         }
     }
@@ -3600,7 +3629,7 @@ bool ed::ContextMenuAction::Process(const Control& control)
 {
     m_CandidateMenu = None;
     m_CurrentMenu   = None;
-    m_ContextId     = 0;
+    m_ContextId     = ObjectId();
     return false;
 }
 
@@ -3608,7 +3637,7 @@ void ed::ContextMenuAction::Reject()
 {
     m_CandidateMenu = None;
     m_CurrentMenu   = None;
-    m_ContextId     = 0;
+    m_ContextId     = ObjectId();
 }
 
 void ed::ContextMenuAction::ShowMetrics()
@@ -3633,32 +3662,32 @@ void ed::ContextMenuAction::ShowMetrics()
     ImGui::Text("    Menu: %s", getMenuName(m_CurrentMenu));
 }
 
-bool ed::ContextMenuAction::ShowNodeContextMenu(int* nodeId)
+bool ed::ContextMenuAction::ShowNodeContextMenu(NodeId* nodeId)
 {
     if (m_CurrentMenu != Node)
         return false;
 
-    *nodeId = m_ContextId;
+    *nodeId = m_ContextId.AsNodeId();
     Editor->SetUserContext();
     return true;
 }
 
-bool ed::ContextMenuAction::ShowPinContextMenu(int* pinId)
+bool ed::ContextMenuAction::ShowPinContextMenu(PinId* pinId)
 {
     if (m_CurrentMenu != Pin)
         return false;
 
-    *pinId = m_ContextId;
+    *pinId = m_ContextId.AsPinId();
     Editor->SetUserContext();
     return true;
 }
 
-bool ed::ContextMenuAction::ShowLinkContextMenu(int* linkId)
+bool ed::ContextMenuAction::ShowLinkContextMenu(LinkId* linkId)
 {
     if (m_CurrentMenu != Link)
         return false;
 
-    *linkId = m_ContextId;
+    *linkId = m_ContextId.AsLinkId();
     Editor->SetUserContext();
     return true;
 }
@@ -3761,7 +3790,7 @@ ed::EditorAction::AcceptResult ed::ShortcutAction::Accept(const Control& control
 
                 std::sort(nodes.begin(), nodes.end());
 
-                auto isNodeInContext = [&nodes](int nodeId)
+                auto isNodeInContext = [&nodes](NodeId nodeId)
                 {
                     return std::binary_search(nodes.begin(), nodes.end(), ObjectWrapper<Node>{nodeId, nullptr});
                 };
@@ -4144,15 +4173,15 @@ ed::CreateItemAction::Result ed::CreateItemAction::AcceptItem()
         return False;
 }
 
-ed::CreateItemAction::Result ed::CreateItemAction::QueryLink(int* startId, int* endId)
+ed::CreateItemAction::Result ed::CreateItemAction::QueryLink(PinId* startId, PinId* endId)
 {
     IM_ASSERT(m_InActive);
 
     if (!m_InActive || m_CurrentStage == None || m_ItemType != Link)
         return Indeterminate;
 
-    int linkStartId = m_LinkStart->m_ID;
-    int linkEndId   = m_LinkEnd->m_ID;
+    auto linkStartId = m_LinkStart->m_ID;
+    auto linkEndId   = m_LinkEnd->m_ID;
 
     *startId = linkStartId;
     *endId   = linkEndId;
@@ -4169,7 +4198,7 @@ ed::CreateItemAction::Result ed::CreateItemAction::QueryLink(int* startId, int* 
     return True;
 }
 
-ed::CreateItemAction::Result ed::CreateItemAction::QueryNode(int* pinId)
+ed::CreateItemAction::Result ed::CreateItemAction::QueryNode(PinId* pinId)
 {
     IM_ASSERT(m_InActive);
 
@@ -4330,9 +4359,15 @@ void ed::DeleteItemsAction::End()
     m_InInteraction = false;
 }
 
-bool ed::DeleteItemsAction::QueryLink(int* linkId, int* startId, int* endId)
+bool ed::DeleteItemsAction::QueryLink(LinkId* linkId, PinId* startId, PinId* endId)
 {
-    if (!QueryItem(linkId, Link))
+    ObjectId objectId;
+    if (!QueryItem(&objectId, Link))
+        return false;
+
+    if (auto id = objectId.AsLinkId())
+        *linkId = id;
+    else
         return false;
 
     if (startId || endId)
@@ -4347,12 +4382,21 @@ bool ed::DeleteItemsAction::QueryLink(int* linkId, int* startId, int* endId)
     return true;
 }
 
-bool ed::DeleteItemsAction::QueryNode(int* nodeId)
+bool ed::DeleteItemsAction::QueryNode(NodeId* nodeId)
 {
-    return QueryItem(nodeId, Node);
+    ObjectId objectId;
+    if (!QueryItem(&objectId, Node))
+        return false;
+
+    if (auto id = objectId.AsNodeId())
+        *nodeId = id;
+    else
+        return false;
+
+    return true;
 }
 
-bool ed::DeleteItemsAction::QueryItem(int* itemId, IteratorType itemType)
+bool ed::DeleteItemsAction::QueryItem(ObjectId* itemId, IteratorType itemType)
 {
     if (!m_InInteraction)
         return false;
@@ -4447,7 +4491,7 @@ ed::NodeBuilder::NodeBuilder(EditorContext* editor):
 {
 }
 
-void ed::NodeBuilder::Begin(int nodeId)
+void ed::NodeBuilder::Begin(NodeId nodeId)
 {
     assert(nullptr == m_CurrentNode);
 
@@ -4571,7 +4615,7 @@ void ed::NodeBuilder::End()
     m_CurrentNode = nullptr;
 }
 
-void ed::NodeBuilder::BeginPin(int pinId, PinKind kind)
+void ed::NodeBuilder::BeginPin(PinId pinId, PinKind kind)
 {
     assert(nullptr != m_CurrentNode);
     assert(nullptr == m_CurrentPin);
@@ -4719,7 +4763,7 @@ ed::HintBuilder::HintBuilder(EditorContext* editor):
 {
 }
 
-bool ed::HintBuilder::Begin(int nodeId)
+bool ed::HintBuilder::Begin(NodeId nodeId)
 {
     assert(nullptr == m_CurrentNode);
 
@@ -5004,7 +5048,7 @@ std::string ed::Config::Load()
     return data;
 }
 
-std::string ed::Config::LoadNode(int nodeId)
+std::string ed::Config::LoadNode(NodeId nodeId)
 {
     std::string data;
 
@@ -5045,7 +5089,7 @@ bool ed::Config::Save(const std::string& data, SaveReasonFlags flags)
     return false;
 }
 
-bool ed::Config::SaveNode(int nodeId, const std::string& data, SaveReasonFlags flags)
+bool ed::Config::SaveNode(NodeId nodeId, const std::string& data, SaveReasonFlags flags)
 {
     if (SaveNodeSettings)
         return SaveNodeSettings(nodeId, data.c_str(), data.size(), flags, UserPointer);

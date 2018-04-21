@@ -25,7 +25,7 @@ util::BlueprintNodeBuilder::BlueprintNodeBuilder(ImTextureID texture, int textur
 {
 }
 
-void util::BlueprintNodeBuilder::Begin(int id)
+void util::BlueprintNodeBuilder::Begin(ed::NodeId id)
 {
     HasHeader  = false;
     HeaderRect = rect();
@@ -34,7 +34,7 @@ void util::BlueprintNodeBuilder::Begin(int id)
 
     ed::BeginNode(id);
 
-    ImGui::PushID(id);
+    ImGui::PushID(id.ToPointer());
     CurrentNodeId = id;
 
     SetStage(Stage::Begin);
@@ -105,7 +105,7 @@ void util::BlueprintNodeBuilder::EndHeader()
     SetStage(Stage::Content);
 }
 
-void util::BlueprintNodeBuilder::Input(int id)
+void util::BlueprintNodeBuilder::Input(ed::PinId id)
 {
     if (CurrentStage == Stage::Begin)
         SetStage(Stage::Content);
@@ -119,7 +119,7 @@ void util::BlueprintNodeBuilder::Input(int id)
 
     Pin(id, PinKind::Input);
 
-    ImGui::BeginHorizontal(id);
+    ImGui::BeginHorizontal(id.ToPointer());
 }
 
 void util::BlueprintNodeBuilder::EndInput()
@@ -137,7 +137,7 @@ void util::BlueprintNodeBuilder::Middle()
     SetStage(Stage::Middle);
 }
 
-void util::BlueprintNodeBuilder::Output(int id)
+void util::BlueprintNodeBuilder::Output(ed::PinId id)
 {
     if (CurrentStage == Stage::Begin)
         SetStage(Stage::Content);
@@ -151,7 +151,7 @@ void util::BlueprintNodeBuilder::Output(int id)
 
     Pin(id, PinKind::Output);
 
-    ImGui::BeginHorizontal(id);
+    ImGui::BeginHorizontal(id.ToPointer());
 }
 
 void util::BlueprintNodeBuilder::EndOutput()
@@ -222,7 +222,7 @@ bool util::BlueprintNodeBuilder::SetStage(Stage stage)
 
         case Stage::End:
             break;
-            
+
         case Stage::Invalid:
             break;
     }
@@ -286,7 +286,7 @@ bool util::BlueprintNodeBuilder::SetStage(Stage stage)
             ImGui::EndVertical();
             NodeRect = ImGui_GetItemRect();
             break;
-            
+
         case Stage::Invalid:
             break;
     }
@@ -294,7 +294,7 @@ bool util::BlueprintNodeBuilder::SetStage(Stage stage)
     return true;
 }
 
-void util::BlueprintNodeBuilder::Pin(int id, ed::PinKind kind)
+void util::BlueprintNodeBuilder::Pin(ed::PinId id, ed::PinKind kind)
 {
     ed::BeginPin(id, kind);
 }

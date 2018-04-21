@@ -65,7 +65,6 @@ static ID3D11DepthStencilState* g_pDepthStencilState = nullptr;
 static int                      g_VertexBufferSize = 5000, g_IndexBufferSize = 10000;
 static std::vector<std::unique_ptr<TEXTURE>> g_Textures;
 static ImTextureID              g_FontTexture = nullptr;
-static std::vector<GIZMO>       g_Gizmos;
 
 struct VERTEX_CONSTANT_BUFFER
 {
@@ -76,9 +75,6 @@ struct GIZMO_CONSTANT_BUFFER
 {
     float transform[4][4];
 };
-
-static void DrawWithGizmo_Signature(const ImDrawList* parent_list, const ImDrawCmd* cmd);
-static void DrawWithGizmo_Callback(const ImDrawList* parent_list, const ImDrawCmd* cmd, int idxOffset, int vtxOffset);
 
 static void ImGui_UploadTexture(TEXTURE* texture);
 static void ImGui_ReleaseTexture(TEXTURE* texture);
@@ -241,10 +237,7 @@ void ImGui_ImplDX11_RenderDrawLists(ImDrawData* draw_data)
             const ImDrawCmd* pcmd = &cmd_list->CmdBuffer[cmd_i];
             if (pcmd->UserCallback)
             {
-                if (pcmd->UserCallback == DrawWithGizmo_Signature)
-                    DrawWithGizmo_Callback(cmd_list, pcmd, idx_offset, vtx_offset);
-                else
-                    pcmd->UserCallback(cmd_list, pcmd);
+                pcmd->UserCallback(cmd_list, pcmd);
             }
             else
             {
@@ -280,8 +273,6 @@ void ImGui_ImplDX11_RenderDrawLists(ImDrawData* draw_data)
     ctx->IASetIndexBuffer(old.IndexBuffer, old.IndexBufferFormat, old.IndexBufferOffset); if (old.IndexBuffer) old.IndexBuffer->Release();
     ctx->IASetVertexBuffers(0, 1, &old.VertexBuffer, &old.VertexBufferStride, &old.VertexBufferOffset); if (old.VertexBuffer) old.VertexBuffer->Release();
     ctx->IASetInputLayout(old.InputLayout); if (old.InputLayout) old.InputLayout->Release();
-
-    g_Gizmos.clear();
 }
 
 static void ImGui_UpdateCursor()
@@ -752,75 +743,6 @@ void ImGui_ImplDX11_NewFrame()
 
     // Start the frame
     ImGui::NewFrame();
-}
-
-static void DrawWithGizmo_Signature(const ImDrawList* parent_list, const ImDrawCmd* cmd) {}
-static void DrawWithGizmo_Callback(const ImDrawList* parent_list, const ImDrawCmd* cmd, int idxOffset, int vtxOffset)
-{
-    auto& gizmo        = g_Gizmos[reinterpret_cast<size_t>(cmd->UserCallbackData)];
-    auto  texture      = reinterpret_cast<TEXTURE*>(cmd->TextureId);
-    auto  gizmoTexture = reinterpret_cast<TEXTURE*>(gizmo.TextureID);
-    auto  ctx          = g_pd3dDeviceContext;
-
-    {
-        D3D11_MAPPED_SUBRESOURCE mapped_resource;
-        if (ctx->Map(g_pGizmoBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped_resource) != S_OK)
-            return;
-        GIZMO_CONSTANT_BUFFER* constant_buffer = (GIZMO_CONSTANT_BUFFER*)mapped_resource.pData;
-        memset(constant_buffer, 0, sizeof(float) * 16);
-        constant_buffer->transform[0][0] = gizmo.Matrix[0];
-        constant_buffer->transform[0][1] = gizmo.Matrix[1];
-        constant_buffer->transform[1][0] = gizmo.Matrix[2];
-        constant_buffer->transform[1][1] = gizmo.Matrix[3];
-        constant_buffer->transform[2][2] = 1.0f;
-        constant_buffer->transform[3][0] = gizmo.Matrix[4];
-        constant_buffer->transform[3][1] = gizmo.Matrix[5];
-        constant_buffer->transform[3][3] = 1.0f;
-        ctx->Unmap(g_pGizmoBuffer, 0);
-    }
-
-    ID3D11ShaderResourceView* views[2] =
-    {
-        texture      ? texture->View      : nullptr,
-        gizmoTexture ? gizmoTexture->View : nullptr
-    };
-    ID3D11SamplerState* samplers[1] = { g_pGizmoSampler };
-
-    const D3D11_RECT r = { (LONG)cmd->ClipRect.x, (LONG)cmd->ClipRect.y, (LONG)cmd->ClipRect.z, (LONG)cmd->ClipRect.w };
-
-    ctx->PSSetShader(g_pCompositePixelShader, nullptr, 0);
-    ctx->PSSetSamplers(1,1,samplers);
-
-    ctx->PSSetShaderResources(0, 2, views);
-    ctx->PSSetConstantBuffers(0, 1, &g_pGizmoBuffer);
-
-    ctx->RSSetScissorRects(1, &r);
-    ctx->DrawIndexed(cmd->ElemCount, idxOffset, vtxOffset);
-
-    views[0] = nullptr;
-    views[1] = nullptr;
-
-    samplers[0] = nullptr;
-
-    ctx->PSSetSamplers(1, 1, samplers);
-
-    ctx->PSSetShaderResources(0, 2, views);
-    ctx->PSSetShader(g_pPixelShader, nullptr, 0);
-}
-
-void ImGui_PushGizmo(ImDrawList* drawList, ImTextureID texId, float matrix[6])
-{
-    auto& command = drawList->CmdBuffer.back();
-
-    auto index = (int)g_Gizmos.size();
-
-    g_Gizmos.resize(g_Gizmos.size() + 1);
-    auto& gizmo = g_Gizmos.back();
-    gizmo.TextureID = texId;
-    memcpy(gizmo.Matrix, matrix, sizeof(float) * 6);
-
-    command.UserCallback     = DrawWithGizmo_Signature;
-    command.UserCallbackData = reinterpret_cast<void*>(index);
 }
 
 #define STB_IMAGE_IMPLEMENTATION

@@ -11,6 +11,8 @@
 
 
 //------------------------------------------------------------------------------
+# include <cstdint> // std::uintXX_t
+# include <utility> // std::move
 # include "imgui.h"
 
 
@@ -20,7 +22,64 @@ namespace NodeEditor {
 
 
 //------------------------------------------------------------------------------
-enum class SaveReasonFlags: int
+namespace Details {
+
+template <typename T, typename Tag>
+struct SafeType
+{
+    SafeType(T t): m_Value(std::move(t)) {}
+    SafeType(const SafeType&) = default;
+    template <typename T2, typename Tag2>
+    SafeType(const SafeType<T2, Tag2>&) = delete;
+    SafeType&operator=(const SafeType&) = default;
+
+    explicit operator T() const { return Get(); }
+
+    T Get() const { return m_Value; }
+
+private:
+    T m_Value;
+};
+
+template <typename Tag>
+struct SafePointerType: SafeType<uintptr_t, Tag>
+{
+    static const Tag Invalid;
+
+    using SafeType::SafeType;
+    SafePointerType(): SafeType(Invalid) {}
+    template <typename T = void> explicit SafePointerType(T* ptr): SafeType(reinterpret_cast<uintptr_t>(ptr)) {}
+    template <typename T = void> T* ToPointer() const { return reinterpret_cast<T*>(Get()); }
+
+    explicit operator bool() const { return *this != Invalid; }
+
+    friend bool operator==(const SafePointerType& lhs, const SafePointerType& rhs) { return lhs.Get() == rhs.Get(); }
+    friend bool operator!=(const SafePointerType& lhs, const SafePointerType& rhs) { return lhs.Get() != rhs.Get(); }
+};
+
+template <typename Tag>
+const Tag SafePointerType<Tag>::Invalid{0};
+
+} // namespace Details
+
+struct NodeId final: Details::SafePointerType<NodeId>
+{
+    using SafePointerType::SafePointerType;
+};
+
+struct LinkId final: Details::SafePointerType<LinkId>
+{
+    using SafePointerType::SafePointerType;
+};
+
+struct PinId final: Details::SafePointerType<PinId>
+{
+    using SafePointerType::SafePointerType;
+};
+
+
+//------------------------------------------------------------------------------
+enum class SaveReasonFlags: uint32_t
 {
     None       = 0x00000000,
     Navigation = 0x00000001,
@@ -36,8 +95,8 @@ inline SaveReasonFlags operator &(SaveReasonFlags lhs, SaveReasonFlags rhs) { re
 typedef bool        (*ConfigSaveSettings)(const char* data, size_t size, SaveReasonFlags reason, void* userPointer);
 typedef size_t      (*ConfigLoadSettings)(char* data, void* userPointer);
 
-typedef bool        (*ConfigSaveNodeSettings)(int nodeId, const char* data, size_t size, SaveReasonFlags reason, void* userPointer);
-typedef size_t      (*ConfigLoadNodeSettings)(int nodeId, char* data, void* userPointer);
+typedef bool        (*ConfigSaveNodeSettings)(NodeId nodeId, const char* data, size_t size, SaveReasonFlags reason, void* userPointer);
+typedef size_t      (*ConfigLoadNodeSettings)(NodeId nodeId, char* data, void* userPointer);
 
 typedef void        (*ConfigSession)(void* userPointer);
 
@@ -225,8 +284,8 @@ void PopStyleVar(int count = 1);
 void Begin(const char* id, const ImVec2& size = ImVec2(0, 0));
 void End();
 
-void BeginNode(int id);
-void BeginPin(int id, PinKind kind);
+void BeginNode(NodeId id);
+void BeginPin(PinId id, PinKind kind);
 void PinRect(const ImVec2& a, const ImVec2& b);
 void PinPivotRect(const ImVec2& a, const ImVec2& b);
 void PinPivotSize(const ImVec2& size);
@@ -236,7 +295,7 @@ void EndPin();
 void Group(const ImVec2& size);
 void EndNode();
 
-bool BeginGroupHint(int nodeId);
+bool BeginGroupHint(NodeId nodeId);
 ImVec2 GetGroupMin();
 ImVec2 GetGroupMax();
 ImDrawList* GetHintForegroundDrawList();
@@ -244,17 +303,17 @@ ImDrawList* GetHintBackgroundDrawList();
 void EndGroupHint();
 
 // TODO: Add a way to manage node background channels
-ImDrawList* GetNodeBackgroundDrawList(int nodeId);
+ImDrawList* GetNodeBackgroundDrawList(NodeId nodeId);
 
-bool Link(int id, int startPinId, int endPinId, const ImVec4& color = ImVec4(1, 1, 1, 1), float thickness = 1.0f);
+bool Link(LinkId id, PinId startPinId, PinId endPinId, const ImVec4& color = ImVec4(1, 1, 1, 1), float thickness = 1.0f);
 
-void Flow(int linkId);
+void Flow(LinkId linkId);
 
 bool BeginCreate(const ImVec4& color = ImVec4(1, 1, 1, 1), float thickness = 1.0f);
-bool QueryNewLink(int* startId, int* endId);
-bool QueryNewLink(int* startId, int* endId, const ImVec4& color, float thickness = 1.0f);
-bool QueryNewNode(int* pinId);
-bool QueryNewNode(int* pinId, const ImVec4& color, float thickness = 1.0f);
+bool QueryNewLink(PinId* startId, PinId* endId);
+bool QueryNewLink(PinId* startId, PinId* endId, const ImVec4& color, float thickness = 1.0f);
+bool QueryNewNode(PinId* pinId);
+bool QueryNewNode(PinId* pinId, const ImVec4& color, float thickness = 1.0f);
 bool AcceptNewItem();
 bool AcceptNewItem(const ImVec4& color, float thickness = 1.0f);
 void RejectNewItem();
@@ -262,18 +321,18 @@ void RejectNewItem(const ImVec4& color, float thickness = 1.0f);
 void EndCreate();
 
 bool BeginDelete();
-bool QueryDeletedLink(int* linkId, int* startId = nullptr, int* endId = nullptr);
-bool QueryDeletedNode(int* nodeId);
+bool QueryDeletedLink(LinkId* linkId, PinId* startId = nullptr, PinId* endId = nullptr);
+bool QueryDeletedNode(NodeId* nodeId);
 bool AcceptDeletedItem();
 void RejectDeletedItem();
 void EndDelete();
 
-void SetNodePosition(int nodeId, const ImVec2& editorPosition);
-ImVec2 GetNodePosition(int nodeId);
-ImVec2 GetNodeSize(int nodeId);
-void CenterNodeOnScreen(int nodeId);
+void SetNodePosition(NodeId nodeId, const ImVec2& editorPosition);
+ImVec2 GetNodePosition(NodeId nodeId);
+ImVec2 GetNodeSize(NodeId nodeId);
+void CenterNodeOnScreen(NodeId nodeId);
 
-void RestoreNodeState(int nodeId);
+void RestoreNodeState(NodeId nodeId);
 
 void Suspend();
 void Resume();
@@ -283,23 +342,23 @@ bool IsActive();
 
 bool HasSelectionChanged();
 int  GetSelectedObjectCount();
-int  GetSelectedNodes(int* nodes, int size);
-int  GetSelectedLinks(int* links, int size);
+int  GetSelectedNodes(NodeId* nodes, int size);
+int  GetSelectedLinks(LinkId* links, int size);
 void ClearSelection();
-void SelectNode(int nodeId, bool append = false);
-void SelectLink(int linkId, bool append = false);
-void DeselectNode(int nodeId);
-void DeselectLink(int linkId);
+void SelectNode(NodeId nodeId, bool append = false);
+void SelectLink(LinkId linkId, bool append = false);
+void DeselectNode(NodeId nodeId);
+void DeselectLink(LinkId linkId);
 
-bool DeleteNode(int nodeId);
-bool DeleteLink(int linkId);
+bool DeleteNode(NodeId nodeId);
+bool DeleteLink(LinkId linkId);
 
 void NavigateToContent(float duration = -1);
 void NavigateToSelection(bool zoomIn = false, float duration = -1);
 
-bool ShowNodeContextMenu(int* nodeId);
-bool ShowPinContextMenu(int* pinId);
-bool ShowLinkContextMenu(int* linkId);
+bool ShowNodeContextMenu(NodeId* nodeId);
+bool ShowPinContextMenu(PinId* pinId);
+bool ShowLinkContextMenu(LinkId* linkId);
 bool ShowBackgroundContextMenu();
 
 void EnableShortcuts(bool enable);
@@ -312,19 +371,19 @@ bool AcceptPaste();
 bool AcceptDuplicate();
 bool AcceptCreateNode();
 int  GetActionContextSize();
-int  GetActionContextNodes(int* nodes, int size);
-int  GetActionContextLinks(int* links, int size);
+int  GetActionContextNodes(NodeId* nodes, int size);
+int  GetActionContextLinks(LinkId* links, int size);
 void EndShortcut();
 
 float GetCurrentZoom();
 
-int GetDoubleClickedNode();
-int GetDoubleClickedPin();
-int GetDoubleClickedLink();
+NodeId GetDoubleClickedNode();
+PinId GetDoubleClickedPin();
+LinkId GetDoubleClickedLink();
 bool IsBackgroundClicked();
 bool IsBackgroundDoubleClicked();
 
-bool PinHadAnyLinks(int pinId);
+bool PinHadAnyLinks(PinId pinId);
 
 ImVec2 GetScreenSize();
 ImVec2 ScreenToCanvas(const ImVec2& pos);
