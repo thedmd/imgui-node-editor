@@ -803,7 +803,7 @@ struct DragAction final: EditorAction
     virtual AcceptResult Accept(const Control& control) override final;
     virtual bool Process(const Control& control) override final;
 
-    virtual ImGuiMouseCursor GetCursor() override final { return ImGuiMouseCursor_Move; }
+    virtual ImGuiMouseCursor GetCursor() override final { return ImGuiMouseCursor_ResizeAll; }
 
     virtual bool IsDragging() override final { return m_IsActive; }
 
@@ -1260,6 +1260,9 @@ struct EditorContext
             return p;
     }
 
+    void SetDefaultFringeScale();
+    void ResetFringeScale();
+
 private:
     void LoadSettings();
     void SaveSettings();
@@ -1297,6 +1300,10 @@ private:
     ImVec2              m_MousePosBackup;
     ImVec2              m_MousePosPrevBackup;
     ImVec2              m_MouseClickPosBackup[5];
+    ImVec2              m_HalfPixelBackup;
+    float               m_InvScaleBackup;
+    ImVec2              m_InitialHalfPixelBackup;
+    float               m_InitialInvScaleBackup;
 
     Canvas              m_Canvas;
 

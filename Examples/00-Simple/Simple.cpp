@@ -1,5 +1,7 @@
 ﻿# include "Application.h"
 # include "NodeEditor.h"
+# define IMGUI_DEFINE_MATH_OPERATORS
+# include "imgui_internal.h"
 
 namespace ed = ax::NodeEditor;
 
@@ -19,12 +21,15 @@ void Application_Finalize()
 
 void Application_Frame()
 {
+    auto& io = ImGui::GetIO();
+
+    ImGui::Text("FPS: %.2f (%.2gms)", io.Framerate, io.Framerate ? 1000.0f / io.Framerate : 0.0f);
+
+    ImGui::Separator();
+
     ed::SetCurrentEditor(g_Context);
-
-    ed::Begin("My Editor");
-
+    ed::Begin("My Editor", ImVec2(0.0, 0.0f));
     int uniqueId = 1;
-
     // Start drawing nodes.
     ed::BeginNode(uniqueId++);
         ImGui::Text("Node A");
@@ -36,7 +41,7 @@ void Application_Frame()
             ImGui::Text("Out ->");
         ed::EndPin();
     ed::EndNode();
-
     ed::End();
+    ed::SetCurrentEditor(nullptr);
 }
 

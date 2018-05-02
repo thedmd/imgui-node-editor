@@ -46,10 +46,10 @@ struct SafePointerType: SafeType<uintptr_t, Tag>
 {
     static const Tag Invalid;
 
-    using SafeType::SafeType;
-    SafePointerType(): SafeType(Invalid) {}
-    template <typename T = void> explicit SafePointerType(T* ptr): SafeType(reinterpret_cast<uintptr_t>(ptr)) {}
-    template <typename T = void> T* ToPointer() const { return reinterpret_cast<T*>(Get()); }
+    using SafeType<uintptr_t, Tag>::SafeType;
+    SafePointerType(): SafePointerType(Invalid) {}
+    template <typename T = void> explicit SafePointerType(T* ptr): SafePointerType(reinterpret_cast<uintptr_t>(ptr)) {}
+    template <typename T = void> T* ToPointer() const { return reinterpret_cast<T*>(this->Get()); }
 
     explicit operator bool() const { return *this != Invalid; }
 

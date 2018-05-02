@@ -615,15 +615,15 @@ void ShowStyleEditor(bool* show = nullptr)
 
     ImGui::Separator();
 
-    static ImGuiColorEditMode edit_mode = ImGuiColorEditMode_RGB;
+    static ImGuiColorEditFlags edit_mode = ImGuiColorEditFlags_RGB;
     ImGui::BeginHorizontal("Color Mode", ImVec2(paneWidth, 0), 1.0f);
     ImGui::TextUnformatted("Filter Colors");
     ImGui::Spring();
-    ImGui::RadioButton("RGB", &edit_mode, ImGuiColorEditMode_RGB);
+    ImGui::RadioButton("RGB", &edit_mode, ImGuiColorEditFlags_RGB);
     ImGui::Spring(0);
-    ImGui::RadioButton("HSV", &edit_mode, ImGuiColorEditMode_HSV);
+    ImGui::RadioButton("HSV", &edit_mode, ImGuiColorEditFlags_HSV);
     ImGui::Spring(0);
-    ImGui::RadioButton("HEX", &edit_mode, ImGuiColorEditMode_HEX);
+    ImGui::RadioButton("HEX", &edit_mode, ImGuiColorEditFlags_HEX);
     ImGui::EndHorizontal();
 
     static ImGuiTextFilter filter;
@@ -632,14 +632,13 @@ void ShowStyleEditor(bool* show = nullptr)
     ImGui::Spacing();
 
     ImGui::PushItemWidth(-160);
-    ImGui::ColorEditMode(edit_mode);
     for (int i = 0; i < ed::StyleColor_Count; ++i)
     {
         auto name = ed::GetStyleColorName((ed::StyleColor)i);
         if (!filter.PassFilter(name))
             continue;
 
-        ImGui::ColorEdit4(name, &editorStyle.Colors[i].x);
+        ImGui::ColorEdit4(name, &editorStyle.Colors[i].x, edit_mode);
     }
     ImGui::PopItemWidth();
 
@@ -1086,23 +1085,23 @@ void Application_Frame()
 
             drawList->AddRectFilled(to_imvec(inputsRect.top_left()) + ImVec2(0, 1), to_imvec(inputsRect.bottom_right()),
                 IM_COL32((int)(255 * pinBackground.x), (int)(255 * pinBackground.y), (int)(255 * pinBackground.z), inputAlpha), 4.0f, 12);
-            ImGui::PushStyleVar(ImGuiStyleVar_AntiAliasFringeScale, 1.0f);
+            //ImGui::PushStyleVar(ImGuiStyleVar_AntiAliasFringeScale, 1.0f);
             drawList->AddRect(to_imvec(inputsRect.top_left()) + ImVec2(0, 1), to_imvec(inputsRect.bottom_right()),
                 IM_COL32((int)(255 * pinBackground.x), (int)(255 * pinBackground.y), (int)(255 * pinBackground.z), inputAlpha), 4.0f, 12);
-            ImGui::PopStyleVar();
+            //ImGui::PopStyleVar();
             drawList->AddRectFilled(to_imvec(outputsRect.top_left()), to_imvec(outputsRect.bottom_right()) - ImVec2(0, 1),
                 IM_COL32((int)(255 * pinBackground.x), (int)(255 * pinBackground.y), (int)(255 * pinBackground.z), outputAlpha), 4.0f, 3);
-            ImGui::PushStyleVar(ImGuiStyleVar_AntiAliasFringeScale, 1.0f);
+            //ImGui::PushStyleVar(ImGuiStyleVar_AntiAliasFringeScale, 1.0f);
             drawList->AddRect(to_imvec(outputsRect.top_left()), to_imvec(outputsRect.bottom_right()) - ImVec2(0, 1),
                 IM_COL32((int)(255 * pinBackground.x), (int)(255 * pinBackground.y), (int)(255 * pinBackground.z), outputAlpha), 4.0f, 3);
-            ImGui::PopStyleVar();
+            //ImGui::PopStyleVar();
             drawList->AddRectFilled(to_imvec(contentRect.top_left()), to_imvec(contentRect.bottom_right()), IM_COL32(24, 64, 128, 200), 0.0f);
-            ImGui::PushStyleVar(ImGuiStyleVar_AntiAliasFringeScale, 1.0f);
+            //ImGui::PushStyleVar(ImGuiStyleVar_AntiAliasFringeScale, 1.0f);
             drawList->AddRect(
                 to_imvec(contentRect.top_left()),
                 to_imvec(contentRect.bottom_right()),
                 IM_COL32(48, 128, 255, 100), 0.0f);
-            ImGui::PopStyleVar();
+            //ImGui::PopStyleVar();
         }
 
         for (auto& node : s_Nodes)
@@ -1246,7 +1245,9 @@ void Application_Frame()
                         createNewNode  = true;
                         newNodeLinkPin = FindPin(pinId);
                         newLinkPin = nullptr;
+                        ed::Suspend();
                         ImGui::OpenPopup("Create New Node");
+                        ed::Resume();
                     }
                 }
             }
@@ -1285,6 +1286,8 @@ void Application_Frame()
         ImGui::SetCursorScreenPos(cursorTopLeft);
     }
 
+    auto openPopupPosition = ImGui::GetMousePos();
+    ed::Suspend();
     if (ed::ShowNodeContextMenu(&contextNodeId))
         ImGui::OpenPopup("Node Context Menu");
     else if (ed::ShowPinContextMenu(&contextPinId))
@@ -1296,6 +1299,7 @@ void Application_Frame()
         ImGui::OpenPopup("Create New Node");
         newNodeLinkPin = nullptr;
     }
+    ed::Resume();
 
     ed::Suspend();
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(8, 8));
@@ -1362,7 +1366,7 @@ void Application_Frame()
 
     if (ImGui::BeginPopup("Create New Node"))
     {
-        auto newNodePostion = ImGui::GetMousePosOnOpeningCurrentPopup();
+        auto newNodePostion = openPopupPosition;
         //ImGui::SetCursorScreenPos(ImGui::GetMousePosOnOpeningCurrentPopup());
 
         //auto drawList = ImGui::GetWindowDrawList();

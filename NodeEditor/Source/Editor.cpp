@@ -390,7 +390,7 @@ static void ImDrawList_AddBezierWithArrows(ImDrawList* drawList, const ax::cubic
             drawList->PathLineTo(to_imvec(curve.p0 - start_n * std::max(half_width, half_thickness)));
             drawList->PathLineTo(to_imvec(curve.p0 + start_n * std::max(half_width, half_thickness)));
             drawList->PathLineTo(to_imvec(tip));
-            drawList->PathFill(color);
+            drawList->PathFillConvex(color);
         }
 
         if (endArrowSize > 0.0f)
@@ -403,7 +403,7 @@ static void ImDrawList_AddBezierWithArrows(ImDrawList* drawList, const ax::cubic
             drawList->PathLineTo(to_imvec(curve.p3 + end_n * std::max(half_width, half_thickness)));
             drawList->PathLineTo(to_imvec(curve.p3 - end_n * std::max(half_width, half_thickness)));
             drawList->PathLineTo(to_imvec(tip));
-            drawList->PathFill(color);
+            drawList->PathFillConvex(color);
         }
     }
     else
@@ -463,10 +463,10 @@ void ed::Pin::Draw(ImDrawList* drawList, DrawFlags flags)
 
         if (m_BorderWidth > 0.0f)
         {
-            ImGui::PushStyleVar(ImGuiStyleVar_AntiAliasFringeScale, 1.0f);
+            Editor->SetDefaultFringeScale();
             drawList->AddRect(to_imvec(m_Bounds.top_left()), to_imvec(m_Bounds.bottom_right()),
                 m_BorderColor, m_Rounding, m_Corners, m_BorderWidth);
-            ImGui::PopStyleVar();
+            Editor->ResetFringeScale();
         }
 
         if (!Editor->IsSelected(m_Node))
@@ -528,14 +528,14 @@ void ed::Node::Draw(ImDrawList* drawList, DrawFlags flags)
 
             if (m_GroupBorderWidth > 0.0f)
             {
-                ImGui::PushStyleVar(ImGuiStyleVar_AntiAliasFringeScale, 1.0f);
+                Editor->SetDefaultFringeScale();
 
                 drawList->AddRect(
                     to_imvec(m_GroupBounds.top_left()),
                     to_imvec(m_GroupBounds.bottom_right()),
                     m_GroupBorderColor, m_GroupRounding, 15, m_GroupBorderWidth);
 
-                ImGui::PopStyleVar();
+                Editor->ResetFringeScale();
             }
         }
 
@@ -838,7 +838,7 @@ void ed::EditorContext::Begin(const char* id, const ImVec2& size)
     for (auto pin   : m_Pins)     pin->Reset();
     for (auto link  : m_Links)   link->Reset();
 
-    ImGui::PushStyleColor(ImGuiCol_ChildWindowBg, ImColor(0, 0, 0, 0));
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0, 0, 0, 0));
     ImGui::BeginChild(id, size, false,
         ImGuiWindowFlags_NoMove |
         ImGuiWindowFlags_NoScrollbar |
@@ -864,7 +864,13 @@ void ed::EditorContext::Begin(const char* id, const ImVec2& size)
 
     m_Canvas = m_NavigateAction.GetCanvas();
 
-    ImGui::PushStyleVar(ImGuiStyleVar_AntiAliasFringeScale, std::min(std::max(m_Canvas.InvZoom.x, m_Canvas.InvZoom.y), 1.0f));
+    //ImGui::PushStyleVar(ImGuiStyleVar_AntiAliasFringeScale, std::min(std::max(m_Canvas.InvZoom.x, m_Canvas.InvZoom.y), 1.0f));
+    auto drawList = ImGui::GetWindowDrawList();
+    m_InitialInvScaleBackup  = drawList->_InvTransformationScale;
+    m_InitialHalfPixelBackup = drawList->_HalfPixel;
+    drawList->_InvTransformationScale *= std::min(std::max(m_Canvas.InvZoom.x, m_Canvas.InvZoom.y), 1.0f);
+    drawList->_HalfPixel.x            *= m_Canvas.InvZoom.x;
+    drawList->_HalfPixel.y            *= m_Canvas.InvZoom.y;
 
     // Save mouse positions
     auto& io = ImGui::GetIO();
@@ -891,7 +897,6 @@ void ed::EditorContext::Begin(const char* id, const ImVec2& size)
     CaptureMouse();
 
     // Reserve channels for background and links
-    auto drawList = ImGui::GetWindowDrawList();
     ImDrawList_ChannelsGrow(drawList, c_NodeStartChannel);
 
     if (HasSelectionChanged())
@@ -1175,7 +1180,10 @@ void ed::EditorContext::End()
     // ShowMetrics(control);
 
     // fringe scale
-    ImGui::PopStyleVar();
+    drawList->_InvTransformationScale = m_InitialInvScaleBackup;
+    drawList->_HalfPixel              = m_InitialHalfPixelBackup;
+
+    //ImGui::PopStyleVar();
 
     ImGui::EndChild();
     ImGui::PopStyleColor();
@@ -1711,7 +1719,7 @@ bool ed::EditorContext::AreShortcutsEnabled()
 
 ed::Control ed::EditorContext::BuildControl(bool allowOffscreen)
 {
-    if (!allowOffscreen && !ImGui::IsWindowHovered())
+    if (!allowOffscreen && !ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem))
         return Control(nullptr, nullptr, nullptr, nullptr, false, false, false, false);
 
     const auto mousePos = to_point(ImGui::GetMousePos());
@@ -1744,8 +1752,7 @@ ed::Control ed::EditorContext::BuildControl(bool allowOffscreen)
         ImGui::SetCursorScreenPos(to_imvec(rect.location));
 
         // debug
-        //if (id < 0)
-        //    return ImGui::Button(idString, to_imvec(rect.size));
+        //if (id < 0) return ImGui::Button(idString, to_imvec(rect.size));
 
         auto result = ImGui::InvisibleButton(idString, to_imvec(rect.size));
 
@@ -1760,10 +1767,10 @@ ed::Control ed::EditorContext::BuildControl(bool allowOffscreen)
     {
         if (emitInteractiveArea(id, rect))
             clickedObject = object;
-        if (!doubleClickedObject && ImGui::IsMouseDoubleClicked(0) && ImGui::IsItemHoveredRect())
+        if (!doubleClickedObject && ImGui::IsMouseDoubleClicked(0) && ImGui::IsItemHovered())
             doubleClickedObject = object;
 
-        if (!hotObject && ImGui::IsItemHoveredRect())
+        if (!hotObject && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem))
             hotObject = object;
 
         if (ImGui::IsItemActive())
@@ -1821,7 +1828,7 @@ ed::Control ed::EditorContext::BuildControl(bool allowOffscreen)
 
     // Check for interaction with background.
     auto backgroundClicked       = emitInteractiveArea(NodeId(0), editorRect);
-    auto backgroundDoubleClicked = !doubleClickedObject && ImGui::IsItemHoveredRect() ? ImGui::IsMouseDoubleClicked(0) : false;
+    auto backgroundDoubleClicked = !doubleClickedObject && ImGui::IsItemHovered() ? ImGui::IsMouseDoubleClicked(0) : false;
     auto isBackgroundActive      = ImGui::IsItemActive();
     auto isBackgroundHot         = !hotObject;
     auto isDragging              = ImGui::IsMouseDragging(0, 1) || ImGui::IsMouseDragging(1, 1) || ImGui::IsMouseDragging(2, 1);
@@ -1957,6 +1964,24 @@ void ed::EditorContext::ReleaseMouse()
 
     for (int i = 0; i < 5; ++i)
         io.MouseClickedPos[i] = m_MouseClickPosBackup[i];
+}
+
+void ed::EditorContext::SetDefaultFringeScale()
+{
+    auto drawList = ImGui::GetWindowDrawList();
+    m_HalfPixelBackup = drawList->_HalfPixel;
+    m_InvScaleBackup  = drawList->_InvTransformationScale;
+
+    drawList->_InvTransformationScale = 1.0f;
+    drawList->_HalfPixel.x            = 0.5f;
+    drawList->_HalfPixel.y            = 0.5f;
+}
+
+void ed::EditorContext::ResetFringeScale()
+{
+    auto drawList = ImGui::GetWindowDrawList();
+    drawList->_HalfPixel              = m_HalfPixelBackup;
+    drawList->_InvTransformationScale = m_InvScaleBackup;
 }
 
 
@@ -3554,9 +3579,9 @@ void ed::SelectAction::Draw(ImDrawList* drawList)
     auto max  = ImVec2(std::max(m_StartPoint.x, m_EndPoint.x), std::max(m_StartPoint.y, m_EndPoint.y));
 
     drawList->AddRectFilled(min, max, fillColor);
-    ImGui::PushStyleVar(ImGuiStyleVar_AntiAliasFringeScale, 1.0f);
+    Editor->SetDefaultFringeScale();
     drawList->AddRect(min, max, outlineColor);
-    ImGui::PopStyleVar();
+    Editor->ResetFringeScale();
 }
 
 
@@ -4791,7 +4816,7 @@ bool ed::HintBuilder::Begin(NodeId nodeId)
     ImGui::GetWindowDrawList()->ChannelsSetCurrent(c_UserChannel_Hints);
     ImGui::PushClipRect(canvas.WindowScreenPos + ImVec2(1, 1), canvas.WindowScreenPos + canvas.WindowScreenSize - ImVec2(1, 1), false);
 
-    ImGui::PushStyleVar(ImGuiStyleVar_AntiAliasFringeScale, 1.0f);
+    Editor->SetDefaultFringeScale();
     ImGui::PushStyleVar(ImGuiStyleVar_Alpha, alpha);
 
     m_IsActive = true;
@@ -4806,7 +4831,9 @@ void ed::HintBuilder::End()
 
     ImGui::PopClipRect();
     ImGui::PopClipRect();
-    ImGui::PopStyleVar(2);
+    //ImGui::PopStyleVar(2);
+    ImGui::PopStyleVar();
+    Editor->ResetFringeScale();
 
     Editor->Resume();
 

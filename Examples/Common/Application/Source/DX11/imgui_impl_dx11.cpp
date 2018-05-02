@@ -1,10 +1,28 @@
 // ImGui Win32 + DirectX11 binding
-// In this binding, ImTextureID is used to store a 'ID3D11ShaderResourceView*' texture identifier. Read the FAQ about ImTextureID in imgui.cpp.
+
+// Implemented features:
+//  [X] User texture binding. Use 'ID3D11ShaderResourceView*' as ImTextureID. Read the FAQ about ImTextureID in imgui.cpp.
 
 // You can copy and use unmodified imgui_impl_* files in your project. See main.cpp for an example of using this.
 // If you use this binding you'll need to call 4 functions: ImGui_ImplXXXX_Init(), ImGui_ImplXXXX_NewFrame(), ImGui::Render() and ImGui_ImplXXXX_Shutdown().
 // If you are new to ImGui, see examples/README.txt and documentation at the top of imgui.cpp.
 // https://github.com/ocornut/imgui
+
+// CHANGELOG
+// (minor and older changes stripped away, please see git history for details)
+//  2018-03-20: Misc: Setup io.BackendFlags ImGuiBackendFlags_HasMouseCursors and ImGuiBackendFlags_HasSetMousePos flags + honor ImGuiConfigFlags_NoMouseCursorChange flag.
+//  2018-02-20: Inputs: Added support for mouse cursors (ImGui::GetMouseCursor() value and WM_SETCURSOR message handling).
+//  2018-02-16: Misc: Obsoleted the io.RenderDrawListsFn callback and exposed ImGui_ImplDX11_RenderDrawData() in the .h file so you can call it yourself.
+//  2018-02-06: Misc: Removed call to ImGui::Shutdown() which is not available from 1.60 WIP, user needs to call CreateContext/DestroyContext themselves.
+//  2018-02-06: Inputs: Added mapping for ImGuiKey_Space.
+//  2018-02-06: Inputs: Honoring the io.WantSetMousePos by repositioning the mouse (when using navigation and ImGuiConfigFlags_NavEnableSetMousePos is set).
+//  2018-01-20: Inputs: Added Horizontal Mouse Wheel support.
+//  2018-01-08: Inputs: Added mapping for ImGuiKey_Insert.
+//  2018-01-05: Inputs: Added WM_LBUTTONDBLCLK double-click handlers for window classes with the CS_DBLCLKS flag.
+//  2017-10-23: Inputs: Added WM_SYSKEYDOWN / WM_SYSKEYUP handlers so e.g. the VK_MENU key can be read.
+//  2017-10-23: Inputs: Using Win32 ::SetCapture/::GetCapture() to retrieve mouse positions outside the client area when dragging. 
+//  2016-11-12: Inputs: Only call Win32 ::SetCursor(NULL) when io.MouseDrawCursor is set.
+//  2016-05-07: DirectX11: Disabling depth-write.
 
 #include "imgui.h"
 #include "imgui_impl_dx11.h"
@@ -26,6 +44,7 @@
 struct TEXTURE
 {
     TEXTURE(): View(nullptr), Width(0), Height(0) {}
+    ~TEXTURE() { /*assert(!View);*/ }
 
     ID3D11ShaderResourceView*   View;
     int                         Width;
@@ -33,64 +52,50 @@ struct TEXTURE
     std::vector<uint8_t>        Data;
 };
 
-struct GIZMO
-{
-    ImTextureID     TextureID;
-    float           Matrix[6];
-};
-
-// Data
+// Win32 data
+static HWND                     g_hWnd = 0;
 static INT64                    g_Time = 0;
 static INT64                    g_TicksPerSecond = 0;
+static ImGuiMouseCursor         g_LastMouseCursor = ImGuiMouseCursor_COUNT;
 
-static HWND                     g_hWnd = 0;
-static ID3D11Device*            g_pd3dDevice = nullptr;
-static ID3D11DeviceContext*     g_pd3dDeviceContext = nullptr;
-static ID3D11Buffer*            g_pVB = nullptr;
-static ID3D11Buffer*            g_pIB = nullptr;
-static ID3D10Blob *             g_pVertexShaderBlob = nullptr;
-static ID3D11VertexShader*      g_pVertexShader = nullptr;
-static ID3D11InputLayout*       g_pInputLayout = nullptr;
-static ID3D11Buffer*            g_pVertexConstantBuffer = nullptr;
-static ID3D10Blob *             g_pPixelShaderBlob = nullptr;
-static ID3D11PixelShader*       g_pPixelShader = nullptr;
-static ID3D10Blob *             g_pCompositePixelShaderBlob = nullptr;
-static ID3D11PixelShader*       g_pCompositePixelShader = nullptr;
-static ID3D11Buffer*            g_pGizmoBuffer = nullptr;
-static ID3D11SamplerState*      g_pGizmoSampler = nullptr;
-static ID3D11SamplerState*      g_pSampler = nullptr;
-static ID3D11RasterizerState*   g_pRasterizerState = nullptr;
-static ID3D11BlendState*        g_pBlendState = nullptr;
-static ID3D11DepthStencilState* g_pDepthStencilState = nullptr;
+// DirectX data
+static ID3D11Device*            g_pd3dDevice = NULL;
+static ID3D11DeviceContext*     g_pd3dDeviceContext = NULL;
+static ID3D11Buffer*            g_pVB = NULL;
+static ID3D11Buffer*            g_pIB = NULL;
+static ID3D10Blob *             g_pVertexShaderBlob = NULL;
+static ID3D11VertexShader*      g_pVertexShader = NULL;
+static ID3D11InputLayout*       g_pInputLayout = NULL;
+static ID3D11Buffer*            g_pVertexConstantBuffer = NULL;
+static ID3D10Blob *             g_pPixelShaderBlob = NULL;
+static ID3D11PixelShader*       g_pPixelShader = NULL;
+static ID3D11SamplerState*      g_pFontSampler = NULL;
+//static ID3D11ShaderResourceView*g_pFontTextureView = NULL;
+static ID3D11RasterizerState*   g_pRasterizerState = NULL;
+static ID3D11BlendState*        g_pBlendState = NULL;
+static ID3D11DepthStencilState* g_pDepthStencilState = NULL;
 static int                      g_VertexBufferSize = 5000, g_IndexBufferSize = 10000;
 static std::vector<std::unique_ptr<TEXTURE>> g_Textures;
-static ImTextureID              g_FontTexture = nullptr;
 
 struct VERTEX_CONSTANT_BUFFER
 {
     float        mvp[4][4];
 };
 
-struct GIZMO_CONSTANT_BUFFER
-{
-    float transform[4][4];
-};
-
-static void ImGui_UploadTexture(TEXTURE* texture);
+// Forward Declarations
+static bool ImGui_UploadTexture(TEXTURE* texture);
 static void ImGui_ReleaseTexture(TEXTURE* texture);
 
-
-// This is the main rendering function that you have to implement and provide to ImGui (via setting up 'RenderDrawListsFn' in the ImGuiIO structure)
-// If text or lines are blurry when integrating ImGui in your engine:
-// - in your Render function, try translating your projection matrix by (0.5f,0.5f) or (0.375f,0.375f)
-void ImGui_ImplDX11_RenderDrawLists(ImDrawData* draw_data)
+// Render function
+// (this used to be set in io.RenderDrawListsFn and called by ImGui::Render(), but you can now call this directly from your main loop)
+void ImGui_ImplDX11_RenderDrawData(ImDrawData* draw_data)
 {
     ID3D11DeviceContext* ctx = g_pd3dDeviceContext;
 
     // Create and grow vertex/index buffers if needed
     if (!g_pVB || g_VertexBufferSize < draw_data->TotalVtxCount)
     {
-        if (g_pVB) { g_pVB->Release(); g_pVB = nullptr; }
+        if (g_pVB) { g_pVB->Release(); g_pVB = NULL; }
         g_VertexBufferSize = draw_data->TotalVtxCount + 5000;
         D3D11_BUFFER_DESC desc;
         memset(&desc, 0, sizeof(D3D11_BUFFER_DESC));
@@ -99,12 +104,12 @@ void ImGui_ImplDX11_RenderDrawLists(ImDrawData* draw_data)
         desc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
         desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
         desc.MiscFlags = 0;
-        if (g_pd3dDevice->CreateBuffer(&desc, nullptr, &g_pVB) < 0)
+        if (g_pd3dDevice->CreateBuffer(&desc, NULL, &g_pVB) < 0)
             return;
     }
     if (!g_pIB || g_IndexBufferSize < draw_data->TotalIdxCount)
     {
-        if (g_pIB) { g_pIB->Release(); g_pIB = nullptr; }
+        if (g_pIB) { g_pIB->Release(); g_pIB = NULL; }
         g_IndexBufferSize = draw_data->TotalIdxCount + 10000;
         D3D11_BUFFER_DESC desc;
         memset(&desc, 0, sizeof(D3D11_BUFFER_DESC));
@@ -112,7 +117,7 @@ void ImGui_ImplDX11_RenderDrawLists(ImDrawData* draw_data)
         desc.ByteWidth = g_IndexBufferSize * sizeof(ImDrawIdx);
         desc.BindFlags = D3D11_BIND_INDEX_BUFFER;
         desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
-        if (g_pd3dDevice->CreateBuffer(&desc, nullptr, &g_pIB) < 0)
+        if (g_pd3dDevice->CreateBuffer(&desc, NULL, &g_pIB) < 0)
             return;
     }
 
@@ -127,10 +132,10 @@ void ImGui_ImplDX11_RenderDrawLists(ImDrawData* draw_data)
     for (int n = 0; n < draw_data->CmdListsCount; n++)
     {
         const ImDrawList* cmd_list = draw_data->CmdLists[n];
-        memcpy(vtx_dst, &cmd_list->VtxBuffer[0], cmd_list->VtxBuffer.size() * sizeof(ImDrawVert));
-        memcpy(idx_dst, &cmd_list->IdxBuffer[0], cmd_list->IdxBuffer.size() * sizeof(ImDrawIdx));
-        vtx_dst += cmd_list->VtxBuffer.size();
-        idx_dst += cmd_list->IdxBuffer.size();
+        memcpy(vtx_dst, cmd_list->VtxBuffer.Data, cmd_list->VtxBuffer.Size * sizeof(ImDrawVert));
+        memcpy(idx_dst, cmd_list->IdxBuffer.Data, cmd_list->IdxBuffer.Size * sizeof(ImDrawIdx));
+        vtx_dst += cmd_list->VtxBuffer.Size;
+        idx_dst += cmd_list->IdxBuffer.Size;
     }
     ctx->Unmap(g_pVB, 0);
     ctx->Unmap(g_pIB, 0);
@@ -215,10 +220,10 @@ void ImGui_ImplDX11_RenderDrawLists(ImDrawData* draw_data)
     ctx->IASetVertexBuffers(0, 1, &g_pVB, &stride, &offset);
     ctx->IASetIndexBuffer(g_pIB, sizeof(ImDrawIdx) == 2 ? DXGI_FORMAT_R16_UINT : DXGI_FORMAT_R32_UINT, 0);
     ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-    ctx->VSSetShader(g_pVertexShader, nullptr, 0);
+    ctx->VSSetShader(g_pVertexShader, NULL, 0);
     ctx->VSSetConstantBuffers(0, 1, &g_pVertexConstantBuffer);
-    ctx->PSSetShader(g_pPixelShader, nullptr, 0);
-    ctx->PSSetSamplers(0, 1, &g_pSampler);
+    ctx->PSSetShader(g_pPixelShader, NULL, 0);
+    ctx->PSSetSamplers(0, 1, &g_pFontSampler);
 
     // Setup render state
     const float blend_factor[4] = { 0.f, 0.f, 0.f, 0.f };
@@ -232,7 +237,7 @@ void ImGui_ImplDX11_RenderDrawLists(ImDrawData* draw_data)
     for (int n = 0; n < draw_data->CmdListsCount; n++)
     {
         const ImDrawList* cmd_list = draw_data->CmdLists[n];
-        for (int cmd_i = 0; cmd_i < cmd_list->CmdBuffer.size(); cmd_i++)
+        for (int cmd_i = 0; cmd_i < cmd_list->CmdBuffer.Size; cmd_i++)
         {
             const ImDrawCmd* pcmd = &cmd_list->CmdBuffer[cmd_i];
             if (pcmd->UserCallback)
@@ -241,19 +246,15 @@ void ImGui_ImplDX11_RenderDrawLists(ImDrawData* draw_data)
             }
             else
             {
-                auto texture = reinterpret_cast<TEXTURE*>(pcmd->TextureId);
-
-                ID3D11ShaderResourceView* views[1] = { texture ? texture->View : nullptr };
-
                 const D3D11_RECT r = { (LONG)pcmd->ClipRect.x, (LONG)pcmd->ClipRect.y, (LONG)pcmd->ClipRect.z, (LONG)pcmd->ClipRect.w };
-
-                ctx->PSSetShaderResources(0, 1, views);
+                auto tex = reinterpret_cast<TEXTURE*>(pcmd->TextureId);
+                ctx->PSSetShaderResources(0, 1, (ID3D11ShaderResourceView**)&tex->View);
                 ctx->RSSetScissorRects(1, &r);
                 ctx->DrawIndexed(pcmd->ElemCount, idx_offset, vtx_offset);
             }
             idx_offset += pcmd->ElemCount;
         }
-        vtx_offset += cmd_list->VtxBuffer.size();
+        vtx_offset += cmd_list->VtxBuffer.Size;
     }
 
     // Restore modified DX state
@@ -275,99 +276,100 @@ void ImGui_ImplDX11_RenderDrawLists(ImDrawData* draw_data)
     ctx->IASetInputLayout(old.InputLayout); if (old.InputLayout) old.InputLayout->Release();
 }
 
-static void ImGui_UpdateCursor()
-{
-    RECT rect;
-    GetClientRect(g_hWnd, &rect);
-
-    bool cursorInWindow = false;
-    POINT cursorPos;
-    if (GetCursorPos(&cursorPos))
-    {
-        ScreenToClient(g_hWnd, &cursorPos);
-
-        cursorInWindow = PtInRect(&rect, cursorPos) == TRUE;
-    }
-
-    auto currentCursor = cursorInWindow ? ImGui::GetMouseCursor() : ImGuiMouseCursor_Arrow;
-    HCURSOR hCursor = nullptr;
-
-    switch (currentCursor)
-    {
-        default:
-        case ImGuiMouseCursor_Arrow:      hCursor = LoadCursor(nullptr, IDC_ARROW);    break;
-        case ImGuiMouseCursor_TextInput:  hCursor = LoadCursor(nullptr, IDC_IBEAM);    break;
-        case ImGuiMouseCursor_Move:       hCursor = LoadCursor(nullptr, IDC_SIZEALL);  break;
-        case ImGuiMouseCursor_ResizeNS:   hCursor = LoadCursor(nullptr, IDC_SIZENS);   break;
-        case ImGuiMouseCursor_ResizeEW:   hCursor = LoadCursor(nullptr, IDC_SIZEWE);   break;
-        case ImGuiMouseCursor_ResizeNESW: hCursor = LoadCursor(nullptr, IDC_SIZENESW); break;
-        case ImGuiMouseCursor_ResizeNWSE: hCursor = LoadCursor(nullptr, IDC_SIZENWSE); break;
-    }
-
-    SetCursor(hCursor);
-}
-
-static void ImGui_ImplDX11_CaptureMouse()
+static bool ImGui_ImplWin32_UpdateMouseCursor()
 {
     ImGuiIO& io = ImGui::GetIO();
+    if (io.ConfigFlags & ImGuiConfigFlags_NoMouseCursorChange)
+        return false;
 
-    if (!io.MouseDown[0] && !io.MouseDown[1] && !io.MouseDown[2])
-        SetCapture(g_hWnd);
+    ImGuiMouseCursor imgui_cursor = io.MouseDrawCursor ? ImGuiMouseCursor_None : ImGui::GetMouseCursor();
+    if (imgui_cursor == ImGuiMouseCursor_None)
+    {
+        // Hide OS mouse cursor if imgui is drawing it or if it wants no cursor
+        ::SetCursor(NULL);
+    }
+    else
+    {
+        // Hardware cursor type
+        LPTSTR win32_cursor = IDC_ARROW;
+        switch (imgui_cursor)
+        {
+        case ImGuiMouseCursor_Arrow:        win32_cursor = IDC_ARROW; break;
+        case ImGuiMouseCursor_TextInput:    win32_cursor = IDC_IBEAM; break;
+        case ImGuiMouseCursor_ResizeAll:    win32_cursor = IDC_SIZEALL; break;
+        case ImGuiMouseCursor_ResizeEW:     win32_cursor = IDC_SIZEWE; break;
+        case ImGuiMouseCursor_ResizeNS:     win32_cursor = IDC_SIZENS; break;
+        case ImGuiMouseCursor_ResizeNESW:   win32_cursor = IDC_SIZENESW; break;
+        case ImGuiMouseCursor_ResizeNWSE:   win32_cursor = IDC_SIZENWSE; break;
+        }
+        ::SetCursor(::LoadCursor(NULL, win32_cursor));
+    }
+    return true;
 }
 
-static void ImGui_ImplDX11_ReleaseMouse()
-{
-    ImGuiIO& io = ImGui::GetIO();
+// Allow compilation with old Windows SDK. MinGW doesn't have default _WIN32_WINNT/WINVER versions.
+#ifndef WM_MOUSEHWHEEL
+#define WM_MOUSEHWHEEL 0x020E
+#endif
 
-    if (!io.MouseDown[0] && !io.MouseDown[1] && !io.MouseDown[2])
-        ReleaseCapture();
-}
-
-IMGUI_API LRESULT ImGui_ImplDX11_WndProcHandler(HWND, UINT msg, WPARAM wParam, LPARAM lParam)
+// Process Win32 mouse/keyboard inputs. 
+// You can read the io.WantCaptureMouse, io.WantCaptureKeyboard flags to tell if dear imgui wants to use your inputs.
+// - When io.WantCaptureMouse is true, do not dispatch mouse input data to your main application.
+// - When io.WantCaptureKeyboard is true, do not dispatch keyboard input data to your main application.
+// Generally you may always pass all inputs to dear imgui, and hide them from your application based on those two flags.
+// PS: In this Win32 handler, we use the capture API (GetCapture/SetCapture/ReleaseCapture) to be able to read mouse coordinations when dragging mouse outside of our window bounds.
+// PS: We treat DBLCLK messages as regular mouse down messages, so this code will work on windows classes that have the CS_DBLCLKS flag set. Our own example app code doesn't set this flag.
+IMGUI_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
+    if (ImGui::GetCurrentContext() == NULL)
+        return 0;
+
     ImGuiIO& io = ImGui::GetIO();
     switch (msg)
     {
-    case WM_LBUTTONDOWN:
-        ImGui_ImplDX11_CaptureMouse();
-        io.MouseDown[0] = true;
+    case WM_LBUTTONDOWN: case WM_LBUTTONDBLCLK:
+    case WM_RBUTTONDOWN: case WM_RBUTTONDBLCLK:
+    case WM_MBUTTONDOWN: case WM_MBUTTONDBLCLK:
+    {
+        int button = 0;
+        if (msg == WM_LBUTTONDOWN || msg == WM_LBUTTONDBLCLK) button = 0;
+        if (msg == WM_RBUTTONDOWN || msg == WM_RBUTTONDBLCLK) button = 1;
+        if (msg == WM_MBUTTONDOWN || msg == WM_MBUTTONDBLCLK) button = 2;
+        if (!ImGui::IsAnyMouseDown() && ::GetCapture() == NULL)
+            ::SetCapture(hwnd);
+        io.MouseDown[button] = true;
         return 0;
+    }
     case WM_LBUTTONUP:
-        io.MouseDown[0] = false;
-        ImGui_ImplDX11_ReleaseMouse();
-        return 0;
-    case WM_RBUTTONDOWN:
-        ImGui_ImplDX11_CaptureMouse();
-        io.MouseDown[1] = true;
-        return 0;
     case WM_RBUTTONUP:
-        io.MouseDown[1] = false;
-        ImGui_ImplDX11_ReleaseMouse();
-        return 0;
-    case WM_MBUTTONDOWN:
-        ImGui_ImplDX11_CaptureMouse();
-        io.MouseDown[2] = true;
-        return 0;
     case WM_MBUTTONUP:
-        io.MouseDown[2] = false;
-        ImGui_ImplDX11_ReleaseMouse();
+    {
+        int button = 0;
+        if (msg == WM_LBUTTONUP) button = 0;
+        if (msg == WM_RBUTTONUP) button = 1;
+        if (msg == WM_MBUTTONUP) button = 2;
+        io.MouseDown[button] = false;
+        if (!ImGui::IsAnyMouseDown() && ::GetCapture() == hwnd)
+            ::ReleaseCapture();
         return 0;
+    }
     case WM_MOUSEWHEEL:
         io.MouseWheel += GET_WHEEL_DELTA_WPARAM(wParam) > 0 ? +1.0f : -1.0f;
+        return 0;
+    case WM_MOUSEHWHEEL:
+        io.MouseWheelH += GET_WHEEL_DELTA_WPARAM(wParam) > 0 ? +1.0f : -1.0f;
         return 0;
     case WM_MOUSEMOVE:
         io.MousePos.x = (signed short)(lParam);
         io.MousePos.y = (signed short)(lParam >> 16);
-
-        if (io.MouseDown[0] || io.MouseDown[1] || io.MouseDown[2])
-            ImGui_UpdateCursor();
-
         return 0;
     case WM_KEYDOWN:
+    case WM_SYSKEYDOWN:
         if (wParam < 256)
             io.KeysDown[wParam] = 1;
         return 0;
     case WM_KEYUP:
+    case WM_SYSKEYUP:
         if (wParam < 256)
             io.KeysDown[wParam] = 0;
         return 0;
@@ -377,8 +379,9 @@ IMGUI_API LRESULT ImGui_ImplDX11_WndProcHandler(HWND, UINT msg, WPARAM wParam, L
             io.AddInputCharacter((unsigned short)wParam);
         return 0;
     case WM_SETCURSOR:
-        ImGui_UpdateCursor();
-        return TRUE;
+        if (LOWORD(lParam) == HTCLIENT && ImGui_ImplWin32_UpdateMouseCursor())
+            return 1;
+        return 0;
     }
     return 0;
 }
@@ -390,84 +393,107 @@ static void ImGui_ImplDX11_CreateFontsTexture()
     unsigned char* pixels;
     int width, height;
     io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
-    std::vector<unsigned char> adjustedPixels;
-    adjustedPixels.assign(pixels, pixels + width * height * 4);
-    pixels = adjustedPixels.data();
-    for (int i = 0; i < width * height; ++i)
-    {
-        auto& a = pixels[i * 4 + 3];
-        a = static_cast<unsigned char>(powf(a / 255.0f, 1.0f / 2.2f) * 255.0f);
-    }
 
-    auto texID = ImGui_CreateTexture(pixels, width, height);
+    io.Fonts->TexID = ImGui_CreateTexture(pixels, width, height);
 
-    // Store our identifier
-    io.Fonts->TexID = (void *)texID;
+    //// Upload texture to graphics system
+    //{
+    //    D3D11_TEXTURE2D_DESC desc;
+    //    ZeroMemory(&desc, sizeof(desc));
+    //    desc.Width = width;
+    //    desc.Height = height;
+    //    desc.MipLevels = 1;
+    //    desc.ArraySize = 1;
+    //    desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    //    desc.SampleDesc.Count = 1;
+    //    desc.Usage = D3D11_USAGE_DEFAULT;
+    //    desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+    //    desc.CPUAccessFlags = 0;
+
+    //    ID3D11Texture2D *pTexture = NULL;
+    //    D3D11_SUBRESOURCE_DATA subResource;
+    //    subResource.pSysMem = pixels;
+    //    subResource.SysMemPitch = desc.Width * 4;
+    //    subResource.SysMemSlicePitch = 0;
+    //    g_pd3dDevice->CreateTexture2D(&desc, &subResource, &pTexture);
+
+    //    // Create texture view
+    //    D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc;
+    //    ZeroMemory(&srvDesc, sizeof(srvDesc));
+    //    srvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    //    srvDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+    //    srvDesc.Texture2D.MipLevels = desc.MipLevels;
+    //    srvDesc.Texture2D.MostDetailedMip = 0;
+    //    g_pd3dDevice->CreateShaderResourceView(pTexture, &srvDesc, &g_pFontTextureView);
+    //    pTexture->Release();
+    //}
+
+    //// Store our identifier
+    //io.Fonts->TexID = (void *)g_pFontTextureView;
 
     // Create texture sampler
     {
         D3D11_SAMPLER_DESC desc;
         ZeroMemory(&desc, sizeof(desc));
         desc.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
-        desc.AddressU = D3D11_TEXTURE_ADDRESS_CLAMP;
-        desc.AddressV = D3D11_TEXTURE_ADDRESS_CLAMP;
-        desc.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
+        desc.AddressU = D3D11_TEXTURE_ADDRESS_WRAP;
+        desc.AddressV = D3D11_TEXTURE_ADDRESS_WRAP;
+        desc.AddressW = D3D11_TEXTURE_ADDRESS_WRAP;
         desc.MipLODBias = 0.f;
         desc.ComparisonFunc = D3D11_COMPARISON_ALWAYS;
         desc.MinLOD = 0.f;
         desc.MaxLOD = 0.f;
-        g_pd3dDevice->CreateSamplerState(&desc, &g_pSampler);
+        g_pd3dDevice->CreateSamplerState(&desc, &g_pFontSampler);
     }
 }
 
-bool ImGui_ImplDX11_CreateDeviceObjects()
+bool    ImGui_ImplDX11_CreateDeviceObjects()
 {
     if (!g_pd3dDevice)
         return false;
-    if (g_pSampler)
+    if (g_pFontSampler)
         ImGui_ImplDX11_InvalidateDeviceObjects();
 
     // By using D3DCompile() from <d3dcompiler.h> / d3dcompiler.lib, we introduce a dependency to a given version of d3dcompiler_XX.dll (see D3DCOMPILER_DLL_A)
-    // If you would like to use this DX11 sample code but remove this dependency you can:
-    //  1) compile once, save the compiled shader blobs into a file or source code and pass them to CreateVertexShader()/CreatePixelShader() [prefered solution]
-    //  2) use code to detect any version of the DLL and grab a pointer to D3DCompile from the DLL.
+    // If you would like to use this DX11 sample code but remove this dependency you can: 
+    //  1) compile once, save the compiled shader blobs into a file or source code and pass them to CreateVertexShader()/CreatePixelShader() [preferred solution]
+    //  2) use code to detect any version of the DLL and grab a pointer to D3DCompile from the DLL. 
     // See https://github.com/ocornut/imgui/pull/638 for sources and details.
 
     // Create the vertex shader
     {
-        static const char* vertexShader = R"vs(
-cbuffer vertexBuffer : register(b0)
-{
-    float4x4 ProjectionMatrix;
-};
-struct VS_INPUT
-{
-    float2 pos : POSITION;
-    float4 col : COLOR0;
-    float2 uv  : TEXCOORD0;
-};
+        static const char* vertexShader =
+            "cbuffer vertexBuffer : register(b0) \
+            {\
+            float4x4 ProjectionMatrix; \
+            };\
+            struct VS_INPUT\
+            {\
+            float2 pos : POSITION;\
+            float4 col : COLOR0;\
+            float2 uv  : TEXCOORD0;\
+            };\
+            \
+            struct PS_INPUT\
+            {\
+            float4 pos : SV_POSITION;\
+            float4 col : COLOR0;\
+            float2 uv  : TEXCOORD0;\
+            };\
+            \
+            PS_INPUT main(VS_INPUT input)\
+            {\
+            PS_INPUT output;\
+            output.pos = mul( ProjectionMatrix, float4(input.pos.xy, 0.f, 1.f));\
+            output.col = input.col;\
+            output.uv  = input.uv;\
+            return output;\
+            }";
 
-struct PS_INPUT
-{
-    float4 pos : SV_POSITION;
-    float4 col : COLOR0;
-    float2 uv  : TEXCOORD0;
-};
-
-PS_INPUT main(VS_INPUT input)
-{
-    PS_INPUT output;
-    output.pos = mul( ProjectionMatrix, float4(input.pos.xy, 0.f, 1.f));
-    output.col = input.col;
-    output.uv  = input.uv;
-    return output;
-}
-)vs";
-
-        D3DCompile(vertexShader, strlen(vertexShader), nullptr, nullptr, nullptr, "main", "vs_4_0", 0, 0, &g_pVertexShaderBlob, nullptr);
-        if (g_pVertexShaderBlob == nullptr) // NB: Pass ID3D10Blob* pErrorBlob to D3DCompile() to get error showing in (const char*)pErrorBlob->GetBufferPointer(). Make sure to Release() the blob!
+        D3DCompile(vertexShader, strlen(vertexShader), NULL, NULL, NULL, "main", "vs_4_0", 0, 0, &g_pVertexShaderBlob, NULL);
+        if (g_pVertexShaderBlob == NULL) // NB: Pass ID3D10Blob* pErrorBlob to D3DCompile() to get error showing in (const char*)pErrorBlob->GetBufferPointer(). Make sure to Release() the blob!
             return false;
-        if (g_pd3dDevice->CreateVertexShader((DWORD*)g_pVertexShaderBlob->GetBufferPointer(), g_pVertexShaderBlob->GetBufferSize(), nullptr, &g_pVertexShader) != S_OK)
+        if (g_pd3dDevice->CreateVertexShader((DWORD*)g_pVertexShaderBlob->GetBufferPointer(), g_pVertexShaderBlob->GetBufferSize(), NULL, &g_pVertexShader) != S_OK)
             return false;
 
         // Create the input layout
@@ -487,96 +513,33 @@ PS_INPUT main(VS_INPUT input)
             desc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
             desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
             desc.MiscFlags = 0;
-            g_pd3dDevice->CreateBuffer(&desc, nullptr, &g_pVertexConstantBuffer);
+            g_pd3dDevice->CreateBuffer(&desc, NULL, &g_pVertexConstantBuffer);
         }
     }
 
     // Create the pixel shader
     {
-        static const char* pixelShader = R"ps(
-struct PS_INPUT
-{
-    float4 pos : SV_POSITION;
-    float4 col : COLOR0;
-    float2 uv  : TEXCOORD0;
-};
-sampler sampler0;
-Texture2D texture0;
+        static const char* pixelShader =
+            "struct PS_INPUT\
+            {\
+            float4 pos : SV_POSITION;\
+            float4 col : COLOR0;\
+            float2 uv  : TEXCOORD0;\
+            };\
+            sampler sampler0;\
+            Texture2D texture0;\
+            \
+            float4 main(PS_INPUT input) : SV_Target\
+            {\
+            float4 out_col = input.col * texture0.Sample(sampler0, input.uv); \
+            return out_col; \
+            }";
 
-float4 main(PS_INPUT input) : SV_Target
-{
-    float4 out_col = input.col * texture0.Sample(sampler0, input.uv);
-    return out_col;
-}
-)ps";
-
-        D3DCompile(pixelShader, strlen(pixelShader), nullptr, nullptr, nullptr, "main", "ps_4_0", 0, 0, &g_pPixelShaderBlob, nullptr);
-        if (g_pPixelShaderBlob == nullptr)  // NB: Pass ID3D10Blob* pErrorBlob to D3DCompile() to get error showing in (const char*)pErrorBlob->GetBufferPointer(). Make sure to Release() the blob!
+        D3DCompile(pixelShader, strlen(pixelShader), NULL, NULL, NULL, "main", "ps_4_0", 0, 0, &g_pPixelShaderBlob, NULL);
+        if (g_pPixelShaderBlob == NULL)  // NB: Pass ID3D10Blob* pErrorBlob to D3DCompile() to get error showing in (const char*)pErrorBlob->GetBufferPointer(). Make sure to Release() the blob!
             return false;
-        if (g_pd3dDevice->CreatePixelShader((DWORD*)g_pPixelShaderBlob->GetBufferPointer(), g_pPixelShaderBlob->GetBufferSize(), nullptr, &g_pPixelShader) != S_OK)
+        if (g_pd3dDevice->CreatePixelShader((DWORD*)g_pPixelShaderBlob->GetBufferPointer(), g_pPixelShaderBlob->GetBufferSize(), NULL, &g_pPixelShader) != S_OK)
             return false;
-    }
-
-    {
-        static const char* pixelShader = R"ps(
-struct PS_INPUT
-{
-    float4 pos : SV_POSITION;
-    float4 col : COLOR0;
-    float2 uv  : TEXCOORD0;
-};
-sampler sampler0;
-sampler sampler1;
-Texture2D texture0 : register(t0);
-Texture2D texture1 : register(t1);
-
-cbuffer gizmo : register(b0)
-{
-    float4x4 transform;
-}
-
-float4 main(PS_INPUT input) : SV_Target
-{
-    float2 gizmoUV   = mul(transform, float4(input.pos.xy, 0.0f, 1.0f)).xy;
-    float4 out_col   = input.col * texture0.Sample(sampler0, input.uv);
-    float4 gizmo_col = texture1.Sample(sampler1, gizmoUV);
-    return float4(out_col.xyz, out_col.a * gizmo_col.a);
-}
-)ps";
-
-        D3DCompile(pixelShader, strlen(pixelShader), nullptr, nullptr, nullptr, "main", "ps_4_0", 0, 0, &g_pCompositePixelShaderBlob, nullptr);
-        if (g_pCompositePixelShaderBlob == nullptr)  // NB: Pass ID3D10Blob* pErrorBlob to D3DCompile() to get error showing in (const char*)pErrorBlob->GetBufferPointer(). Make sure to Release() the blob!
-            return false;
-        if (g_pd3dDevice->CreatePixelShader((DWORD*)g_pCompositePixelShaderBlob->GetBufferPointer(), g_pCompositePixelShaderBlob->GetBufferSize(), nullptr, &g_pCompositePixelShader) != S_OK)
-            return false;
-
-        // Create the constant buffer
-        {
-            D3D11_BUFFER_DESC desc = { 0 };
-            desc.ByteWidth      = sizeof(GIZMO_CONSTANT_BUFFER);
-            desc.Usage          = D3D11_USAGE_DYNAMIC;
-            desc.BindFlags      = D3D11_BIND_CONSTANT_BUFFER;
-            desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
-            desc.MiscFlags      = 0;
-
-            auto hr = g_pd3dDevice->CreateBuffer(&desc, nullptr, &g_pGizmoBuffer);
-            if (hr != S_OK)
-                return false;
-        }
-
-        {
-            D3D11_SAMPLER_DESC desc;
-            ZeroMemory(&desc, sizeof(desc));
-            desc.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
-            desc.AddressU = D3D11_TEXTURE_ADDRESS_WRAP;
-            desc.AddressV = D3D11_TEXTURE_ADDRESS_WRAP;
-            desc.AddressW = D3D11_TEXTURE_ADDRESS_WRAP;
-            desc.MipLODBias = 0.f;
-            desc.ComparisonFunc = D3D11_COMPARISON_ALWAYS;
-            desc.MinLOD = 0.f;
-            desc.MaxLOD = 0.f;
-            g_pd3dDevice->CreateSamplerState(&desc, &g_pGizmoSampler);
-        }
     }
 
     // Create the blending setup
@@ -620,48 +583,39 @@ float4 main(PS_INPUT input) : SV_Target
         g_pd3dDevice->CreateDepthStencilState(&desc, &g_pDepthStencilState);
     }
 
-    for (auto& texture : g_Textures) ImGui_UploadTexture(texture.get());
-
     ImGui_ImplDX11_CreateFontsTexture();
+
+    for (auto& texture : g_Textures)
+        ImGui_UploadTexture(texture.get());
 
     return true;
 }
 
-void ImGui_ImplDX11_InvalidateDeviceObjects()
+void    ImGui_ImplDX11_InvalidateDeviceObjects()
 {
     if (!g_pd3dDevice)
         return;
 
-    if (g_FontTexture)
-    {
-        ImGui::GetIO().Fonts->TexID = 0;
-        ImGui_DestroyTexture(g_FontTexture);
-        g_FontTexture = nullptr;
-    }
-
     for (auto& texture : g_Textures)
         ImGui_ReleaseTexture(texture.get());
 
-    if (g_pSampler) { g_pSampler->Release(); g_pSampler = nullptr; }
-    if (g_pIB) { g_pIB->Release(); g_pIB = nullptr; }
-    if (g_pVB) { g_pVB->Release(); g_pVB = nullptr; }
-    if (g_pGizmoBuffer) { g_pGizmoBuffer->Release(); g_pGizmoBuffer = nullptr; }
-    if (g_pGizmoSampler) { g_pGizmoSampler->Release(); g_pGizmoSampler = nullptr; }
+    if (g_pFontSampler) { g_pFontSampler->Release(); g_pFontSampler = NULL; }
+    //if (g_pFontTextureView) { g_pFontTextureView->Release(); g_pFontTextureView = NULL; ImGui::GetIO().Fonts->TexID = NULL; } // We copied g_pFontTextureView to io.Fonts->TexID so let's clear that as well.
+    if (g_pIB) { g_pIB->Release(); g_pIB = NULL; }
+    if (g_pVB) { g_pVB->Release(); g_pVB = NULL; }
 
-    if (g_pBlendState) { g_pBlendState->Release(); g_pBlendState = nullptr; }
-    if (g_pDepthStencilState) { g_pDepthStencilState->Release(); g_pDepthStencilState = nullptr; }
-    if (g_pRasterizerState) { g_pRasterizerState->Release(); g_pRasterizerState = nullptr; }
-    if (g_pPixelShader) { g_pPixelShader->Release(); g_pPixelShader = nullptr; }
-    if (g_pPixelShaderBlob) { g_pPixelShaderBlob->Release(); g_pPixelShaderBlob = nullptr; }
-    if (g_pCompositePixelShader) { g_pCompositePixelShader->Release(); g_pCompositePixelShader = nullptr; }
-    if (g_pCompositePixelShaderBlob) { g_pCompositePixelShaderBlob->Release(); g_pCompositePixelShaderBlob = nullptr; }
-    if (g_pVertexConstantBuffer) { g_pVertexConstantBuffer->Release(); g_pVertexConstantBuffer = nullptr; }
-    if (g_pInputLayout) { g_pInputLayout->Release(); g_pInputLayout = nullptr; }
-    if (g_pVertexShader) { g_pVertexShader->Release(); g_pVertexShader = nullptr; }
-    if (g_pVertexShaderBlob) { g_pVertexShaderBlob->Release(); g_pVertexShaderBlob = nullptr; }
+    if (g_pBlendState) { g_pBlendState->Release(); g_pBlendState = NULL; }
+    if (g_pDepthStencilState) { g_pDepthStencilState->Release(); g_pDepthStencilState = NULL; }
+    if (g_pRasterizerState) { g_pRasterizerState->Release(); g_pRasterizerState = NULL; }
+    if (g_pPixelShader) { g_pPixelShader->Release(); g_pPixelShader = NULL; }
+    if (g_pPixelShaderBlob) { g_pPixelShaderBlob->Release(); g_pPixelShaderBlob = NULL; }
+    if (g_pVertexConstantBuffer) { g_pVertexConstantBuffer->Release(); g_pVertexConstantBuffer = NULL; }
+    if (g_pInputLayout) { g_pInputLayout->Release(); g_pInputLayout = NULL; }
+    if (g_pVertexShader) { g_pVertexShader->Release(); g_pVertexShader = NULL; }
+    if (g_pVertexShaderBlob) { g_pVertexShaderBlob->Release(); g_pVertexShaderBlob = NULL; }
 }
 
-bool ImGui_ImplDX11_Init(void* hwnd, ID3D11Device* device, ID3D11DeviceContext* device_context)
+bool    ImGui_ImplDX11_Init(void* hwnd, ID3D11Device* device, ID3D11DeviceContext* device_context)
 {
     g_hWnd = (HWND)hwnd;
     g_pd3dDevice = device;
@@ -672,8 +626,13 @@ bool ImGui_ImplDX11_Init(void* hwnd, ID3D11Device* device, ID3D11DeviceContext* 
     if (!QueryPerformanceCounter((LARGE_INTEGER *)&g_Time))
         return false;
 
+    // Setup back-end capabilities flags
     ImGuiIO& io = ImGui::GetIO();
-    io.KeyMap[ImGuiKey_Tab] = VK_TAB;                       // Keyboard mapping. ImGui will use those indices to peek into the io.KeyDown[] array that we will update during the application lifetime.
+    io.BackendFlags |= ImGuiBackendFlags_HasMouseCursors;   // We can honor GetMouseCursor() values (optional)
+    io.BackendFlags |= ImGuiBackendFlags_HasSetMousePos;    // We can honor io.WantSetMousePos requests (optional, rarely used)
+
+    // Keyboard mapping. ImGui will use those indices to peek into the io.KeysDown[] array that we will update during the application lifetime.
+    io.KeyMap[ImGuiKey_Tab] = VK_TAB;
     io.KeyMap[ImGuiKey_LeftArrow] = VK_LEFT;
     io.KeyMap[ImGuiKey_RightArrow] = VK_RIGHT;
     io.KeyMap[ImGuiKey_UpArrow] = VK_UP;
@@ -682,8 +641,10 @@ bool ImGui_ImplDX11_Init(void* hwnd, ID3D11Device* device, ID3D11DeviceContext* 
     io.KeyMap[ImGuiKey_PageDown] = VK_NEXT;
     io.KeyMap[ImGuiKey_Home] = VK_HOME;
     io.KeyMap[ImGuiKey_End] = VK_END;
+    io.KeyMap[ImGuiKey_Insert] = VK_INSERT;
     io.KeyMap[ImGuiKey_Delete] = VK_DELETE;
     io.KeyMap[ImGuiKey_Backspace] = VK_BACK;
+    io.KeyMap[ImGuiKey_Space] = VK_SPACE;
     io.KeyMap[ImGuiKey_Enter] = VK_RETURN;
     io.KeyMap[ImGuiKey_Escape] = VK_ESCAPE;
     io.KeyMap[ImGuiKey_A] = 'A';
@@ -694,10 +655,9 @@ bool ImGui_ImplDX11_Init(void* hwnd, ID3D11Device* device, ID3D11DeviceContext* 
     io.KeyMap[ImGuiKey_Z] = 'Z';
     io.KeyMap[ImGuiKey_F] = 'F';
 
-    io.RenderDrawListsFn = ImGui_ImplDX11_RenderDrawLists;  // Alternatively you can set this to nullptr and call ImGui::GetDrawData() after ImGui::Render() to get the same ImDrawData pointer.
     io.ImeWindowHandle = g_hWnd;
 
-    g_Textures.reserve(100);
+    g_Textures.reserve(16);
 
     return true;
 }
@@ -705,15 +665,14 @@ bool ImGui_ImplDX11_Init(void* hwnd, ID3D11Device* device, ID3D11DeviceContext* 
 void ImGui_ImplDX11_Shutdown()
 {
     ImGui_ImplDX11_InvalidateDeviceObjects();
-    ImGui::Shutdown();
-    g_pd3dDevice = nullptr;
-    g_pd3dDeviceContext = nullptr;
+    g_pd3dDevice = NULL;
+    g_pd3dDeviceContext = NULL;
     g_hWnd = (HWND)0;
 }
 
 void ImGui_ImplDX11_NewFrame()
 {
-    if (!g_pSampler)
+    if (!g_pFontSampler)
         ImGui_ImplDX11_CreateDeviceObjects();
 
     ImGuiIO& io = ImGui::GetIO();
@@ -739,14 +698,28 @@ void ImGui_ImplDX11_NewFrame()
     // io.MouseDown : filled by WM_*BUTTON* events
     // io.MouseWheel : filled by WM_MOUSEWHEEL events
 
-    //ImGui_UpdateCursor();
+    // Set OS mouse position if requested (only used when ImGuiConfigFlags_NavEnableSetMousePos is enabled by user)
+    if (io.WantSetMousePos)
+    {
+        POINT pos = { (int)io.MousePos.x, (int)io.MousePos.y };
+        ClientToScreen(g_hWnd, &pos);
+        SetCursorPos(pos.x, pos.y);
+    }
 
-    // Start the frame
+    // Update OS mouse cursor with the cursor requested by imgui
+    ImGuiMouseCursor mouse_cursor = io.MouseDrawCursor ? ImGuiMouseCursor_None : ImGui::GetMouseCursor();
+    if (g_LastMouseCursor != mouse_cursor)
+    {
+        g_LastMouseCursor = mouse_cursor;
+        ImGui_ImplWin32_UpdateMouseCursor();
+    }
+
+    // Start the frame. This call will update the io.WantCaptureMouse, io.WantCaptureKeyboard flag that you can use to dispatch inputs (or not) to your application.
     ImGui::NewFrame();
 }
 
-#define STB_IMAGE_IMPLEMENTATION
 extern "C" {
+#define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 }
 
@@ -770,7 +743,8 @@ ImTextureID ImGui_CreateTexture(const void* data, int width, int height)
     texture->Height = height;
     texture->Data.assign(reinterpret_cast<const uint8_t*>(data), reinterpret_cast<const uint8_t*>(data) + width * height * 4);
 
-    ImGui_UploadTexture(texture.get());
+    if (!ImGui_UploadTexture(texture.get()))
+        return nullptr;
 
     g_Textures.emplace_back(texture.release());
 
@@ -785,16 +759,15 @@ void ImGui_DestroyTexture(ImTextureID texture)
     auto tex = reinterpret_cast<TEXTURE*>(texture);
 
     ImGui_ReleaseTexture(tex);
-
-    auto textureIt = std::find_if(g_Textures.cbegin(), g_Textures.cend(), [tex](const auto& t) { return t.get() == tex; });
+    auto textureIt = std::find_if(g_Textures.cbegin(), g_Textures.cend(), [tex](const std::unique_ptr<TEXTURE>& t) { return t.get() == tex; });
     if (textureIt != g_Textures.end())
-        g_Textures.emplace(textureIt);
+        g_Textures.erase(textureIt);
 }
 
-static void ImGui_UploadTexture(TEXTURE* texture)
+static bool ImGui_UploadTexture(TEXTURE* texture)
 {
-    if (!g_pd3dDevice)
-        return;
+    if (!g_pd3dDevice || !texture)
+        return false;
 
     D3D11_TEXTURE2D_DESC desc = {};
     desc.Width              = texture->Width;
@@ -815,6 +788,9 @@ static void ImGui_UploadTexture(TEXTURE* texture)
     ID3D11Texture2D *pTexture = nullptr;
     g_pd3dDevice->CreateTexture2D(&desc, &subResource, &pTexture);
 
+    if (!pTexture)
+        return false;
+
     // Create texture view
     D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
     srvDesc.Format                    = DXGI_FORMAT_R8G8B8A8_UNORM;
@@ -824,14 +800,19 @@ static void ImGui_UploadTexture(TEXTURE* texture)
 
     g_pd3dDevice->CreateShaderResourceView(pTexture, &srvDesc, &texture->View);
     pTexture->Release();
+
+    return true;
 }
 
 static void ImGui_ReleaseTexture(TEXTURE* texture)
 {
-    if (texture && texture->View)
+    if (texture)
     {
-        texture->View->Release();
-        texture->View = nullptr;
+        if (texture->View)
+        {
+            texture->View->Release();
+            texture->View = nullptr;
+        }
     }
 }
 

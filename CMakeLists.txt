@@ -6,8 +6,13 @@ set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 set(CMAKE_CXX_STANDARD            17)
 set(CMAKE_CXX_STANDARD_REQUIRED   YES)
 
-if (DEFINED MSVC_VERSION AND (NOT (MSVC_VERSION LESS 1400)))
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /std:c++17")# /permissive-")
+if (DEFINED MSVC_VERSION)
+    if (MSVC_VERSION GREATER_EQUAL 1500)
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /std:c++latest")
+    endif()
+    if (MSVC_VERSION GREATER_EQUAL 1910)
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /permissive-")
+    endif()
 endif()
 
 
