@@ -390,7 +390,7 @@ static void ImDrawList_AddBezierWithArrows(ImDrawList* drawList, const ax::cubic
             drawList->PathLineTo(to_imvec(curve.p0 - start_n * std::max(half_width, half_thickness)));
             drawList->PathLineTo(to_imvec(curve.p0 + start_n * std::max(half_width, half_thickness)));
             drawList->PathLineTo(to_imvec(tip));
-            drawList->PathFill(color);
+            drawList->PathFillConvex(color);
         }
 
         if (endArrowSize > 0.0f)
@@ -403,7 +403,7 @@ static void ImDrawList_AddBezierWithArrows(ImDrawList* drawList, const ax::cubic
             drawList->PathLineTo(to_imvec(curve.p3 + end_n * std::max(half_width, half_thickness)));
             drawList->PathLineTo(to_imvec(curve.p3 - end_n * std::max(half_width, half_thickness)));
             drawList->PathLineTo(to_imvec(tip));
-            drawList->PathFill(color);
+            drawList->PathFillConvex(color);
         }
     }
     else
@@ -463,10 +463,8 @@ void ed::Pin::Draw(ImDrawList* drawList, DrawFlags flags)
 
         if (m_BorderWidth > 0.0f)
         {
-            ImGui::PushStyleVar(ImGuiStyleVar_AntiAliasFringeScale, 1.0f);
             drawList->AddRect(to_imvec(m_Bounds.top_left()), to_imvec(m_Bounds.bottom_right()),
                 m_BorderColor, m_Rounding, m_Corners, m_BorderWidth);
-            ImGui::PopStyleVar();
         }
 
         if (!Editor->IsSelected(m_Node))
@@ -528,14 +526,12 @@ void ed::Node::Draw(ImDrawList* drawList, DrawFlags flags)
 
             if (m_GroupBorderWidth > 0.0f)
             {
-                ImGui::PushStyleVar(ImGuiStyleVar_AntiAliasFringeScale, 1.0f);
 
                 drawList->AddRect(
                     to_imvec(m_GroupBounds.top_left()),
                     to_imvec(m_GroupBounds.bottom_right()),
                     m_GroupBorderColor, m_GroupRounding, 15, m_GroupBorderWidth);
 
-                ImGui::PopStyleVar();
             }
         }
 
@@ -838,7 +834,7 @@ void ed::EditorContext::Begin(const char* id, const ImVec2& size)
     for (auto pin   : m_Pins)     pin->Reset();
     for (auto link  : m_Links)   link->Reset();
 
-    ImGui::PushStyleColor(ImGuiCol_ChildWindowBg, ImColor(0, 0, 0, 0));
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, ImColor(0, 0, 0, 0).Value);
     ImGui::BeginChild(id, size, false,
         ImGuiWindowFlags_NoMove |
         ImGuiWindowFlags_NoScrollbar |
@@ -863,8 +859,6 @@ void ed::EditorContext::Begin(const char* id, const ImVec2& size)
     m_NavigateAction.SetWindow(ImGui::GetWindowPos(), ImGui::GetWindowSize());
 
     m_Canvas = m_NavigateAction.GetCanvas();
-
-    ImGui::PushStyleVar(ImGuiStyleVar_AntiAliasFringeScale, std::min(std::max(m_Canvas.InvZoom.x, m_Canvas.InvZoom.y), 1.0f));
 
     // Save mouse positions
     auto& io = ImGui::GetIO();
@@ -1172,10 +1166,8 @@ void ed::EditorContext::End()
         drawList->AddRect(m_Canvas.WindowScreenPos,                m_Canvas.WindowScreenPos + m_Canvas.WindowScreenSize,                ImColor(borderColor),      style.WindowRounding);
     }
 
-    // ShowMetrics(control);
+    ShowMetrics(control);
 
-    // fringe scale
-    ImGui::PopStyleVar();
 
     ImGui::EndChild();
     ImGui::PopStyleColor();
@@ -1711,7 +1703,7 @@ bool ed::EditorContext::AreShortcutsEnabled()
 
 ed::Control ed::EditorContext::BuildControl(bool allowOffscreen)
 {
-    if (!allowOffscreen && !ImGui::IsWindowHovered())
+    if (!allowOffscreen && !ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem))
         return Control(nullptr, nullptr, nullptr, nullptr, false, false, false, false);
 
     const auto mousePos = to_point(ImGui::GetMousePos());
@@ -3554,9 +3546,7 @@ void ed::SelectAction::Draw(ImDrawList* drawList)
     auto max  = ImVec2(std::max(m_StartPoint.x, m_EndPoint.x), std::max(m_StartPoint.y, m_EndPoint.y));
 
     drawList->AddRectFilled(min, max, fillColor);
-    ImGui::PushStyleVar(ImGuiStyleVar_AntiAliasFringeScale, 1.0f);
     drawList->AddRect(min, max, outlineColor);
-    ImGui::PopStyleVar();
 }
 
 
@@ -4791,7 +4781,6 @@ bool ed::HintBuilder::Begin(NodeId nodeId)
     ImGui::GetWindowDrawList()->ChannelsSetCurrent(c_UserChannel_Hints);
     ImGui::PushClipRect(canvas.WindowScreenPos + ImVec2(1, 1), canvas.WindowScreenPos + canvas.WindowScreenSize - ImVec2(1, 1), false);
 
-    ImGui::PushStyleVar(ImGuiStyleVar_AntiAliasFringeScale, 1.0f);
     ImGui::PushStyleVar(ImGuiStyleVar_Alpha, alpha);
 
     m_IsActive = true;
@@ -4806,7 +4795,7 @@ void ed::HintBuilder::End()
 
     ImGui::PopClipRect();
     ImGui::PopClipRect();
-    ImGui::PopStyleVar(2);
+    ImGui::PopStyleVar(1);
 
     Editor->Resume();
 
