@@ -803,7 +803,7 @@ struct DragAction final: EditorAction
     virtual AcceptResult Accept(const Control& control) override final;
     virtual bool Process(const Control& control) override final;
 
-    virtual ImGuiMouseCursor GetCursor() override final { return ImGuiMouseCursor_Move; }
+    virtual ImGuiMouseCursor GetCursor() override final { return ImGuiMouseCursor_ResizeAll; }
 
     virtual bool IsDragging() override final { return m_IsActive; }
 

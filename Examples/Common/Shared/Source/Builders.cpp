@@ -61,7 +61,7 @@ void util::BlueprintNodeBuilder::End()
                 HeaderRect.w / (float)(4.0f * HeaderTextureWidth),
                 HeaderRect.h / (float)(4.0f * HeaderTextureHeight));
 
-            drawList->AddImage(HeaderTextureId,
+            drawList->AddImageRounded(HeaderTextureId,
                 to_imvec(HeaderRect.top_left())     - ImVec2(8 - halfBorderWidth, 4 - halfBorderWidth),
                 to_imvec(HeaderRect.bottom_right()) + ImVec2(8 - halfBorderWidth, 0),
                 ImVec2(0.0f, 0.0f), uv,

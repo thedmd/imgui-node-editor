@@ -297,7 +297,7 @@ static void ImGui_UpdateCursor()
         default:
         case ImGuiMouseCursor_Arrow:      hCursor = LoadCursor(nullptr, IDC_ARROW);    break;
         case ImGuiMouseCursor_TextInput:  hCursor = LoadCursor(nullptr, IDC_IBEAM);    break;
-        case ImGuiMouseCursor_Move:       hCursor = LoadCursor(nullptr, IDC_SIZEALL);  break;
+        case ImGuiMouseCursor_ResizeAll:  hCursor = LoadCursor(nullptr, IDC_SIZEALL);  break;
         case ImGuiMouseCursor_ResizeNS:   hCursor = LoadCursor(nullptr, IDC_SIZENS);   break;
         case ImGuiMouseCursor_ResizeEW:   hCursor = LoadCursor(nullptr, IDC_SIZEWE);   break;
         case ImGuiMouseCursor_ResizeNESW: hCursor = LoadCursor(nullptr, IDC_SIZENESW); break;
@@ -705,7 +705,7 @@ bool ImGui_ImplDX11_Init(void* hwnd, ID3D11Device* device, ID3D11DeviceContext* 
 void ImGui_ImplDX11_Shutdown()
 {
     ImGui_ImplDX11_InvalidateDeviceObjects();
-    ImGui::Shutdown();
+    ImGui::DestroyContext();
     g_pd3dDevice = nullptr;
     g_pd3dDeviceContext = nullptr;
     g_hWnd = (HWND)0;
