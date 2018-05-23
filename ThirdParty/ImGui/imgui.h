@@ -1012,6 +1012,7 @@ enum ImGuiStyleVar_
     ImGuiStyleVar_GrabRounding,        // float     GrabRounding
     ImGuiStyleVar_ButtonTextAlign,     // ImVec2    ButtonTextAlign
     ImGuiStyleVar_LayoutAlign,         // float     LayoutAlign
+    ImGuiStyleVar_AntiAliasFringeScale, // float     AntiAliasFringeScale
     ImGuiStyleVar_COUNT
 
     // Obsolete names (will be removed)
@@ -1120,6 +1121,7 @@ struct ImGuiStyle
     float       MouseCursorScale;           // Scale software rendered mouse cursor (when io.MouseDrawCursor is enabled). May be removed later.
     bool        AntiAliasedLines;           // Enable anti-aliasing on lines/borders. Disable if you are really tight on CPU/GPU.
     bool        AntiAliasedFill;            // Enable anti-aliasing on filled shapes (rounded rectangles, circles, etc.)
+    float       AntiAliasFringeScale;       // Fringe around anti-aliased geometry is scaled by this value. Enable geometry to stay sharp while zoomed.
     float       CurveTessellationTol;       // Tessellation tolerance when using PathBezierCurveTo() without a specific number of segments. Decrease for highly tessellated curves (higher quality, more polygons), increase to reduce quality.
     ImVec4      Colors[ImGuiCol_COUNT];
 
