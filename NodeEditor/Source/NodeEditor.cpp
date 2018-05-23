@@ -29,7 +29,7 @@ static int BuildIdList(C& container, I* list, int listSize, F&& accept)
 
             if (accept(object))
             {
-                list[count] = I(object->ID().ToPointer());
+                list[count] = I(object->ID().AsPointer());
                 ++count;
                 --listSize;
             }

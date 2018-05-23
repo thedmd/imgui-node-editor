@@ -34,7 +34,7 @@ void util::BlueprintNodeBuilder::Begin(ed::NodeId id)
 
     ed::BeginNode(id);
 
-    ImGui::PushID(id.ToPointer());
+    ImGui::PushID(id.AsPointer());
     CurrentNodeId = id;
 
     SetStage(Stage::Begin);
@@ -119,7 +119,7 @@ void util::BlueprintNodeBuilder::Input(ed::PinId id)
 
     Pin(id, PinKind::Input);
 
-    ImGui::BeginHorizontal(id.ToPointer());
+    ImGui::BeginHorizontal(id.AsPointer());
 }
 
 void util::BlueprintNodeBuilder::EndInput()
@@ -151,7 +151,7 @@ void util::BlueprintNodeBuilder::Output(ed::PinId id)
 
     Pin(id, PinKind::Output);
 
-    ImGui::BeginHorizontal(id.ToPointer());
+    ImGui::BeginHorizontal(id.AsPointer());
 }
 
 void util::BlueprintNodeBuilder::EndOutput()

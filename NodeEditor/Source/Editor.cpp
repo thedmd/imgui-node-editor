@@ -1748,7 +1748,7 @@ ed::Control ed::EditorContext::BuildControl(bool allowOffscreen)
     auto emitInteractiveArea = [this](ObjectId id, const rect& rect)
     {
         char idString[33] = { 0 }; // itoa can output 33 bytes maximum
-        snprintf(idString, 32, "%p", id.ToPointer());
+        snprintf(idString, 32, "%p", id.AsPointer());
         ImGui::SetCursorScreenPos(to_imvec(rect.location));
 
         // debug
@@ -1798,7 +1798,7 @@ ed::Control ed::EditorContext::BuildControl(bool allowOffscreen)
         if (node->m_Type == NodeType::Group)
         {
             // Node with a hole
-            ImGui::PushID(node->m_ID.ToPointer());
+            ImGui::PushID(node->m_ID.AsPointer());
 
             const auto top    = node->m_GroupBounds.top()  - node->m_Bounds.top();
             const auto left   = node->m_GroupBounds.left() - node->m_Bounds.left();
@@ -1920,13 +1920,13 @@ void ed::EditorContext::ShowMetrics(const Control& control)
     ImGui::Text("Live Nodes: %d", liveNodeCount);
     ImGui::Text("Live Pins: %d", livePinCount);
     ImGui::Text("Live Links: %d", liveLinkCount);
-    ImGui::Text("Hot Object: %s (%p)", getHotObjectName(), control.HotObject ? control.HotObject->ID().ToPointer() : nullptr);
+    ImGui::Text("Hot Object: %s (%p)", getHotObjectName(), control.HotObject ? control.HotObject->ID().AsPointer() : nullptr);
     if (auto node = control.HotObject ? control.HotObject->AsNode() : nullptr)
     {
         ImGui::SameLine();
         ImGui::Text("{ x=%d y=%d w=%d h=%d }", node->m_Bounds.x, node->m_Bounds.y, node->m_Bounds.w, node->m_Bounds.h);
     }
-    ImGui::Text("Active Object: %s (%p)", getActiveObjectName(), control.ActiveObject ? control.ActiveObject->ID().ToPointer() : nullptr);
+    ImGui::Text("Active Object: %s (%p)", getActiveObjectName(), control.ActiveObject ? control.ActiveObject->ID().AsPointer() : nullptr);
     if (auto node = control.ActiveObject ? control.ActiveObject->AsNode() : nullptr)
     {
         ImGui::SameLine();
@@ -2135,7 +2135,7 @@ std::string ed::Settings::Serialize()
 
     auto serializeObjectId = [](ObjectId id)
     {
-        auto value = std::to_string(reinterpret_cast<uintptr_t>(id.ToPointer()));
+        auto value = std::to_string(reinterpret_cast<uintptr_t>(id.AsPointer()));
         switch (id.Type())
         {
             default:
@@ -3403,7 +3403,7 @@ void ed::DragAction::ShowMetrics()
 
     ImGui::Text("%s:", GetName());
     ImGui::Text("    Active: %s", m_IsActive ? "yes" : "no");
-    ImGui::Text("    Node: %s (%p)", getObjectName(m_DraggedObject), m_DraggedObject ? m_DraggedObject->ID().ToPointer() : nullptr);
+    ImGui::Text("    Node: %s (%p)", getObjectName(m_DraggedObject), m_DraggedObject ? m_DraggedObject->ID().AsPointer() : nullptr);
 }
 
 

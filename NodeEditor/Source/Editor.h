@@ -94,18 +94,18 @@ struct ObjectId
             return PinId::Invalid;
     }
 
-    void* ToPointer() const
+    void* AsPointer() const
     {
-        if (auto p = std::get_if<NodeId>(&m_Value)) return p->ToPointer<void*>();
-        if (auto p = std::get_if<LinkId>(&m_Value)) return p->ToPointer<void*>();
-        if (auto p = std::get_if<PinId >(&m_Value)) return p->ToPointer<void*>();
+        if (auto p = std::get_if<NodeId>(&m_Value)) return p->AsPointer<void*>();
+        if (auto p = std::get_if<LinkId>(&m_Value)) return p->AsPointer<void*>();
+        if (auto p = std::get_if<PinId >(&m_Value)) return p->AsPointer<void*>();
         return nullptr;
     }
 
     friend bool operator==(const ObjectId& lhs, const ObjectId& rhs)
     {
         return lhs.Type() == rhs.Type()
-            && lhs.ToPointer() == rhs.ToPointer();
+            && lhs.AsPointer() == rhs.AsPointer();
     }
 
     friend bool operator!=(const ObjectId& lhs, const ObjectId& rhs)
@@ -137,7 +137,7 @@ struct ObjectWrapper
 
     bool operator<(const ObjectWrapper& rhs) const
     {
-        return m_ID.ToPointer() < rhs.m_ID.ToPointer();
+        return m_ID.AsPointer() < rhs.m_ID.AsPointer();
     }
 };
 

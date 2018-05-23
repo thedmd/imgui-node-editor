@@ -119,7 +119,7 @@ struct NodeIdLess
 {
     bool operator()(const ed::NodeId& lhs, const ed::NodeId& rhs) const
     {
-        return lhs.ToPointer() < rhs.ToPointer();
+        return lhs.AsPointer() < rhs.AsPointer();
     }
 };
 
@@ -695,7 +695,7 @@ void ShowLeftPane(float paneWidth)
     ImGui::Indent();
     for (auto& node : s_Nodes)
     {
-        ImGui::PushID(node.ID.ToPointer());
+        ImGui::PushID(node.ID.AsPointer());
         auto start = ImGui::GetCursorScreenPos();
 
         if (const auto progress = GetTouchProgress(node.ID))
@@ -707,7 +707,7 @@ void ShowLeftPane(float paneWidth)
         }
 
         bool isSelected = std::find(selectedNodes.begin(), selectedNodes.end(), node.ID) != selectedNodes.end();
-        if (ImGui::Selectable((node.Name + "##" + std::to_string(reinterpret_cast<uintptr_t>(node.ID.ToPointer()))).c_str(), &isSelected))
+        if (ImGui::Selectable((node.Name + "##" + std::to_string(reinterpret_cast<uintptr_t>(node.ID.AsPointer()))).c_str(), &isSelected))
         {
             if (io.KeyCtrl)
             {
@@ -724,7 +724,7 @@ void ShowLeftPane(float paneWidth)
         if (ImGui::IsItemHovered() && !node.State.empty())
             ImGui::SetTooltip("State: %s", node.State.c_str());
 
-        auto id = std::string("(") + std::to_string(reinterpret_cast<uintptr_t>(node.ID.ToPointer())) + ")";
+        auto id = std::string("(") + std::to_string(reinterpret_cast<uintptr_t>(node.ID.AsPointer())) + ")";
         auto textSize = ImGui::CalcTextSize(id.c_str(), nullptr);
         auto iconPanelPos = start + ImVec2(
             paneWidth - ImGui::GetStyle().FramePadding.x - ImGui::GetStyle().IndentSpacing - saveIconWidth - restoreIconWidth - ImGui::GetStyle().ItemInnerSpacing.x * 1,
@@ -885,7 +885,7 @@ void Application_Frame()
                                 ed::BeginPin(output.ID, ed::PinKind::Output);
                                 ed::PinPivotAlignment(ImVec2(1.0f, 0.5f));
                                 ed::PinPivotSize(ImVec2(0, 0));
-                                ImGui::BeginHorizontal(output.ID.ToPointer());
+                                ImGui::BeginHorizontal(output.ID.AsPointer());
                                 ImGui::PushStyleVar(ImGuiStyleVar_Alpha, alpha);
                                 if (!output.Name.empty())
                                 {
@@ -991,7 +991,7 @@ void Application_Frame()
             ed::PushStyleVar(ed::StyleVar_PinRadius, 5.0f);
             ed::BeginNode(node.ID);
 
-            ImGui::BeginVertical(node.ID.ToPointer());
+            ImGui::BeginVertical(node.ID.AsPointer());
             ImGui::BeginHorizontal("inputs");
             ImGui::Spring(0, padding * 2);
 
