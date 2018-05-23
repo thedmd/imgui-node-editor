@@ -463,10 +463,10 @@ void ed::Pin::Draw(ImDrawList* drawList, DrawFlags flags)
 
         if (m_BorderWidth > 0.0f)
         {
-            Editor->SetDefaultFringeScale();
+            ImGui::PushStyleVar(ImGuiStyleVar_AntiAliasFringeScale, 1.0f);
             drawList->AddRect(to_imvec(m_Bounds.top_left()), to_imvec(m_Bounds.bottom_right()),
                 m_BorderColor, m_Rounding, m_Corners, m_BorderWidth);
-            Editor->ResetFringeScale();
+            ImGui::PopStyleVar();
         }
 
         if (!Editor->IsSelected(m_Node))
@@ -528,14 +528,14 @@ void ed::Node::Draw(ImDrawList* drawList, DrawFlags flags)
 
             if (m_GroupBorderWidth > 0.0f)
             {
-                Editor->SetDefaultFringeScale();
+                ImGui::PushStyleVar(ImGuiStyleVar_AntiAliasFringeScale, 1.0f);
 
                 drawList->AddRect(
                     to_imvec(m_GroupBounds.top_left()),
                     to_imvec(m_GroupBounds.bottom_right()),
                     m_GroupBorderColor, m_GroupRounding, 15, m_GroupBorderWidth);
 
-                Editor->ResetFringeScale();
+                ImGui::PopStyleVar();
             }
         }
 
@@ -864,13 +864,8 @@ void ed::EditorContext::Begin(const char* id, const ImVec2& size)
 
     m_Canvas = m_NavigateAction.GetCanvas();
 
-    //ImGui::PushStyleVar(ImGuiStyleVar_AntiAliasFringeScale, std::min(std::max(m_Canvas.InvZoom.x, m_Canvas.InvZoom.y), 1.0f));
+    ImGui::PushStyleVar(ImGuiStyleVar_AntiAliasFringeScale, std::min(std::max(m_Canvas.InvZoom.x, m_Canvas.InvZoom.y), 1.0f));
     auto drawList = ImGui::GetWindowDrawList();
-    m_InitialInvScaleBackup  = drawList->_InvTransformationScale;
-    m_InitialHalfPixelBackup = drawList->_HalfPixel;
-    drawList->_InvTransformationScale *= std::min(std::max(m_Canvas.InvZoom.x, m_Canvas.InvZoom.y), 1.0f);
-    drawList->_HalfPixel.x            *= m_Canvas.InvZoom.x;
-    drawList->_HalfPixel.y            *= m_Canvas.InvZoom.y;
 
     // Save mouse positions
     auto& io = ImGui::GetIO();
@@ -1180,10 +1175,7 @@ void ed::EditorContext::End()
     // ShowMetrics(control);
 
     // fringe scale
-    drawList->_InvTransformationScale = m_InitialInvScaleBackup;
-    drawList->_HalfPixel              = m_InitialHalfPixelBackup;
-
-    //ImGui::PopStyleVar();
+    ImGui::PopStyleVar();
 
     ImGui::EndChild();
     ImGui::PopStyleColor();
@@ -1964,24 +1956,6 @@ void ed::EditorContext::ReleaseMouse()
 
     for (int i = 0; i < 5; ++i)
         io.MouseClickedPos[i] = m_MouseClickPosBackup[i];
-}
-
-void ed::EditorContext::SetDefaultFringeScale()
-{
-    auto drawList = ImGui::GetWindowDrawList();
-    m_HalfPixelBackup = drawList->_HalfPixel;
-    m_InvScaleBackup  = drawList->_InvTransformationScale;
-
-    drawList->_InvTransformationScale = 1.0f;
-    drawList->_HalfPixel.x            = 0.5f;
-    drawList->_HalfPixel.y            = 0.5f;
-}
-
-void ed::EditorContext::ResetFringeScale()
-{
-    auto drawList = ImGui::GetWindowDrawList();
-    drawList->_HalfPixel              = m_HalfPixelBackup;
-    drawList->_InvTransformationScale = m_InvScaleBackup;
 }
 
 
@@ -3579,9 +3553,9 @@ void ed::SelectAction::Draw(ImDrawList* drawList)
     auto max  = ImVec2(std::max(m_StartPoint.x, m_EndPoint.x), std::max(m_StartPoint.y, m_EndPoint.y));
 
     drawList->AddRectFilled(min, max, fillColor);
-    Editor->SetDefaultFringeScale();
+    ImGui::PushStyleVar(ImGuiStyleVar_AntiAliasFringeScale, 1.0f);
     drawList->AddRect(min, max, outlineColor);
-    Editor->ResetFringeScale();
+    ImGui::PopStyleVar();
 }
 
 
@@ -4816,7 +4790,7 @@ bool ed::HintBuilder::Begin(NodeId nodeId)
     ImGui::GetWindowDrawList()->ChannelsSetCurrent(c_UserChannel_Hints);
     ImGui::PushClipRect(canvas.WindowScreenPos + ImVec2(1, 1), canvas.WindowScreenPos + canvas.WindowScreenSize - ImVec2(1, 1), false);
 
-    Editor->SetDefaultFringeScale();
+    ImGui::PushStyleVar(ImGuiStyleVar_AntiAliasFringeScale, 1.0f);
     ImGui::PushStyleVar(ImGuiStyleVar_Alpha, alpha);
 
     m_IsActive = true;
@@ -4833,7 +4807,7 @@ void ed::HintBuilder::End()
     ImGui::PopClipRect();
     //ImGui::PopStyleVar(2);
     ImGui::PopStyleVar();
-    Editor->ResetFringeScale();
+    ImGui::PopStyleVar();
 
     Editor->Resume();
 
