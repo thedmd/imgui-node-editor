@@ -17,7 +17,6 @@
 # define PICOJSON_USE_LOCALE 0
 # include "picojson.h"
 # include <vector>
-# include <variant>
 
 
 //------------------------------------------------------------------------------
@@ -55,52 +54,23 @@ using ax::NodeEditor::NodeId;
 using ax::NodeEditor::PinId;
 using ax::NodeEditor::LinkId;
 
-struct ObjectId
+struct ObjectId: Details::SafePointerType<ObjectId>
 {
-    ObjectId(): m_Value(false) {}
-    ObjectId(NodeId nodeId): m_Value(nodeId) {}
-    ObjectId(LinkId linkId): m_Value(linkId) {}
-    ObjectId(PinId pinId): m_Value(pinId) {}
+    using SafePointerType::SafePointerType;
 
-    ObjectType Type() const
-    {
-        if (std::get_if<NodeId>(&m_Value) != nullptr) return ObjectType::Node;
-        if (std::get_if<LinkId>(&m_Value) != nullptr) return ObjectType::Link;
-        if (std::get_if<PinId >(&m_Value) != nullptr) return ObjectType::Pin;
-        return ObjectType::None;
-    }
+    ObjectId(PinId  pinId):      SafePointerType(pinId.AsPointer()),    m_Type(ObjectType::Pin)    {}
+    ObjectId(NodeId nodeId):     SafePointerType(nodeId.AsPointer()),   m_Type(ObjectType::Node)   {}
+    ObjectId(LinkId linkId):     SafePointerType(linkId.AsPointer()),   m_Type(ObjectType::Link)   {}
 
-    NodeId AsNodeId() const
-    {
-        if (auto p = std::get_if<NodeId>(&m_Value))
-            return *p;
-        else
-            return NodeId::Invalid;
-    }
+    ObjectType Type() const { return m_Type; }
 
-    LinkId AsLinkId() const
-    {
-        if (auto p = std::get_if<LinkId>(&m_Value))
-            return *p;
-        else
-            return LinkId::Invalid;
-    }
+    PinId    AsPinId()    const { IM_ASSERT(IsPinId());    return PinId(AsPointer());    }
+    NodeId   AsNodeId()   const { IM_ASSERT(IsNodeId());   return NodeId(AsPointer());   }
+    LinkId   AsLinkId()   const { IM_ASSERT(IsLinkId());   return LinkId(AsPointer());   }
 
-    PinId AsPinId() const
-    {
-        if (auto p = std::get_if<PinId>(&m_Value))
-            return *p;
-        else
-            return PinId::Invalid;
-    }
-
-    void* AsPointer() const
-    {
-        if (auto p = std::get_if<NodeId>(&m_Value)) return p->AsPointer<void*>();
-        if (auto p = std::get_if<LinkId>(&m_Value)) return p->AsPointer<void*>();
-        if (auto p = std::get_if<PinId >(&m_Value)) return p->AsPointer<void*>();
-        return nullptr;
-    }
+    bool IsPinId()    const { return m_Type == ObjectType::Pin;    }
+    bool IsNodeId()   const { return m_Type == ObjectType::Node;   }
+    bool IsLinkId()   const { return m_Type == ObjectType::Link;   }
 
     friend bool operator==(const ObjectId& lhs, const ObjectId& rhs)
     {
@@ -114,7 +84,7 @@ struct ObjectId
     }
 
 private:
-    std::variant<NodeId, LinkId, PinId, bool> m_Value;
+    ObjectType m_Type;
 };
 
 struct EditorContext;

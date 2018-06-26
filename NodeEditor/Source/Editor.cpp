@@ -1737,7 +1737,7 @@ ed::Control ed::EditorContext::BuildControl(bool allowOffscreen)
     Object* doubleClickedObject = nullptr;
 
     // Emits invisible button and returns true if it is clicked.
-    auto emitInteractiveArea = [this](ObjectId id, const rect& rect)
+    auto emitInteractiveArea = [](ObjectId id, const rect& rect)
     {
         char idString[33] = { 0 }; // itoa can output 33 bytes maximum
         snprintf(idString, 32, "%p", id.AsPointer());
@@ -3164,7 +3164,7 @@ void ed::SizeAction::ShowMetrics()
 
     ImGui::Text("%s:", GetName());
     ImGui::Text("    Active: %s", m_IsActive ? "yes" : "no");
-    ImGui::Text("    Node: %s (%d)", getObjectName(m_SizedNode), m_SizedNode ? m_SizedNode->m_ID : 0);
+    ImGui::Text("    Node: %s (%p)", getObjectName(m_SizedNode), m_SizedNode ? m_SizedNode->m_ID.AsPointer() : 0);
     if (m_SizedNode && m_IsActive)
     {
         ImGui::Text("    Bounds: { x=%d y=%d w=%d h=%d }", m_SizedNode->m_Bounds.x, m_SizedNode->m_Bounds.y, m_SizedNode->m_Bounds.w, m_SizedNode->m_Bounds.h);
