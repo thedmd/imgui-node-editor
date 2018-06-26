@@ -802,8 +802,8 @@ void ShowLeftPane(float paneWidth)
         ed::ClearSelection();
     ImGui::EndHorizontal();
     ImGui::Indent();
-    for (int i = 0; i < nodeCount; ++i) ImGui::Text("Node (%d)", selectedNodes[i]);
-    for (int i = 0; i < linkCount; ++i) ImGui::Text("Link (%d)", selectedLinks[i]);
+    for (int i = 0; i < nodeCount; ++i) ImGui::Text("Node (%p)", selectedNodes[i].AsPointer());
+    for (int i = 0; i < linkCount; ++i) ImGui::Text("Link (%p)", selectedLinks[i].AsPointer());
     ImGui::Unindent();
 
     if (ImGui::IsKeyPressed(ImGui::GetKeyIndex(ImGuiKey_Z)))
@@ -1311,13 +1311,13 @@ void Application_Frame()
         ImGui::Separator();
         if (node)
         {
-            ImGui::Text("ID: %d", node->ID);
+            ImGui::Text("ID: %p", node->ID.AsPointer());
             ImGui::Text("Type: %s", node->Type == NodeType::Blueprint ? "Blueprint" : (node->Type == NodeType::Tree ? "Tree" : "Comment"));
             ImGui::Text("Inputs: %d", (int)node->Inputs.size());
             ImGui::Text("Outputs: %d", (int)node->Outputs.size());
         }
         else
-            ImGui::Text("Unknown node: %d", contextNodeId);
+            ImGui::Text("Unknown node: %p", contextNodeId.AsPointer());
         ImGui::Separator();
         if (ImGui::MenuItem("Delete"))
             ed::DeleteNode(contextNodeId);
@@ -1332,14 +1332,14 @@ void Application_Frame()
         ImGui::Separator();
         if (pin)
         {
-            ImGui::Text("ID: %d", pin->ID);
+            ImGui::Text("ID: %p", pin->ID.AsPointer());
             if (pin->Node)
-                ImGui::Text("Node: %d", pin->Node->ID);
+                ImGui::Text("Node: %p", pin->Node->ID.AsPointer());
             else
                 ImGui::Text("Node: %s", "<none>");
         }
         else
-            ImGui::Text("Unknown pin: %d", contextPinId);
+            ImGui::Text("Unknown pin: %p", contextPinId.AsPointer());
 
         ImGui::EndPopup();
     }
@@ -1352,12 +1352,12 @@ void Application_Frame()
         ImGui::Separator();
         if (link)
         {
-            ImGui::Text("ID: %d", link->ID);
-            ImGui::Text("From: %d", link->StartPinID);
-            ImGui::Text("To: %d", link->EndPinID);
+            ImGui::Text("ID: %p", link->ID.AsPointer());
+            ImGui::Text("From: %p", link->StartPinID.AsPointer());
+            ImGui::Text("To: %p", link->EndPinID.AsPointer());
         }
         else
-            ImGui::Text("Unknown link: %d", contextLinkId);
+            ImGui::Text("Unknown link: %p", contextLinkId.AsPointer());
         ImGui::Separator();
         if (ImGui::MenuItem("Delete"))
             ed::DeleteLink(contextLinkId);
