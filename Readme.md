@@ -30,7 +30,6 @@ Linux:
     cmake -H. -BBuild -G "Unix Makefiles"
 
 Build:
-    cd Build
     cmake --build Build --config Release
 ```
 You will find examples in `Build\Bin` directory.
