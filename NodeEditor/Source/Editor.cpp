@@ -1544,12 +1544,12 @@ ed::Link* ed::EditorContext::FindLink(LinkId id)
 
 ed::Object* ed::EditorContext::FindObject(ObjectId id)
 {
-    if (auto nodeId = id.AsNodeId())
-        return FindNode(nodeId);
-    else if (auto linkId = id.AsLinkId())
-        return FindLink(linkId);
-    else if (auto pinId = id.AsPinId())
-        return FindPin(pinId);
+    if (id.IsNodeId())
+        return FindNode(id.AsNodeId());
+    else if (id.IsLinkId())
+        return FindLink(id.AsLinkId());
+    else if (id.IsPinId())
+        return FindPin(id.AsPinId());
     else
         return nullptr;
 }
