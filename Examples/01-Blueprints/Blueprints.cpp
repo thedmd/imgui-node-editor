@@ -10,6 +10,8 @@
 #include "Builders.h"
 #include "Widgets.h"
 
+#include "imgui_internal.h"
+
 namespace ed = ax::NodeEditor;
 namespace util = ax::NodeEditor::Utilities;
 
@@ -37,6 +39,7 @@ enum class PinType
     Bool,
     Int,
     Float,
+    String,
     Object,
     Function,
     Delegate,
@@ -305,6 +308,29 @@ static Node* SpawnOutputActionNode()
     return &s_Nodes.back();
 }
 
+static Node* SpawnPrintStringNode()
+{
+    s_Nodes.emplace_back(GetNextId(), "Print String");
+    s_Nodes.back().Inputs.emplace_back(GetNextId(), "", PinType::Flow);
+    s_Nodes.back().Inputs.emplace_back(GetNextId(), "In String", PinType::String);
+    s_Nodes.back().Outputs.emplace_back(GetNextId(), "", PinType::Flow);
+
+    BuildNode(&s_Nodes.back());
+
+    return &s_Nodes.back();
+}
+
+static Node* SpawnMessageNode()
+{
+    s_Nodes.emplace_back(GetNextId(), "", ImColor(128, 195, 248));
+    s_Nodes.back().Type = NodeType::Simple;
+    s_Nodes.back().Outputs.emplace_back(GetNextId(), "Message", PinType::String);
+
+    BuildNode(&s_Nodes.back());
+
+    return &s_Nodes.back();
+}
+
 static Node* SpawnSetTimerNode()
 {
     s_Nodes.emplace_back(GetNextId(), "Set Timer", ImColor(128, 195, 248));
@@ -464,6 +490,8 @@ void Application_Initialize()
 
     node = SpawnLessNode();             ed::SetNodePosition(node->ID, ImVec2(366, 652));
     node = SpawnWeirdNode();            ed::SetNodePosition(node->ID, ImVec2(144, 652));
+    node = SpawnMessageNode();          ed::SetNodePosition(node->ID, ImVec2(-348, 698));
+    node = SpawnPrintStringNode();      ed::SetNodePosition(node->ID, ImVec2(-69, 652));
 
     ed::NavigateToContent();
 
@@ -544,6 +572,7 @@ ImColor GetIconColor(PinType type)
         case PinType::Bool:     return ImColor(220,  48,  48);
         case PinType::Int:      return ImColor( 68, 201, 156);
         case PinType::Float:    return ImColor(147, 226,  74);
+        case PinType::String:   return ImColor(124,  21, 153);
         case PinType::Object:   return ImColor( 51, 150, 215);
         case PinType::Function: return ImColor(218,   0, 183);
         case PinType::Delegate: return ImColor(255,  48,  48);
@@ -561,6 +590,7 @@ void DrawPinIcon(const Pin& pin, bool connected, int alpha)
         case PinType::Bool:     iconType = IconType::Circle; break;
         case PinType::Int:      iconType = IconType::Circle; break;
         case PinType::Float:    iconType = IconType::Circle; break;
+        case PinType::String:   iconType = IconType::Circle; break;
         case PinType::Object:   iconType = IconType::Circle; break;
         case PinType::Function: iconType = IconType::Circle; break;
         case PinType::Delegate: iconType = IconType::Square; break;
@@ -953,6 +983,26 @@ void Application_Frame()
 
                     ImGui::PushStyleVar(ImGuiStyleVar_Alpha, alpha);
                     builder.Output(output.ID);
+                    if (output.Type == PinType::String)
+                    {
+                        static char buffer[128] = "Edit Me\nMultiline!";
+                        static bool wasActive = false;
+
+                        ImGui::PushItemWidth(100.0f);
+                        ImGui::InputText("##edit", buffer, 127);
+                        ImGui::PopItemWidth();
+                        if (ImGui::IsItemActive() && !wasActive)
+                        {
+                            ed::EnableShortcuts(false);
+                            wasActive = true;
+                        }
+                        else if (!ImGui::IsItemActive() && wasActive)
+                        {
+                            ed::EnableShortcuts(true);
+                            wasActive = false;
+                        }
+                        ImGui::Spring(0);
+                    }
                     if (!output.Name.empty())
                     {
                         ImGui::Spring(0);
@@ -1389,6 +1439,8 @@ void Application_Frame()
             node = SpawnWeirdNode();
         if (ImGui::MenuItem("Trace by Channel"))
             node = SpawnTraceByChannelNode();
+        if (ImGui::MenuItem("Print String"))
+            node = SpawnPrintStringNode();
         ImGui::Separator();
         if (ImGui::MenuItem("Comment"))
             node = SpawnComment();
@@ -1399,6 +1451,9 @@ void Application_Frame()
             node = SpawnTreeTaskNode();
         if (ImGui::MenuItem("Random Wait"))
             node = SpawnTreeTask2Node();
+        ImGui::Separator();
+        if (ImGui::MenuItem("Message"))
+            node = SpawnMessageNode();
 
         if (node)
         {
