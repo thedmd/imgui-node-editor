@@ -59,6 +59,10 @@ else()
     if (APPLE)
         target_link_libraries(Application PRIVATE
             "-framework CoreFoundation"
+            "-framework Cocoa"
+            "-framework OpenGL"
+            "-framework IOKit"
+            "-framework CoreVideo"
         )
     endif()
 endif()

@@ -126,6 +126,8 @@ int main(int, char**)
     glfwSwapInterval(1); // Enable vsync
     gl3wInit();
 
+    ImGui::CreateContext();
+
     // Setup ImGui binding
     ImGui_ImplGlfwGL3_Init(window, true);
 
@@ -186,6 +188,9 @@ int main(int, char**)
 
     // Cleanup
     ImGui_ImplGlfwGL3_Shutdown();
+
+    ImGui::DestroyContext();
+    
     glfwTerminate();
 
     return 0;
