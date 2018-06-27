@@ -58,6 +58,7 @@ struct ObjectId: Details::SafePointerType<ObjectId>
 {
     using SafePointerType::SafePointerType;
 
+    ObjectId():                  SafePointerType(),                     m_Type(ObjectType::None)   {}
     ObjectId(PinId  pinId):      SafePointerType(pinId.AsPointer()),    m_Type(ObjectType::Pin)    {}
     ObjectId(NodeId nodeId):     SafePointerType(nodeId.AsPointer()),   m_Type(ObjectType::Node)   {}
     ObjectId(LinkId linkId):     SafePointerType(linkId.AsPointer()),   m_Type(ObjectType::Link)   {}
