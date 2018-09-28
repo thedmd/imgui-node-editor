@@ -4,6 +4,7 @@
 #endif
 #include "imgui.h"
 #include "imgui_impl_dx11.h"
+#include "imgui_impl_win32.h"
 #include "ScopeGuard.h"
 #include "Application.h"
 #include <d3d11.h>
@@ -195,8 +196,12 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _
     io.LogFilename = nullptr;
 
     // Setup ImGui binding
-    ImGui_ImplDX11_Init(hwnd, g_pd3dDevice, g_pd3dDeviceContext);
-    AX_SCOPE_EXIT{ ImGui_ImplDX11_Shutdown(); };
+    ImGui_ImplDX11_Init(g_pd3dDevice, g_pd3dDeviceContext);
+    ImGui_ImplWin32_Init(hwnd);
+    AX_SCOPE_EXIT{
+        ImGui_ImplDX11_Shutdown();
+        ImGui_ImplWin32_Shutdown();
+    };
 
     ImGui::StyleColorsDark();
 
@@ -213,6 +218,8 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _
     auto frame = [&]()
     {
         ImGui_ImplDX11_NewFrame();
+        ImGui_ImplWin32_NewFrame();
+        ImGui::NewFrame();
 
         ImGui::SetNextWindowPos(ImVec2(0, 0));
         ImGui::SetNextWindowSize(io.DisplaySize);

@@ -8,6 +8,8 @@ if (WIN32)
         Source/DX11/Entry.cpp
         Source/DX11/imgui_impl_dx11.cpp
         Source/DX11/imgui_impl_dx11.h
+        Source/DX11/imgui_impl_win32.cpp
+        Source/DX11/imgui_impl_win32.h
     )
 else()
     find_package(glfw3 3.2 REQUIRED)
@@ -15,8 +17,10 @@ else()
 
     list(APPEND _Application_Sources
         Source/GLFW/Entry.cpp
-        Source/GLFW/imgui_impl_glfw_gl3.cpp
-        Source/GLFW/imgui_impl_glfw_gl3.h
+        Source/GLFW/imgui_impl_opengl3.cpp
+        Source/GLFW/imgui_impl_opengl3.h
+        Source/GLFW/imgui_impl_glfw.cpp
+        Source/GLFW/imgui_impl_glfw.h
     )
 endif()
 

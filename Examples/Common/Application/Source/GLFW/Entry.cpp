@@ -4,7 +4,8 @@
 // (GL3W is a helper library to access OpenGL functions since there is no standard header to access modern OpenGL functions easily. Alternatives are GLEW, Glad, etc.)
 
 #include <imgui.h>
-#include "imgui_impl_glfw_gl3.h"
+#include "imgui_impl_opengl3.h"
+#include "imgui_impl_glfw.h"
 #include <stdio.h>
 #include <GL/gl3w.h>    // This example is using gl3w to access OpenGL functions (because it is small). You may use glew/glad/glLoadGen/etc. whatever already works for you.
 #include <GLFW/glfw3.h>
@@ -129,7 +130,8 @@ int main(int, char**)
     ImGui::CreateContext();
 
     // Setup ImGui binding
-    ImGui_ImplGlfwGL3_Init(window, true);
+    ImGui_ImplOpenGL3_Init();
+    ImGui_ImplGlfw_InitForOpenGL(window, true);
 
     // Load Fonts
     // - If no fonts are loaded, dear imgui will use the default font. You can also load multiple fonts and use ImGui::PushFont()/PopFont() to select them.
@@ -161,7 +163,9 @@ int main(int, char**)
         // - When io.WantCaptureKeyboard is true, do not dispatch keyboard input data to your main application.
         // Generally you may always pass all inputs to dear imgui, and hide them from your application based on those two flags.
         glfwPollEvents();
-        ImGui_ImplGlfwGL3_NewFrame();
+        ImGui_ImplOpenGL3_NewFrame();
+        ImGui_ImplGlfw_NewFrame();
+        ImGui::NewFrame();
 
         ImGui::SetNextWindowPos(ImVec2(0, 0));
         ImGui::SetNextWindowSize(io.DisplaySize);
@@ -181,13 +185,15 @@ int main(int, char**)
         glClearColor(clear_color.x, clear_color.y, clear_color.z, clear_color.w);
         glClear(GL_COLOR_BUFFER_BIT);
         ImGui::Render();
+        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
         glfwSwapBuffers(window);
     }
 
     Application_Finalize();
 
     // Cleanup
-    ImGui_ImplGlfwGL3_Shutdown();
+    ImGui_ImplOpenGL3_Shutdown();
+    ImGui_ImplGlfw_Shutdown();
 
     ImGui::DestroyContext();
     
