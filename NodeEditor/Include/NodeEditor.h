@@ -73,7 +73,7 @@ struct SafePointerType
 };
 
 template <typename Tag>
-const Tag SafePointerType<Tag>::Invalid{0};
+const Tag SafePointerType<Tag>::Invalid(0);
 
 template <typename Tag>
 inline bool operator==(const SafePointerType<Tag>& lhs, const SafePointerType<Tag>& rhs)
