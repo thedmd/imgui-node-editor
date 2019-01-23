@@ -93,12 +93,9 @@ Result:
 
 ### Dependencies
 
-Code is using own copy of ImGui v1.50 WIP with modifications:
+Code is using own copy of [ImGui v1.67 WIP with modifications](https://github.com/thedmd/imgui/tree/combined):
  * New: [Stack Based Layout](https://github.com/ocornut/imgui/pull/846) implementation
- * New: Added option to disable creation of global context. That simplifies management of multi-context environment by removing issues with static initialization. Required in work derived from this project.
  * New: Add ImMatrix for stacked transformation. This is pulled from derived project.
- * Changed: Made ImGuiStyle shareable between contexts. Required in work derived from this project.
- * Changed: Don't clamp negative mouse coordinates to 0. Clamping caused problems with dragging nodes and canvas scrolling. Also was inconsistent behaviod since right bottom edges of DisplaySide did not clamp.
  * Changed: Ability to scale polygon AA fringe. This was needed to achieve nice looking zoomed contend.
 
 As a backend modified `imgui_impl_dx11` is used. Changes:
