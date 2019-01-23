@@ -1,6 +1,7 @@
-<img align="right" src="https://ci.appveyor.com/api/projects/status/lm0io3m8mv7avacp?svg=true">
-
 # Node Editor in ImGui
+
+[![Build status](https://ci.appveyor.com/api/projects/status/lm0io3m8mv7avacp?svg=true)](https://ci.appveyor.com/project/thedmd/imgui-node-editor)
+
 
 ## About
 
