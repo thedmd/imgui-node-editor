@@ -5,12 +5,27 @@
 #include <algorithm>
 #include <utility>
 #include "NodeEditor.h"
-#include "Math2D.h"
-#include "Interop.h"
-#include "Builders.h"
-#include "Widgets.h"
+#include "ax/Math2D.h"
+#include "ax/Builders.h"
+#include "ax/Widgets.h"
 
+#define IMGUI_DEFINE_MATH_OPERATORS
 #include "imgui_internal.h"
+
+static inline ImRect ImGui_GetItemRect()
+{
+    return ImRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
+}
+
+static inline ImRect ImRect_Expanded(const ImRect& rect, float x, float y)
+{
+    auto result = rect;
+    result.Min.x -= x;
+    result.Min.y -= y;
+    result.Max.x += x;
+    result.Max.y += y;
+    return result;
+}
 
 namespace ed = ax::NodeEditor;
 namespace util = ax::NodeEditor::Utilities;
@@ -598,7 +613,7 @@ void DrawPinIcon(const Pin& pin, bool connected, int alpha)
             return;
     }
 
-    ax::Widgets::Icon(to_imvec(size(s_PinIconSize, s_PinIconSize)), iconType, connected, color, ImColor(32, 32, 32, alpha));
+    ax::Widgets::Icon(ImVec2(s_PinIconSize, s_PinIconSize), iconType, connected, color, ImColor(32, 32, 32, alpha));
 };
 
 void ShowStyleEditor(bool* show = nullptr)
@@ -1045,7 +1060,7 @@ void Application_Frame()
             ImGui::BeginHorizontal("inputs");
             ImGui::Spring(0, padding * 2);
 
-            rect inputsRect;
+            ImRect inputsRect;
             int inputAlpha = 200;
             if (!node.Inputs.empty())
             {
@@ -1058,8 +1073,8 @@ void Application_Frame()
                     ed::PushStyleVar(ed::StyleVar_PinArrowWidth, 10.0f);
                     ed::PushStyleVar(ed::StyleVar_PinCorners, 12);
                     ed::BeginPin(pin.ID, ed::PinKind::Input);
-                    ed::PinPivotRect(to_imvec(inputsRect.top_left()), to_imvec(inputsRect.bottom_right()));
-                    ed::PinRect(to_imvec(inputsRect.top_left()), to_imvec(inputsRect.bottom_right()));
+                    ed::PinPivotRect(inputsRect.GetTL(), inputsRect.GetBR());
+                    ed::PinRect(inputsRect.GetTL(), inputsRect.GetBR());
                     ed::EndPin();
                     ed::PopStyleVar(3);
 
@@ -1089,7 +1104,7 @@ void Application_Frame()
             ImGui::BeginHorizontal("outputs");
             ImGui::Spring(0, padding * 2);
 
-            rect outputsRect;
+            ImRect outputsRect;
             int outputAlpha = 200;
             if (!node.Outputs.empty())
             {
@@ -1100,8 +1115,8 @@ void Application_Frame()
 
                 ed::PushStyleVar(ed::StyleVar_PinCorners, 3);
                 ed::BeginPin(pin.ID, ed::PinKind::Output);
-                ed::PinPivotRect(to_imvec(outputsRect.top_left()), to_imvec(outputsRect.bottom_right()));
-                ed::PinRect(to_imvec(outputsRect.top_left()), to_imvec(outputsRect.bottom_right()));
+                ed::PinPivotRect(outputsRect.GetTL(), outputsRect.GetBR());
+                ed::PinRect(outputsRect.GetTL(), outputsRect.GetBR());
                 ed::EndPin();
                 ed::PopStyleVar();
 
@@ -1133,23 +1148,23 @@ void Application_Frame()
             //    drawList->PathStroke(col, true, thickness);
             //};
 
-            drawList->AddRectFilled(to_imvec(inputsRect.top_left()) + ImVec2(0, 1), to_imvec(inputsRect.bottom_right()),
+            drawList->AddRectFilled(inputsRect.GetTL() + ImVec2(0, 1), inputsRect.GetBR(),
                 IM_COL32((int)(255 * pinBackground.x), (int)(255 * pinBackground.y), (int)(255 * pinBackground.z), inputAlpha), 4.0f, 12);
             //ImGui::PushStyleVar(ImGuiStyleVar_AntiAliasFringeScale, 1.0f);
-            drawList->AddRect(to_imvec(inputsRect.top_left()) + ImVec2(0, 1), to_imvec(inputsRect.bottom_right()),
+            drawList->AddRect(inputsRect.GetTL() + ImVec2(0, 1), inputsRect.GetBR(),
                 IM_COL32((int)(255 * pinBackground.x), (int)(255 * pinBackground.y), (int)(255 * pinBackground.z), inputAlpha), 4.0f, 12);
             //ImGui::PopStyleVar();
-            drawList->AddRectFilled(to_imvec(outputsRect.top_left()), to_imvec(outputsRect.bottom_right()) - ImVec2(0, 1),
+            drawList->AddRectFilled(outputsRect.GetTL(), outputsRect.GetBR() - ImVec2(0, 1),
                 IM_COL32((int)(255 * pinBackground.x), (int)(255 * pinBackground.y), (int)(255 * pinBackground.z), outputAlpha), 4.0f, 3);
             //ImGui::PushStyleVar(ImGuiStyleVar_AntiAliasFringeScale, 1.0f);
-            drawList->AddRect(to_imvec(outputsRect.top_left()), to_imvec(outputsRect.bottom_right()) - ImVec2(0, 1),
+            drawList->AddRect(outputsRect.GetTL(), outputsRect.GetBR() - ImVec2(0, 1),
                 IM_COL32((int)(255 * pinBackground.x), (int)(255 * pinBackground.y), (int)(255 * pinBackground.z), outputAlpha), 4.0f, 3);
             //ImGui::PopStyleVar();
-            drawList->AddRectFilled(to_imvec(contentRect.top_left()), to_imvec(contentRect.bottom_right()), IM_COL32(24, 64, 128, 200), 0.0f);
+            drawList->AddRectFilled(contentRect.GetTL(), contentRect.GetBR(), IM_COL32(24, 64, 128, 200), 0.0f);
             //ImGui::PushStyleVar(ImGuiStyleVar_AntiAliasFringeScale, 1.0f);
             drawList->AddRect(
-                to_imvec(contentRect.top_left()),
-                to_imvec(contentRect.bottom_right()),
+                contentRect.GetTL(),
+                contentRect.GetBR(),
                 IM_COL32(48, 128, 255, 100), 0.0f);
             //ImGui::PopStyleVar();
         }
@@ -1194,16 +1209,16 @@ void Application_Frame()
                 auto drawList = ed::GetHintBackgroundDrawList();
 
                 auto hintBounds      = ImGui_GetItemRect();
-                auto hintFrameBounds = hintBounds.expanded(8, 4);
+                auto hintFrameBounds = ImRect_Expanded(hintBounds, 8, 4);
 
                 drawList->AddRectFilled(
-                    to_imvec(hintFrameBounds.top_left()),
-                    to_imvec(hintFrameBounds.bottom_right()),
+                    hintFrameBounds.GetTL(),
+                    hintFrameBounds.GetBR(),
                     IM_COL32(255, 255, 255, 64 * alpha / 255), 4.0f);
 
                 drawList->AddRect(
-                    to_imvec(hintFrameBounds.top_left()),
-                    to_imvec(hintFrameBounds.bottom_right()),
+                    hintFrameBounds.GetTL(),
+                    hintFrameBounds.GetBR(),
                     IM_COL32(255, 255, 255, 128 * alpha / 255), 4.0f);
 
                 ImGui::PopStyleVar();
