@@ -9,7 +9,7 @@
 //------------------------------------------------------------------------------
 # pragma once
 # include "imgui.h"
-# include "Math2D.h"
+# include "ax/Math2D.h"
 
 
 //------------------------------------------------------------------------------
@@ -38,6 +38,25 @@ static inline ImVec2     to_imvec(const ax::pointf& value)  { return ImVec2(valu
 static inline ImVec2     to_imvec(const ax::size& value)    { return ImVec2(static_cast<float>(value.w), static_cast<float>(value.h)); }
 static inline ImVec2     to_imvec(const ax::sizef& value)   { return ImVec2(value.w, value.h); }
 static inline ax::rect   ImGui_GetItemRect()                { return ax::rect(to_point(ImGui::GetItemRectMin()), to_point(ImGui::GetItemRectMax())); }
+
+
+//------------------------------------------------------------------------------
+struct FringeScaleScope
+{
+    FringeScaleScope(float scale)
+        : m_LastFringeScale(ImGui::GetWindowDrawList()->_FringeScale)
+    {
+        ImGui::GetWindowDrawList()->_FringeScale = scale;
+    }
+
+    ~FringeScaleScope()
+    {
+        ImGui::GetWindowDrawList()->_FringeScale = m_LastFringeScale;
+    }
+
+private:
+    float m_LastFringeScale;
+};
 
 
 //------------------------------------------------------------------------------

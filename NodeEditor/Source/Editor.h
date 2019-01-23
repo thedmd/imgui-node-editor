@@ -11,8 +11,8 @@
 
 
 //------------------------------------------------------------------------------
-# include "Shared/Interop.h"
-# include "Shared/Math2D.h"
+# include "Interop.h"
+# include "ax/Math2D.h"
 # include "NodeEditor.h"
 # define PICOJSON_USE_LOCALE 0
 # include "picojson.h"
@@ -54,16 +54,19 @@ using ax::NodeEditor::NodeId;
 using ax::NodeEditor::PinId;
 using ax::NodeEditor::LinkId;
 
-struct ObjectId: Details::SafePointerType<ObjectId>
+struct ObjectId final: Details::SafePointerType<ObjectId>
 {
-    using SafePointerType::SafePointerType;
+    using Super = Details::SafePointerType<ObjectId>;
+    using Super::Super;
 
-    ObjectId():                  SafePointerType(),                     m_Type(ObjectType::None)   {}
-    ObjectId(PinId  pinId):      SafePointerType(pinId.AsPointer()),    m_Type(ObjectType::Pin)    {}
-    ObjectId(NodeId nodeId):     SafePointerType(nodeId.AsPointer()),   m_Type(ObjectType::Node)   {}
-    ObjectId(LinkId linkId):     SafePointerType(linkId.AsPointer()),   m_Type(ObjectType::Link)   {}
+    ObjectId():                  Super(Invalid),              m_Type(ObjectType::None)   {}
+    ObjectId(PinId  pinId):      Super(pinId.AsPointer()),    m_Type(ObjectType::Pin)    {}
+    ObjectId(NodeId nodeId):     Super(nodeId.AsPointer()),   m_Type(ObjectType::Node)   {}
+    ObjectId(LinkId linkId):     Super(linkId.AsPointer()),   m_Type(ObjectType::Link)   {}
 
-    ObjectType Type() const { return m_Type; }
+    explicit operator PinId()    const { return AsPinId();    }
+    explicit operator NodeId()   const { return AsNodeId();   }
+    explicit operator LinkId()   const { return AsLinkId();   }
 
     PinId    AsPinId()    const { IM_ASSERT(IsPinId());    return PinId(AsPointer());    }
     NodeId   AsNodeId()   const { IM_ASSERT(IsNodeId());   return NodeId(AsPointer());   }
@@ -73,16 +76,7 @@ struct ObjectId: Details::SafePointerType<ObjectId>
     bool IsNodeId()   const { return m_Type == ObjectType::Node;   }
     bool IsLinkId()   const { return m_Type == ObjectType::Link;   }
 
-    friend bool operator==(const ObjectId& lhs, const ObjectId& rhs)
-    {
-        return lhs.Type() == rhs.Type()
-            && lhs.AsPointer() == rhs.AsPointer();
-    }
-
-    friend bool operator!=(const ObjectId& lhs, const ObjectId& rhs)
-    {
-        return !(lhs == rhs);
-    }
+    ObjectType Type() const { return m_Type; }
 
 private:
     ObjectType m_Type;
@@ -1035,6 +1029,7 @@ struct HintBuilder
     EditorContext* const Editor;
     bool  m_IsActive;
     Node* m_CurrentNode;
+    float m_LastFringe = 1.0f;
 
     HintBuilder(EditorContext* editor);
 
