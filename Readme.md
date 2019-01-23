@@ -1,3 +1,5 @@
+<img align="right" src="https://ci.appveyor.com/api/projects/status/lm0io3m8mv7avacp?svg=true">
+
 # Node Editor in ImGui
 
 ## About
