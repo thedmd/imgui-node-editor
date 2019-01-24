@@ -1,0 +1,11 @@
+language: cpp
+
+compiler:
+  - gcc
+  - clang
+
+before_script:
+  - cmake -H. -BBuild
+
+script:
+  - cmake --build Build --config Release
