@@ -11,11 +11,15 @@ os:
 dist: xenial
 
 addons:
-    apt:
-        sources:
-            - ubuntu-toolchain-r-test    
-        packages:
-            - cmake
+  apt:
+    sources:
+      - ubuntu-toolchain-r-test    
+    packages:
+      - cmake
+            
+cache:
+  directories:
+    - /usr/local/Homebrew
   
 before_install:
   - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then
