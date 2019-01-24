@@ -6,7 +6,7 @@ image:
 - Visual Studio 2015
 configuration:
 - Release
-- Debug
+#- Debug
 platform:
 - x86
 - x64
