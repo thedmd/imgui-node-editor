@@ -8,7 +8,7 @@ os:
   - linux
   - osx
   
-dist: trusty
+dist: xenial
 
 addons:
     apt:
@@ -25,6 +25,8 @@ before_install:
   - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then
       brew install homebrew/core/glfw3;
     fi
+    
+  - cmake --version
 
 before_script:
   - cmake -H. -BBuild
