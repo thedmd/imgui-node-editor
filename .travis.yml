@@ -3,6 +3,9 @@ language: cpp
 compiler:
   - gcc
   - clang
+  
+before_install:
+  - sudo apt-get install -y libglfw3-dev
 
 before_script:
   - cmake -H. -BBuild
