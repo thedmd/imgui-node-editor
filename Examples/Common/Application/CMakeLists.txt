@@ -10,7 +10,7 @@ if (WIN32)
         Source/DX11/imgui_impl_dx11.h
     )
 else()
-    find_package(glfw3 3.2 REQUIRED)
+    find_package(glfw3 3 REQUIRED)
     find_package(OpenGL REQUIRED)
 
     list(APPEND _Application_Sources
