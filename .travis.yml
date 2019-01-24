@@ -9,6 +9,11 @@ os:
   - osx
   
 dist: xenial
+
+addons:
+    apt:
+        packages:
+            - cmake
   
 before_install:
   - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then
