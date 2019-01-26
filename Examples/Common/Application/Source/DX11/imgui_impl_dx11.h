@@ -1,27 +1,29 @@
-// ImGui Win32 + DirectX11 binding
+// dear imgui: Renderer for DirectX11
+// This needs to be used along with a Platform Binding (e.g. Win32)
 
 // Implemented features:
-//  [X] User texture binding. Use 'ID3D11ShaderResourceView*' as ImTextureID. Read the FAQ about ImTextureID in imgui.cpp.
+//  [X] Renderer: User texture binding. Use 'ID3D11ShaderResourceView*' as ImTextureID. Read the FAQ about ImTextureID in imgui.cpp.
 
 // You can copy and use unmodified imgui_impl_* files in your project. See main.cpp for an example of using this.
-// If you use this binding you'll need to call 4 functions: ImGui_ImplXXXX_Init(), ImGui_ImplXXXX_NewFrame(), ImGui::Render() and ImGui_ImplXXXX_Shutdown().
-// If you are new to ImGui, see examples/README.txt and documentation at the top of imgui.cpp.
+// If you are new to dear imgui, read examples/README.txt and read the documentation at the top of imgui.cpp.
 // https://github.com/ocornut/imgui
+
+#pragma once
 
 struct ID3D11Device;
 struct ID3D11DeviceContext;
 
-IMGUI_API bool        ImGui_ImplDX11_Init(void* hwnd, ID3D11Device* device, ID3D11DeviceContext* device_context);
-IMGUI_API void        ImGui_ImplDX11_Shutdown();
-IMGUI_API void        ImGui_ImplDX11_NewFrame();
-IMGUI_API void        ImGui_ImplDX11_RenderDrawData(ImDrawData* draw_data);
+IMGUI_IMPL_API bool     ImGui_ImplDX11_Init(ID3D11Device* device, ID3D11DeviceContext* device_context);
+IMGUI_IMPL_API void     ImGui_ImplDX11_Shutdown();
+IMGUI_IMPL_API void     ImGui_ImplDX11_NewFrame();
+IMGUI_IMPL_API void     ImGui_ImplDX11_RenderDrawData(ImDrawData* draw_data);
 
 // Use if you want to reset your rendering device without losing ImGui state.
-IMGUI_API void        ImGui_ImplDX11_InvalidateDeviceObjects();
-IMGUI_API bool        ImGui_ImplDX11_CreateDeviceObjects();
+IMGUI_IMPL_API void     ImGui_ImplDX11_InvalidateDeviceObjects();
+IMGUI_IMPL_API bool     ImGui_ImplDX11_CreateDeviceObjects();
 
-IMGUI_API ImTextureID ImGui_LoadTexture(const char* path);
-IMGUI_API ImTextureID ImGui_CreateTexture(const void* data, int width, int height);
-IMGUI_API void        ImGui_DestroyTexture(ImTextureID texture);
-IMGUI_API int         ImGui_GetTextureWidth(ImTextureID texture);
-IMGUI_API int         ImGui_GetTextureHeight(ImTextureID texture);
+IMGUI_IMPL_API ImTextureID ImGui_LoadTexture(const char* path);
+IMGUI_IMPL_API ImTextureID ImGui_CreateTexture(const void* data, int width, int height);
+IMGUI_IMPL_API void        ImGui_DestroyTexture(ImTextureID texture);
+IMGUI_IMPL_API int         ImGui_GetTextureWidth(ImTextureID texture);
+IMGUI_IMPL_API int         ImGui_GetTextureHeight(ImTextureID texture);

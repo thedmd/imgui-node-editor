@@ -8,6 +8,8 @@ if (WIN32)
         Source/DX11/Entry.cpp
         Source/DX11/imgui_impl_dx11.cpp
         Source/DX11/imgui_impl_dx11.h
+        Source/DX11/imgui_impl_win32.cpp
+        Source/DX11/imgui_impl_win32.h
     )
 else()
     find_package(glfw3 3 REQUIRED)
