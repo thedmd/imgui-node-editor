@@ -11,7 +11,8 @@ add_library(gl3w STATIC ${_gl3w_Sources})
 
 target_include_directories(gl3w PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/Include)
 
-if (UNIX)
+if (UNIX AND (NOT APPLE))
+    # Linux: GL is required to pull glXGetProcAddress
     target_link_libraries(gl3w PRIVATE GL dl)
 endif()
 

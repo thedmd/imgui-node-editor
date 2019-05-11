@@ -8,9 +8,11 @@ if (WIN32)
         Source/DX11/Entry.cpp
         Source/DX11/imgui_impl_dx11.cpp
         Source/DX11/imgui_impl_dx11.h
+        Source/DX11/imgui_impl_win32.cpp
+        Source/DX11/imgui_impl_win32.h
     )
 else()
-    find_package(glfw3 3.2 REQUIRED)
+    find_package(glfw3 3 REQUIRED)
     find_package(OpenGL REQUIRED)
 
     list(APPEND _Application_Sources
@@ -28,7 +30,12 @@ source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${_Application_Sources})
 add_library(Application STATIC ${_Application_Sources})
 
 target_include_directories(Application PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/Include)
-target_link_libraries(Application PRIVATE ImGui NodeEditor Shared stb_image)
+
+find_package(imgui REQUIRED)
+find_package(stb_image REQUIRED)
+find_package(ScopeGuard REQUIRED)
+target_link_libraries(Application PUBLIC imgui ScopeGuard)
+target_link_libraries(Application PRIVATE stb_image)
 
 if (WIN32)
     set(_DXSDK_Dir  ${CMAKE_SOURCE_DIR}/ThirdParty/DXSDK)
@@ -49,16 +56,20 @@ if (WIN32)
         INTERFACE_LINK_LIBRARIES        "$<$<CONFIG:Debug>:dxerr>"
     )
 
-    target_link_libraries(Application PRIVATE ImGui NodeEditor Shared d3d11.lib d3dcompiler.lib d3dx11)
+    target_link_libraries(Application PRIVATE d3d11.lib d3dcompiler.lib d3dx11)
 else()
-    add_subdirectory(${CMAKE_SOURCE_DIR}/ThirdParty/gl3w ${CMAKE_BINARY_DIR}/ThirdParty/gl3w)
-
     target_include_directories(Application PRIVATE ${OPENGL_INCLUDE_DIR})
+
+    find_package(gl3w REQUIRED)
     target_link_libraries(Application PRIVATE ${OPENGL_gl_LIBRARY} gl3w glfw)
 
     if (APPLE)
         target_link_libraries(Application PRIVATE
             "-framework CoreFoundation"
+            "-framework Cocoa"
+            "-framework OpenGL"
+            "-framework IOKit"
+            "-framework CoreVideo"
         )
     endif()
 endif()

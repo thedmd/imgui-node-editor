@@ -7,7 +7,7 @@
 // CREDITS
 //   Written by Michal Cichon
 //------------------------------------------------------------------------------
-# include "Builders.h"
+# include "ax/Builders.h"
 # include "Interop.h"
 
 
@@ -25,7 +25,7 @@ util::BlueprintNodeBuilder::BlueprintNodeBuilder(ImTextureID texture, int textur
 {
 }
 
-void util::BlueprintNodeBuilder::Begin(int id)
+void util::BlueprintNodeBuilder::Begin(ed::NodeId id)
 {
     HasHeader  = false;
     HeaderRect = rect();
@@ -34,7 +34,7 @@ void util::BlueprintNodeBuilder::Begin(int id)
 
     ed::BeginNode(id);
 
-    ImGui::PushID(id);
+    ImGui::PushID(id.AsPointer());
     CurrentNodeId = id;
 
     SetStage(Stage::Begin);
@@ -61,7 +61,7 @@ void util::BlueprintNodeBuilder::End()
                 HeaderRect.w / (float)(4.0f * HeaderTextureWidth),
                 HeaderRect.h / (float)(4.0f * HeaderTextureHeight));
 
-            drawList->AddImage(HeaderTextureId,
+            drawList->AddImageRounded(HeaderTextureId,
                 to_imvec(HeaderRect.top_left())     - ImVec2(8 - halfBorderWidth, 4 - halfBorderWidth),
                 to_imvec(HeaderRect.bottom_right()) + ImVec2(8 - halfBorderWidth, 0),
                 ImVec2(0.0f, 0.0f), uv,
@@ -105,7 +105,7 @@ void util::BlueprintNodeBuilder::EndHeader()
     SetStage(Stage::Content);
 }
 
-void util::BlueprintNodeBuilder::Input(int id)
+void util::BlueprintNodeBuilder::Input(ed::PinId id)
 {
     if (CurrentStage == Stage::Begin)
         SetStage(Stage::Content);
@@ -117,9 +117,9 @@ void util::BlueprintNodeBuilder::Input(int id)
     if (applyPadding)
         ImGui::Spring(0);
 
-    Pin(id, PinKind::Target);
+    Pin(id, PinKind::Input);
 
-    ImGui::BeginHorizontal(id);
+    ImGui::BeginHorizontal(id.AsPointer());
 }
 
 void util::BlueprintNodeBuilder::EndInput()
@@ -137,7 +137,7 @@ void util::BlueprintNodeBuilder::Middle()
     SetStage(Stage::Middle);
 }
 
-void util::BlueprintNodeBuilder::Output(int id)
+void util::BlueprintNodeBuilder::Output(ed::PinId id)
 {
     if (CurrentStage == Stage::Begin)
         SetStage(Stage::Content);
@@ -149,9 +149,9 @@ void util::BlueprintNodeBuilder::Output(int id)
     if (applyPadding)
         ImGui::Spring(0);
 
-    Pin(id, PinKind::Source);
+    Pin(id, PinKind::Output);
 
-    ImGui::BeginHorizontal(id);
+    ImGui::BeginHorizontal(id.AsPointer());
 }
 
 void util::BlueprintNodeBuilder::EndOutput()
@@ -222,7 +222,7 @@ bool util::BlueprintNodeBuilder::SetStage(Stage stage)
 
         case Stage::End:
             break;
-            
+
         case Stage::Invalid:
             break;
     }
@@ -279,14 +279,15 @@ bool util::BlueprintNodeBuilder::SetStage(Stage stage)
         case Stage::End:
             if (oldStage == Stage::Input)
                 ImGui::Spring(1, 0);
-            ImGui::EndHorizontal();
+            if (oldStage != Stage::Begin)
+                ImGui::EndHorizontal();
             ContentRect = ImGui_GetItemRect();
 
             //ImGui::Spring(0);
             ImGui::EndVertical();
             NodeRect = ImGui_GetItemRect();
             break;
-            
+
         case Stage::Invalid:
             break;
     }
@@ -294,7 +295,7 @@ bool util::BlueprintNodeBuilder::SetStage(Stage stage)
     return true;
 }
 
-void util::BlueprintNodeBuilder::Pin(int id, ed::PinKind kind)
+void util::BlueprintNodeBuilder::Pin(ed::PinId id, ed::PinKind kind)
 {
     ed::BeginPin(id, kind);
 }

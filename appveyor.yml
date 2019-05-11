@@ -1,0 +1,37 @@
+version: '{build}'
+pull_requests:
+  do_not_increment_build_number: true
+image:
+- Visual Studio 2017
+- Visual Studio 2015
+configuration:
+- Release
+#- Debug
+platform:
+- x86
+- x64
+clone_depth: 1
+init:
+- cmd: >-
+    set arch=
+
+    if "%PLATFORM%"=="x64" ( set arch= Win64)
+
+    echo %APPVEYOR_BUILD_WORKER_IMAGE%
+
+    if "%APPVEYOR_BUILD_WORKER_IMAGE%"=="Visual Studio 2017" ( set generator="Visual Studio 15 2017%arch%" )
+
+    if "%APPVEYOR_BUILD_WORKER_IMAGE%"=="Visual Studio 2015" ( set generator="Visual Studio 14 2015%arch%" )
+
+    if "%APPVEYOR_BUILD_WORKER_IMAGE%"=="Visual Studio 2013" ( set generator="Visual Studio 12 2013%arch%" )
+
+    echo %generator%
+before_build:
+- cmd: >-
+    cmake --version
+
+    cmake -H. -BBuild -G %generator%
+build:
+  project: Build\ALL_BUILD.vcxproj
+  parallel: true
+  verbosity: minimal

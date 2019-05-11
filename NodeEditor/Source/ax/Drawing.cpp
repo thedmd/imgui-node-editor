@@ -1,6 +1,6 @@
 //# include "stdafx.h"
-# include "Drawing.h"
-# include "Math2D.h"
+# include "ax/Drawing.h"
+# include "ax/Math2D.h"
 # include "Interop.h"
 # include <cmath>
 
@@ -58,12 +58,12 @@ void ax::Drawing::DrawIcon(ImDrawList* drawList, const ImVec2& a, const ImVec2& 
         if (!filled)
         {
             if (innerColor & 0xFF000000)
-                drawList->AddConvexPolyFilled(drawList->_Path.Data, drawList->_Path.Size, innerColor, true);
+                drawList->AddConvexPolyFilled(drawList->_Path.Data, drawList->_Path.Size, innerColor);
 
             drawList->PathStroke(color, true, 2.0f * outline_scale);
         }
         else
-            drawList->PathFill(color);
+            drawList->PathFillConvex(color);
     }
     else
     {
@@ -175,7 +175,7 @@ void ax::Drawing::DrawIcon(ImDrawList* drawList, const ImVec2& a, const ImVec2& 
                 drawList->PathLineTo(to_imvec(c) + ImVec2( r,  0));
                 drawList->PathLineTo(to_imvec(c) + ImVec2( 0,  r));
                 drawList->PathLineTo(to_imvec(c) + ImVec2(-r,  0));
-                drawList->PathFill(color);
+                drawList->PathFillConvex(color);
             }
             else
             {
@@ -188,7 +188,7 @@ void ax::Drawing::DrawIcon(ImDrawList* drawList, const ImVec2& a, const ImVec2& 
                 drawList->PathLineTo(to_imvec(c) + ImVec2(-r,  0));
 
                 if (innerColor & 0xFF000000)
-                    drawList->AddConvexPolyFilled(drawList->_Path.Data, drawList->_Path.Size, innerColor, true);
+                    drawList->AddConvexPolyFilled(drawList->_Path.Data, drawList->_Path.Size, innerColor);
 
                 drawList->PathStroke(color, true, 2.0f * outline_scale);
             }

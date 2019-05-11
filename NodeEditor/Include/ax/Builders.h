@@ -11,7 +11,7 @@
 
 
 //------------------------------------------------------------------------------
-# include "NodeEditor.h"
+# include <NodeEditor.h>
 # include "Math2D.h"
 
 
@@ -26,18 +26,18 @@ struct BlueprintNodeBuilder
 {
     BlueprintNodeBuilder(ImTextureID texture = nullptr, int textureWidth = 0, int textureHeight = 0);
 
-    void Begin(int id);
+    void Begin(NodeId id);
     void End();
 
     void Header(const ImVec4& color = ImVec4(1, 1, 1, 1));
     void EndHeader();
 
-    void Input(int id);
+    void Input(PinId id);
     void EndInput();
 
     void Middle();
 
-    void Output(int id);
+    void Output(PinId id);
     void EndOutput();
 
 
@@ -56,13 +56,13 @@ private:
 
     bool SetStage(Stage stage);
 
-    void Pin(int id, ax::NodeEditor::PinKind kind);
+    void Pin(PinId id, ax::NodeEditor::PinKind kind);
     void EndPin();
 
     ImTextureID HeaderTextureId;
     int         HeaderTextureWidth;
     int         HeaderTextureHeight;
-    int         CurrentNodeId;
+    NodeId      CurrentNodeId;
     Stage       CurrentStage;
     ImU32       HeaderColor;
     rect        NodeRect;

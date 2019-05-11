@@ -1,21 +1,30 @@
+project(imgui_node_editor)
 
-set(_NodeEditor_Sources
+set(_imgui_node_editor_Sources
+    Include/ax/Math2D.h
+    Include/ax/Math2D.inl
+    Include/ax/Builders.h
+    Include/ax/Drawing.h
+    Include/ax/Widgets.h
     Include/NodeEditor.h
+    Source/Interop.h
     Source/NodeEditor.cpp
-
     Source/Editor.h
     Source/Editor.cpp
-
-    Source/Shared/Interop.h
-    Source/Shared/Math2D.h
-    Source/Shared/Math2D.inl
+    Source/ax/Builders.cpp
+    Source/ax/Drawing.cpp
+    Source/ax/Widgets.cpp
 )
 
-source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${_NodeEditor_Sources})
+source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${_imgui_node_editor_Sources})
 
-add_library(NodeEditor STATIC ${_NodeEditor_Sources})
+add_library(${PROJECT_NAME} STATIC ${_imgui_node_editor_Sources})
 
-target_include_directories(NodeEditor PUBLIC  ${CMAKE_CURRENT_SOURCE_DIR}/Include)
-#target_include_directories(NodeEditor PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/Source/Shared)
+set_property(TARGET ${PROJECT_NAME} PROPERTY FOLDER "NodeEditor")
 
-target_link_libraries(NodeEditor PRIVATE ImGui picojson)
+find_package(imgui REQUIRED)
+find_package(picojson REQUIRED)
+target_link_libraries(${PROJECT_NAME} PRIVATE imgui picojson)
+
+target_include_directories(${PROJECT_NAME} PUBLIC  ${CMAKE_CURRENT_SOURCE_DIR}/Include)
+target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/Source)

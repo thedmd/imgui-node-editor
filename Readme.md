@@ -1,5 +1,9 @@
 # Node Editor in ImGui
 
+[![Appveyor status](https://ci.appveyor.com/api/projects/status/lm0io3m8mv7avacp?svg=true)](https://ci.appveyor.com/project/thedmd/imgui-node-editor)
+[![Travis status](https://travis-ci.org/thedmd/imgui-node-editor.svg?branch=master)](https://travis-ci.org/thedmd/imgui-node-editor)
+
+
 ## About
 
 This is an implementaion of node editor with ImGui-like API.
@@ -8,21 +12,28 @@ Project purpose is to serve as a basis for more complex solutions like blueprint
 
 ![Preview](Screenshots/node_editor_overview.gif)
 
+Project is a prototype. What that means in practise:
+ * API will break. Current API does not help user do the right things and require some head banging on the wall to understand it. Can be done much more better.
+ * Code is hacked to test ideas, not to pursue production quality
+ * Relies on modified version of ImGui. There is a goal to use vanila version of ImGui and provide hacked-in code as an extension.
+ * Keeping dependencies minimal is not a priority. In the long run C++14 without non ImGui dependencies should be a minimum. Currently you will find parts of C++17 and use of picojson.
+ * If you have issues with editor, please let me know. I'm not going to promise immediate fix but I for sure will take them into account while reworking code.
+
+
 ## Code
 
 Editor code is in `NodeEditor` directory alone. Project can be build with examples with help of CMake 3.8. macOS and Linux require GLFW3 to be installed on your system.
 ```
 Windows:
     cmake -H. -BBuild -G "Visual Studio 15 2017 Win64"
-    
+
 macOS:
     cmake -H. -BBuild -G "Xcode"
-    
+
 Linux:
     cmake -H. -BBuild -G "Unix Makefiles"
 
 Build:
-    cd Build
     cmake --build Build --config Release
 ```
 You will find examples in `Build\Bin` directory.
@@ -86,12 +97,9 @@ Result:
 
 ### Dependencies
 
-Code is using own copy of ImGui v1.50 WIP with modifications:
+Code is using own copy of [ImGui v1.67 WIP with modifications](https://github.com/thedmd/imgui/tree/combined):
  * New: [Stack Based Layout](https://github.com/ocornut/imgui/pull/846) implementation
- * New: Added option to disable creation of global context. That simplifies management of multi-context environment by removing issues with static initialization. Required in work derived from this project.
  * New: Add ImMatrix for stacked transformation. This is pulled from derived project.
- * Changed: Made ImGuiStyle shareable between contexts. Required in work derived from this project.
- * Changed: Don't clamp negative mouse coordinates to 0. Clamping caused problems with dragging nodes and canvas scrolling. Also was inconsistent behaviod since right bottom edges of DisplaySide did not clamp.
  * Changed: Ability to scale polygon AA fringe. This was needed to achieve nice looking zoomed contend.
 
 As a backend modified `imgui_impl_dx11` is used. Changes:

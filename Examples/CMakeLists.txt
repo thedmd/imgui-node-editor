@@ -27,7 +27,9 @@ function(add_example name)
 
     add_executable(${name} ${_Example_Type} ${_Example_Sources} ${_Example_Resources})
 
-    target_link_libraries(${name} PRIVATE ImGui NodeEditor Shared Application)
+    find_package(imgui REQUIRED)
+    find_package(imgui_node_editor REQUIRED)
+    target_link_libraries(${name} PRIVATE imgui imgui_node_editor Application)
 
     set(_ExampleBinDir ${CMAKE_BINARY_DIR}/Bin)
 
@@ -59,7 +61,6 @@ function(add_example name)
 
 endfunction()
 
-add_subdirectory(Common/Shared)
 add_subdirectory(Common/Application)
 
 add_subdirectory(00-Simple)

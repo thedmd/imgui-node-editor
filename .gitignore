@@ -1,7 +1,8 @@
 .vs
-.build
+.build*
 .DS_Store
 bin
+Build
 *.VC.db
 *.VC.opendb
 *.user

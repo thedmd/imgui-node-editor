@@ -4,6 +4,7 @@
 #endif
 #include "imgui.h"
 #include "imgui_impl_dx11.h"
+#include "imgui_impl_win32.h"
 #include "ScopeGuard.h"
 #include "Application.h"
 #include <d3d11.h>
@@ -81,11 +82,11 @@ static void CleanupDeviceD3D()
     if (g_pd3dDevice) { g_pd3dDevice->Release(); g_pd3dDevice = nullptr; }
 }
 
-extern LRESULT ImGui_ImplDX11_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
+IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
 LRESULT WINAPI ImGui_WinProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
-    if (ImGui_ImplDX11_WndProcHandler(hWnd, msg, wParam, lParam))
+    if (ImGui_ImplWin32_WndProcHandler(hWnd, msg, wParam, lParam))
         return true;
 
     switch (msg)
@@ -111,21 +112,26 @@ LRESULT WINAPI ImGui_WinProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
     return DefWindowProc(hWnd, msg, wParam, lParam);
 }
 
-static ImFont* ImGui_LoadFont(ImGuiIO& io, const char* name, float size, const ImVec2& displayOffset = ImVec2(0, 0))
+static ImFont* ImGui_LoadFont(ImFontAtlas& atlas, const char* name, float size, const ImVec2& displayOffset = ImVec2(0, 0))
 {
-    char* windir = nullptr;
-    size_t windirLength = 0;
-    if (_dupenv_s(&windir, &windirLength, "WINDIR"))
+    auto windir = getenv("WINDIR");
+    if (!windir)
         return nullptr;
-    AX_SCOPE_EXIT{ free(windir); };
+
+    static const ImWchar ranges[] =
+    {
+        0x0020, 0x00FF, // Basic Latin + Latin Supplement
+        0x0104, 0x017C, // Polish characters and more
+        0,
+    };
 
     ImFontConfig config;
     config.OversampleH = 4;
     config.OversampleV = 4;
-    config.PixelSnapH  = false;
+    config.PixelSnapH = false;
 
     auto path = std::string(windir) + "\\Fonts\\" + name;
-    auto font = io.Fonts->AddFontFromFileTTF(path.c_str(), size, &config);
+    auto font = atlas.AddFontFromFileTTF(path.c_str(), size, &config, ranges);
     if (font)
         font->DisplayOffset = displayOffset;
 
@@ -176,18 +182,35 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _
     if (CreateDeviceD3D(hwnd) < 0)
         return 1;
 
+    ImFontAtlas fontAtlas;
+    auto defaultFont = ImGui_LoadFont(fontAtlas, "segoeui.ttf", 22.0f);//16.0f * 96.0f / 72.0f);
+    fontAtlas.Build();
+    //ImGuiFreeType::BuildFontAtlas(&fontAtlas);
+
     // Setup ImGui binding
-    ImGui_ImplDX11_Init(hwnd, g_pd3dDevice, g_pd3dDeviceContext);
-    AX_SCOPE_EXIT{ ImGui_ImplDX11_Shutdown(); };
-
-    // Load Fonts
+    ImGui::CreateContext(&fontAtlas);
+    AX_SCOPE_EXIT{ ImGui::DestroyContext(); };
     ImGuiIO& io = ImGui::GetIO();
-    ImGui_LoadFont(io, "segoeui.ttf", 16 * 96.0f / 72.0f, ImVec2(0, -1));
+    //io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;  // Enable Keyboard Controls
+    io.IniFilename = nullptr;
+    io.LogFilename = nullptr;
 
-    ImGuiStyle& style = ImGui::GetStyle();
-    style.FrameRounding     = 2.0f;
-    style.WindowRounding    = 0.0f;
-    style.ScrollbarRounding = 0.0f;
+
+    // Setup ImGui binding
+    ImGui_ImplWin32_Init(hwnd);
+    ImGui_ImplDX11_Init(g_pd3dDevice, g_pd3dDeviceContext);
+    AX_SCOPE_EXIT
+    {
+        ImGui_ImplDX11_Shutdown();
+        ImGui_ImplWin32_Shutdown();
+    };
+
+    ImGui::StyleColorsDark();
+
+    //ImGuiStyle& style = ImGui::GetStyle();
+    //style.FrameRounding     = 2.0f;
+    //style.WindowRounding    = 0.0f;
+    //style.ScrollbarRounding = 0.0f;
 
     ImVec4 backgroundColor = ImColor(32, 32, 32, 255);//style.Colors[ImGuiCol_TitleBg];
 
@@ -196,11 +219,13 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _
 
     auto frame = [&]()
     {
+        ImGui_ImplWin32_NewFrame();
         ImGui_ImplDX11_NewFrame();
+        ImGui::NewFrame();
 
         ImGui::SetNextWindowPos(ImVec2(0, 0));
         ImGui::SetNextWindowSize(io.DisplaySize);
-        ImGui::Begin("Content", nullptr, ImVec2(0, 0), 0.0f,
+        ImGui::Begin("Content", nullptr,
             ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
             ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoSavedSettings |
             ImGuiWindowFlags_NoBringToFrontOnFocus);
@@ -212,7 +237,8 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _
         // Rendering
         g_pd3dDeviceContext->ClearRenderTargetView(g_mainRenderTargetView, (float*)&backgroundColor);
         ImGui::Render();
-        g_pSwapChain->Present(0, 0);
+        ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
+        g_pSwapChain->Present(1, 0);
     };
 
     frame();
@@ -235,7 +261,8 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _
             continue;
         }
 
-        frame();
+        if (!IsIconic(hwnd))
+            frame();
     }
 
     return 0;

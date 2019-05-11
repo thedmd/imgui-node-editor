@@ -1,0 +1,39 @@
+language: cpp
+
+compiler:
+  - gcc
+  - clang
+  
+os:
+  - linux
+  - osx
+  
+dist: xenial
+
+addons:
+  apt:
+    sources:
+      - ubuntu-toolchain-r-test    
+    packages:
+      - cmake
+            
+cache:
+  directories:
+    - /usr/local/Homebrew
+  
+before_install:
+  - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then
+      sudo apt-get install libglfw3-dev libglfw3;
+    fi
+
+  - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then
+      brew install homebrew/core/glfw;
+    fi
+    
+  - cmake --version
+
+before_script:
+  - cmake -H. -BBuild
+
+script:
+  - cmake --build Build --config Release
