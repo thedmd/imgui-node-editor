@@ -1,4 +1,4 @@
-// dear imgui, v1.70 WIP
+// dear imgui, v1.71 WIP
 // (drawing and font code)
 
 /*
@@ -792,7 +792,7 @@ void ImDrawList::AddPolyline(const ImVec2* points, const int points_count, ImU32
     if (!closed)
         count = points_count-1;
 
-    thickness *= _InvTransformationScale;
+    thickness *= _InvTransformationScale * _FringeScale;
 
     const bool thick_line = (fabsf(thickness - 1.0f) > FLT_EPSILON) || (fabsf(_InvTransformationScale - 1.0f) > FLT_EPSILON);
     if (Flags & ImDrawListFlags_AntiAliasedLines)
@@ -982,7 +982,7 @@ void ImDrawList::AddConvexPolyFilled(const ImVec2* points, const int points_coun
     {
         // Anti-aliased Fill
         const float DIRECTION = (((_HalfPixel.x < 0.0f) ^ (_HalfPixel.y < 0.0f)) ? -1.0f : 1.0f);
-        const float AA_SIZE = _InvTransformationScale * _FringeScale * DIRECTION;
+        const float AA_SIZE = _InvTransformationScale * DIRECTION * _FringeScale;
         const ImU32 col_trans = col & ~IM_COL32_A_MASK;
         const int idx_count = (points_count-2)*3 + points_count*6;
         const int vtx_count = (points_count*2);
@@ -1896,7 +1896,7 @@ static void UnpackBoolVectorToFlatIndexList(const ImBoolVector* in, ImVector<int
     for (const int* it = it_begin; it < it_end; it++)
         if (int entries_32 = *it)
             for (int bit_n = 0; bit_n < 32; bit_n++)
-                if (entries_32 & (1 << bit_n))
+                if (entries_32 & (1u << bit_n))
                     out->push_back((int)((it - it_begin) << 5) + bit_n);
 }
 
