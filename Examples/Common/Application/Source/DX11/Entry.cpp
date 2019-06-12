@@ -7,6 +7,7 @@
 #include "imgui_impl_win32.h"
 #include "ScopeGuard.h"
 #include "Application.h"
+struct IUnknown;
 #include <d3d11.h>
 #define DIRECTINPUT_VERSION 0x0800
 #include <dinput.h>
@@ -114,8 +115,8 @@ LRESULT WINAPI ImGui_WinProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 
 static ImFont* ImGui_LoadFont(ImFontAtlas& atlas, const char* name, float size, const ImVec2& displayOffset = ImVec2(0, 0))
 {
-    auto windir = getenv("WINDIR");
-    if (!windir)
+	char* windir = nullptr;
+    if (_dupenv_s(&windir, nullptr, "WINDIR") || windir == nullptr)
         return nullptr;
 
     static const ImWchar ranges[] =
@@ -134,6 +135,8 @@ static ImFont* ImGui_LoadFont(ImFontAtlas& atlas, const char* name, float size, 
     auto font = atlas.AddFontFromFileTTF(path.c_str(), size, &config, ranges);
     if (font)
         font->DisplayOffset = displayOffset;
+
+	free(windir);
 
     return font;
 }
