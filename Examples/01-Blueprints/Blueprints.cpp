@@ -4,13 +4,13 @@
 #include <map>
 #include <algorithm>
 #include <utility>
-#include "NodeEditor.h"
-#include "ax/Math2D.h"
-#include "ax/Builders.h"
-#include "ax/Widgets.h"
+#include <imgui_node_editor.h>
+#include <ax/Math2D.h>
+#include <ax/Builders.h>
+#include <ax/Widgets.h>
 
 #define IMGUI_DEFINE_MATH_OPERATORS
-#include "imgui_internal.h"
+#include <imgui_internal.h>
 
 static inline ImRect ImGui_GetItemRect()
 {
@@ -545,37 +545,16 @@ void Application_Finalize()
     }
 }
 
-static void DrawSplitter(int split_vertically, float thickness, float* size0, float* size1, float min_size0, float min_size1)
+static bool Splitter(bool split_vertically, float thickness, float* size1, float* size2, float min_size1, float min_size2, float splitter_long_axis_size = -1.0f)
 {
-    ImVec2 backup_pos = ImGui::GetCursorPos();
-    if (split_vertically)
-        ImGui::SetCursorPosY(backup_pos.y + *size0);
-    else
-        ImGui::SetCursorPosX(backup_pos.x + *size0);
-
-    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
-    ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0, 0, 0, 0));          // We don't draw while active/pressed because as we move the panes the splitter button will be 1 frame late
-    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.6f, 0.6f, 0.6f, 0.10f));
-    ImGui::Button("##Splitter", ImVec2(!split_vertically ? thickness : -1.0f, split_vertically ? thickness : -1.0f));
-    ImGui::PopStyleColor(3);
-
-    ImGui::SetItemAllowOverlap(); // This is to allow having other buttons OVER our splitter.
-
-    if (ImGui::IsItemActive())
-    {
-        float mouse_delta = split_vertically ? ImGui::GetIO().MouseDelta.y : ImGui::GetIO().MouseDelta.x;
-
-        // Minimum pane size
-        if (mouse_delta < min_size0 - *size0)
-            mouse_delta = min_size0 - *size0;
-        if (mouse_delta > *size1 - min_size1)
-            mouse_delta = *size1 - min_size1;
-
-        // Apply resize
-        *size0 += mouse_delta;
-        *size1 -= mouse_delta;
-    }
-    ImGui::SetCursorPos(backup_pos);
+    using namespace ImGui;
+    ImGuiContext& g = *GImGui;
+    ImGuiWindow* window = g.CurrentWindow;
+    ImGuiID id = window->GetID("##Splitter");
+    ImRect bb;
+    bb.Min = window->DC.CursorPos + (split_vertically ? ImVec2(*size1, 0.0f) : ImVec2(0.0f, *size1));
+    bb.Max = bb.Min + CalcItemSize(split_vertically ? ImVec2(thickness, splitter_long_axis_size) : ImVec2(splitter_long_axis_size, thickness), 0.0f, 0.0f);
+    return SplitterBehavior(bb, id, split_vertically ? ImGuiAxis_X : ImGuiAxis_Y, size1, size2, min_size1, min_size2, 0.0f);
 }
 
 ImColor GetIconColor(PinType type)
@@ -873,6 +852,16 @@ void Application_Frame()
 
     //auto& style = ImGui::GetStyle();
 
+# if 0
+    {
+        for (auto x = -io.DisplaySize.y; x < io.DisplaySize.x; x += 10.0f)
+        {
+            ImGui::GetWindowDrawList()->AddLine(ImVec2(x, 0), ImVec2(x + io.DisplaySize.y, io.DisplaySize.y),
+                IM_COL32(255, 255, 0, 255));
+        }
+    }
+# endif
+
     static ed::NodeId contextNodeId      = 0;
     static ed::LinkId contextLinkId      = 0;
     static ed::PinId  contextPinId       = 0;
@@ -882,11 +871,11 @@ void Application_Frame()
 
     static float leftPaneWidth  = 400.0f;
     static float rightPaneWidth = 800.0f;
-    DrawSplitter(0, 4.0f, &leftPaneWidth, &rightPaneWidth, 50.0f, 50.0f);
+    Splitter(true, 4.0f, &leftPaneWidth, &rightPaneWidth, 50.0f, 50.0f);
 
-    ShowLeftPane(leftPaneWidth);
+    ShowLeftPane(leftPaneWidth - 4.0f);
 
-    ImGui::SameLine();
+    ImGui::SameLine(0.0f, 12.0f);
 
     ed::Begin("Node editor");
     {
@@ -1174,7 +1163,7 @@ void Application_Frame()
             if (node.Type != NodeType::Comment)
                 continue;
 
-            const float commentAlpha = 0.5f;
+            const float commentAlpha = 0.75f;
 
             ImGui::PushStyleVar(ImGuiStyleVar_Alpha, commentAlpha);
             ed::PushStyleColor(ed::StyleColor_NodeBg, ImColor(255, 255, 255, 64));
@@ -1194,9 +1183,10 @@ void Application_Frame()
 
             if (ed::BeginGroupHint(node.ID))
             {
-                auto alpha = static_cast<int>(commentAlpha * ImGui::GetStyle().Alpha * 255);
+                auto alpha   = static_cast<int>(commentAlpha * ImGui::GetStyle().Alpha * 255);
+                auto bgAlpha = static_cast<int>(ImGui::GetStyle().Alpha * 255);
 
-                ImGui::PushStyleVar(ImGuiStyleVar_Alpha, commentAlpha * ImGui::GetStyle().Alpha);
+                //ImGui::PushStyleVar(ImGuiStyleVar_Alpha, commentAlpha * ImGui::GetStyle().Alpha);
 
                 auto min = ed::GetGroupMin();
                 //auto max = ed::GetGroupMax();
@@ -1214,14 +1204,14 @@ void Application_Frame()
                 drawList->AddRectFilled(
                     hintFrameBounds.GetTL(),
                     hintFrameBounds.GetBR(),
-                    IM_COL32(255, 255, 255, 64 * alpha / 255), 4.0f);
+                    IM_COL32(255, 255, 255, 64 * bgAlpha / 255), 4.0f);
 
                 drawList->AddRect(
                     hintFrameBounds.GetTL(),
                     hintFrameBounds.GetBR(),
-                    IM_COL32(255, 255, 255, 128 * alpha / 255), 4.0f);
+                    IM_COL32(255, 255, 255, 128 * bgAlpha / 255), 4.0f);
 
-                ImGui::PopStyleVar();
+                //ImGui::PopStyleVar();
             }
             ed::EndGroupHint();
         }
@@ -1351,6 +1341,7 @@ void Application_Frame()
         ImGui::SetCursorScreenPos(cursorTopLeft);
     }
 
+# if 1
     auto openPopupPosition = ImGui::GetMousePos();
     ed::Suspend();
     if (ed::ShowNodeContextMenu(&contextNodeId))
@@ -1503,6 +1494,7 @@ void Application_Frame()
         createNewNode = false;
     ImGui::PopStyleVar();
     ed::Resume();
+# endif
 
 /*
     cubic_bezier_t c;
@@ -1531,5 +1523,6 @@ void Application_Frame()
 
 
     //ImGui::ShowTestWindow();
+    //ImGui::ShowMetricsWindow();
 }
 

@@ -1,4 +1,4 @@
-// dear imgui, v1.71 WIP
+// dear imgui, v1.72 WIP
 // (drawing and font code)
 
 /*
@@ -7,8 +7,8 @@ Index of this file:
 
 // [SECTION] STB libraries implementation
 // [SECTION] Style functions
-// [SECTION] ImMatrix
 // [SECTION] ImDrawList
+// [SECTION] ImDrawListSplitter
 // [SECTION] ImDrawData
 // [SECTION] Helpers ShadeVertsXXX functions
 // [SECTION] ImFontConfig
@@ -34,7 +34,7 @@ Index of this file:
 
 #include <stdio.h>      // vsnprintf, sscanf, printf
 #if !defined(alloca)
-#if defined(__GLIBC__) || defined(__sun) || defined(__CYGWIN__) || defined(__APPLE__)
+#if defined(__GLIBC__) || defined(__sun) || defined(__CYGWIN__) || defined(__APPLE__) || defined(__SWITCH__)
 #include <alloca.h>     // alloca (glibc uses <alloca.h>. Note that Cygwin may have _WIN32 defined, so the order matters here)
 #elif defined(_WIN32)
 #include <malloc.h>     // alloca
@@ -48,12 +48,13 @@ Index of this file:
 
 // Visual Studio warnings
 #ifdef _MSC_VER
+#pragma warning (disable: 4127) // condition expression is constant
 #pragma warning (disable: 4505) // unreferenced local function has been removed (stb stuff)
 #pragma warning (disable: 4996) // 'This function or variable may be unsafe': strcpy, strdup, sprintf, vsnprintf, sscanf, fopen
 #endif
 
 // Clang/GCC warnings with -Weverything
-#ifdef __clang__
+#if defined(__clang__)
 #pragma clang diagnostic ignored "-Wold-style-cast"         // warning : use of old-style cast                              // yes, they are more terse.
 #pragma clang diagnostic ignored "-Wfloat-equal"            // warning : comparing floating point with == or != is unsafe   // storing and comparing against same constants ok.
 #pragma clang diagnostic ignored "-Wglobal-constructors"    // warning : declaration requires a global destructor           // similar to above, not sure what the exact difference is.
@@ -71,13 +72,12 @@ Index of this file:
 #pragma clang diagnostic ignored "-Wdouble-promotion"       // warning: implicit conversion from 'float' to 'double' when passing argument to function  // using printf() is a misery with this as C++ va_arg ellipsis changes float to double.
 #endif
 #elif defined(__GNUC__)
+#pragma GCC diagnostic ignored "-Wpragmas"                  // warning: unknown option after '#pragma GCC diagnostic' kind
 #pragma GCC diagnostic ignored "-Wunused-function"          // warning: 'xxxx' defined but not used
 #pragma GCC diagnostic ignored "-Wdouble-promotion"         // warning: implicit conversion from 'float' to 'double' when passing argument to function
 #pragma GCC diagnostic ignored "-Wconversion"               // warning: conversion to 'xxxx' from 'xxxx' may alter its value
 #pragma GCC diagnostic ignored "-Wstack-protector"          // warning: stack protector not protecting local variables: variable length buffer
-#if __GNUC__ >= 8
-#pragma GCC diagnostic ignored "-Wclass-memaccess"          // warning: 'memset/memcpy' clearing/writing an object of type 'xxxx' with no trivial copy-assignment; use assignment or value-initialization instead
-#endif
+#pragma GCC diagnostic ignored "-Wclass-memaccess"          // [__GNUC__ >= 8] warning: 'memset/memcpy' clearing/writing an object of type 'xxxx' with no trivial copy-assignment; use assignment or value-initialization instead
 #endif
 
 //-------------------------------------------------------------------------
@@ -101,7 +101,7 @@ namespace IMGUI_STB_NAMESPACE
 #pragma warning (disable: 4456)                             // declaration of 'xx' hides previous local declaration
 #endif
 
-#ifdef __clang__
+#if defined(__clang__)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wunused-function"
 #pragma clang diagnostic ignored "-Wmissing-prototypes"
@@ -109,7 +109,7 @@ namespace IMGUI_STB_NAMESPACE
 #pragma clang diagnostic ignored "-Wcast-qual"              // warning : cast from 'const xxxx *' to 'xxx *' drops const qualifier //
 #endif
 
-#ifdef __GNUC__
+#if defined(__GNUC__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wtype-limits"              // warning: comparison is always true due to limited range of data type [-Wtype-limits]
 #pragma GCC diagnostic ignored "-Wcast-qual"                // warning: cast from type 'const xxxx *' to type 'xxxx *' casts away qualifiers
@@ -152,15 +152,15 @@ namespace IMGUI_STB_NAMESPACE
 #endif
 #endif
 
-#ifdef __GNUC__
+#if defined(__GNUC__)
 #pragma GCC diagnostic pop
 #endif
 
-#ifdef __clang__
+#if defined(__clang__)
 #pragma clang diagnostic pop
 #endif
 
-#ifdef _MSC_VER
+#if defined(_MSC_VER)
 #pragma warning (pop)
 #endif
 
@@ -340,38 +340,6 @@ void ImGui::StyleColorsLight(ImGuiStyle* dst)
 }
 
 //-----------------------------------------------------------------------------
-// ImMatrix
-//-----------------------------------------------------------------------------
-ImMatrix ImMatrix::Inverted() const
-{
-    const float d00 = m11;
-    const float d01 = m01;
-
-    const float d10 = m10;
-    const float d11 = m00;
-
-    const float d20 = m10 * m21 - m11 * m20;
-    const float d21 = m00 * m21 - m01 * m20;
-
-    const float d = m00 * d00 - m10 * d01;
-
-    const float invD = d ? 1.0f / d : 0.0f;
-
-    return ImMatrix(
-         d00 * invD, -d01 * invD,
-        -d10 * invD,  d11 * invD,
-         d20 * invD, -d21 * invD);
-}
-
-ImMatrix ImMatrix::Rotation(float angle)
-{
-    const float s = sinf(angle);
-    const float c = cosf(angle);
-
-    return ImMatrix(c, s, -s, c, 0.0f, 0.0f);
-}
-
-//-----------------------------------------------------------------------------
 // ImDrawList
 //-----------------------------------------------------------------------------
 
@@ -381,6 +349,7 @@ ImDrawListSharedData::ImDrawListSharedData()
     FontSize = 0.0f;
     CurveTessellationTol = 0.0f;
     ClipRectFullscreen = ImVec4(-8192.0f, -8192.0f, +8192.0f, +8192.0f);
+    InitialFlags = ImDrawListFlags_None;
 
     // Const data
     for (int i = 0; i < IM_ARRAYSIZE(CircleVtx12); i++)
@@ -395,19 +364,15 @@ void ImDrawList::Clear()
     CmdBuffer.resize(0);
     IdxBuffer.resize(0);
     VtxBuffer.resize(0);
-    Flags = ImDrawListFlags_AntiAliasedLines | ImDrawListFlags_AntiAliasedFill;
+    Flags = _Data ? _Data->InitialFlags : ImDrawListFlags_None;
+    _VtxCurrentOffset = 0;
     _VtxCurrentIdx = 0;
     _VtxWritePtr = NULL;
     _IdxWritePtr = NULL;
     _ClipRectStack.resize(0);
     _TextureIdStack.resize(0);
     _Path.resize(0);
-    _ChannelsCurrent = 0;
-    _ChannelsCount = 1;
-    _TransformationStack.resize(0);
-    _InvTransformationScale = 1.0f;
-    _HalfPixel = ImVec2(0.5f, 0.5f);
-    // NB: Do not clear channels so our allocations are re-used after the first frame.
+    _Splitter.Clear();
     _FringeScale = 1.0f;
 }
 
@@ -422,21 +387,12 @@ void ImDrawList::ClearFreeMemory()
     _ClipRectStack.clear();
     _TextureIdStack.clear();
     _Path.clear();
-    _ChannelsCurrent = 0;
-    _ChannelsCount = 1;
-    for (int i = 0; i < _Channels.Size; i++)
-    {
-        if (i == 0) memset(&_Channels[0], 0, sizeof(_Channels[0]));  // channel 0 is a copy of CmdBuffer/IdxBuffer, don't destruct again
-        _Channels[i].CmdBuffer.clear();
-        _Channels[i].IdxBuffer.clear();
-    }
-    _Channels.clear();
-    _TransformationStack.clear();
+    _Splitter.ClearFreeMemory();
 }
 
 ImDrawList* ImDrawList::CloneOutput() const
 {
-    ImDrawList* dst = IM_NEW(ImDrawList(NULL));
+    ImDrawList* dst = IM_NEW(ImDrawList(_Data));
     dst->CmdBuffer = CmdBuffer;
     dst->IdxBuffer = IdxBuffer;
     dst->VtxBuffer = VtxBuffer;
@@ -453,6 +409,8 @@ void ImDrawList::AddDrawCmd()
     ImDrawCmd draw_cmd;
     draw_cmd.ClipRect = GetCurrentClipRect();
     draw_cmd.TextureId = GetCurrentTextureId();
+    draw_cmd.VtxOffset = _VtxCurrentOffset;
+    draw_cmd.IdxOffset = IdxBuffer.Size;
 
     IM_ASSERT(draw_cmd.ClipRect.x <= draw_cmd.ClipRect.z && draw_cmd.ClipRect.y <= draw_cmd.ClipRect.w);
     CmdBuffer.push_back(draw_cmd);
@@ -559,164 +517,17 @@ void ImDrawList::PopTextureID()
     UpdateTextureID();
 }
 
-void ImDrawList::SetTransformation(const ImMatrix& transformation)
-{
-    if (!_TransformationStack.empty())
-    {
-        ImMatrix finalTransformation;
-
-        for (ImDrawTransformation& transient : _TransformationStack)
-            finalTransformation = ImMatrix::Combine(transient.Transformation, finalTransformation);
-        finalTransformation = finalTransformation.Inverted();
-        finalTransformation = ImMatrix::Combine(transformation, finalTransformation);
-        ApplyTransformation(finalTransformation);
-    }
-    else
-        ApplyTransformation(transformation);
-}
-
-void ImDrawList::ApplyTransformation(const ImMatrix& transformation)
-{
-    ImDrawTransformation tr;
-    tr.Transformation             = transformation;
-    tr.VtxStartIdx                = _VtxCurrentIdx;
-    tr.LastInvTransformationScale = _InvTransformationScale;
-    tr.LastHalfPixel              = _HalfPixel;
-    _TransformationStack.push_back(tr);
-
-    const float scaleX = sqrtf(
-        transformation.m00 * transformation.m00 +
-        transformation.m01 * transformation.m01);
-    const float signX = (transformation.m00) < 0.0f ? -1.0f : 1.0f;
-
-    const float scaleY = sqrtf(
-        transformation.m10 * transformation.m10 +
-        transformation.m11 * transformation.m11);
-    const float signY = (transformation.m11) < 0.0f ? -1.0f : 1.0f;
-
-    const float scale = (scaleX + scaleY) * 0.5f;
-
-    const float invScale = scale > 0.0f ? (1.0f / scale) : 1.0f;
-
-    _InvTransformationScale = _InvTransformationScale * invScale;
-    _HalfPixel              = ImVec2(
-        _HalfPixel.x * signX * invScale,
-        _HalfPixel.y * signY * invScale);
-}
-
-void ImDrawList::PopTransformation(int count)
-{
-    IM_ASSERT(_TransformationStack.Size > 0);
-
-    for (int i = 0; i < count; ++i)
-    {
-        const ImDrawTransformation& tr = _TransformationStack.back();
-        if (tr.VtxStartIdx < _VtxCurrentIdx)
-        {
-            const ImMatrix& m = tr.Transformation;
-
-            ImDrawVert* const vertexBegin = VtxBuffer.Data + tr.VtxStartIdx;
-            ImDrawVert* const vertexEnd   = VtxBuffer.Data + _VtxCurrentIdx;
-
-            for (ImDrawVert* vertex = vertexBegin; vertex != vertexEnd; ++vertex)
-            {
-                const float x = vertex->pos.x;
-                const float y = vertex->pos.y;
-
-                vertex->pos.x = m.m00 * x + m.m10 * y + m.m20;
-                vertex->pos.y = m.m01 * x + m.m11 * y + m.m21;
-            }
-        }
-
-        _InvTransformationScale = tr.LastInvTransformationScale;
-        _HalfPixel              = tr.LastHalfPixel;
-
-        _TransformationStack.pop_back();
-    }
-}
-
-void ImDrawList::ChannelsSplit(int channels_count)
-{
-    IM_ASSERT(_ChannelsCurrent == 0 && _ChannelsCount == 1);
-    int old_channels_count = _Channels.Size;
-    if (old_channels_count < channels_count)
-        _Channels.resize(channels_count);
-    _ChannelsCount = channels_count;
-
-    // _Channels[] (24/32 bytes each) hold storage that we'll swap with this->_CmdBuffer/_IdxBuffer
-    // The content of _Channels[0] at this point doesn't matter. We clear it to make state tidy in a debugger but we don't strictly need to.
-    // When we switch to the next channel, we'll copy _CmdBuffer/_IdxBuffer into _Channels[0] and then _Channels[1] into _CmdBuffer/_IdxBuffer
-    memset(&_Channels[0], 0, sizeof(ImDrawChannel));
-    for (int i = 1; i < channels_count; i++)
-    {
-        if (i >= old_channels_count)
-        {
-            IM_PLACEMENT_NEW(&_Channels[i]) ImDrawChannel();
-        }
-        else
-        {
-            _Channels[i].CmdBuffer.resize(0);
-            _Channels[i].IdxBuffer.resize(0);
-        }
-        if (_Channels[i].CmdBuffer.Size == 0)
-        {
-            ImDrawCmd draw_cmd;
-            draw_cmd.ClipRect = _ClipRectStack.back();
-            draw_cmd.TextureId = _TextureIdStack.back();
-            _Channels[i].CmdBuffer.push_back(draw_cmd);
-        }
-    }
-}
-
-void ImDrawList::ChannelsMerge()
-{
-    // Note that we never use or rely on channels.Size because it is merely a buffer that we never shrink back to 0 to keep all sub-buffers ready for use.
-    if (_ChannelsCount <= 1)
-        return;
-
-    ChannelsSetCurrent(0);
-    if (CmdBuffer.Size && CmdBuffer.back().ElemCount == 0)
-        CmdBuffer.pop_back();
-
-    int new_cmd_buffer_count = 0, new_idx_buffer_count = 0;
-    for (int i = 1; i < _ChannelsCount; i++)
-    {
-        ImDrawChannel& ch = _Channels[i];
-        if (ch.CmdBuffer.Size && ch.CmdBuffer.back().ElemCount == 0)
-            ch.CmdBuffer.pop_back();
-        new_cmd_buffer_count += ch.CmdBuffer.Size;
-        new_idx_buffer_count += ch.IdxBuffer.Size;
-    }
-    CmdBuffer.resize(CmdBuffer.Size + new_cmd_buffer_count);
-    IdxBuffer.resize(IdxBuffer.Size + new_idx_buffer_count);
-
-    ImDrawCmd* cmd_write = CmdBuffer.Data + CmdBuffer.Size - new_cmd_buffer_count;
-    _IdxWritePtr = IdxBuffer.Data + IdxBuffer.Size - new_idx_buffer_count;
-    for (int i = 1; i < _ChannelsCount; i++)
-    {
-        ImDrawChannel& ch = _Channels[i];
-        if (int sz = ch.CmdBuffer.Size) { memcpy(cmd_write, ch.CmdBuffer.Data, sz * sizeof(ImDrawCmd)); cmd_write += sz; }
-        if (int sz = ch.IdxBuffer.Size) { memcpy(_IdxWritePtr, ch.IdxBuffer.Data, sz * sizeof(ImDrawIdx)); _IdxWritePtr += sz; }
-    }
-    UpdateClipRect(); // We call this instead of AddDrawCmd(), so that empty channels won't produce an extra draw call.
-    _ChannelsCount = 1;
-}
-
-void ImDrawList::ChannelsSetCurrent(int idx)
-{
-    IM_ASSERT(idx < _ChannelsCount);
-    if (_ChannelsCurrent == idx) return;
-    memcpy(&_Channels.Data[_ChannelsCurrent].CmdBuffer, &CmdBuffer, sizeof(CmdBuffer)); // copy 12 bytes, four times
-    memcpy(&_Channels.Data[_ChannelsCurrent].IdxBuffer, &IdxBuffer, sizeof(IdxBuffer));
-    _ChannelsCurrent = idx;
-    memcpy(&CmdBuffer, &_Channels.Data[_ChannelsCurrent].CmdBuffer, sizeof(CmdBuffer));
-    memcpy(&IdxBuffer, &_Channels.Data[_ChannelsCurrent].IdxBuffer, sizeof(IdxBuffer));
-    _IdxWritePtr = IdxBuffer.Data + IdxBuffer.Size;
-}
-
 // NB: this can be called with negative count for removing primitives (as long as the result does not underflow)
 void ImDrawList::PrimReserve(int idx_count, int vtx_count)
 {
+    // Large mesh support (when enabled)
+    if (sizeof(ImDrawIdx) == 2 && (_VtxCurrentIdx + vtx_count >= (1 << 16)) && (Flags & ImDrawListFlags_AllowVtxOffset))
+    {
+        _VtxCurrentOffset = VtxBuffer.Size;
+        _VtxCurrentIdx = 0;
+        AddDrawCmd();
+    }
+
     ImDrawCmd& draw_cmd = CmdBuffer.Data[CmdBuffer.Size-1];
     draw_cmd.ElemCount += idx_count;
 
@@ -792,13 +603,11 @@ void ImDrawList::AddPolyline(const ImVec2* points, const int points_count, ImU32
     if (!closed)
         count = points_count-1;
 
-    thickness *= _InvTransformationScale * _FringeScale;
-
-    const bool thick_line = (fabsf(thickness - 1.0f) > FLT_EPSILON) || (fabsf(_InvTransformationScale - 1.0f) > FLT_EPSILON);
+    const bool thick_line = thickness > _FringeScale;
     if (Flags & ImDrawListFlags_AntiAliasedLines)
     {
         // Anti-aliased stroke
-        const float AA_SIZE = _InvTransformationScale * _FringeScale;
+        const float AA_SIZE = 1.0f * _FringeScale;
         const ImU32 col_trans = col & ~IM_COL32_A_MASK;
 
         const int idx_count = thick_line ? count*18 : count*12;
@@ -981,8 +790,7 @@ void ImDrawList::AddConvexPolyFilled(const ImVec2* points, const int points_coun
     if (Flags & ImDrawListFlags_AntiAliasedFill)
     {
         // Anti-aliased Fill
-        const float DIRECTION = (((_HalfPixel.x < 0.0f) ^ (_HalfPixel.y < 0.0f)) ? -1.0f : 1.0f);
-        const float AA_SIZE = _InvTransformationScale * DIRECTION * _FringeScale;
+        const float AA_SIZE = 1.0f * _FringeScale;
         const ImU32 col_trans = col & ~IM_COL32_A_MASK;
         const int idx_count = (points_count-2)*3 + points_count*6;
         const int vtx_count = (points_count*2);
@@ -1006,8 +814,8 @@ void ImDrawList::AddConvexPolyFilled(const ImVec2* points, const int points_coun
             float dx = p1.x - p0.x;
             float dy = p1.y - p0.y;
             IM_NORMALIZE2F_OVER_ZERO(dx, dy);
-            temp_normals[i0].x = dy * DIRECTION;
-            temp_normals[i0].y = -dx * DIRECTION;
+            temp_normals[i0].x = dy;
+            temp_normals[i0].y = -dx;
         }
 
         for (int i0 = points_count-1, i1 = 0; i1 < points_count; i0 = i1++)
@@ -1165,8 +973,8 @@ void ImDrawList::AddLine(const ImVec2& a, const ImVec2& b, ImU32 col, float thic
 {
     if ((col & IM_COL32_A_MASK) == 0)
         return;
-    PathLineTo(a + _HalfPixel);
-    PathLineTo(b + _HalfPixel);
+    PathLineTo(a + ImVec2(0.5f,0.5f));
+    PathLineTo(b + ImVec2(0.5f,0.5f));
     PathStroke(col, false, thickness);
 }
 
@@ -1176,9 +984,9 @@ void ImDrawList::AddRect(const ImVec2& a, const ImVec2& b, ImU32 col, float roun
     if ((col & IM_COL32_A_MASK) == 0)
         return;
     if (Flags & ImDrawListFlags_AntiAliasedLines)
-        PathRect(a + _HalfPixel, b - _HalfPixel, rounding, rounding_corners_flags);
+        PathRect(a + ImVec2(0.5f,0.5f), b - ImVec2(0.50f,0.50f), rounding, rounding_corners_flags);
     else
-        PathRect(a + _HalfPixel, b - ImVec2(_HalfPixel.x * 0.98f, _HalfPixel.y * 0.98f), rounding, rounding_corners_flags); // Better looking lower-right corner and rounded non-AA shapes.
+        PathRect(a + ImVec2(0.5f,0.5f), b - ImVec2(0.49f,0.49f), rounding, rounding_corners_flags); // Better looking lower-right corner and rounded non-AA shapes.
     PathStroke(col, true, thickness);
 }
 
@@ -1266,7 +1074,7 @@ void ImDrawList::AddCircle(const ImVec2& centre, float radius, ImU32 col, int nu
 
     // Because we are filling a closed shape we remove 1 from the count of segments/points
     const float a_max = IM_PI*2.0f * ((float)num_segments - 1.0f) / (float)num_segments;
-    PathArcTo(centre, radius-_HalfPixel.x, 0.0f, a_max, num_segments - 1);
+    PathArcTo(centre, radius-0.5f, 0.0f, a_max, num_segments - 1);
     PathStroke(col, true, thickness);
 }
 
@@ -1380,6 +1188,133 @@ void ImDrawList::AddImageRounded(ImTextureID user_texture_id, const ImVec2& a, c
 
     if (push_texture_id)
         PopTextureID();
+}
+
+
+//-----------------------------------------------------------------------------
+// ImDrawListSplitter
+//-----------------------------------------------------------------------------
+// FIXME: This may be a little confusing, trying to be a little too low-level/optimal instead of just doing vector swap..
+//-----------------------------------------------------------------------------
+
+void ImDrawListSplitter::ClearFreeMemory()
+{
+    for (int i = 0; i < _Channels.Size; i++)
+    {
+        if (i == _Current) 
+            memset(&_Channels[i], 0, sizeof(_Channels[i]));  // Current channel is a copy of CmdBuffer/IdxBuffer, don't destruct again
+        _Channels[i]._CmdBuffer.clear();
+        _Channels[i]._IdxBuffer.clear();
+    }
+    _Current = 0;
+    _Count = 1;
+    _Channels.clear();
+}
+
+void ImDrawListSplitter::Split(ImDrawList* draw_list, int channels_count)
+{
+    IM_ASSERT(_Current == 0 && _Count <= 1);
+    int old_channels_count = _Channels.Size;
+    if (old_channels_count < channels_count)
+        _Channels.resize(channels_count);
+    _Count = channels_count;
+
+    // Channels[] (24/32 bytes each) hold storage that we'll swap with draw_list->_CmdBuffer/_IdxBuffer
+    // The content of Channels[0] at this point doesn't matter. We clear it to make state tidy in a debugger but we don't strictly need to.
+    // When we switch to the next channel, we'll copy draw_list->_CmdBuffer/_IdxBuffer into Channels[0] and then Channels[1] into draw_list->CmdBuffer/_IdxBuffer
+    memset(&_Channels[0], 0, sizeof(ImDrawChannel));
+    for (int i = 1; i < channels_count; i++)
+    {
+        if (i >= old_channels_count)
+        {
+            IM_PLACEMENT_NEW(&_Channels[i]) ImDrawChannel();
+        }
+        else
+        {
+            _Channels[i]._CmdBuffer.resize(0);
+            _Channels[i]._IdxBuffer.resize(0);
+        }
+        if (_Channels[i]._CmdBuffer.Size == 0)
+        {
+            ImDrawCmd draw_cmd;
+            draw_cmd.ClipRect = draw_list->_ClipRectStack.back();
+            draw_cmd.TextureId = draw_list->_TextureIdStack.back();
+            _Channels[i]._CmdBuffer.push_back(draw_cmd);
+        }
+    }
+}
+
+static inline bool CanMergeDrawCommands(ImDrawCmd* a, ImDrawCmd* b)
+{
+    return memcmp(&a->ClipRect, &b->ClipRect, sizeof(a->ClipRect)) == 0 && a->TextureId == b->TextureId && a->VtxOffset == b->VtxOffset && !a->UserCallback && !b->UserCallback;
+}
+
+void ImDrawListSplitter::Merge(ImDrawList* draw_list)
+{
+    // Note that we never use or rely on channels.Size because it is merely a buffer that we never shrink back to 0 to keep all sub-buffers ready for use.
+    if (_Count <= 1)
+        return;
+
+    SetCurrentChannel(draw_list, 0);
+    if (draw_list->CmdBuffer.Size != 0 && draw_list->CmdBuffer.back().ElemCount == 0)
+        draw_list->CmdBuffer.pop_back();
+
+    // Calculate our final buffer sizes. Also fix the incorrect IdxOffset values in each command.
+    int new_cmd_buffer_count = 0;
+    int new_idx_buffer_count = 0;
+    ImDrawCmd* last_cmd = (_Count > 0 && draw_list->CmdBuffer.Size > 0) ? &draw_list->CmdBuffer.back() : NULL;
+    int idx_offset = last_cmd ? last_cmd->IdxOffset + last_cmd->ElemCount : 0;
+    for (int i = 1; i < _Count; i++)
+    {
+        ImDrawChannel& ch = _Channels[i];
+        if (ch._CmdBuffer.Size > 0 && ch._CmdBuffer.back().ElemCount == 0)
+            ch._CmdBuffer.pop_back();
+        if (ch._CmdBuffer.Size > 0 && last_cmd != NULL && CanMergeDrawCommands(last_cmd, &ch._CmdBuffer[0]))
+        {
+            // Merge previous channel last draw command with current channel first draw command if matching.
+            last_cmd->ElemCount += ch._CmdBuffer[0].ElemCount;
+            idx_offset += ch._CmdBuffer[0].ElemCount;
+            ch._CmdBuffer.erase(ch._CmdBuffer.Data);
+        }
+        if (ch._CmdBuffer.Size > 0)
+            last_cmd = &ch._CmdBuffer.back();
+        new_cmd_buffer_count += ch._CmdBuffer.Size;
+        new_idx_buffer_count += ch._IdxBuffer.Size;
+        for (int cmd_n = 0; cmd_n < ch._CmdBuffer.Size; cmd_n++)
+        {
+            ch._CmdBuffer.Data[cmd_n].IdxOffset = idx_offset;
+            idx_offset += ch._CmdBuffer.Data[cmd_n].ElemCount;
+        }
+    }
+    draw_list->CmdBuffer.resize(draw_list->CmdBuffer.Size + new_cmd_buffer_count);
+    draw_list->IdxBuffer.resize(draw_list->IdxBuffer.Size + new_idx_buffer_count);
+
+    // Write commands and indices in order (they are fairly small structures, we don't copy vertices only indices)
+    ImDrawCmd* cmd_write = draw_list->CmdBuffer.Data + draw_list->CmdBuffer.Size - new_cmd_buffer_count;
+    ImDrawIdx* idx_write = draw_list->IdxBuffer.Data + draw_list->IdxBuffer.Size - new_idx_buffer_count;
+    for (int i = 1; i < _Count; i++)
+    {
+        ImDrawChannel& ch = _Channels[i];
+        if (int sz = ch._CmdBuffer.Size) { memcpy(cmd_write, ch._CmdBuffer.Data, sz * sizeof(ImDrawCmd)); cmd_write += sz; }
+        if (int sz = ch._IdxBuffer.Size) { memcpy(idx_write, ch._IdxBuffer.Data, sz * sizeof(ImDrawIdx)); idx_write += sz; }
+    }
+    draw_list->_IdxWritePtr = idx_write;
+    draw_list->UpdateClipRect(); // We call this instead of AddDrawCmd(), so that empty channels won't produce an extra draw call.
+    _Count = 1;
+}
+
+void ImDrawListSplitter::SetCurrentChannel(ImDrawList* draw_list, int idx)
+{
+    IM_ASSERT(idx < _Count);
+    if (_Current == idx) 
+        return;
+    // Overwrite ImVector (12/16 bytes), four times. This is merely a silly optimization instead of doing .swap()
+    memcpy(&_Channels.Data[_Current]._CmdBuffer, &draw_list->CmdBuffer, sizeof(draw_list->CmdBuffer));
+    memcpy(&_Channels.Data[_Current]._IdxBuffer, &draw_list->IdxBuffer, sizeof(draw_list->IdxBuffer));
+    _Current = idx;
+    memcpy(&draw_list->CmdBuffer, &_Channels.Data[idx]._CmdBuffer, sizeof(draw_list->CmdBuffer));
+    memcpy(&draw_list->IdxBuffer, &_Channels.Data[idx]._IdxBuffer, sizeof(draw_list->IdxBuffer));
+    draw_list->_IdxWritePtr = draw_list->IdxBuffer.Data + draw_list->IdxBuffer.Size;
 }
 
 //-----------------------------------------------------------------------------
@@ -1499,7 +1434,7 @@ ImFontConfig::ImFontConfig()
 //-----------------------------------------------------------------------------
 
 // A work of art lies ahead! (. = white layer, X = black layer, others are blank)
-// The white texels on the top left are the ones we'll use everywhere in ImGui to render filled shapes.
+// The white texels on the top left are the ones we'll use everywhere in Dear ImGui to render filled shapes.
 const int FONT_ATLAS_DEFAULT_TEX_DATA_W_HALF = 108;
 const int FONT_ATLAS_DEFAULT_TEX_DATA_H      = 27;
 const unsigned int FONT_ATLAS_DEFAULT_TEX_DATA_ID = 0x80000000;
@@ -2508,11 +2443,12 @@ void ImFontGlyphRangesBuilder::AddRanges(const ImWchar* ranges)
 
 void ImFontGlyphRangesBuilder::BuildRanges(ImVector<ImWchar>* out_ranges)
 {
-    for (int n = 0; n < 0x10000; n++)
+    int max_codepoint = 0x10000;
+    for (int n = 0; n < max_codepoint; n++)
         if (GetBit(n))
         {
             out_ranges->push_back((ImWchar)n);
-            while (n < 0x10000 && GetBit(n + 1))
+            while (n < max_codepoint - 1 && GetBit(n + 1))
                 n++;
             out_ranges->push_back((ImWchar)n);
         }
@@ -2757,7 +2693,7 @@ const char* ImFont::CalcWordWrapPositionA(float scale, const char* text, const c
         }
 
         // We ignore blank width at the end of the line (they can be skipped)
-        if (line_width + word_width >= wrap_width)
+        if (line_width + word_width > wrap_width)
         {
             // Words that cannot possibly fit within an entire line will be cut anywhere.
             if (word_width < wrap_width)
@@ -2882,7 +2818,7 @@ void ImFont::RenderChar(ImDrawList* draw_list, float size, ImVec2 pos, ImU32 col
 void ImFont::RenderText(ImDrawList* draw_list, float size, ImVec2 pos, ImU32 col, const ImVec4& clip_rect, const char* text_begin, const char* text_end, float wrap_width, bool cpu_fine_clip) const
 {
     if (!text_end)
-        text_end = text_begin + strlen(text_begin); // ImGui functions generally already provides a valid text_end, so this is merely to handle direct calls.
+        text_end = text_begin + strlen(text_begin); // ImGui:: functions generally already provides a valid text_end, so this is merely to handle direct calls.
 
     // Align to be pixel perfect
     pos.x = (float)(int)pos.x + DisplayOffset.x;
@@ -3065,7 +3001,7 @@ void ImFont::RenderText(ImDrawList* draw_list, float size, ImVec2 pos, ImU32 col
     draw_list->CmdBuffer[draw_list->CmdBuffer.Size-1].ElemCount -= (idx_expected_size - draw_list->IdxBuffer.Size);
     draw_list->_VtxWritePtr = vtx_write;
     draw_list->_IdxWritePtr = idx_write;
-    draw_list->_VtxCurrentIdx = (unsigned int)draw_list->VtxBuffer.Size;
+    draw_list->_VtxCurrentIdx = vtx_current_idx;
 }
 
 //-----------------------------------------------------------------------------
@@ -3188,7 +3124,7 @@ void ImGui::RenderRectFilledRangeH(ImDrawList* draw_list, const ImRect& rect, Im
 // FIXME: Rendering an ellipsis "..." is a surprisingly tricky problem for us... we cannot rely on font glyph having it,
 // and regular dot are typically too wide. If we render a dot/shape ourselves it comes with the risk that it wouldn't match
 // the boldness or positioning of what the font uses...
-void ImGui::RenderPixelEllipsis(ImDrawList* draw_list, ImVec2 pos, int count, ImU32 col)
+void ImGui::RenderPixelEllipsis(ImDrawList* draw_list, ImVec2 pos, ImU32 col, int count)
 {
     ImFont* font = draw_list->_Data->Font;
     const float font_scale = draw_list->_Data->FontSize / font->FontSize;

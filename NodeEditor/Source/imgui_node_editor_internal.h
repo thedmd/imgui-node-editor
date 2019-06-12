@@ -7,13 +7,23 @@
 // CREDITS
 //   Written by Michal Cichon
 //------------------------------------------------------------------------------
+# ifndef __IMGUI_NODE_EDITOR_INTERNAL_H__
+# define __IMGUI_NODE_EDITOR_INTERNAL_H__
 # pragma once
 
 
 //------------------------------------------------------------------------------
-# include "Interop.h"
-# include "ax/Math2D.h"
-# include "NodeEditor.h"
+# include "imgui_node_editor.h"
+
+
+//------------------------------------------------------------------------------
+# include <imgui.h>
+# define IMGUI_DEFINE_MATH_OPERATORS
+# include <imgui_internal.h>
+# include "imgui_extra_math.h"
+# include "imgui_bezier_math.h"
+# include "imgui_canvas.h"
+
 # define PICOJSON_USE_LOCALE 0
 # include "picojson.h"
 # include <vector>
@@ -40,9 +50,37 @@ void Log(const char* fmt, ...);
 
 
 //------------------------------------------------------------------------------
+//inline ImRect ToRect(const ax::rectf& rect);
+//inline ImRect ToRect(const ax::rect& rect);
+inline ImRect ImGui_GetItemRect();
+
+
+//------------------------------------------------------------------------------
+struct FringeScaleScope
+{
+    FringeScaleScope(float scale)
+        : m_LastFringeScale(ImGui::GetWindowDrawList()->_FringeScale)
+    {
+        ImGui::GetWindowDrawList()->_FringeScale = scale;
+    }
+
+    ~FringeScaleScope()
+    {
+        ImGui::GetWindowDrawList()->_FringeScale = m_LastFringeScale;
+    }
+
+private:
+    float m_LastFringeScale;
+};
+
+
+//------------------------------------------------------------------------------
 enum class ObjectType
 {
-    None, Node, Link, Pin
+    None,
+    Node,
+    Link,
+    Pin
 };
 
 using ax::NodeEditor::PinKind;
@@ -124,7 +162,12 @@ struct Object
 
     bool    m_IsLive;
 
-    Object(EditorContext* editor): Editor(editor), m_IsLive(true) {}
+    Object(EditorContext* editor)
+        : Editor(editor)
+        , m_IsLive(true)
+    {
+    }
+
     virtual ~Object() = default;
 
     virtual ObjectId ID() = 0;
@@ -136,7 +179,7 @@ struct Object
 
         const auto bounds = GetBounds();
 
-        return ImGui::IsRectVisible(to_imvec(bounds.top_left()), to_imvec(bounds.bottom_right()));
+        return ImGui::IsRectVisible(bounds.Min, bounds.Max);
     }
 
     virtual void Reset() { m_IsLive = false; }
@@ -144,9 +187,9 @@ struct Object
     virtual void Draw(ImDrawList* drawList, DrawFlags flags = None) = 0;
 
     virtual bool AcceptDrag() { return false; }
-    virtual void UpdateDrag(const ax::point& offset) { }
+    virtual void UpdateDrag(const ImVec2& offset) { }
     virtual bool EndDrag() { return false; }
-    virtual ax::point DragStartLocation() { return (ax::point)GetBounds().location; }
+    virtual ImVec2 DragStartLocation() { return GetBounds().Min; }
 
     virtual bool IsDraggable() { bool result = AcceptDrag(); EndDrag(); return result; }
     virtual bool IsSelectable() { return false; }
@@ -158,21 +201,22 @@ struct Object
 
         auto bounds = GetBounds();
         if (extraThickness > 0)
-            bounds.expand(extraThickness);
+            bounds.Expand(extraThickness);
 
-        return bounds.contains(to_pointf(point));
+        return bounds.Contains(point);
     }
 
-    virtual bool TestHit(const ax::rectf& rect, bool allowIntersect = true) const
+    virtual bool TestHit(const ImRect& rect, bool allowIntersect = true) const
     {
         if (!m_IsLive)
             return false;
 
         const auto bounds = GetBounds();
-        return !bounds.is_empty() && (allowIntersect ? bounds.intersects(rect) : rect.contains(bounds));
+
+        return !ImRect_IsEmpty(bounds) && (allowIntersect ? bounds.Overlaps(rect) : rect.Contains(bounds));
     }
 
-    virtual ax::rectf GetBounds() const = 0;
+    virtual ImRect GetBounds() const = 0;
 
     virtual Node*  AsNode()  { return nullptr; }
     virtual Pin*   AsPin()   { return nullptr; }
@@ -186,8 +230,8 @@ struct Pin final: Object
     PinId   m_ID;
     PinKind m_Kind;
     Node*   m_Node;
-    rect    m_Bounds;
-    rectf   m_Pivot;
+    ImRect  m_Bounds;
+    ImRect  m_Pivot;
     Pin*    m_PreviousPin;
     ImU32   m_Color;
     ImU32   m_BorderColor;
@@ -202,11 +246,25 @@ struct Pin final: Object
     bool    m_HasConnection;
     bool    m_HadConnection;
 
-    Pin(EditorContext* editor, PinId id, PinKind kind):
-        Object(editor), m_ID(id), m_Kind(kind), m_Node(nullptr), m_Bounds(), m_PreviousPin(nullptr),
-        m_Color(IM_COL32_WHITE), m_BorderColor(IM_COL32_BLACK), m_BorderWidth(0), m_Rounding(0),
-        m_Corners(0), m_Dir(0, 0), m_Strength(0), m_Radius(0), m_ArrowSize(0), m_ArrowWidth(0),
-        m_HasConnection(false), m_HadConnection(false)
+    Pin(EditorContext* editor, PinId id, PinKind kind)
+        : Object(editor)
+        , m_ID(id)
+        , m_Kind(kind)
+        , m_Node(nullptr)
+        , m_Bounds()
+        , m_PreviousPin(nullptr)
+        , m_Color(IM_COL32_WHITE)
+        , m_BorderColor(IM_COL32_BLACK)
+        , m_BorderWidth(0)
+        , m_Rounding(0)
+        , m_Corners(0)
+        , m_Dir(0, 0)
+        , m_Strength(0)
+        , m_Radius(0)
+        , m_ArrowSize(0)
+        , m_ArrowWidth(0)
+        , m_HasConnection(false)
+        , m_HadConnection(false)
     {
     }
 
@@ -223,9 +281,9 @@ struct Pin final: Object
     virtual void Draw(ImDrawList* drawList, DrawFlags flags = None) override final;
 
     ImVec2 GetClosestPoint(const ImVec2& p) const;
-    line_f GetClosestLine(const Pin* pin) const;
+    ImLine GetClosestLine(const Pin* pin) const;
 
-    virtual ax::rectf GetBounds() const override final { return static_cast<rectf>(m_Bounds); }
+    virtual ImRect GetBounds() const override final { return m_Bounds; }
 
     virtual Pin* AsPin() override final { return this; }
 };
@@ -236,16 +294,35 @@ enum class NodeType
     Group
 };
 
+enum class NodeRegion : uint8_t
+{
+    None        = 0x00,
+    Top         = 0x01,
+    Bottom      = 0x02,
+    Left        = 0x04,
+    Right       = 0x08,
+    Center      = 0x10,
+    Header      = 0x20,
+    TopLeft     = Top | Left,
+    TopRight    = Top | Right,
+    BottomLeft  = Bottom | Left,
+    BottomRight = Bottom | Right,
+};
+
+inline NodeRegion operator |(NodeRegion lhs, NodeRegion rhs) { return static_cast<NodeRegion>(static_cast<uint8_t>(lhs) | static_cast<uint8_t>(rhs)); }
+inline NodeRegion operator &(NodeRegion lhs, NodeRegion rhs) { return static_cast<NodeRegion>(static_cast<uint8_t>(lhs) & static_cast<uint8_t>(rhs)); }
+
+
 struct Node final: Object
 {
     using IdType = NodeId;
 
     NodeId   m_ID;
     NodeType m_Type;
-    rect     m_Bounds;
+    ImRect   m_Bounds;
     int      m_Channel;
     Pin*     m_LastPin;
-    point    m_DragStart;
+    ImVec2   m_DragStart;
 
     ImU32    m_Color;
     ImU32    m_BorderColor;
@@ -256,35 +333,35 @@ struct Node final: Object
     ImU32    m_GroupBorderColor;
     float    m_GroupBorderWidth;
     float    m_GroupRounding;
-    rect     m_GroupBounds;
+    ImRect   m_GroupBounds;
 
     bool     m_RestoreState;
     bool     m_CenterOnScreen;
 
-    Node(EditorContext* editor, NodeId id):
-        Object(editor),
-        m_ID(id),
-        m_Type(NodeType::Node),
-        m_Bounds(),
-        m_Channel(0),
-        m_LastPin(nullptr),
-        m_DragStart(),
-        m_Color(IM_COL32_WHITE),
-        m_BorderColor(IM_COL32_BLACK),
-        m_BorderWidth(0),
-        m_Rounding(0),
-        m_GroupBounds(),
-        m_RestoreState(false),
-        m_CenterOnScreen(false)
+    Node(EditorContext* editor, NodeId id)
+        : Object(editor)
+        , m_ID(id)
+        , m_Type(NodeType::Node)
+        , m_Bounds()
+        , m_Channel(0)
+        , m_LastPin(nullptr)
+        , m_DragStart()
+        , m_Color(IM_COL32_WHITE)
+        , m_BorderColor(IM_COL32_BLACK)
+        , m_BorderWidth(0)
+        , m_Rounding(0)
+        , m_GroupBounds()
+        , m_RestoreState(false)
+        , m_CenterOnScreen(false)
     {
     }
 
     virtual ObjectId ID() override { return m_ID; }
 
-    bool AcceptDrag() override final;
-    void UpdateDrag(const ax::point& offset) override final;
-    bool EndDrag() override final; // return true, when changed
-    ax::point DragStartLocation() override final { return m_DragStart; }
+    bool AcceptDrag() override;
+    void UpdateDrag(const ImVec2& offset) override;
+    bool EndDrag() override; // return true, when changed
+    ImVec2 DragStartLocation() override { return m_DragStart; }
 
     virtual bool IsSelectable() override { return true; }
 
@@ -295,7 +372,10 @@ struct Node final: Object
 
     void CenterOnScreenInNextFrame() { m_CenterOnScreen = true; }
 
-    virtual ax::rectf GetBounds() const override final { return static_cast<rectf>(m_Bounds); }
+    ImRect GetRegionBounds(NodeRegion region) const;
+    NodeRegion GetRegion(const ImVec2& point) const;
+
+    virtual ImRect GetBounds() const override final { return m_Bounds; }
 
     virtual Node* AsNode() override final { return this; }
 };
@@ -312,8 +392,13 @@ struct Link final: Object
     ImVec2 m_Start;
     ImVec2 m_End;
 
-    Link(EditorContext* editor, LinkId id):
-        Object(editor), m_ID(id), m_StartPin(nullptr), m_EndPin(nullptr), m_Color(IM_COL32_WHITE), m_Thickness(1.0f)
+    Link(EditorContext* editor, LinkId id)
+        : Object(editor)
+        , m_ID(id)
+        , m_StartPin(nullptr)
+        , m_EndPin(nullptr)
+        , m_Color(IM_COL32_WHITE)
+        , m_Thickness(1.0f)
     {
     }
 
@@ -326,12 +411,12 @@ struct Link final: Object
 
     void UpdateEndpoints();
 
-    cubic_bezier_t GetCurve() const;
+    ImCubicBezierPoints GetCurve() const;
 
     virtual bool TestHit(const ImVec2& point, float extraThickness = 0.0f) const override final;
-    virtual bool TestHit(const ax::rectf& rect, bool allowIntersect = true) const override final;
+    virtual bool TestHit(const ImRect& rect, bool allowIntersect = true) const override final;
 
-    virtual ax::rectf GetBounds() const override final;
+    virtual ImRect GetBounds() const override final;
 
     virtual Link* AsLink() override final { return this; }
 };
@@ -348,7 +433,17 @@ struct NodeSettings
     bool            m_IsDirty;
     SaveReasonFlags m_DirtyReason;
 
-    NodeSettings(NodeId id): m_ID(id), m_Location(0, 0), m_Size(0, 0), m_GroupSize(0, 0), m_WasUsed(false), m_Saved(false), m_IsDirty(false), m_DirtyReason(SaveReasonFlags::None) {}
+    NodeSettings(NodeId id)
+        : m_ID(id)
+        , m_Location(0, 0)
+        , m_Size(0, 0)
+        , m_GroupSize(0, 0)
+        , m_WasUsed(false)
+        , m_Saved(false)
+        , m_IsDirty(false)
+        , m_DirtyReason(SaveReasonFlags::None)
+    {
+    }
 
     void ClearDirty();
     void MakeDirty(SaveReasonFlags reason);
@@ -370,7 +465,13 @@ struct Settings
     ImVec2               m_ViewScroll;
     float                m_ViewZoom;
 
-    Settings(): m_IsDirty(false), m_DirtyReason(SaveReasonFlags::None), m_ViewScroll(0, 0), m_ViewZoom(1.0f) {}
+    Settings()
+        : m_IsDirty(false)
+        , m_DirtyReason(SaveReasonFlags::None)
+        , m_ViewScroll(0, 0)
+        , m_ViewZoom(1.0f)
+    {
+    }
 
     NodeSettings* AddNode(NodeId id);
     NodeSettings* FindNode(NodeId id);
@@ -408,27 +509,27 @@ struct Control
     bool    BackgroundDoubleClicked;
 
     Control(Object* hotObject, Object* activeObject, Object* clickedObject, Object* doubleClickedObject,
-        bool backgroundHot, bool backgroundActive, bool backgroundClicked, bool backgroundDoubleClicked):
-        HotObject(hotObject),
-        ActiveObject(activeObject),
-        ClickedObject(clickedObject),
-        DoubleClickedObject(doubleClickedObject),
-        HotNode(nullptr),
-        ActiveNode(nullptr),
-        ClickedNode(nullptr),
-        DoubleClickedNode(nullptr),
-        HotPin(nullptr),
-        ActivePin(nullptr),
-        ClickedPin(nullptr),
-        DoubleClickedPin(nullptr),
-        HotLink(nullptr),
-        ActiveLink(nullptr),
-        ClickedLink(nullptr),
-        DoubleClickedLink(nullptr),
-        BackgroundHot(backgroundHot),
-        BackgroundActive(backgroundActive),
-        BackgroundClicked(backgroundClicked),
-        BackgroundDoubleClicked(backgroundDoubleClicked)
+        bool backgroundHot, bool backgroundActive, bool backgroundClicked, bool backgroundDoubleClicked)
+        : HotObject(hotObject)
+        , ActiveObject(activeObject)
+        , ClickedObject(clickedObject)
+        , DoubleClickedObject(doubleClickedObject)
+        , HotNode(nullptr)
+        , ActiveNode(nullptr)
+        , ClickedNode(nullptr)
+        , DoubleClickedNode(nullptr)
+        , HotPin(nullptr)
+        , ActivePin(nullptr)
+        , ClickedPin(nullptr)
+        , DoubleClickedPin(nullptr)
+        , HotLink(nullptr)
+        , ActiveLink(nullptr)
+        , ClickedLink(nullptr)
+        , DoubleClickedLink(nullptr)
+        , BackgroundHot(backgroundHot)
+        , BackgroundActive(backgroundActive)
+        , BackgroundClicked(backgroundClicked)
+        , BackgroundDoubleClicked(backgroundDoubleClicked)
     {
         if (hotObject)
         {
@@ -461,30 +562,6 @@ struct Control
             DoubleClickedLink = doubleClickedObject->AsLink();
         }
     }
-};
-
-// Spaces:
-//   Canvas - where objects are
-//   Client - where objects are drawn
-//   Screen - global screen space
-struct Canvas
-{
-    ImVec2 WindowScreenPos;
-    ImVec2 WindowScreenSize;
-    ImVec2 ClientOrigin;
-    ImVec2 ClientSize;
-    ImVec2 Zoom;
-    ImVec2 InvZoom;
-
-    Canvas();
-    Canvas(ImVec2 position, ImVec2 size, ImVec2 scale, ImVec2 origin);
-
-    ax::rectf GetVisibleBounds() const;
-
-    ImVec2 FromScreen(ImVec2 point) const;
-    ImVec2 ToScreen(ImVec2 point) const;
-    ImVec2 FromClient(ImVec2 point) const;
-    ImVec2 ToClient(ImVec2 point) const;
 };
 
 struct NavigateAction;
@@ -535,14 +612,12 @@ protected:
 struct NavigateAnimation final: Animation
 {
     NavigateAction& Action;
-    ImVec2        m_Start;
-    float         m_StartZoom;
-    ImVec2        m_Target;
-    float         m_TargetZoom;
+    ImRect      m_Start;
+    ImRect      m_Target;
 
     NavigateAnimation(EditorContext* editor, NavigateAction& scrollAction);
 
-    void NavigateTo(const ImVec2& target, float targetZoom, float duration);
+    void NavigateTo(const ImRect& target, float duration);
 
 private:
     void OnUpdate(float progress) override final;
@@ -591,8 +666,8 @@ struct AnimationController
 {
     EditorContext* Editor;
 
-    AnimationController(EditorContext* editor):
-        Editor(editor)
+    AnimationController(EditorContext* editor)
+        : Editor(editor)
     {
     }
 
@@ -627,7 +702,11 @@ struct EditorAction
 {
     enum AcceptResult { False, True, Possible };
 
-    EditorAction(EditorContext* editor): Editor(editor) {}
+    EditorAction(EditorContext* editor)
+        : Editor(editor)
+    {
+    }
+
     virtual ~EditorAction() {}
 
     virtual const char* GetName() const = 0;
@@ -672,7 +751,7 @@ struct NavigateAction final: EditorAction
     ImVec2          m_ScrollStart;
     ImVec2          m_ScrollDelta;
 
-    NavigateAction(EditorContext* editor);
+    NavigateAction(EditorContext* editor, ImGuiEx::Canvas& canvas);
 
     virtual const char* GetName() const override final { return "Navigate"; }
 
@@ -683,7 +762,7 @@ struct NavigateAction final: EditorAction
 
     virtual NavigateAction* AsNavigate() override final { return this; }
 
-    void NavigateTo(const ax::rectf& bounds, bool zoomIn, float duration = -1.0f, NavigationReason reason = NavigationReason::Unknown);
+    void NavigateTo(const ImRect& bounds, bool zoomIn, float duration = -1.0f, NavigationReason reason = NavigationReason::Unknown);
     void StopNavigation();
     void FinishNavigation();
 
@@ -694,9 +773,15 @@ struct NavigateAction final: EditorAction
 
     void SetWindow(ImVec2 position, ImVec2 size);
 
-    Canvas GetCanvas(bool alignToPixels = true);
+    ImGuiEx::CanvasView GetView() const;
+    ImVec2 GetViewOrigin() const;
+    float GetViewScale() const;
+
+    void SetViewRect(const ImRect& rect);
+    ImRect GetViewRect() const;
 
 private:
+    ImGuiEx::Canvas&   m_Canvas;
     ImVec2 m_WindowScreenPos;
     ImVec2 m_WindowScreenSize;
 
@@ -709,7 +794,7 @@ private:
 
     bool HandleZoom(const Control& control);
 
-    void NavigateTo(const ImVec2& target, float targetZoom, float duration = -1.0f, NavigationReason reason = NavigationReason::Unknown);
+    void NavigateTo(const ImRect& target, float duration = -1.0f, NavigationReason reason = NavigationReason::Unknown);
 
     float MatchZoom(int steps, float fallbackZoom);
     int MatchZoomIndex(int direction);
@@ -739,18 +824,18 @@ struct SizeAction final: EditorAction
 
     virtual bool IsDragging() override final { return m_IsActive; }
 
-    const ax::rect& GetStartGroupBounds() const { return m_StartGroupBounds; }
+    const ImRect& GetStartGroupBounds() const { return m_StartGroupBounds; }
 
 private:
-    ax::rect_region GetRegion(Node* node);
-    ImGuiMouseCursor ChooseCursor(ax::rect_region region);
+    NodeRegion GetRegion(Node* node);
+    ImGuiMouseCursor ChooseCursor(NodeRegion region);
 
-    ax::rect         m_StartBounds;
-    ax::rect         m_StartGroupBounds;
-    ax::size         m_LastSize;
-    ax::point        m_LastDragOffset;
-    bool             m_Stable;
-    ax::rect_region  m_Pivot;
+    ImRect           m_StartBounds;
+    ImRect           m_StartGroupBounds;
+    ImVec2           m_LastSize;
+    ImVec2           m_MinimumSize;
+    ImVec2           m_LastDragOffset;
+    ed::NodeRegion   m_Pivot;
     ImGuiMouseCursor m_Cursor;
 };
 
@@ -908,6 +993,8 @@ struct CreateItemAction final : EditorAction
     bool      m_IsActive;
     Pin*      m_DraggedPin;
 
+    int       m_LastChannel = -1;
+
 
     CreateItemAction(EditorContext* editor);
 
@@ -915,6 +1002,8 @@ struct CreateItemAction final : EditorAction
 
     virtual AcceptResult Accept(const Control& control) override final;
     virtual bool Process(const Control& control) override final;
+
+    virtual ImGuiMouseCursor GetCursor() override final { return ImGuiMouseCursor_Arrow; }
 
     virtual void ShowMetrics() override final;
 
@@ -992,16 +1081,16 @@ struct NodeBuilder
     Node* m_CurrentNode;
     Pin*  m_CurrentPin;
 
-    rect   m_NodeRect;
+    ImRect m_NodeRect;
 
-    rect   m_PivotRect;
+    ImRect m_PivotRect;
     ImVec2 m_PivotAlignment;
     ImVec2 m_PivotSize;
     ImVec2 m_PivotScale;
     bool   m_ResolvePinRect;
     bool   m_ResolvePivot;
 
-    rect   m_GroupBounds;
+    ImRect m_GroupBounds;
     bool   m_IsGroup;
 
     NodeBuilder(EditorContext* editor);
@@ -1030,6 +1119,7 @@ struct HintBuilder
     bool  m_IsActive;
     Node* m_CurrentNode;
     float m_LastFringe = 1.0f;
+    int   m_LastChannel = 0;
 
     HintBuilder(EditorContext* editor);
 
@@ -1112,7 +1202,9 @@ struct EditorContext
     ContextMenuAction& GetContextMenu() { return m_ContextMenuAction; }
     ShortcutAction& GetShortcut() { return m_ShortcutAction; }
 
-    const Canvas& GetCanvas() const { return m_Canvas; }
+    const ImGuiEx::CanvasView& GetView() const { return m_Canvas.View(); }
+    const ImRect& GetViewRect() const { return m_Canvas.ViewRect(); }
+    const ImRect& GetRect() const { return m_Canvas.Rect(); }
 
     void SetNodePosition(NodeId nodeId, const ImVec2& screenPosition);
     ImVec2 GetNodePosition(NodeId nodeId);
@@ -1134,15 +1226,15 @@ struct EditorContext
     uint64_t GetSelectionId() const { return m_SelectionId; }
 
     Node* FindNodeAt(const ImVec2& p);
-    void FindNodesInRect(const ax::rectf& r, vector<Node*>& result, bool append = false, bool includeIntersecting = true);
-    void FindLinksInRect(const ax::rectf& r, vector<Link*>& result, bool append = false);
+    void FindNodesInRect(const ImRect& r, vector<Node*>& result, bool append = false, bool includeIntersecting = true);
+    void FindLinksInRect(const ImRect& r, vector<Link*>& result, bool append = false);
 
     void FindLinksForNode(NodeId nodeId, vector<Link*>& result, bool add = false);
 
     bool PinHadAnyLinks(PinId pinId);
 
-    ImVec2 ToCanvas(ImVec2 point) { return m_Canvas.FromScreen(point); }
-    ImVec2 ToScreen(ImVec2 point) { return m_Canvas.ToScreen(point); }
+    ImVec2 ToCanvas(const ImVec2& point) const { return m_Canvas.ToLocal(point); }
+    ImVec2 ToScreen(const ImVec2& point) const { return m_Canvas.FromLocal(point); }
 
     void NotifyLinkDeleted(Link* link);
 
@@ -1168,39 +1260,39 @@ struct EditorContext
     Pin*   GetPin(PinId id, PinKind kind);
     Link*  GetLink(LinkId id);
 
-    Link* FindLinkAt(const point& p);
+    Link* FindLinkAt(const ImVec2& p);
 
     template <typename T>
-    ax::rectf GetBounds(const std::vector<T*>& objects)
+    ImRect GetBounds(const std::vector<T*>& objects)
     {
-        ax::rectf bounds;
+        ImRect bounds;
 
         for (auto object : objects)
             if (object->m_IsLive)
-                bounds = make_union(bounds, object->GetBounds());
+                bounds.Add(object->GetBounds());
 
         return bounds;
     }
 
     template <typename T>
-    ax::rectf GetBounds(const std::vector<ObjectWrapper<T>>& objects)
+    ImRect GetBounds(const std::vector<ObjectWrapper<T>>& objects)
     {
-        ax::rectf bounds;
+        ImRect bounds;
 
         for (auto object : objects)
             if (object.m_Object->m_IsLive)
-                bounds = make_union(bounds, object.m_Object->GetBounds());
+                bounds.Add(object.m_Object->GetBounds());
 
         return bounds;
     }
 
-    ax::rectf GetSelectionBounds() { return GetBounds(m_SelectedObjects); }
-    ax::rectf GetContentBounds() { return GetBounds(m_Nodes); }
+    ImRect GetSelectionBounds() { return GetBounds(m_SelectedObjects); }
+    ImRect GetContentBounds() { return GetBounds(m_Nodes); }
 
     ImU32 GetColor(StyleColor colorIndex) const;
     ImU32 GetColor(StyleColor colorIndex, float alpha) const;
 
-    void NavigateTo(const rectf& bounds, bool zoomIn = false, float duration = -1) { m_NavigateAction.NavigateTo(bounds, zoomIn, duration); }
+    void NavigateTo(const ImRect& bounds, bool zoomIn = false, float duration = -1) { m_NavigateAction.NavigateTo(bounds, zoomIn, duration); }
 
     void RegisterAnimation(Animation* animation);
     void UnregisterAnimation(Animation* animation);
@@ -1218,12 +1310,17 @@ struct EditorContext
     bool   IsBackgroundClicked()       const { return m_BackgroundClicked;       }
     bool   IsBackgroundDoubleClicked() const { return m_BackgroundDoubleClicked; }
 
-    ax::point AlignPointToGrid(const ax::point& p) const
+    float AlignPointToGrid(float p) const
     {
         if (!ImGui::GetIO().KeyAlt)
-            return p - ax::point(((p.x + 0) % 16) - 0, ((p.y + 0) % 16) - 0);
+            return p - ImFmod(p, 16.0f);
         else
             return p;
+    }
+
+    ImVec2 AlignPointToGrid(const ImVec2& p) const
+    {
+        return ImVec2(AlignPointToGrid(p.x), AlignPointToGrid(p.y));
     }
 
 private:
@@ -1233,9 +1330,6 @@ private:
     Control BuildControl(bool allowOffscreen);
 
     void ShowMetrics(const Control& control);
-
-    void CaptureMouse();
-    void ReleaseMouse();
 
     void UpdateAnimations();
 
@@ -1260,13 +1354,8 @@ private:
     vector<Animation*>  m_LiveAnimations;
     vector<Animation*>  m_LastLiveAnimations;
 
-    ImVec2              m_MousePosBackup;
-    ImVec2              m_MousePosPrevBackup;
-    ImVec2              m_MouseClickPosBackup[5];
-
-    Canvas              m_Canvas;
-
-    int                 m_SuspendCount;
+    ImGuiEx::Canvas     m_Canvas;
+    bool                m_IsCanvasVisible;
 
     NodeBuilder         m_NodeBuilder;
     HintBuilder         m_HintBuilder;
@@ -1296,6 +1385,16 @@ private:
     Config              m_Config;
 };
 
+
+//------------------------------------------------------------------------------
 } // namespace Detail
 } // namespace Editor
 } // namespace ax
+
+
+//------------------------------------------------------------------------------
+# include "imgui_node_editor_internal.inl"
+
+
+//------------------------------------------------------------------------------
+# endif // __IMGUI_NODE_EDITOR_INTERNAL_H__

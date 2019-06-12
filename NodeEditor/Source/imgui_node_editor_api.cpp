@@ -7,8 +7,7 @@
 // CREDITS
 //   Written by Michal Cichon
 //------------------------------------------------------------------------------
-# include "NodeEditor.h"
-# include "Editor.h"
+# include "imgui_node_editor_internal.h"
 
 
 //------------------------------------------------------------------------------
@@ -588,7 +587,7 @@ void ax::NodeEditor::EndShortcut()
 
 float ax::NodeEditor::GetCurrentZoom()
 {
-    return s_Editor->GetCanvas().InvZoom.y;
+    return s_Editor->GetView().InvScale;
 }
 
 ax::NodeEditor::NodeId ax::NodeEditor::GetDoubleClickedNode()
@@ -623,7 +622,7 @@ bool ax::NodeEditor::PinHadAnyLinks(PinId pinId)
 
 ImVec2 ax::NodeEditor::GetScreenSize()
 {
-    return s_Editor->GetCanvas().WindowScreenSize;
+    return s_Editor->GetRect().GetSize();
 }
 
 ImVec2 ax::NodeEditor::ScreenToCanvas(const ImVec2& pos)
