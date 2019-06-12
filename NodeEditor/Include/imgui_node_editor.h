@@ -7,6 +7,8 @@
 // CREDITS
 //   Written by Michal Cichon
 //------------------------------------------------------------------------------
+# ifndef __IMGUI_NODE_EDITOR_H__
+# define __IMGUI_NODE_EDITOR_H__
 # pragma once
 
 
@@ -22,87 +24,9 @@ namespace NodeEditor {
 
 
 //------------------------------------------------------------------------------
-namespace Details {
-
-template <typename T, typename Tag>
-struct SafeType
-{
-    SafeType(T t)
-        : m_Value(std::move(t))
-    {
-    }
-
-    SafeType(const SafeType&) = default;
-
-    template <typename T2, typename Tag2>
-    SafeType(
-        const SafeType
-        <
-            typename std::enable_if<!std::is_same<T, T2>::value, T2>::type,
-            typename std::enable_if<!std::is_same<Tag, Tag2>::value, Tag2>::type
-        >&) = delete;
-
-    SafeType& operator=(const SafeType&) = default;
-
-    explicit operator T() const { return Get(); }
-
-    T Get() const { return m_Value; }
-
-private:
-    T m_Value;
-};
-
-
-template <typename Tag>
-struct SafePointerType
-    : SafeType<uintptr_t, Tag>
-{
-    static const Tag Invalid;
-
-    using SafeType<uintptr_t, Tag>::SafeType;
-
-    SafePointerType()
-        : SafePointerType(Invalid)
-    {
-    }
-
-    template <typename T = void> explicit SafePointerType(T* ptr): SafePointerType(reinterpret_cast<uintptr_t>(ptr)) {}
-    template <typename T = void> T* AsPointer() const { return reinterpret_cast<T*>(this->Get()); }
-
-    explicit operator bool() const { return *this != Invalid; }
-};
-
-template <typename Tag>
-const Tag SafePointerType<Tag>::Invalid = 0;
-
-template <typename Tag>
-inline bool operator==(const SafePointerType<Tag>& lhs, const SafePointerType<Tag>& rhs)
-{
-    return lhs.Get() == rhs.Get();
-}
-
-template <typename Tag>
-inline bool operator!=(const SafePointerType<Tag>& lhs, const SafePointerType<Tag>& rhs)
-{
-    return lhs.Get() != rhs.Get();
-}
-
-} // namespace Details
-
-struct NodeId final: Details::SafePointerType<NodeId>
-{
-    using SafePointerType::SafePointerType;
-};
-
-struct LinkId final: Details::SafePointerType<LinkId>
-{
-    using SafePointerType::SafePointerType;
-};
-
-struct PinId final: Details::SafePointerType<PinId>
-{
-    using SafePointerType::SafePointerType;
-};
+struct NodeId;
+struct LinkId;
+struct PinId;
 
 
 //------------------------------------------------------------------------------
@@ -116,16 +40,16 @@ enum class SaveReasonFlags: uint32_t
     User       = 0x00000010
 };
 
-inline SaveReasonFlags operator |(SaveReasonFlags lhs, SaveReasonFlags rhs) { return static_cast<SaveReasonFlags>(static_cast<int>(lhs) | static_cast<int>(rhs)); }
-inline SaveReasonFlags operator &(SaveReasonFlags lhs, SaveReasonFlags rhs) { return static_cast<SaveReasonFlags>(static_cast<int>(lhs) & static_cast<int>(rhs)); }
+inline SaveReasonFlags operator |(SaveReasonFlags lhs, SaveReasonFlags rhs) { return static_cast<SaveReasonFlags>(static_cast<uint32_t>(lhs) | static_cast<uint32_t>(rhs)); }
+inline SaveReasonFlags operator &(SaveReasonFlags lhs, SaveReasonFlags rhs) { return static_cast<SaveReasonFlags>(static_cast<uint32_t>(lhs) & static_cast<uint32_t>(rhs)); }
 
-typedef bool        (*ConfigSaveSettings)(const char* data, size_t size, SaveReasonFlags reason, void* userPointer);
-typedef size_t      (*ConfigLoadSettings)(char* data, void* userPointer);
+using ConfigSaveSettings     = bool   (*)(const char* data, size_t size, SaveReasonFlags reason, void* userPointer);
+using ConfigLoadSettings     = size_t (*)(char* data, void* userPointer);
 
-typedef bool        (*ConfigSaveNodeSettings)(NodeId nodeId, const char* data, size_t size, SaveReasonFlags reason, void* userPointer);
-typedef size_t      (*ConfigLoadNodeSettings)(NodeId nodeId, char* data, void* userPointer);
+using ConfigSaveNodeSettings = bool   (*)(NodeId nodeId, const char* data, size_t size, SaveReasonFlags reason, void* userPointer);
+using ConfigLoadNodeSettings = size_t (*)(NodeId nodeId, char* data, void* userPointer);
 
-typedef void        (*ConfigSession)(void* userPointer);
+using ConfigSession          = void   (*)(void* userPointer);
 
 struct Config
 {
@@ -138,15 +62,15 @@ struct Config
     ConfigLoadNodeSettings  LoadNodeSettings;
     void*                   UserPointer;
 
-    Config():
-        SettingsFile("NodeEditor.json"),
-        BeginSaveSession(nullptr),
-        EndSaveSession(nullptr),
-        SaveSettings(nullptr),
-        LoadSettings(nullptr),
-        SaveNodeSettings(nullptr),
-        LoadNodeSettings(nullptr),
-        UserPointer(nullptr)
+    Config()
+        : SettingsFile("NodeEditor.json")
+        , BeginSaveSession(nullptr)
+        , EndSaveSession(nullptr)
+        , SaveSettings(nullptr)
+        , LoadSettings(nullptr)
+        , SaveNodeSettings(nullptr)
+        , LoadNodeSettings(nullptr)
+        , UserPointer(nullptr)
     {
     }
 };
@@ -416,6 +340,103 @@ ImVec2 GetScreenSize();
 ImVec2 ScreenToCanvas(const ImVec2& pos);
 ImVec2 CanvasToScreen(const ImVec2& pos);
 
+
+
+
+
+
+
+
+
+
+//------------------------------------------------------------------------------
+namespace Details {
+
+template <typename T, typename Tag>
+struct SafeType
+{
+    SafeType(T t)
+        : m_Value(std::move(t))
+    {
+    }
+
+    SafeType(const SafeType&) = default;
+
+    template <typename T2, typename Tag2>
+    SafeType(
+        const SafeType
+        <
+            typename std::enable_if<!std::is_same<T, T2>::value, T2>::type,
+            typename std::enable_if<!std::is_same<Tag, Tag2>::value, Tag2>::type
+        >&) = delete;
+
+    SafeType& operator=(const SafeType&) = default;
+
+    explicit operator T() const { return Get(); }
+
+    T Get() const { return m_Value; }
+
+private:
+    T m_Value;
+};
+
+
+template <typename Tag>
+struct SafePointerType
+    : SafeType<uintptr_t, Tag>
+{
+    static const Tag Invalid;
+
+    using SafeType<uintptr_t, Tag>::SafeType;
+
+    SafePointerType()
+        : SafePointerType(Invalid)
+    {
+    }
+
+    template <typename T = void> explicit SafePointerType(T* ptr): SafePointerType(reinterpret_cast<uintptr_t>(ptr)) {}
+    template <typename T = void> T* AsPointer() const { return reinterpret_cast<T*>(this->Get()); }
+
+    explicit operator bool() const { return *this != Invalid; }
+};
+
+template <typename Tag>
+const Tag SafePointerType<Tag>::Invalid = { 0 };
+
+template <typename Tag>
+inline bool operator==(const SafePointerType<Tag>& lhs, const SafePointerType<Tag>& rhs)
+{
+    return lhs.Get() == rhs.Get();
+}
+
+template <typename Tag>
+inline bool operator!=(const SafePointerType<Tag>& lhs, const SafePointerType<Tag>& rhs)
+{
+    return lhs.Get() != rhs.Get();
+}
+
+} // namespace Details
+
+struct NodeId final: Details::SafePointerType<NodeId>
+{
+    using SafePointerType::SafePointerType;
+};
+
+struct LinkId final: Details::SafePointerType<LinkId>
+{
+    using SafePointerType::SafePointerType;
+};
+
+struct PinId final: Details::SafePointerType<PinId>
+{
+    using SafePointerType::SafePointerType;
+};
+
+
 //------------------------------------------------------------------------------
 } // namespace Editor
 } // namespace ax
+
+
+//------------------------------------------------------------------------------
+# endif // __IMGUI_NODE_EDITOR_H__

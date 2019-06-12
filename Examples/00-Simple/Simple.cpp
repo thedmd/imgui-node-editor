@@ -1,7 +1,7 @@
 ﻿# include "Application.h"
-# include "NodeEditor.h"
+# include <imgui_node_editor.h>
 # define IMGUI_DEFINE_MATH_OPERATORS
-# include "imgui_internal.h"
+# include <imgui_internal.h>
 
 namespace ed = ax::NodeEditor;
 
@@ -43,5 +43,7 @@ void Application_Frame()
     ed::EndNode();
     ed::End();
     ed::SetCurrentEditor(nullptr);
+
+	//ImGui::ShowMetricsWindow();
 }
 

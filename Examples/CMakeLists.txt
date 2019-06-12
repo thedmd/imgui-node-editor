@@ -1,4 +1,4 @@
-function(add_example name)
+macro(add_example name)
     project(${name})
 
     set(_Example_Sources
@@ -59,9 +59,10 @@ function(add_example name)
         COMMAND ${CMAKE_COMMAND} -E copy_directory ARGS ${CMAKE_SOURCE_DIR}/Data ${_ExampleBinDir}/Data
     )
 
-endfunction()
+endmacro()
 
 add_subdirectory(Common/Application)
 
+add_subdirectory(Canvas)
 add_subdirectory(00-Simple)
 add_subdirectory(01-Blueprints)
