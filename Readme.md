@@ -97,7 +97,7 @@ Result:
 
 ### Dependencies
 
-Code is using own copy of [ImGui v1.67 WIP with modifications](https://github.com/thedmd/imgui/tree/combined):
+Code is using own copy of [ImGui v1.71 WIP with modifications](https://github.com/thedmd/imgui/tree/combined):
  * New: [Stack Based Layout](https://github.com/ocornut/imgui/pull/846) implementation
  * New: Add ImMatrix for stacked transformation. This is pulled from derived project.
  * Changed: Ability to scale polygon AA fringe. This was needed to achieve nice looking zoomed contend.
