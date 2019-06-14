@@ -18,7 +18,15 @@ Project is a prototype. What that means in practise:
  * Relies on modified version of ImGui. There is a goal to use vanila version of ImGui and provide hacked-in code as an extension.
  * Keeping dependencies minimal is not a priority. In the long run C++14 without non ImGui dependencies should be a minimum. Currently you will find parts of C++17 and use of picojson.
  * If you have issues with editor, please let me know. I'm not going to promise immediate fix but I for sure will take them into account while reworking code.
+ 
+## Status
 
+Despite of prototype status, project is used to implement blueprint editor in Spark CE engine. That beeing said. I want to cleanup it to make it viable for more general public. What I'am aiming for:
+ * Separate blueprint utilities from node editor itself (will require moving files around, code is separated from day-0)
+ * Bring editor as close to regular widgter at possible
+ * Remove all external dependencies (picojson, C++ Standard Library)
+ * Remove local modifications to ImGui (this may require a PR in ImDrawList department)
+ * Code cleanup
 
 ## Code
 
