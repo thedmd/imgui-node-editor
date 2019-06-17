@@ -1,6 +1,6 @@
 # Node Editor in ImGui
 
-[![Appveyor status](https://ci.appveyor.com/api/projects/status/lm0io3m8mv7avacp?svg=true)](https://ci.appveyor.com/project/thedmd/imgui-node-editor)
+[![Appveyor status](https://ci.appveyor.com/api/projects/status/lm0io3m8mv7avacp/branch/master?svg=true)](https://ci.appveyor.com/project/thedmd/imgui-node-editor/branch/master)
 [![Travis status](https://travis-ci.org/thedmd/imgui-node-editor.svg?branch=master)](https://travis-ci.org/thedmd/imgui-node-editor)
 
 
