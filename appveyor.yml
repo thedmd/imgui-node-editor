@@ -2,6 +2,7 @@ version: '{build}'
 pull_requests:
   do_not_increment_build_number: true
 image:
+- Visual Studio 2019
 - Visual Studio 2017
 - Visual Studio 2015
 configuration:
@@ -13,24 +14,26 @@ platform:
 clone_depth: 1
 init:
 - cmd: >-
-    set arch=
+    set arch=Win32
 
-    if "%PLATFORM%"=="x64" ( set arch= Win64)
+    if "%PLATFORM%"=="x64" ( set arch=Win64)
 
     echo %APPVEYOR_BUILD_WORKER_IMAGE%
 
-    if "%APPVEYOR_BUILD_WORKER_IMAGE%"=="Visual Studio 2017" ( set generator="Visual Studio 15 2017%arch%" )
+    if "%APPVEYOR_BUILD_WORKER_IMAGE%"=="Visual Studio 2019" ( set generator="Visual Studio 15 2019" )
 
-    if "%APPVEYOR_BUILD_WORKER_IMAGE%"=="Visual Studio 2015" ( set generator="Visual Studio 14 2015%arch%" )
+    if "%APPVEYOR_BUILD_WORKER_IMAGE%"=="Visual Studio 2017" ( set generator="Visual Studio 15 2017" )
 
-    if "%APPVEYOR_BUILD_WORKER_IMAGE%"=="Visual Studio 2013" ( set generator="Visual Studio 12 2013%arch%" )
+    if "%APPVEYOR_BUILD_WORKER_IMAGE%"=="Visual Studio 2015" ( set generator="Visual Studio 14 2015" )
+
+    if "%APPVEYOR_BUILD_WORKER_IMAGE%"=="Visual Studio 2013" ( set generator="Visual Studio 12 2013" )
 
     echo %generator%
 before_build:
 - cmd: >-
     cmake --version
 
-    cmake -H. -BBuild -G %generator%
+    cmake -H. -BBuild -G %generator% -A %arch%
 build:
   project: Build\ALL_BUILD.vcxproj
   parallel: true
