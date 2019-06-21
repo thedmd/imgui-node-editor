@@ -47,6 +47,7 @@ static ID3D11Buffer*            g_pVertexConstantBuffer = NULL;
 static ID3D10Blob*              g_pPixelShaderBlob = NULL;
 static ID3D11PixelShader*       g_pPixelShader = NULL;
 static ID3D11SamplerState*      g_pFontSampler = NULL;
+static ImTextureID              g_pFontTextureID = NULL;
 static ID3D11RasterizerState*   g_pRasterizerState = NULL;
 static ID3D11BlendState*        g_pBlendState = NULL;
 static ID3D11DepthStencilState* g_pDepthStencilState = NULL;
@@ -282,7 +283,9 @@ static void ImGui_ImplDX11_CreateFontsTexture()
     int width, height;
     io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
 
-    io.Fonts->TexID = ImGui_CreateTexture(pixels, width, height);
+    g_pFontTextureID = ImGui_CreateTexture(pixels, width, height);
+
+    io.Fonts->TexID = g_pFontTextureID;
 
 
     // Create texture sampler
@@ -453,6 +456,12 @@ void    ImGui_ImplDX11_InvalidateDeviceObjects()
 
      for (auto& texture : g_Textures)
         ImGui_ReleaseTexture(texture);
+
+     if (g_pFontTextureID)
+     {
+        ImGui_DestroyTexture(g_pFontTextureID);
+        g_pFontTextureID = NULL;
+     }
 
     if (g_pFontSampler) { g_pFontSampler->Release(); g_pFontSampler = NULL; }
     if (g_pIB) { g_pIB->Release(); g_pIB = NULL; }
