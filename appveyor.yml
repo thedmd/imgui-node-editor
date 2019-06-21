@@ -16,7 +16,7 @@ init:
 - cmd: >-
     set arch=Win32
 
-    if "%PLATFORM%"=="x64" ( set arch=Win64)
+    if "%PLATFORM%"=="x64" ( set arch=x64)
 
     echo %APPVEYOR_BUILD_WORKER_IMAGE%
 
