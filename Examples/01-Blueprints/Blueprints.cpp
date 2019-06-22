@@ -150,10 +150,10 @@ static int GetNextId()
     return s_NextId++;
 }
 
-static ed::NodeId GetNextNodeId()
-{
-    return ed::NodeId(GetNextId());
-}
+//static ed::NodeId GetNextNodeId()
+//{
+//    return ed::NodeId(GetNextId());
+//}
 
 static ed::LinkId GetNextLinkId()
 {
@@ -1183,7 +1183,7 @@ void Application_Frame()
 
             if (ed::BeginGroupHint(node.ID))
             {
-                auto alpha   = static_cast<int>(commentAlpha * ImGui::GetStyle().Alpha * 255);
+                //auto alpha   = static_cast<int>(commentAlpha * ImGui::GetStyle().Alpha * 255);
                 auto bgAlpha = static_cast<int>(ImGui::GetStyle().Alpha * 255);
 
                 //ImGui::PushStyleVar(ImGuiStyleVar_Alpha, commentAlpha * ImGui::GetStyle().Alpha);

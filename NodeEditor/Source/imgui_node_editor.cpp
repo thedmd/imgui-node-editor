@@ -1256,7 +1256,7 @@ void ed::EditorContext::End()
     // Draw grid
 # if 1 // #FIXME
     {
-        auto& style = ImGui::GetStyle();
+        //auto& style = ImGui::GetStyle();
 
         drawList->ChannelsSetCurrent(c_UserChannel_Grid);
 
@@ -1925,7 +1925,7 @@ ed::Control ed::EditorContext::BuildControl(bool allowOffscreen)
     Object* doubleClickedObject = nullptr;
 
     // Emits invisible button and returns true if it is clicked.
-    auto emitInteractiveArea = [this](ObjectId id, const ImRect& rect)
+    auto emitInteractiveArea = [](ObjectId id, const ImRect& rect)
     {
         char idString[33] = { 0 }; // itoa can output 33 bytes maximum
         snprintf(idString, 32, "%p", id.AsPointer());

@@ -1,4 +1,4 @@
-﻿# define IMGUI_DEFINE_MATH_OPERATORS
+# define IMGUI_DEFINE_MATH_OPERATORS
 # include "Application.h"
 # include <imgui_canvas.h>
 # include <imgui_internal.h>
@@ -177,7 +177,7 @@ void Application_Frame()
 
     if (canvas.Begin("##mycanvas", ImVec2(s_RightPaneSize, 0.0f)))
     {
-        auto drawList = ImGui::GetWindowDrawList();
+        //auto drawList = ImGui::GetWindowDrawList();
 
         if ((isDragging || ImGui::IsItemHovered()) && ImGui::IsMouseDragging(1, 0.0f))
         {
