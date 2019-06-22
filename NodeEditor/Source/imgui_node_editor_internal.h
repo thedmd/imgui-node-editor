@@ -24,9 +24,10 @@
 # include "imgui_bezier_math.h"
 # include "imgui_canvas.h"
 
-# define PICOJSON_USE_LOCALE 0
-# include "picojson.h"
+# include "crude_json.h"
+
 # include <vector>
+# include <string>
 
 
 //------------------------------------------------------------------------------
@@ -37,7 +38,7 @@ namespace Detail {
 
 //------------------------------------------------------------------------------
 namespace ed = ax::NodeEditor::Detail;
-namespace json = picojson;
+namespace json = crude_json;
 
 
 //------------------------------------------------------------------------------
@@ -448,10 +449,9 @@ struct NodeSettings
     void ClearDirty();
     void MakeDirty(SaveReasonFlags reason);
 
-    json::object Serialize();
+    json::value Serialize();
 
-    static bool Parse(const std::string& string, NodeSettings& settings) { return Parse(string.data(), string.data() + string.size(), settings); }
-    static bool Parse(const char* data, const char* dataEnd, NodeSettings& settings);
+    static bool Parse(const std::string& string, NodeSettings& settings);
     static bool Parse(const json::value& data, NodeSettings& result);
 };
 
@@ -481,8 +481,7 @@ struct Settings
 
     std::string Serialize();
 
-    static bool Parse(const std::string& string, Settings& settings) { return Parse(string.data(), string.data() + string.size(), settings); }
-    static bool Parse(const char* data, const char* dataEnd, Settings& settings);
+    static bool Parse(const std::string& string, Settings& settings);
 };
 
 struct Control

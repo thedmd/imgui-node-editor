@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AutoVisualizer xmlns="http://schemas.microsoft.com/vstudio/debugger/natvis/2010">
+
+    <Type Name="crude_json::value">
+        <DisplayString Condition="m_Type == 1">{m_Type,en} {*(crude_json::object*)&amp;m_Storage,view(simple)}</DisplayString>
+        <DisplayString Condition="m_Type == 2">{m_Type,en} {*(crude_json::array*)&amp;m_Storage,view(simple)}</DisplayString>
+        <DisplayString Condition="m_Type == 3">{*(crude_json::string*)&amp;m_Storage,view(simple)}</DisplayString>
+        <DisplayString Condition="m_Type == 4">{*(crude_json::boolean*)&amp;m_Storage}</DisplayString>
+        <DisplayString Condition="m_Type == 5">{*(crude_json::number*)&amp;m_Storage,g}</DisplayString>
+        <DisplayString>{m_Type,en}</DisplayString>
+        <StringView Condition="m_Type == 3">*(crude_json::string*)&amp;m_Storage</StringView>
+        <Expand>
+            <ExpandedItem Condition="m_Type == 1">*(crude_json::object*)&amp;m_Storage,view(simple)</ExpandedItem>
+            <ExpandedItem Condition="m_Type == 2">*(crude_json::array*)&amp;m_Storage,view(simple)</ExpandedItem>
+        </Expand>
+    </Type>
+
+</AutoVisualizer>

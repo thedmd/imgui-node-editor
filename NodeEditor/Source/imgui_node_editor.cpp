@@ -13,6 +13,9 @@
 # include <fstream>
 # include <bitset>
 # include <climits>
+# include <algorithm>
+# include <sstream>
+# include <streambuf>
 
 
 //------------------------------------------------------------------------------
@@ -1789,7 +1792,7 @@ void ed::EditorContext::SaveSettings()
 
         if (!node->m_RestoreState && settings->m_IsDirty && m_Config.SaveNodeSettings)
         {
-            if (m_Config.SaveNode(node->m_ID, json::value(settings->Serialize()).serialize(), settings->m_DirtyReason))
+            if (m_Config.SaveNode(node->m_ID, settings->Serialize().dump(), settings->m_DirtyReason))
                 settings->ClearDirty();
         }
     }
@@ -2156,50 +2159,47 @@ void ed::NodeSettings::MakeDirty(SaveReasonFlags reason)
     m_DirtyReason = m_DirtyReason | reason;
 }
 
-ed::json::object ed::NodeSettings::Serialize()
+ed::json::value ed::NodeSettings::Serialize()
 {
-    auto serializeVector = [](ImVec2 p) -> json::object
-    {
-        json::object result;
-        result["x"] = json::value(static_cast<double>(p.x));
-        result["y"] = json::value(static_cast<double>(p.y));
-        return result;
-    };
-
-    json::object nodeData;
-    nodeData["location"] = json::value(serializeVector(m_Location));
-    // nodeData["size"]     = json::value(serializeVector(m_Size));
+    json::value result;
+    result["location"]["x"] = m_Location.x;
+    result["location"]["y"] = m_Location.y;
 
     if (m_GroupSize.x > 0 || m_GroupSize.y > 0)
-        nodeData["group_size"] = json::value(serializeVector(m_GroupSize));
+    {
+        result["group_size"]["x"] = m_GroupSize.x;
+        result["group_size"]["y"] = m_GroupSize.y;
+    }
 
-    return nodeData;
+    return result;
 }
 
-bool ed::NodeSettings::Parse(const char* data, const char* dataEnd, NodeSettings& settings)
+bool ed::NodeSettings::Parse(const std::string& string, NodeSettings& settings)
 {
+# if 0 // #fixme
     json::value settingsValue;
     auto error = json::parse(settingsValue, data, dataEnd);
     if (!error.empty() || settingsValue.is<json::null>())
         return false;
 
     return Parse(settingsValue, settings);
-
+# endif
+    return 0;
 }
 
 bool ed::NodeSettings::Parse(const json::value& data, NodeSettings& result)
 {
-    if (!data.is<json::object>())
+    if (!data.is_object())
         return false;
 
     auto tryParseVector = [](const json::value& v, ImVec2& result) -> bool
     {
-        if (v.is<json::object>())
+        if (v.is_object())
         {
-            auto xValue = v.get("x");
-            auto yValue = v.get("y");
+            auto xValue = v["x"];
+            auto yValue = v["y"];
 
-            if (xValue.is<double>() && yValue.is<double>())
+            if (xValue.is_number() && yValue.is_number())
             {
                 result.x = static_cast<float>(xValue.get<double>());
                 result.y = static_cast<float>(yValue.get<double>());
@@ -2211,10 +2211,10 @@ bool ed::NodeSettings::Parse(const json::value& data, NodeSettings& result)
         return false;
     };
 
-    if (!tryParseVector(data.get("location"), result.m_Location))
+    if (!tryParseVector(data["location"], result.m_Location))
         return false;
 
-    if (data.contains("group_size") && !tryParseVector(data.get("group_size"), result.m_GroupSize))
+    if (data.contains("group_size") && !tryParseVector(data["group_size"], result.m_GroupSize))
         return false;
 
     return true;
@@ -2277,13 +2277,7 @@ void ed::Settings::MakeDirty(SaveReasonFlags reason, Node* node)
 
 std::string ed::Settings::Serialize()
 {
-    auto serializeVector = [](ImVec2 p) -> json::object
-    {
-        json::object result;
-        result["x"] = json::value(static_cast<double>(p.x));
-        result["y"] = json::value(static_cast<double>(p.y));
-        return result;
-    };
+    json::value result;
 
     auto serializeObjectId = [](ObjectId id)
     {
@@ -2298,51 +2292,44 @@ std::string ed::Settings::Serialize()
         }
     };
 
-    json::object nodes;
+    auto& nodes = result["nodes"];
     for (auto& node : m_Nodes)
     {
         if (node.m_WasUsed)
-            nodes[serializeObjectId(node.m_ID)] = json::value(node.Serialize());
+            nodes[serializeObjectId(node.m_ID)] = node.Serialize();
     }
 
-    json::array selection;
+    auto& selection = result["selection"];
     for (auto& id : m_Selection)
-        selection.push_back(json::value(serializeObjectId(id)));
+        selection.push_back(serializeObjectId(id));
 
-    json::object view;
-    view["scroll"] = json::value(serializeVector(m_ViewScroll));
-    view["zoom"]   = json::value((double)m_ViewZoom);
+    auto& view = result["view"];
+    view["scroll"]["x"] = m_ViewScroll.x;
+    view["scroll"]["y"] = m_ViewScroll.y;
+    view["zoom"]   = m_ViewZoom;
 
-    json::object settings;
-    settings["nodes"]     = json::value(std::move(nodes));
-    settings["view"]      = json::value(std::move(view));
-    settings["selection"] = json::value(std::move(selection));
-
-    json::value settingsValue(std::move(settings));
-
-    return settingsValue.serialize(false);
+    return result.dump();
 }
 
-bool ed::Settings::Parse(const char* data, const char* dataEnd, Settings& settings)
+bool ed::Settings::Parse(const std::string& string, Settings& settings)
 {
     Settings result = settings;
 
-    json::value settingsValue;
-    auto error = json::parse(settingsValue, data, dataEnd);
-    if (!error.empty() || settingsValue.is<json::null>())
+    auto settingsValue = json::value::parse(string);
+    if (settingsValue.is_discarded())
         return false;
 
-    if (!settingsValue.is<json::object>())
+    if (!settingsValue.is_object())
         return false;
 
     auto tryParseVector = [](const json::value& v, ImVec2& result) -> bool
     {
-        if (v.is<json::object>())
+        if (v.is_object() && v.contains("x") && v.contains("y"))
         {
-            auto xValue = v.get("x");
-            auto yValue = v.get("y");
+            auto xValue = v["x"];
+            auto yValue = v["y"];
 
-            if (xValue.is<double>() && yValue.is<double>())
+            if (xValue.is_number() && yValue.is_number())
             {
                 result.x = static_cast<float>(xValue.get<double>());
                 result.y = static_cast<float>(yValue.get<double>());
@@ -2372,8 +2359,8 @@ bool ed::Settings::Parse(const char* data, const char* dataEnd, Settings& settin
 
     //auto& settingsObject = settingsValue.get<json::object>();
 
-    auto& nodesValue = settingsValue.get("nodes");
-    if (nodesValue.is<json::object>())
+    auto& nodesValue = settingsValue["nodes"];
+    if (nodesValue.is_object())
     {
         for (auto& node : nodesValue.get<json::object>())
         {
@@ -2387,8 +2374,8 @@ bool ed::Settings::Parse(const char* data, const char* dataEnd, Settings& settin
         }
     }
 
-    auto& selectionValue = settingsValue.get("selection");
-    if (selectionValue.is<json::array>())
+    auto& selectionValue = settingsValue["selection"];
+    if (selectionValue.is_array())
     {
         const auto selectionArray = selectionValue.get<json::array>();
 
@@ -2396,21 +2383,21 @@ bool ed::Settings::Parse(const char* data, const char* dataEnd, Settings& settin
         result.m_Selection.resize(0);
         for (auto& selection : selectionArray)
         {
-            if (selection.is<double>())
-                result.m_Selection.push_back(deserializeObjectId(selection.to_str()));
+            if (selection.is_string())
+                result.m_Selection.push_back(deserializeObjectId(selection.get<json::string>()));
         }
     }
 
-    auto& viewValue = settingsValue.get("view");
-    if (viewValue.is<json::object>())
+    auto& viewValue = settingsValue["view"];
+    if (viewValue.is_object())
     {
-        auto& viewScrollValue = viewValue.get("scroll");
-        auto& viewZoomValue = viewValue.get("zoom");
+        auto& viewScrollValue = viewValue["scroll"];
+        auto& viewZoomValue   = viewValue["zoom"];
 
         if (!tryParseVector(viewScrollValue, result.m_ViewScroll))
             result.m_ViewScroll = ImVec2(0, 0);
 
-        result.m_ViewZoom = viewZoomValue.is<double>() ? static_cast<float>(viewZoomValue.get<double>()) : 1.0f;
+        result.m_ViewZoom = viewZoomValue.is_number() ? static_cast<float>(viewZoomValue.get<double>()) : 1.0f;
     }
 
     settings = std::move(result);
@@ -5143,8 +5130,7 @@ std::string ed::Config::Load()
             file.seekg(0, std::ios_base::beg);
 
             data.reserve(size);
-
-            std::copy(std::istream_iterator<char>(file), std::istream_iterator<char>(), std::back_inserter(data));
+            data.assign(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
         }
     }
 

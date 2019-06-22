@@ -13,7 +13,7 @@ Project purpose is to serve as a basis for more complex solutions like blueprint
 ![Preview](Screenshots/node_editor_overview.gif)
 
 Project is a prototype. What that means in practise:
- * API will break 
+ * API will break
  * Project is hacked around fresh ideas, it does not pursue production quality, but should be decent enough to use without hassle
  * Relies on modified version of ImGui 1.72 (WIP) with:
     - https://github.com/thedmd/imgui/tree/feature/draw-list-fringe-scale
@@ -21,15 +21,13 @@ Project is a prototype. What that means in practise:
     - https://github.com/thedmd/imgui/tree/feature/layout (used in blueprints sample only)
  * Keeping zero dependencies is not a priority, current one:
     - C++14
-    - std::map, std::vector
-    - picojson
+    - Modified ImGui
  * Please report issues or questions if something isn't clear
- 
+
 ## Status
 
 Project is used to implement blueprint editor in Spark CE engine. It proven itself so furher work can be pursued. Some goals:
- * Remove dependency from picojson
- * Remove dependency from std::map and std::vector (ImVector<> should be sufficient)
+ * (maybe) Remove dependency from std::map and std::vector (ImVector<> should be sufficient)
  * Investigate if C++14 is low bar enough
  * Use vanila copy of ImGui
 
