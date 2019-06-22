@@ -64,8 +64,8 @@ struct value
     value(      number   v): m_Type(construct(m_Storage,           v))  {}
     ~value() { destruct(m_Storage, m_Type); }
 
-    value operator=(value&& other)      { if (this != &other) { value(std::move(other)).swap(*this); } return *this; }
-    value operator=(const value& other) { if (this != &other) { value(          other).swap(*this);  } return *this; }
+    value& operator=(value&& other)      { if (this != &other) { value(std::move(other)).swap(*this); } return *this; }
+    value& operator=(const value& other) { if (this != &other) { value(          other).swap(*this);  } return *this; }
 
     value& operator=(      null)       { auto other = value(           );  swap(other); return *this; }
     value& operator=(      object&& v) { auto other = value(std::move(v)); swap(other); return *this; }
