@@ -1169,6 +1169,7 @@ void Application_Frame()
             ed::PushStyleColor(ed::StyleColor_NodeBg, ImColor(255, 255, 255, 64));
             ed::PushStyleColor(ed::StyleColor_NodeBorder, ImColor(255, 255, 255, 64));
             ed::BeginNode(node.ID);
+            ImGui::PushID(node.ID.AsPointer());
             ImGui::BeginVertical("content");
             ImGui::BeginHorizontal("horizontal");
             ImGui::Spring(1);
@@ -1177,6 +1178,7 @@ void Application_Frame()
             ImGui::EndHorizontal();
             ed::Group(node.Size);
             ImGui::EndVertical();
+            ImGui::PopID();
             ed::EndNode();
             ed::PopStyleColor(2);
             ImGui::PopStyleVar();
