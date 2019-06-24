@@ -677,17 +677,19 @@ void ShowLeftPane(float paneWidth)
 
     paneWidth = ImGui::GetContentRegionAvailWidth();
 
-    ImGui::GetWindowDrawList()->AddRectFilled(
-        ImGui::GetCursorScreenPos(),
-        ImGui::GetCursorScreenPos() + ImVec2(paneWidth, ImGui::GetTextLineHeight()),
-        ImColor(ImGui::GetStyle().Colors[ImGuiCol_HeaderActive]), ImGui::GetTextLineHeight() * 0.25f);
-    ImGui::Spacing(); ImGui::SameLine();
-    ImGui::TextUnformatted("Style");
-
     static bool showStyleEditor = false;
     ImGui::BeginHorizontal("Style Editor", ImVec2(paneWidth, 0));
+    ImGui::Spring(0.0f, 0.0f);
+    if (ImGui::Button("Zoom to Content"))
+        ed::NavigateToContent();
+    ImGui::Spring(0.0f);
+    if (ImGui::Button("Show Flow"))
+    {
+        for (auto& link : s_Links)
+            ed::Flow(link.ID);
+    }
     ImGui::Spring();
-    if (ImGui::Button("Show Editor"))
+    if (ImGui::Button("Edit Style"))
         showStyleEditor = true;
     ImGui::EndHorizontal();
 
