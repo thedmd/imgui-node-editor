@@ -2176,15 +2176,11 @@ ed::json::value ed::NodeSettings::Serialize()
 
 bool ed::NodeSettings::Parse(const std::string& string, NodeSettings& settings)
 {
-# if 0 // #fixme
-    json::value settingsValue;
-    auto error = json::parse(settingsValue, data, dataEnd);
-    if (!error.empty() || settingsValue.is<json::null>())
+    auto settingsValue = json::value::parse(string);
+    if (settingsValue.is_discarded())
         return false;
 
     return Parse(settingsValue, settings);
-# endif
-    return 0;
 }
 
 bool ed::NodeSettings::Parse(const json::value& data, NodeSettings& result)
