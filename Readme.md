@@ -104,3 +104,7 @@ Result:
 ![00-Simple.png](Screenshots/00-Simple.png)
 
 For more details please visit [Examples](Examples) folder.
+
+### Blueprints Example
+
+![Preview2](https://user-images.githubusercontent.com/1197433/60053458-2f2b9b00-96d8-11e9-92f9-08aff63b2023.png)
