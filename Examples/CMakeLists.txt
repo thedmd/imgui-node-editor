@@ -75,5 +75,5 @@ endmacro()
 add_subdirectory(Common/Application)
 
 add_subdirectory(Canvas)
-add_subdirectory(00-Simple)
-add_subdirectory(01-Blueprints)
+add_subdirectory(Simple)
+add_subdirectory(Blueprints)
