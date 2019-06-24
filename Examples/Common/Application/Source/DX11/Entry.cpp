@@ -189,7 +189,8 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _
     _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
 # endif
     // Create application window
-    const auto wc = WNDCLASSEX{ sizeof(WNDCLASSEX), CS_CLASSDC, ImGui_WinProc, 0L, 0L, GetModuleHandle(nullptr), nullptr, LoadCursor(nullptr, IDC_ARROW), nullptr, nullptr, c_ClassName, nullptr };
+    const auto wc = WNDCLASSEX{ sizeof(WNDCLASSEX), CS_CLASSDC, ImGui_WinProc, 0L, 0L, GetModuleHandle(nullptr), LoadIcon(GetModuleHandle(nullptr), IDI_APPLICATION),
+        LoadCursor(nullptr, IDC_ARROW), nullptr, nullptr, c_ClassName, LoadIcon(GetModuleHandle(nullptr), IDI_APPLICATION) };
     RegisterClassEx(&wc); AX_SCOPE_EXIT { UnregisterClass(c_ClassName, wc.hInstance) ; };
 
     auto hwnd = CreateWindow(c_ClassName, c_WindowName.c_str(), WS_OVERLAPPEDWINDOW, 1920 + 100, 100, 1440, 800, nullptr, nullptr, wc.hInstance, nullptr);

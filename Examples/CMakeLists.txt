@@ -11,6 +11,17 @@ macro(add_example name)
     set(_Example_Type)
     if (WIN32)
         set(_Example_Type WIN32)
+
+        set(ApplicationIcon ${CMAKE_SOURCE_DIR}/Examples/Common/Support/Icon.ico)
+        file(TO_NATIVE_PATH "${ApplicationIcon}" ApplicationIcon)
+        string(REPLACE "\\" "\\\\" ApplicationIcon "${ApplicationIcon}")
+        configure_file(
+            ${CMAKE_SOURCE_DIR}/Examples/Common/Support/Resource.rc.in
+            ${CMAKE_CURRENT_BINARY_DIR}/Resource.rc
+        )
+        set(_Example_Resources
+            ${CMAKE_CURRENT_BINARY_DIR}/Resource.rc
+        )
     elseif (APPLE)
         set(_Example_Type MACOSX_BUNDLE)
 
