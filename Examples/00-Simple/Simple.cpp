@@ -7,6 +7,11 @@ namespace ed = ax::NodeEditor;
 
 static ed::EditorContext* g_Context = nullptr;
 
+const char* Application_GetName()
+{
+    return "Simple";
+}
+
 void Application_Initialize()
 {
     ed::Config config;

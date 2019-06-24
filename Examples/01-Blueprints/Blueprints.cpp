@@ -456,6 +456,11 @@ void BuildNodes()
         BuildNode(&node);
 }
 
+const char* Application_GetName()
+{
+    return "Blueprints";
+}
+
 void Application_Initialize()
 {
     ed::Config config;

@@ -166,10 +166,24 @@ int Application_GetTextureHeight(ImTextureID texture)
     return ImGui_GetTextureHeight(texture);
 }
 
+# if defined(_UNICODE)
+std::wstring widen(const std::string& str)
+{
+    int size = MultiByteToWideChar(CP_UTF8, 0, &str[0], (int)str.size(), nullptr, 0);
+    std::wstring result(size, 0);
+    MultiByteToWideChar(CP_UTF8, 0, str.data(), (int)str.size(), (wchar_t*)result.data(), size);
+    return result;
+}
+# endif
+
 int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _In_ LPSTR lpCmdLine, _In_ int nShowCmd)
 {
     const auto c_ClassName  = _T("Node Editor Class");
-    const auto c_WindowName = _T("Node Editor");
+# if defined(_UNICODE)
+    const std::wstring c_WindowName = widen(Application_GetName());
+# else
+    const std::string c_WindowName = Application_GetName();
+# endif
 
 # if defined(_DEBUG)
     _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
@@ -178,7 +192,7 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _
     const auto wc = WNDCLASSEX{ sizeof(WNDCLASSEX), CS_CLASSDC, ImGui_WinProc, 0L, 0L, GetModuleHandle(nullptr), nullptr, LoadCursor(nullptr, IDC_ARROW), nullptr, nullptr, c_ClassName, nullptr };
     RegisterClassEx(&wc); AX_SCOPE_EXIT { UnregisterClass(c_ClassName, wc.hInstance) ; };
 
-    auto hwnd = CreateWindow(c_ClassName, c_WindowName, WS_OVERLAPPEDWINDOW, 1920 + 100, 100, 1440, 800, nullptr, nullptr, wc.hInstance, nullptr);
+    auto hwnd = CreateWindow(c_ClassName, c_WindowName.c_str(), WS_OVERLAPPEDWINDOW, 1920 + 100, 100, 1440, 800, nullptr, nullptr, wc.hInstance, nullptr);
 
     // Initialize Direct3D
     AX_SCOPE_EXIT{ CleanupDeviceD3D(); };

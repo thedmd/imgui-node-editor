@@ -59,17 +59,17 @@ ImTextureID Application_CreateTexture(const void* data, int width, int height)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
     glBindTexture(GL_TEXTURE_2D, last_texture);
-    
+
     texture.Width  = width;
     texture.Height = height;
-    
+
     return reinterpret_cast<ImTextureID>(texture.TextureID);
 }
 
 static std::vector<ImTexture>::iterator Application_FindTexture(ImTextureID texture)
 {
     auto textureID = static_cast<GLuint>(reinterpret_cast<std::intptr_t>(texture));
-    
+
     return std::find_if(g_Textures.begin(), g_Textures.end(), [textureID](ImTexture& texture)
     {
         return texture.TextureID == textureID;
@@ -81,9 +81,9 @@ void Application_DestroyTexture(ImTextureID texture)
     auto textureIt = Application_FindTexture(texture);
     if (textureIt == g_Textures.end())
         return;
-    
+
     glDeleteTextures(1, &textureIt->TextureID);
-    
+
     g_Textures.erase(textureIt);
 }
 
@@ -121,7 +121,7 @@ int main(int, char**)
     glfwWindowHint(GLFW_COCOA_GRAPHICS_SWITCHING, GL_TRUE);
 #endif
 #endif
-    GLFWwindow* window = glfwCreateWindow(1280, 720, "ImGui OpenGL3 example", NULL, NULL);
+    GLFWwindow* window = glfwCreateWindow(1280, 720, Application_GetName(), NULL, NULL);
     glfwMakeContextCurrent(window);
     glfwSwapInterval(1); // Enable vsync
     gl3wInit();
@@ -190,7 +190,7 @@ int main(int, char**)
     ImGui_ImplGlfwGL3_Shutdown();
 
     ImGui::DestroyContext();
-    
+
     glfwTerminate();
 
     return 0;

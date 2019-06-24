@@ -57,6 +57,11 @@ static bool Splitter(bool split_vertically, float thickness, float* size1, float
     return SplitterBehavior(bb, id, split_vertically ? ImGuiAxis_X : ImGuiAxis_Y, size1, size2, min_size1, min_size2, 0.0f);
 }
 
+const char* Application_GetName()
+{
+    return "Canvas";
+}
+
 void Application_Initialize()
 {
 }
