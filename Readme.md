@@ -134,3 +134,7 @@ For more details please visit [Examples](Examples) folder.
 ### Blueprints Example
 
 ![Preview2](https://user-images.githubusercontent.com/1197433/60053458-2f2b9b00-96d8-11e9-92f9-08aff63b2023.png)
+
+### Here is Node Editor at work in Spark CE
+![image](https://user-images.githubusercontent.com/1197433/60381756-174a7300-9a5a-11e9-9a04-00f10565e05e.png)
+![image](https://user-images.githubusercontent.com/1197433/60381760-2f21f700-9a5a-11e9-9053-c0547a9cc40a.png)
