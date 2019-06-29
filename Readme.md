@@ -29,6 +29,7 @@ Here are some highlights:
         ![image](https://user-images.githubusercontent.com/1197433/60381467-9db08600-9a55-11e9-9868-2ae849f67de9.png)
         ![image](https://user-images.githubusercontent.com/1197433/60381488-cd5f8e00-9a55-11e9-8346-1f4c8d6bea22.png)
  * Automatic highlights for nodes, pins and links:
+ 
     ![image](https://user-images.githubusercontent.com/1197433/60381536-9e95e780-9a56-11e9-80bb-dad0d3d9557a.png)
  * Smooth navigation and selection
  * Node state can be saved in user context, so layout will not break
