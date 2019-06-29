@@ -12,7 +12,12 @@ Project purpose is to serve as a basis for more complex solutions like blueprint
 
 ![Preview](Screenshots/node_editor_overview.gif)
 
-Node Editor is build around an idea "draw your content, we do the rest", which mean interactions are handled by editor, content rendering is handled by user.
+Node Editor is build around an idea "draw your content, we do the rest", which mean interactions are handled by editor, content rendering is handled by user. Editor will take care of:
+ * placing your node in the word
+ * dragging nodes
+ * zoom and scrolling
+ * selection
+ * various interaction that can be quieried by API (creation, deletion, selection changes, etc.)
 
 Here are some highlights:
  * Node movement and selection is handled internally
