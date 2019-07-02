@@ -1,5 +1,62 @@
 ﻿# define IMGUI_DEFINE_MATH_OPERATORS
 # include "imgui_canvas.h"
+# include <type_traits>
+
+// https://stackoverflow.com/a/36079786
+# define DECLARE_HAS_MEMBER(__trait_name__, __member_name__)                         \
+                                                                                     \
+    template <typename __boost_has_member_T__>                                       \
+    class __trait_name__                                                             \
+    {                                                                                \
+        using check_type = ::std::remove_const_t<__boost_has_member_T__>;            \
+        struct no_type {char x[2];};                                                 \
+        using  yes_type = char;                                                      \
+                                                                                     \
+        struct  base { void __member_name__() {}};                                   \
+        struct mixin : public base, public check_type {};                            \
+                                                                                     \
+        template <void (base::*)()> struct aux {};                                   \
+                                                                                     \
+        template <typename U> static no_type  test(aux<&U::__member_name__>*);       \
+        template <typename U> static yes_type test(...);                             \
+                                                                                     \
+        public:                                                                      \
+                                                                                     \
+        static constexpr bool value = (sizeof(yes_type) == sizeof(test<mixin>(0)));  \
+    }
+
+namespace ImCanvasDetails {
+
+DECLARE_HAS_MEMBER(HasFringeScale, _FringeScale);
+
+struct FringeScaleRef
+{
+    // Overload is present when ImDrawList does have _FringeScale member variable.
+    template <typename T>
+    static float& Get(typename std::enable_if<HasFringeScale<T>::value, T>::type* drawList)
+    {
+        return drawList->_FringeScale;
+    }
+
+    // Overload is present when ImDrawList does not have _FringeScale member variable.
+    template <typename T>
+    static float& Get(typename std::enable_if<!HasFringeScale<T>::value, T>::type*)
+    {
+        static float placeholder = 1.0f;
+        return placeholder;
+    }
+};
+
+} // namespace ImCanvasDetails
+
+// Returns a reference to _FringeScale extension to ImDrawList
+//
+// If ImDrawList does not have _FringeScale a placeholder is returned.
+static inline float& ImFringeScaleRef(ImDrawList* drawList)
+{
+    using namespace ImCanvasDetails;
+    return FringeScaleRef::Get<ImDrawList>(drawList);
+}
 
 static inline ImVec2 ImSelectPositive(const ImVec2& lhs, const ImVec2& rhs) { return ImVec2(lhs.x > 0.0f ? lhs.x : rhs.x, lhs.y > 0.0f ? lhs.y : rhs.y); }
 
@@ -319,8 +376,9 @@ void ImGuiEx::Canvas::EnterLocalSpace()
 
     m_ViewRect = CalcViewRect(m_View);;
 
-    m_LastFringeScale = m_DrawList->_FringeScale;
-    m_DrawList->_FringeScale *= m_View.InvScale;
+    auto& fringeScale = ImFringeScaleRef(m_DrawList);
+    m_LastFringeScale = fringeScale;
+    fringeScale *= m_View.InvScale;
 }
 
 void ImGuiEx::Canvas::LeaveLocalSpace()
@@ -384,7 +442,8 @@ void ImGuiEx::Canvas::LeaveLocalSpace()
         }
     }
 
-    m_DrawList->_FringeScale = m_LastFringeScale;
+    auto& fringeScale = ImFringeScaleRef(m_DrawList);
+    fringeScale = m_LastFringeScale;
 
     // And pop \o/
     ImGui::PopClipRect();

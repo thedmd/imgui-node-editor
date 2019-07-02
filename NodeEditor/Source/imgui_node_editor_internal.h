@@ -57,17 +57,68 @@ inline ImRect ImGui_GetItemRect();
 
 
 //------------------------------------------------------------------------------
+// https://stackoverflow.com/a/36079786
+# define DECLARE_HAS_MEMBER(__trait_name__, __member_name__)                         \
+                                                                                     \
+    template <typename __boost_has_member_T__>                                       \
+    class __trait_name__                                                             \
+    {                                                                                \
+        using check_type = ::std::remove_const_t<__boost_has_member_T__>;            \
+        struct no_type {char x[2];};                                                 \
+        using  yes_type = char;                                                      \
+                                                                                     \
+        struct  base { void __member_name__() {}};                                   \
+        struct mixin : public base, public check_type {};                            \
+                                                                                     \
+        template <void (base::*)()> struct aux {};                                   \
+                                                                                     \
+        template <typename U> static no_type  test(aux<&U::__member_name__>*);       \
+        template <typename U> static yes_type test(...);                             \
+                                                                                     \
+        public:                                                                      \
+                                                                                     \
+        static constexpr bool value = (sizeof(yes_type) == sizeof(test<mixin>(0)));  \
+    }
+
+DECLARE_HAS_MEMBER(HasFringeScale, _FringeScale);
+
+# undef DECLARE_HAS_MEMBER
+
+struct FringeScaleRef
+{
+    // Overload is present when ImDrawList does have _FringeScale member variable.
+    template <typename T>
+    static float& Get(typename std::enable_if<HasFringeScale<T>::value, T>::type* drawList)
+    {
+        return drawList->_FringeScale;
+    }
+
+    // Overload is present when ImDrawList does not have _FringeScale member variable.
+    template <typename T>
+    static float& Get(typename std::enable_if<!HasFringeScale<T>::value, T>::type*)
+    {
+        static float placeholder = 1.0f;
+        return placeholder;
+    }
+};
+
+static inline float& ImFringeScaleRef(ImDrawList* drawList)
+{
+    return FringeScaleRef::Get<ImDrawList>(drawList);
+}
+
 struct FringeScaleScope
 {
+
     FringeScaleScope(float scale)
-        : m_LastFringeScale(ImGui::GetWindowDrawList()->_FringeScale)
+        : m_LastFringeScale(ImFringeScaleRef(ImGui::GetWindowDrawList()))
     {
-        ImGui::GetWindowDrawList()->_FringeScale = scale;
+        ImFringeScaleRef(ImGui::GetWindowDrawList()) = scale;
     }
 
     ~FringeScaleScope()
     {
-        ImGui::GetWindowDrawList()->_FringeScale = m_LastFringeScale;
+        ImFringeScaleRef(ImGui::GetWindowDrawList()) = m_LastFringeScale;
     }
 
 private:
