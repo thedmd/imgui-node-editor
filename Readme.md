@@ -49,13 +49,14 @@ Please report issues or questions if something isn't clear.
 
 ## Dependencies
 
- * Relies on modified version of ImGui 1.72 (WIP) with:
+ * ~~Relies on modified version of ImGui 1.72 (WIP)~~
+ * Vanilla ImGui 1.72 (WIP)
+ * Optional extension you can pull into your local copy of ImGui node editor can take advantage of:
     - https://github.com/thedmd/imgui/tree/feature/draw-list-fringe-scale (for sharp rendering, while zooming)
     - https://github.com/thedmd/imgui/tree/feature/extra-keys (for extra shortcuts)
+ * Examples dependencies:
     - https://github.com/thedmd/imgui/tree/feature/layout (used in blueprints sample only)
- * Keeping zero dependencies is not a priority, current one:
-    - C++14 
-    - Modified ImGui
+ * C++14 
 
 ## Code
 
