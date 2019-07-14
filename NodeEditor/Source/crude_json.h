@@ -159,7 +159,7 @@ private:
         return type;
     }
 
-    static type_t construct(storage_t& storage,       null)           {                                                       return type_t::null;    }
+    static type_t construct(storage_t& storage,       null)           { (void)storage;                                        return type_t::null;    }
     static type_t construct(storage_t& storage,       object&& value) { new (&storage)  object(std::forward<object>(value));  return type_t::object;  }
     static type_t construct(storage_t& storage, const object&  value) { new (&storage)  object(value);                        return type_t::object;  }
     static type_t construct(storage_t& storage,       array&&  value) { new (&storage)   array(std::forward<array>(value));   return type_t::array;   }

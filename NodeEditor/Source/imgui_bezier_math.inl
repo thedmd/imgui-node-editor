@@ -27,6 +27,8 @@ inline T ImLinearBezier(const T& p0, const T& p1, float t)
 template <typename T>
 inline T ImLinearBezierDt(const T& p0, const T& p1, float t)
 {
+    IM_UNUSED(t);
+
     return p1 - p0;
 }
 
@@ -572,10 +574,10 @@ inline void ImCubicBezierFixedStep(ImCubicBezierFixedStepCallback callback, void
     if (sample.BreakSearch)
         return;
 
-    const auto length       = ImCubicBezierLength(p0, p1, p2, p3);
-    const auto point_count  = static_cast<int>(length / step) + (overshoot ? 2 : 1);
+    const auto total_length = ImCubicBezierLength(p0, p1, p2, p3);
+    const auto point_count  = static_cast<int>(total_length / step) + (overshoot ? 2 : 1);
     const auto t_min        = 0.0f;
-    const auto t_max        = step * point_count / length;
+    const auto t_max        = step * point_count / total_length;
     const auto t_0          = (t_min + t_max) * 0.5f;
 
     // #todo: replace map with ImVector + binary search
@@ -589,17 +591,17 @@ inline void ImCubicBezierFixedStep(ImCubicBezierFixedStepCallback callback, void
         float t       = t_0;
 
         float t_best     = t;
-        float error_best = length;
+        float error_best = total_length;
 
         while (true)
         {
             auto cacheIt = cache.find(t);
             if (cacheIt == cache.end())
             {
-                const auto front    = ImCubicBezierSplit(p0, p1, p2, p3, t).Left;
-                const auto length   = ImCubicBezierLength(front);
+                const auto front        = ImCubicBezierSplit(p0, p1, p2, p3, t).Left;
+                const auto split_length = ImCubicBezierLength(front);
 
-                cacheIt = cache.emplace(t, length).first;
+                cacheIt = cache.emplace(t, split_length).first;
             }
 
             const auto length   = cacheIt->second;

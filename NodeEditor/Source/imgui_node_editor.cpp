@@ -123,7 +123,7 @@ static void LogV(const char* fmt, va_list args)
     const int buffer_size = 1024;
     static char buffer[1024];
 
-    int w = vsnprintf(buffer, buffer_size - 1, fmt, args);
+    vsnprintf(buffer, buffer_size - 1, fmt, args);
     buffer[buffer_size - 1] = 0;
 
     ImGui::LogText("\nNode Editor: %s", buffer);
@@ -2307,8 +2307,8 @@ void ed::Settings::ClearDirty(Node* node)
         m_IsDirty     = false;
         m_DirtyReason = SaveReasonFlags::None;
 
-        for (auto& node : m_Nodes)
-            node.ClearDirty();
+        for (auto& knownNode : m_Nodes)
+            knownNode.ClearDirty();
     }
 }
 
@@ -2417,11 +2417,11 @@ bool ed::Settings::Parse(const std::string& string, Settings& settings)
         {
             auto id = deserializeObjectId(node.first.c_str()).AsNodeId();
 
-            auto settings = result.FindNode(id);
-            if (!settings)
-                settings = result.AddNode(id);
+            auto nodeSettings = result.FindNode(id);
+            if (!nodeSettings)
+                nodeSettings = result.AddNode(id);
 
-            NodeSettings::Parse(node.second, *settings);
+            NodeSettings::Parse(node.second, *nodeSettings);
         }
     }
 
@@ -2718,6 +2718,8 @@ ImVec2 ed::FlowAnimation::SamplePath(float distance)
 
 void ed::FlowAnimation::OnUpdate(float progress)
 {
+    IM_UNUSED(progress);
+
     m_Offset += m_Speed * ImGui::GetIO().DeltaTime;
 }
 
@@ -2794,6 +2796,7 @@ ed::FlowAnimation* ed::FlowAnimationController::GetOrCreate(Link* link)
 
 void ed::FlowAnimationController::Release(FlowAnimation* animation)
 {
+    IM_UNUSED(animation);
 }
 
 
@@ -2910,6 +2913,8 @@ ed::EditorAction::AcceptResult ed::NavigateAction::Accept(const Control& control
 
 bool ed::NavigateAction::Process(const Control& control)
 {
+    IM_UNUSED(control);
+
     if (!m_IsActive)
         return false;
 
@@ -2937,6 +2942,8 @@ bool ed::NavigateAction::Process(const Control& control)
 
 bool ed::NavigateAction::HandleZoom(const Control& control)
 {
+    IM_UNUSED(control);
+
     const auto currentAction  = Editor->GetCurrentAction();
     const auto allowOffscreen = currentAction && currentAction->IsDragging();
 
@@ -2991,6 +2998,8 @@ void ed::NavigateAction::ShowMetrics()
 
 void ed::NavigateAction::NavigateTo(const ImRect& bounds, bool zoomIn, float duration, NavigationReason reason)
 {
+    IM_UNUSED(duration);
+
     if (ImRect_IsEmpty(bounds))
         return;
 
@@ -3576,6 +3585,8 @@ ed::EditorAction::AcceptResult ed::SelectAction::Accept(const Control& control)
 
 bool ed::SelectAction::Process(const Control& control)
 {
+    IM_UNUSED(control);
+
     if (m_CommitSelection)
     {
         Editor->ClearSelection();
@@ -3741,6 +3752,8 @@ ed::EditorAction::AcceptResult ed::ContextMenuAction::Accept(const Control& cont
 
 bool ed::ContextMenuAction::Process(const Control& control)
 {
+    IM_UNUSED(control);
+
     m_CandidateMenu = None;
     m_CurrentMenu   = None;
     m_ContextId     = ObjectId();
@@ -3943,6 +3956,8 @@ ed::EditorAction::AcceptResult ed::ShortcutAction::Accept(const Control& control
 
 bool ed::ShortcutAction::Process(const Control& control)
 {
+    IM_UNUSED(control);
+
     m_IsActive        = false;
     m_CurrentAction   = None;
     m_Context.resize(0);
@@ -4426,6 +4441,8 @@ ed::EditorAction::AcceptResult ed::DeleteItemsAction::Accept(const Control& cont
 
 bool ed::DeleteItemsAction::Process(const Control& control)
 {
+    IM_UNUSED(control);
+
     if (!m_IsActive)
         return false;
 
@@ -5057,12 +5074,12 @@ void ed::Style::PopVar(int count)
     while (count > 0)
     {
         auto& modifier = m_VarStack.back();
-        if (auto v = GetVarFloatAddr(modifier.Index))
-            *v = modifier.Value.x;
-        else if (auto v = GetVarVec2Addr(modifier.Index))
-            *v = ImVec2(modifier.Value.x, modifier.Value.y);
-        else if (auto v = GetVarVec4Addr(modifier.Index))
-            *v = modifier.Value;
+        if (auto floatValue = GetVarFloatAddr(modifier.Index))
+            *floatValue = modifier.Value.x;
+        else if (auto vec2Value = GetVarVec2Addr(modifier.Index))
+            *vec2Value = ImVec2(modifier.Value.x, modifier.Value.y);
+        else if (auto vec4Value = GetVarVec4Addr(modifier.Index))
+            *vec4Value = modifier.Value;
         m_VarStack.pop_back();
         --count;
     }

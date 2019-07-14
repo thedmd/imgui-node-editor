@@ -556,7 +556,7 @@ private:
         if ((c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f'))
         {
             advance();
-            result.push_back(c);
+            result.push_back(static_cast<char>(c));
             return true;
         }
 

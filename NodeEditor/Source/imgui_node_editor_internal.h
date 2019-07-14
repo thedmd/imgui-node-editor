@@ -239,7 +239,7 @@ struct Object
     virtual void Draw(ImDrawList* drawList, DrawFlags flags = None) = 0;
 
     virtual bool AcceptDrag() { return false; }
-    virtual void UpdateDrag(const ImVec2& offset) { }
+    virtual void UpdateDrag(const ImVec2& offset) { IM_UNUSED(offset); }
     virtual bool EndDrag() { return false; }
     virtual ImVec2 DragStartLocation() { return GetBounds().Min; }
 
@@ -656,7 +656,7 @@ protected:
     virtual void OnFinish() {}
     virtual void OnStop() {}
 
-    virtual void OnUpdate(float progress) {}
+    virtual void OnUpdate(float progress) { IM_UNUSED(progress); }
 };
 
 struct NavigateAnimation final: Animation
@@ -727,6 +727,7 @@ struct AnimationController
 
     virtual void Draw(ImDrawList* drawList)
     {
+        IM_UNUSED(drawList);
     }
 };
 
