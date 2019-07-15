@@ -24,17 +24,17 @@ Here are some highlights:
  * Node and pin contents are fully customizable
  * Fully stylled, default theme is modeled after UE4 blueprints
     - Flexibe enough to produce such nodes:
-    
+
         ![image](https://user-images.githubusercontent.com/1197433/60381408-c3895b00-9a54-11e9-8312-d9fc9af63347.png)
         ![image](https://user-images.githubusercontent.com/1197433/60381400-a3599c00-9a54-11e9-9c51-a88f25f7db07.png)
         ![image](https://user-images.githubusercontent.com/1197433/60381589-7d81c680-9a57-11e9-87b1-9f73ec33bea4.png)
     - Customizable links based on Bézier curves:
-    
+
         ![image](https://user-images.githubusercontent.com/1197433/60381475-ac973880-9a55-11e9-9ad9-5862975cd2b8.png)
         ![image](https://user-images.githubusercontent.com/1197433/60381467-9db08600-9a55-11e9-9868-2ae849f67de9.png)
         ![image](https://user-images.githubusercontent.com/1197433/60381488-cd5f8e00-9a55-11e9-8346-1f4c8d6bea22.png)
  * Automatic highlights for nodes, pins and links:
- 
+
     ![image](https://user-images.githubusercontent.com/1197433/60381536-9e95e780-9a56-11e9-80bb-dad0d3d9557a.png)
  * Smooth navigation and selection
  * Node state can be saved in user context, so layout will not break
@@ -43,7 +43,7 @@ Here are some highlights:
  * Basic shortcuts support (cut/copy/paste/delete)
  * ImGui style API
 
-Editor is used to implement blueprint editor in Spark CE engine, it proved itself there by allowing to do everything we needed. Therefore it is now slowly moving into stable state from beeing a prototype. 
+Editor is used to implement blueprint editor in Spark CE engine, it proved itself there by allowing to do everything we needed. Therefore it is now slowly moving into stable state from beeing a prototype.
 
 Please report issues or questions if something isn't clear.
 
@@ -56,7 +56,7 @@ Please report issues or questions if something isn't clear.
     - https://github.com/thedmd/imgui/tree/feature/extra-keys (for extra shortcuts)
  * Examples dependencies:
     - https://github.com/thedmd/imgui/tree/feature/layout (used in blueprints sample only)
- * C++14 
+ * C++14
 
 ## Code
 
@@ -113,11 +113,11 @@ void Application_Frame()
     // Start drawing nodes.
     ed::BeginNode(uniqueId++);
         ImGui::Text("Node A");
-        ed::BeginPin(uniqueId++, ed::PinKind::Target);
+        ed::BeginPin(uniqueId++, ed::PinKind::Input);
             ImGui::Text("-> In");
         ed::EndPin();
         ImGui::SameLine();
-        ed::BeginPin(uniqueId++, ed::PinKind::Source);
+        ed::BeginPin(uniqueId++, ed::PinKind::Output);
             ImGui::Text("Out ->");
         ed::EndPin();
     ed::EndNode();
