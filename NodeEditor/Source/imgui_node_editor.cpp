@@ -226,6 +226,15 @@ static void ImDrawList_SwapChannels(ImDrawList* drawList, int left, int right)
 	ImDrawListSplitter_SwapChannels(&drawList->_Splitter, left, right);
 }
 
+static void ImDrawList_SwapSplitter(ImDrawList* drawList, ImDrawListSplitter& splitter)
+{
+    auto& currentSplitter = drawList->_Splitter;
+
+    std::swap(currentSplitter._Current, splitter._Current);
+    std::swap(currentSplitter._Count, splitter._Count);
+    currentSplitter._Channels.swap(splitter._Channels);
+}
+
 //static void ImDrawList_TransformChannel_Inner(ImVector<ImDrawVert>& vtxBuffer, const ImVector<ImDrawIdx>& idxBuffer, const ImVector<ImDrawCmd>& cmdBuffer, const ImVec2& preOffset, const ImVec2& scale, const ImVec2& postOffset)
 //{
 //    auto idxRead = idxBuffer.Data;
@@ -1031,6 +1040,7 @@ ed::EditorContext::EditorContext(const ax::NodeEditor::Config* config)
     , m_IsInitialized(false)
     , m_Settings()
     , m_Config(config)
+    , m_ExternalChannel(0)
 {
 }
 
@@ -1042,6 +1052,8 @@ ed::EditorContext::~EditorContext()
     for (auto link  : m_Links)  delete link.m_Object;
     for (auto pin   : m_Pins)   delete pin.m_Object;
     for (auto node  : m_Nodes)  delete node.m_Object;
+
+    m_Splitter.ClearFreeMemory();
 }
 
 void ed::EditorContext::Begin(const char* id, const ImVec2& size)
@@ -1058,6 +1070,11 @@ void ed::EditorContext::Begin(const char* id, const ImVec2& size)
     for (auto node  : m_Nodes)   node->Reset();
     for (auto pin   : m_Pins)     pin->Reset();
     for (auto link  : m_Links)   link->Reset();
+
+    auto drawList = ImGui::GetWindowDrawList();
+
+    ImDrawList_SwapSplitter(drawList, m_Splitter);
+    m_ExternalChannel = drawList->_Splitter._Current;
 
     ImGui::PushID(id);
 
@@ -1094,8 +1111,6 @@ void ed::EditorContext::Begin(const char* id, const ImVec2& size)
         m_NavigateAction.StopMoveOverEdge();
 
     m_Canvas.SetView(m_NavigateAction.GetView());
-
-    auto drawList = ImGui::GetWindowDrawList();
 
     // #debug #clip
     //ImGui::Text("CLIP = { x=%g y=%g w=%g h=%g r=%g b=%g }",
@@ -1408,6 +1423,8 @@ void ed::EditorContext::End()
     if (m_IsCanvasVisible)
         m_Canvas.End();
 
+    ImDrawList_SwapSplitter(drawList, m_Splitter);
+
     // Draw border
     {
         auto& style = ImGui::GetStyle();
@@ -1650,20 +1667,26 @@ void ed::EditorContext::NotifyLinkDeleted(Link* link)
         m_LastActiveLink = nullptr;
 }
 
-void ed::EditorContext::Suspend()
+void ed::EditorContext::Suspend(SuspendFlags flags)
 {
-    auto lastChannel = ImGui::GetWindowDrawList()->_Splitter._Current;
-    ImGui::GetWindowDrawList()->ChannelsSetCurrent(0);
+    auto drawList = ImGui::GetWindowDrawList();
+    auto lastChannel = drawList->_Splitter._Current;
+    drawList->ChannelsSetCurrent(m_ExternalChannel);
     m_Canvas.Suspend();
-    ImGui::GetWindowDrawList()->ChannelsSetCurrent(lastChannel);
+    drawList->ChannelsSetCurrent(lastChannel);
+    if ((flags & SuspendFlags::KeepSplitter) != SuspendFlags::KeepSplitter)
+        ImDrawList_SwapSplitter(drawList, m_Splitter);
 }
 
-void ed::EditorContext::Resume()
+void ed::EditorContext::Resume(SuspendFlags flags)
 {
-    auto lastChannel = ImGui::GetWindowDrawList()->_Splitter._Current;
-    ImGui::GetWindowDrawList()->ChannelsSetCurrent(0);
+    auto drawList = ImGui::GetWindowDrawList();
+    if ((flags & SuspendFlags::KeepSplitter) != SuspendFlags::KeepSplitter)
+        ImDrawList_SwapSplitter(drawList, m_Splitter);
+    auto lastChannel = drawList->_Splitter._Current;
+    drawList->ChannelsSetCurrent(m_ExternalChannel);
     m_Canvas.Resume();
-    ImGui::GetWindowDrawList()->ChannelsSetCurrent(lastChannel);
+    drawList->ChannelsSetCurrent(lastChannel);
 }
 
 bool ed::EditorContext::IsSuspended()
@@ -4219,7 +4242,7 @@ void ed::CreateItemAction::End()
     if (m_IsInGlobalSpace)
     {
         ImGui::PopClipRect();
-        Editor->Resume();
+        Editor->Resume(SuspendFlags::KeepSplitter);
 
         auto currentChannel = ImGui::GetWindowDrawList()->_Splitter._Current;
         if (currentChannel != m_LastChannel)
@@ -4331,7 +4354,7 @@ ed::CreateItemAction::Result ed::CreateItemAction::QueryLink(PinId* startId, Pin
 
     if (!m_IsInGlobalSpace)
     {
-        Editor->Suspend();
+        Editor->Suspend(SuspendFlags::KeepSplitter);
 
         auto rect = Editor->GetRect();
         ImGui::PushClipRect(rect.Min + ImVec2(1, 1), rect.Max - ImVec2(1, 1), false);
@@ -4354,7 +4377,7 @@ ed::CreateItemAction::Result ed::CreateItemAction::QueryNode(PinId* pinId)
 
     if (!m_IsInGlobalSpace)
     {
-        Editor->Suspend();
+        Editor->Suspend(SuspendFlags::KeepSplitter);
 
         auto rect = Editor->GetRect();
         ImGui::PushClipRect(rect.Min + ImVec2(1, 1), rect.Max - ImVec2(1, 1), false);
@@ -4934,7 +4957,7 @@ bool ed::HintBuilder::Begin(NodeId nodeId)
 
     m_LastChannel = ImGui::GetWindowDrawList()->_Splitter._Current;
 
-    Editor->Suspend();
+    Editor->Suspend(SuspendFlags::KeepSplitter);
 
     const auto alpha = ImMax(0.0f, std::min(1.0f, (view.Scale - c_min_zoom) / (c_max_zoom - c_min_zoom)));
 
@@ -4966,7 +4989,7 @@ void ed::HintBuilder::End()
 
     ImGui::GetWindowDrawList()->ChannelsSetCurrent(m_LastChannel);
 
-    Editor->Resume();
+    Editor->Resume(SuspendFlags::KeepSplitter);
 
     m_IsActive    = false;
     m_CurrentNode = nullptr;

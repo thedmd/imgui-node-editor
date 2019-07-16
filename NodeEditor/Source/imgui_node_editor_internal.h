@@ -1230,6 +1230,16 @@ struct Config: ax::NodeEditor::Config
     void EndSave();
 };
 
+enum class SuspendFlags : uint8_t
+{
+    None = 0,
+    KeepSplitter = 1
+};
+
+inline SuspendFlags operator |(SuspendFlags lhs, SuspendFlags rhs) { return static_cast<SuspendFlags>(static_cast<uint8_t>(lhs) | static_cast<uint8_t>(rhs)); }
+inline SuspendFlags operator &(SuspendFlags lhs, SuspendFlags rhs) { return static_cast<SuspendFlags>(static_cast<uint8_t>(lhs) & static_cast<uint8_t>(rhs)); }
+
+
 struct EditorContext
 {
     EditorContext(const ax::NodeEditor::Config* config = nullptr);
@@ -1289,8 +1299,8 @@ struct EditorContext
 
     void NotifyLinkDeleted(Link* link);
 
-    void Suspend();
-    void Resume();
+    void Suspend(SuspendFlags flags = SuspendFlags::None);
+    void Resume(SuspendFlags flags = SuspendFlags::None);
     bool IsSuspended();
 
     bool IsActive();
@@ -1434,6 +1444,9 @@ private:
     Settings            m_Settings;
 
     Config              m_Config;
+
+    int                 m_ExternalChannel;
+    ImDrawListSplitter  m_Splitter;
 };
 
 
