@@ -3021,10 +3021,11 @@ void ed::NavigateAction::ShowMetrics()
 
 void ed::NavigateAction::NavigateTo(const ImRect& bounds, bool zoomIn, float duration, NavigationReason reason)
 {
-    IM_UNUSED(duration);
-
     if (ImRect_IsEmpty(bounds))
         return;
+
+    if (duration < 0.0f)
+        duration = GetStyle().ScrollDuration;
 
     if (!zoomIn)
     {
@@ -3034,7 +3035,7 @@ void ed::NavigateAction::NavigateTo(const ImRect& bounds, bool zoomIn, float dur
 
         viewRect.Translate(targetCenter - viewRectCenter);
 
-        NavigateTo(viewRect, GetStyle().ScrollDuration, reason);
+        NavigateTo(viewRect, duration, reason);
     }
     else
     {
@@ -3044,7 +3045,7 @@ void ed::NavigateAction::NavigateTo(const ImRect& bounds, bool zoomIn, float dur
         auto extend = ImMax(rect.GetWidth(), rect.GetHeight());
         rect.Expand(extend * c_NavigationZoomMargin * 0.5f);
 
-        NavigateTo(rect, GetStyle().ScrollDuration, reason);
+        NavigateTo(rect, duration, reason);
     }
 }
 
