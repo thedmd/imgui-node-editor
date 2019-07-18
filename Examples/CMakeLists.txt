@@ -76,4 +76,5 @@ add_subdirectory(Common/Application)
 
 add_subdirectory(Canvas)
 add_subdirectory(Simple)
+add_subdirectory(BasicInteraction)
 add_subdirectory(Blueprints)
