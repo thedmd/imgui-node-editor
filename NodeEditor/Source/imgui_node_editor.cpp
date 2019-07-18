@@ -4839,6 +4839,9 @@ void ed::NodeBuilder::EndPin()
         m_CurrentPin->m_Pivot.Max = m_CurrentPin->m_Pivot.Min + ImMul(m_PivotSize, m_PivotScale);
     }
 
+    // #debug: Draw pin pivot rectangle
+    // ImGui::GetWindowDrawList()->AddRect(m_CurrentPin->m_Pivot.Min, m_CurrentPin->m_Pivot.Max, IM_COL32(255, 0, 255, 255));
+
     m_CurrentPin = nullptr;
 }
 
