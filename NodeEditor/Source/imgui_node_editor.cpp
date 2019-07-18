@@ -4470,13 +4470,8 @@ bool ed::DeleteItemsAction::Process(const Control& control)
     if (!m_IsActive)
         return false;
 
-    if (m_CandidateObjects.empty())
-    {
-        m_IsActive = false;
-        return true;
-    }
-
-    return m_IsActive;
+    m_IsActive = false;
+    return true;
 }
 
 void ed::DeleteItemsAction::ShowMetrics()
