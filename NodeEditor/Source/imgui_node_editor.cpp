@@ -4657,6 +4657,12 @@ ed::NodeBuilder::NodeBuilder(EditorContext* editor):
 {
 }
 
+ed::NodeBuilder::~NodeBuilder()
+{
+    m_Splitter.ClearFreeMemory();
+    m_PinSplitter.ClearFreeMemory();
+}
+
 void ed::NodeBuilder::Begin(NodeId nodeId)
 {
     IM_ASSERT(nullptr == m_CurrentNode);
@@ -4726,6 +4732,9 @@ void ed::NodeBuilder::Begin(NodeId nodeId)
         m_CurrentNode->m_Channel = drawList->_Splitter._Count;
         ImDrawList_ChannelsGrow(drawList, drawList->_Splitter._Count + c_ChannelsPerNode);
         drawList->ChannelsSetCurrent(m_CurrentNode->m_Channel + c_NodeContentChannel);
+
+        m_Splitter.Clear();
+        ImDrawList_SwapSplitter(drawList, m_Splitter);
     }
 
     // Begin outer group
@@ -4742,6 +4751,12 @@ void ed::NodeBuilder::Begin(NodeId nodeId)
 void ed::NodeBuilder::End()
 {
     IM_ASSERT(nullptr != m_CurrentNode);
+
+    if (auto drawList = ImGui::GetWindowDrawList())
+    {
+        IM_ASSERT(drawList->_Splitter._Count == 1); // Did you forgot to call drawList->ChannelsMerge()?
+        ImDrawList_SwapSplitter(drawList, m_Splitter);
+    }
 
     // Apply frame padding. This must be done in this convoluted way if outer group
     // size must contain inner group padding.
@@ -4814,12 +4829,24 @@ void ed::NodeBuilder::BeginPin(PinId pinId, PinKind kind)
     m_ResolvePinRect          = true;
     m_ResolvePivot            = true;
 
+    if (auto drawList = ImGui::GetWindowDrawList())
+    {
+        m_PinSplitter.Clear();
+        ImDrawList_SwapSplitter(drawList, m_PinSplitter);
+    }
+
     ImGui::BeginGroup();
 }
 
 void ed::NodeBuilder::EndPin()
 {
     IM_ASSERT(nullptr != m_CurrentPin);
+
+    if (auto drawList = ImGui::GetWindowDrawList())
+    {
+        IM_ASSERT(drawList->_Splitter._Count == 1); // Did you forgot to call drawList->ChannelsMerge()?
+        ImDrawList_SwapSplitter(drawList, m_PinSplitter);
+    }
 
     ImGui::EndGroup();
 
@@ -4839,8 +4866,11 @@ void ed::NodeBuilder::EndPin()
         m_CurrentPin->m_Pivot.Max = m_CurrentPin->m_Pivot.Min + ImMul(m_PivotSize, m_PivotScale);
     }
 
+    // #debug: Draw pin bounds
+    //ImGui::GetWindowDrawList()->AddRect(m_CurrentPin->m_Bounds.Min, m_CurrentPin->m_Bounds.Max, IM_COL32(255, 255, 0, 255));
+
     // #debug: Draw pin pivot rectangle
-    // ImGui::GetWindowDrawList()->AddRect(m_CurrentPin->m_Pivot.Min, m_CurrentPin->m_Pivot.Max, IM_COL32(255, 0, 255, 255));
+    //ImGui::GetWindowDrawList()->AddRect(m_CurrentPin->m_Pivot.Min, m_CurrentPin->m_Pivot.Max, IM_COL32(255, 0, 255, 255));
 
     m_CurrentPin = nullptr;
 }

@@ -1144,7 +1144,11 @@ struct NodeBuilder
     ImRect m_GroupBounds;
     bool   m_IsGroup;
 
+    ImDrawListSplitter m_Splitter;
+    ImDrawListSplitter m_PinSplitter;
+
     NodeBuilder(EditorContext* editor);
+    ~NodeBuilder();
 
     void Begin(NodeId nodeId);
     void End();
