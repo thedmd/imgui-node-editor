@@ -38,6 +38,23 @@ void Application_Finalize()
     ed::DestroyEditor(g_Context);
 }
 
+void ImGuiEx_BeginColumn()
+{
+    ImGui::BeginGroup();
+}
+
+void ImGuiEx_NextColumn()
+{
+    ImGui::EndGroup();
+    ImGui::SameLine();
+    ImGui::BeginGroup();
+}
+
+void ImGuiEx_EndColumn()
+{
+    ImGui::EndGroup();
+}
+
 void Application_Frame()
 {
     auto& io = ImGui::GetIO();
@@ -77,20 +94,26 @@ void Application_Frame()
 
     // Submit Node B
     ed::NodeId nodeB_Id = uniqueId++;
-    ed::PinId  nodeB_InputPinId = uniqueId++;
+    ed::PinId  nodeB_InputPinId1 = uniqueId++;
+    ed::PinId  nodeB_InputPinId2 = uniqueId++;
     ed::PinId  nodeB_OutputPinId = uniqueId++;
 
     if (g_FirstFrame)
         ed::SetNodePosition(nodeB_Id, ImVec2(210, 60));
     ed::BeginNode(nodeB_Id);
         ImGui::Text("Node B");
-        ed::BeginPin(nodeB_InputPinId, ed::PinKind::Input);
-            ImGui::Text("-> In");
-        ed::EndPin();
-        ImGui::SameLine();
-        ed::BeginPin(nodeB_OutputPinId, ed::PinKind::Output);
-            ImGui::Text("Out ->");
-        ed::EndPin();
+        ImGuiEx_BeginColumn();
+            ed::BeginPin(nodeB_InputPinId1, ed::PinKind::Input);
+                ImGui::Text("-> In1");
+            ed::EndPin();
+            ed::BeginPin(nodeB_InputPinId2, ed::PinKind::Input);
+                ImGui::Text("-> In2");
+            ed::EndPin();
+        ImGuiEx_NextColumn();
+            ed::BeginPin(nodeB_OutputPinId, ed::PinKind::Output);
+                ImGui::Text("Out ->");
+            ed::EndPin();
+        ImGuiEx_EndColumn();
     ed::EndNode();
 
     // Submit Links
