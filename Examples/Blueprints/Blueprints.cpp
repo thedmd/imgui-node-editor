@@ -1429,6 +1429,8 @@ void Application_Frame()
         ImGui::EndPopup();
     }
 
+    bool isNewNodePopuped = false;
+
     if (ImGui::BeginPopup("Create New Node"))
     {
         auto newNodePostion = openPopupPosition;
@@ -1436,6 +1438,8 @@ void Application_Frame()
 
         //auto drawList = ImGui::GetWindowDrawList();
         //drawList->AddCircleFilled(ImGui::GetMousePosOnOpeningCurrentPopup(), 10.0f, 0xFFFF00FF);
+
+        isNewNodePopuped = true;
 
         Node* node = nullptr;
         if (ImGui::MenuItem("Input Action"))
@@ -1527,6 +1531,11 @@ void Application_Frame()
     drawList->AddBezierCurve(to_imvec(c.p0), to_imvec(c.p1), to_imvec(c.p2), to_imvec(c.p3), IM_COL32(255, 255, 255, 255), 1.0f);
     cubic_bezier_subdivide(acceptPoint, c);
 */
+
+    if (isNewNodePopuped && newNodeLinkPin != nullptr)
+    {
+        ed::DrawLastLine();
+    }
 
     ed::End();
 

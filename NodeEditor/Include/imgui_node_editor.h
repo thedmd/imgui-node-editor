@@ -340,7 +340,7 @@ ImVec2 GetScreenSize();
 ImVec2 ScreenToCanvas(const ImVec2& pos);
 ImVec2 CanvasToScreen(const ImVec2& pos);
 
-
+void DrawLastLine();
 
 
 
