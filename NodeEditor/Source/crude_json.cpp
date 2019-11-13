@@ -575,7 +575,7 @@ private:
             if (end != n.c_str() + n.size())
                 return false;
 
-            if (!std::isnormal(v))
+            if (v != 0 && !std::isnormal(v))
                 return false;
 
             result = v;
