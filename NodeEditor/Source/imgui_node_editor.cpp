@@ -2422,7 +2422,7 @@ bool ed::Settings::Parse(const std::string& string, Settings& settings)
     {
         auto separator = str.find_first_of(':');
         auto idStart   = str.c_str() + ((separator != std::string::npos) ? separator + 1 : 0);
-        auto id        = reinterpret_cast<void*>(strtoull(idStart, nullptr, 16));
+        auto id        = reinterpret_cast<void*>(strtoull(idStart, nullptr, 10));
         if (str.compare(0, separator, "node") == 0)
             return ObjectId(NodeId(id));
         else if (str.compare(0, separator, "link") == 0)
