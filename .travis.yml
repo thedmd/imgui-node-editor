@@ -27,7 +27,8 @@ before_install:
     fi
 
   - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then
-      brew install homebrew/core/glfw;
+      brew update;
+      brew install glfw3;
     fi
     
   - cmake --version
