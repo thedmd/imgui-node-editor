@@ -94,6 +94,7 @@ bool ImGuiEx::Canvas::Begin(ImGuiID id, const ImVec2& size)
 # endif
 
     SaveInputState();
+    SaveViewportState();
 
     EnterLocalSpace();
 
@@ -319,6 +320,26 @@ void ImGuiEx::Canvas::RestoreInputState()
     ImGui::GetCurrentWindow()->DC.CursorMaxPos = m_WindowCursorMaxBackup;
 }
 
+void ImGuiEx::Canvas::SaveViewportState()
+{
+# if defined(IMGUI_HAS_VIEWPORT)
+    auto viewport = ImGui::GetWindowViewport();
+
+    m_ViewportPosBackup = viewport->Pos;
+    m_ViewportSizeBackup = viewport->Size;
+# endif
+}
+
+void ImGuiEx::Canvas::RestoreViewportState()
+{
+# if defined(IMGUI_HAS_VIEWPORT)
+    auto viewport = ImGui::GetWindowViewport();
+
+    viewport->Pos = m_ViewportPosBackup;
+    viewport->Size = m_ViewportSizeBackup;
+# endif
+}
+
 void ImGuiEx::Canvas::EnterLocalSpace()
 {
     // Prepare ImDrawList for drawing in local coordinate system:
@@ -359,6 +380,20 @@ void ImGuiEx::Canvas::EnterLocalSpace()
 # endif
     m_DrawListCommadBufferSize       = ImMax(m_DrawList->CmdBuffer.Size - 1, 0);
     m_DrawListStartVertexIndex       = m_DrawList->_VtxCurrentIdx;
+
+# if defined(IMGUI_HAS_VIEWPORT)
+    auto viewport_min = m_ViewportPosBackup;
+    auto viewport_max = m_ViewportPosBackup + m_ViewportSizeBackup;
+
+    viewport_min.x = (viewport_min.x - m_ViewTransformPosition.x) * m_View.InvScale;
+    viewport_min.y = (viewport_min.y - m_ViewTransformPosition.y) * m_View.InvScale;
+    viewport_max.x = (viewport_max.x - m_ViewTransformPosition.x) * m_View.InvScale;
+    viewport_max.y = (viewport_max.y - m_ViewTransformPosition.y) * m_View.InvScale;
+
+    auto viewport = ImGui::GetWindowViewport();
+    viewport->Pos  = viewport_min;
+    viewport->Size = viewport_max - viewport_min;
+# endif
 
     // Clip rectangle in parent canvas space and move it to local space.
     clipped_clip_rect.x = (clipped_clip_rect.x - m_ViewTransformPosition.x) * m_View.InvScale;
@@ -449,4 +484,5 @@ void ImGuiEx::Canvas::LeaveLocalSpace()
     ImGui::PopClipRect();
 
     RestoreInputState();
+    RestoreViewportState();
 }
