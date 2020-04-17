@@ -376,10 +376,10 @@ void ImGuiEx::Canvas::EnterLocalSpace()
     m_Ranges.resize(m_Ranges.Size + 1);
     m_CurrentRange = &m_Ranges.back();
     m_CurrentRange->BeginComandIndex = ImMax(m_DrawList->CmdBuffer.Size - 1, 0);
-    m_CurrentRange->BeginVertexIndex = m_DrawList->_VtxCurrentIdx;
+    m_CurrentRange->BeginVertexIndex = m_DrawList->_VtxCurrentIdx + m_DrawList->_VtxCurrentOffset;
 # endif
     m_DrawListCommadBufferSize       = ImMax(m_DrawList->CmdBuffer.Size - 1, 0);
-    m_DrawListStartVertexIndex       = m_DrawList->_VtxCurrentIdx;
+    m_DrawListStartVertexIndex       = m_DrawList->_VtxCurrentIdx + m_DrawList->_VtxCurrentOffset;
 
 # if defined(IMGUI_HAS_VIEWPORT)
     auto viewport_min = m_ViewportPosBackup;
@@ -423,7 +423,7 @@ void ImGuiEx::Canvas::LeaveLocalSpace()
 # if IMGUI_EX_CANVAS_DEFERED()
     IM_ASSERT(m_CurrentRange != nullptr);
 
-    m_CurrentRange->EndVertexIndex  = m_DrawList->_VtxCurrentIdx;
+    m_CurrentRange->EndVertexIndex  = m_DrawList->_VtxCurrentIdx + m_DrawList->_VtxCurrentOffset;
     m_CurrentRange->EndCommandIndex = m_DrawList->CmdBuffer.size();
     if (m_CurrentRange->BeginVertexIndex == m_CurrentRange->EndVertexIndex)
     {
@@ -435,7 +435,7 @@ void ImGuiEx::Canvas::LeaveLocalSpace()
 
     // Move vertices to screen space.
     auto vertex    = m_DrawList->VtxBuffer.Data + m_DrawListStartVertexIndex;
-    auto vertexEnd = m_DrawList->VtxBuffer.Data + m_DrawList->_VtxCurrentIdx;
+    auto vertexEnd = m_DrawList->VtxBuffer.Data + m_DrawList->_VtxCurrentIdx + m_DrawList->_VtxCurrentOffset;
 
     // If canvas view is not scaled take a faster path.
     if (m_View.Scale != 1.0f)
