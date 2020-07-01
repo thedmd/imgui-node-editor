@@ -47,6 +47,25 @@ struct FringeScaleRef
     }
 };
 
+DECLARE_HAS_MEMBER(HasVtxCurrentOffset, _VtxCurrentOffset);
+
+struct VtxCurrentOffsetRef
+{
+    // Overload is present when ImDrawList does have _FringeScale member variable.
+    template <typename T>
+    static unsigned int& Get(typename std::enable_if<HasVtxCurrentOffset<T>::value, T>::type* drawList)
+    {
+        return drawList->_VtxCurrentOffset;
+    }
+
+    // Overload is present when ImDrawList does not have _FringeScale member variable.
+    template <typename T>
+    static unsigned int& Get(typename std::enable_if<!HasVtxCurrentOffset<T>::value, T>::type* drawList)
+    {
+        return drawList->_CmdHeader.VtxOffset;
+    }
+};
+
 } // namespace ImCanvasDetails
 
 // Returns a reference to _FringeScale extension to ImDrawList
@@ -56,6 +75,12 @@ static inline float& ImFringeScaleRef(ImDrawList* drawList)
 {
     using namespace ImCanvasDetails;
     return FringeScaleRef::Get<ImDrawList>(drawList);
+}
+
+static inline unsigned int& ImVtxOffsetRef(ImDrawList* drawList)
+{
+    using namespace ImCanvasDetails;
+    return VtxCurrentOffsetRef::Get<ImDrawList>(drawList);
 }
 
 static inline ImVec2 ImSelectPositive(const ImVec2& lhs, const ImVec2& rhs) { return ImVec2(lhs.x > 0.0f ? lhs.x : rhs.x, lhs.y > 0.0f ? lhs.y : rhs.y); }
@@ -376,10 +401,10 @@ void ImGuiEx::Canvas::EnterLocalSpace()
     m_Ranges.resize(m_Ranges.Size + 1);
     m_CurrentRange = &m_Ranges.back();
     m_CurrentRange->BeginComandIndex = ImMax(m_DrawList->CmdBuffer.Size - 1, 0);
-    m_CurrentRange->BeginVertexIndex = m_DrawList->_VtxCurrentIdx + m_DrawList->_VtxCurrentOffset;
+    m_CurrentRange->BeginVertexIndex = m_DrawList->_VtxCurrentIdx + ImVtxOffsetRef(m_DrawList);
 # endif
     m_DrawListCommadBufferSize       = ImMax(m_DrawList->CmdBuffer.Size - 1, 0);
-    m_DrawListStartVertexIndex       = m_DrawList->_VtxCurrentIdx + m_DrawList->_VtxCurrentOffset;
+    m_DrawListStartVertexIndex       = m_DrawList->_VtxCurrentIdx + ImVtxOffsetRef(m_DrawList);
 
 # if defined(IMGUI_HAS_VIEWPORT)
     auto viewport_min = m_ViewportPosBackup;
@@ -423,7 +448,7 @@ void ImGuiEx::Canvas::LeaveLocalSpace()
 # if IMGUI_EX_CANVAS_DEFERED()
     IM_ASSERT(m_CurrentRange != nullptr);
 
-    m_CurrentRange->EndVertexIndex  = m_DrawList->_VtxCurrentIdx + m_DrawList->_VtxCurrentOffset;
+    m_CurrentRange->EndVertexIndex  = m_DrawList->_VtxCurrentIdx + ImVtxOffsetRef(m_DrawList);
     m_CurrentRange->EndCommandIndex = m_DrawList->CmdBuffer.size();
     if (m_CurrentRange->BeginVertexIndex == m_CurrentRange->EndVertexIndex)
     {
@@ -435,7 +460,7 @@ void ImGuiEx::Canvas::LeaveLocalSpace()
 
     // Move vertices to screen space.
     auto vertex    = m_DrawList->VtxBuffer.Data + m_DrawListStartVertexIndex;
-    auto vertexEnd = m_DrawList->VtxBuffer.Data + m_DrawList->_VtxCurrentIdx + m_DrawList->_VtxCurrentOffset;
+    auto vertexEnd = m_DrawList->VtxBuffer.Data + m_DrawList->_VtxCurrentIdx + ImVtxOffsetRef(m_DrawList);
 
     // If canvas view is not scaled take a faster path.
     if (m_View.Scale != 1.0f)
