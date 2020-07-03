@@ -1046,6 +1046,17 @@ struct CreateItemAction final : EditorAction
 
     int       m_LastChannel = -1;
 
+    PinKind   m_lastStartPinKind;
+    ImRect    m_lastStartPivot;
+    ImVec2    m_lastStartDir;
+    float     m_lastStartPinCorners;
+    float     m_lastStartPinStrength;
+
+    PinKind   m_lastEndPinKind;
+    ImRect    m_lastEndPivot;
+    ImVec2    m_lastEndDir;
+    float     m_lastEndPinCorners;
+    float     m_lastEndPinStrength;
 
     CreateItemAction(EditorContext* editor);
 
@@ -1072,6 +1083,8 @@ struct CreateItemAction final : EditorAction
 
     Result QueryLink(PinId* startId, PinId* endId);
     Result QueryNode(PinId* pinId);
+
+    void DrawLastLine();
 
 private:
     bool m_IsInGlobalSpace;
@@ -1387,6 +1400,8 @@ struct EditorContext
     {
         return ImVec2(AlignPointToGrid(p.x), AlignPointToGrid(p.y));
     }
+
+    void DrawLastLine();
 
 private:
     void LoadSettings();

@@ -196,34 +196,34 @@ static void ImDrawListSplitter_Grow(ImDrawList* draw_list, ImDrawListSplitter* s
 
 static void ImDrawList_ChannelsGrow(ImDrawList* draw_list, int channels_count)
 {
-	ImDrawListSplitter_Grow(draw_list, &draw_list->_Splitter, channels_count);
+    ImDrawListSplitter_Grow(draw_list, &draw_list->_Splitter, channels_count);
 }
 
 static void ImDrawListSplitter_SwapChannels(ImDrawListSplitter* splitter, int left, int right)
 {
-	IM_ASSERT(left < splitter->_Count && right < splitter->_Count);
-	if (left == right)
-		return;
+    IM_ASSERT(left < splitter->_Count && right < splitter->_Count);
+    if (left == right)
+        return;
 
-	auto currentChannel = splitter->_Current;
+    auto currentChannel = splitter->_Current;
 
-	auto* leftCmdBuffer  = &splitter->_Channels[left]._CmdBuffer;
-	auto* leftIdxBuffer  = &splitter->_Channels[left]._IdxBuffer;
-	auto* rightCmdBuffer = &splitter->_Channels[right]._CmdBuffer;
-	auto* rightIdxBuffer = &splitter->_Channels[right]._IdxBuffer;
+    auto* leftCmdBuffer  = &splitter->_Channels[left]._CmdBuffer;
+    auto* leftIdxBuffer  = &splitter->_Channels[left]._IdxBuffer;
+    auto* rightCmdBuffer = &splitter->_Channels[right]._CmdBuffer;
+    auto* rightIdxBuffer = &splitter->_Channels[right]._IdxBuffer;
 
-	leftCmdBuffer->swap(*rightCmdBuffer);
-	leftIdxBuffer->swap(*rightIdxBuffer);
+    leftCmdBuffer->swap(*rightCmdBuffer);
+    leftIdxBuffer->swap(*rightIdxBuffer);
 
-	if (currentChannel == left)
-		splitter->_Current = right;
-	else if (currentChannel == right)
-		splitter->_Current = left;
+    if (currentChannel == left)
+        splitter->_Current = right;
+    else if (currentChannel == right)
+        splitter->_Current = left;
 }
 
 static void ImDrawList_SwapChannels(ImDrawList* drawList, int left, int right)
 {
-	ImDrawListSplitter_SwapChannels(&drawList->_Splitter, left, right);
+    ImDrawListSplitter_SwapChannels(&drawList->_Splitter, left, right);
 }
 
 static void ImDrawList_SwapSplitter(ImDrawList* drawList, ImDrawListSplitter& splitter)
@@ -1098,7 +1098,7 @@ void ed::EditorContext::Begin(const char* id, const ImVec2& size)
     m_IsWindowActive = ImGui::IsWindowFocused();
 
     //
-	m_NavigateAction.SetWindow(m_Canvas.ViewRect().Min, m_Canvas.ViewRect().GetSize());
+    m_NavigateAction.SetWindow(m_Canvas.ViewRect().Min, m_Canvas.ViewRect().GetSize());
 
     if (m_CurrentAction && m_CurrentAction->IsDragging() && m_NavigateAction.MoveOverEdge())
     {
@@ -1691,7 +1691,7 @@ void ed::EditorContext::Resume(SuspendFlags flags)
 
 bool ed::EditorContext::IsSuspended()
 {
-	return m_Canvas.IsSuspended();
+    return m_Canvas.IsSuspended();
 }
 
 bool ed::EditorContext::IsActive()
@@ -1979,6 +1979,11 @@ void ed::EditorContext::EnableShortcuts(bool enable)
 bool ed::EditorContext::AreShortcutsEnabled()
 {
     return m_ShortcutsEnabled;
+}
+
+void ed::EditorContext::DrawLastLine()
+{
+    m_CreateItemAction.DrawLastLine();
 }
 
 ed::Control ed::EditorContext::BuildControl(bool allowOffscreen)
@@ -4156,6 +4161,18 @@ bool ed::CreateItemAction::Process(const Control& control)
 
         candidate.UpdateEndpoints();
         candidate.Draw(drawList, m_LinkColor, m_LinkThickness);
+
+        m_lastStartPinKind = candidate.m_StartPin->m_Kind;
+        m_lastStartPivot = candidate.m_StartPin->m_Pivot;
+        m_lastStartDir = candidate.m_StartPin->m_Dir;
+        m_lastStartPinCorners = candidate.m_StartPin->m_Corners;
+        m_lastStartPinStrength = candidate.m_StartPin->m_Strength;
+
+        m_lastEndPinKind = candidate.m_EndPin->m_Kind;
+        m_lastEndPivot = candidate.m_EndPin->m_Pivot;
+        m_lastEndDir = candidate.m_EndPin->m_Dir;
+        m_lastEndPinCorners = candidate.m_EndPin->m_Corners;
+        m_lastEndPinStrength = candidate.m_EndPin->m_Strength;
     }
     else if (m_CurrentStage == Possible || !control.ActivePin)
     {
@@ -4391,8 +4408,31 @@ ed::CreateItemAction::Result ed::CreateItemAction::QueryNode(PinId* pinId)
     return True;
 }
 
+void ed::CreateItemAction::DrawLastLine()
+{
+    ed::Pin startPin(Editor, 0, m_lastStartPinKind);
+    startPin.m_Pivot = m_lastStartPivot;
+    startPin.m_Dir = m_lastStartDir;
+    startPin.m_Corners = m_lastStartPinCorners;
+    startPin.m_Strength = m_lastStartPinStrength;
 
+    ed::Pin endPin(Editor, 0, m_lastEndPinKind);
+    endPin.m_Pivot = m_lastEndPivot;
+    endPin.m_Dir = m_lastEndDir;
+    endPin.m_Corners = m_lastEndPinCorners;
+    endPin.m_Strength = m_lastEndPinStrength;
 
+    ed::Link candidate(Editor, 0);
+    candidate.m_Color = m_LinkColor;
+    candidate.m_StartPin = &startPin;
+    candidate.m_EndPin = &endPin;
+
+    auto drawList = ImGui::GetWindowDrawList();
+    drawList->ChannelsSetCurrent(c_LinkChannel_NewLink);
+
+    candidate.UpdateEndpoints();
+    candidate.Draw(drawList, m_LinkColor, m_LinkThickness);
+}
 
 //------------------------------------------------------------------------------
 //
