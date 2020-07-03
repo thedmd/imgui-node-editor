@@ -31,8 +31,56 @@
 //  2018-01-08: Inputs: Added mapping for ImGuiKey_Insert.
 //  2018-01-05: Inputs: Added WM_LBUTTONDBLCLK double-click handlers for window classes with the CS_DBLCLKS flag.
 //  2017-10-23: Inputs: Added WM_SYSKEYDOWN / WM_SYSKEYUP handlers so e.g. the VK_MENU key can be read.
-//  2017-10-23: Inputs: Using Win32 ::SetCapture/::GetCapture() to retrieve mouse positions outside the client area when dragging. 
+//  2017-10-23: Inputs: Using Win32 ::SetCapture/::GetCapture() to retrieve mouse positions outside the client area when dragging.
 //  2016-11-12: Inputs: Only call Win32 ::SetCursor(NULL) when io.MouseDrawCursor is set.
+
+
+// https://stackoverflow.com/a/8597498
+# include <type_traits>
+# define DECLARE_HAS_NESTED(Name, Member)                                          \
+                                                                                   \
+    template<class T>                                                              \
+    struct has_nested_ ## Name                                                     \
+    {                                                                              \
+        typedef char yes;                                                          \
+        typedef yes(&no)[2];                                                       \
+                                                                                   \
+        template<class U> static yes test(decltype(U::Member)*);                   \
+        template<class U> static no  test(...);                                    \
+                                                                                   \
+        static bool const value = sizeof(test<T>(0)) == sizeof(yes);               \
+    };
+
+# define DECLARE_KEY_TESTER(Key)                                                                    \
+    DECLARE_HAS_NESTED(Key, Key)                                                                    \
+    struct KeyTester_ ## Key                                                                        \
+    {                                                                                               \
+        template <typename T>                                                                       \
+        static int Get(typename std::enable_if<has_nested_ ## Key<ImGuiKey_>::value, T>::type*)     \
+        {                                                                                           \
+            return T::Key;                                                                          \
+        }                                                                                           \
+                                                                                                    \
+        template <typename T>                                                                       \
+        static int Get(typename std::enable_if<!has_nested_ ## Key<ImGuiKey_>::value, T>::type*)    \
+        {                                                                                           \
+            return -1;                                                                              \
+        }                                                                                           \
+    }
+
+DECLARE_KEY_TESTER(ImGuiKey_F);
+DECLARE_KEY_TESTER(ImGuiKey_D);
+
+static inline int GetEnumValueForF()
+{
+    return KeyTester_ImGuiKey_F::Get<ImGuiKey_>(nullptr);
+}
+
+static inline int GetEnumValueForD()
+{
+    return KeyTester_ImGuiKey_D::Get<ImGuiKey_>(nullptr);
+}
+
 
 // Win32 Data
 static HWND                 g_hWnd = 0;
@@ -54,7 +102,7 @@ bool    ImGui_ImplWin32_Init(void* hwnd)
     io.BackendFlags |= ImGuiBackendFlags_HasMouseCursors;         // We can honor GetMouseCursor() values (optional)
     io.BackendFlags |= ImGuiBackendFlags_HasSetMousePos;          // We can honor io.WantSetMousePos requests (optional, rarely used)
     io.BackendPlatformName = "imgui_impl_win32";
-    io.ImeWindowHandle = hwnd;
+    //io.ImeWindowHandle = hwnd;
 
     // Keyboard mapping. ImGui will use those indices to peek into the io.KeysDown[] array that we will update during the application lifetime.
     io.KeyMap[ImGuiKey_Tab] = VK_TAB;
@@ -74,11 +122,17 @@ bool    ImGui_ImplWin32_Init(void* hwnd)
     io.KeyMap[ImGuiKey_Escape] = VK_ESCAPE;
     io.KeyMap[ImGuiKey_A] = 'A';
     io.KeyMap[ImGuiKey_C] = 'C';
-    io.KeyMap[ImGuiKey_F] = 'F';
     io.KeyMap[ImGuiKey_V] = 'V';
     io.KeyMap[ImGuiKey_X] = 'X';
     io.KeyMap[ImGuiKey_Y] = 'Y';
     io.KeyMap[ImGuiKey_Z] = 'Z';
+
+    int f_index = GetEnumValueForF();
+    int d_index = GetEnumValueForD();
+    if (f_index >= 0)
+        io.KeyMap[f_index] = 'F';
+    if (d_index >= 0)
+        io.KeyMap[d_index] = 'D';
 
     return true;
 }
@@ -180,7 +234,7 @@ void    ImGui_ImplWin32_NewFrame()
 #define WM_MOUSEHWHEEL 0x020E
 #endif
 
-// Process Win32 mouse/keyboard inputs. 
+// Process Win32 mouse/keyboard inputs.
 // You can read the io.WantCaptureMouse, io.WantCaptureKeyboard flags to tell if dear imgui wants to use your inputs.
 // - When io.WantCaptureMouse is true, do not dispatch mouse input data to your main application.
 // - When io.WantCaptureKeyboard is true, do not dispatch keyboard input data to your main application.
