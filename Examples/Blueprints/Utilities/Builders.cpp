@@ -7,8 +7,9 @@
 // CREDITS
 //   Written by Michal Cichon
 //------------------------------------------------------------------------------
-# include "ax/Builders.h"
-# include "Interop.h"
+# include "Builders.h"
+# define IMGUI_DEFINE_MATH_OPERATORS
+# include <imgui_internal.h>
 
 
 //------------------------------------------------------------------------------
@@ -28,7 +29,7 @@ util::BlueprintNodeBuilder::BlueprintNodeBuilder(ImTextureID texture, int textur
 void util::BlueprintNodeBuilder::Begin(ed::NodeId id)
 {
     HasHeader  = false;
-    HeaderRect = rect();
+    HeaderMin = HeaderMax = ImVec2();
 
     ed::PushStyleVar(StyleVar_NodePadding, ImVec4(8, 4, 8, 8));
 
@@ -55,34 +56,29 @@ void util::BlueprintNodeBuilder::End()
         const auto halfBorderWidth = ed::GetStyle().NodeBorderWidth * 0.5f;
 
         auto headerColor = IM_COL32(0, 0, 0, alpha) | (HeaderColor & IM_COL32(255, 255, 255, 0));
-        if (!HeaderRect.is_empty() && HeaderTextureId)
+        if ((HeaderMax.x > HeaderMin.x) && (HeaderMax.y > HeaderMin.y) && HeaderTextureId)
         {
             const auto uv = ImVec2(
-                HeaderRect.w / (float)(4.0f * HeaderTextureWidth),
-                HeaderRect.h / (float)(4.0f * HeaderTextureHeight));
+                (HeaderMax.x - HeaderMin.x) / (float)(4.0f * HeaderTextureWidth),
+                (HeaderMax.y - HeaderMin.y) / (float)(4.0f * HeaderTextureHeight));
 
             drawList->AddImageRounded(HeaderTextureId,
-                to_imvec(HeaderRect.top_left())     - ImVec2(8 - halfBorderWidth, 4 - halfBorderWidth),
-                to_imvec(HeaderRect.bottom_right()) + ImVec2(8 - halfBorderWidth, 0),
+                HeaderMin - ImVec2(8 - halfBorderWidth, 4 - halfBorderWidth),
+                HeaderMax + ImVec2(8 - halfBorderWidth, 0),
                 ImVec2(0.0f, 0.0f), uv,
                 headerColor, GetStyle().NodeRounding, 1 | 2);
 
-            auto headerSeparatorRect      = ax::rect(HeaderRect.bottom_left(), ContentRect.top_right());
-            //auto footerSeparatorRect      = ax::rect(ContentRect.bottom_left(), NodeRect.bottom_right());
-            //auto contentWithSeparatorRect = ax::make_union(headerSeparatorRect, footerSeparatorRect);
+            auto headerSeparatorMin = ImVec2(HeaderMin.x, HeaderMax.y);
+            auto headerSeparatorMax = ImVec2(HeaderMax.x, HeaderMin.y);
 
-            if (!headerSeparatorRect.is_empty())
+            if ((headerSeparatorMax.x > headerSeparatorMin.x) && (headerSeparatorMax.y > headerSeparatorMin.y))
             {
                 drawList->AddLine(
-                    to_imvec(headerSeparatorRect.top_left())  + ImVec2(-(8 - halfBorderWidth), -0.5f),
-                    to_imvec(headerSeparatorRect.top_right()) + ImVec2( (8 - halfBorderWidth), -0.5f),
+                    headerSeparatorMin + ImVec2(-(8 - halfBorderWidth), -0.5f),
+                    headerSeparatorMax + ImVec2( (8 - halfBorderWidth), -0.5f),
                     ImColor(255, 255, 255, 96 * alpha / (3 * 255)), 1.0f);
             }
         }
-
-        //drawList->AddRect(to_imvec(NodeRect.top_left()), to_imvec(NodeRect.bottom_right()), IM_COL32(255, 0, 0, 255));
-        //drawList->AddRect(to_imvec(HeaderRect.top_left()), to_imvec(HeaderRect.bottom_right()), IM_COL32(0, 255, 0, 255));
-        //drawList->AddRect(to_imvec(ContentRect.top_left()), to_imvec(ContentRect.bottom_right()), IM_COL32(0, 0, 255, 255));
     }
 
     CurrentNodeId = 0;
@@ -177,7 +173,8 @@ bool util::BlueprintNodeBuilder::SetStage(Stage stage)
 
         case Stage::Header:
             ImGui::EndHorizontal();
-            HeaderRect = ImGui_GetItemRect();
+            HeaderMin = ImGui::GetItemRectMin();
+            HeaderMax = ImGui::GetItemRectMax();
 
             // spacing between header and content
             ImGui::Spring(0, ImGui::GetStyle().ItemSpacing.y * 2.0f);
@@ -281,11 +278,13 @@ bool util::BlueprintNodeBuilder::SetStage(Stage stage)
                 ImGui::Spring(1, 0);
             if (oldStage != Stage::Begin)
                 ImGui::EndHorizontal();
-            ContentRect = ImGui_GetItemRect();
+            ContentMin = ImGui::GetItemRectMin();
+            ContentMax = ImGui::GetItemRectMax();
 
             //ImGui::Spring(0);
             ImGui::EndVertical();
-            NodeRect = ImGui_GetItemRect();
+            NodeMin = ImGui::GetItemRectMin();
+            NodeMax = ImGui::GetItemRectMax();
             break;
 
         case Stage::Invalid:

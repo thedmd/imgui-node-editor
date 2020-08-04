@@ -1,16 +1,18 @@
 #include "Application.h"
+#include "Utilities/Builders.h"
+#include "Utilities/Widgets.h"
+
+#include <imgui_node_editor.h>
+
+#define IMGUI_DEFINE_MATH_OPERATORS
+#include <imgui_internal.h>
+
 #include <string>
 #include <vector>
 #include <map>
 #include <algorithm>
 #include <utility>
-#include <imgui_node_editor.h>
-#include <ax/Math2D.h>
-#include <ax/Builders.h>
-#include <ax/Widgets.h>
 
-#define IMGUI_DEFINE_MATH_OPERATORS
-#include <imgui_internal.h>
 
 static inline ImRect ImGui_GetItemRect()
 {

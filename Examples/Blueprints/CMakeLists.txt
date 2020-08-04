@@ -1,7 +1,9 @@
 add_example(Blueprints
     Blueprints.cpp
+    Utilities/Builders.h
+    Utilities/Drawing.h
+    Utilities/Widgets.h
+    Utilities/Builders.cpp
+    Utilities/Drawing.cpp
+    Utilities/Widgets.cpp
 )
-
-find_package(blueprint-utilities REQUIRED)
-
-target_link_libraries(Blueprints PRIVATE blueprint-utilities)

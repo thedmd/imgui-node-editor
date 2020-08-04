@@ -12,7 +12,6 @@
 
 //------------------------------------------------------------------------------
 # include <imgui_node_editor.h>
-# include "ax/Math2D.h"
 
 
 //------------------------------------------------------------------------------
@@ -65,9 +64,12 @@ private:
     NodeId      CurrentNodeId;
     Stage       CurrentStage;
     ImU32       HeaderColor;
-    rect        NodeRect;
-    rect        HeaderRect;
-    rect        ContentRect;
+    ImVec2      NodeMin;
+    ImVec2      NodeMax;
+    ImVec2      HeaderMin;
+    ImVec2      HeaderMax;
+    ImVec2      ContentMin;
+    ImVec2      ContentMax;
     bool        HasHeader;
 };
 
