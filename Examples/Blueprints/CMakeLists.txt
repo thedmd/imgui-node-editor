@@ -1,9 +1,0 @@
-add_example(Blueprints
-    Blueprints.cpp
-    Utilities/Builders.h
-    Utilities/Drawing.h
-    Utilities/Widgets.h
-    Utilities/Builders.cpp
-    Utilities/Drawing.cpp
-    Utilities/Widgets.cpp
-)
