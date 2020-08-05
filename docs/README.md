@@ -6,7 +6,7 @@
 
 ## About
 
-This is an implementation of node editor with ImGui-like API.
+An implementation of node editor with ImGui-like API.
 
 Project purpose is to serve as a basis for more complex solutions like blueprint editors.
 
@@ -49,14 +49,15 @@ Please report issues or questions if something isn't clear.
 
 ## Dependencies
 
- * ~~Relies on modified version of ImGui 1.72 (WIP)~~
  * Vanilla ImGui 1.72+ (WIP)
- * Optional extension you can pull into your local copy of ImGui node editor can take advantage of:
-    - https://github.com/thedmd/imgui/tree/feature/draw-list-fringe-scale (for sharp rendering, while zooming)
-    - https://github.com/thedmd/imgui/tree/feature/extra-keys (for extra shortcuts)
- * Examples dependencies:
-    - https://github.com/thedmd/imgui/tree/feature/layout (used in blueprints sample only)
  * C++14
+ 
+### Dependencies for examples:
+ * https://github.com/thedmd/imgui/tree/feature/layout (used in blueprints sample only)
+ 
+### Optional extension you can pull into your local copy of ImGui node editor can take advantage of:
+ * https://github.com/thedmd/imgui/tree/feature/draw-list-fringe-scale (for sharp rendering, while zooming)
+ * https://github.com/thedmd/imgui/tree/feature/extra-keys (for extra shortcuts)
 
 ## Code
 
@@ -78,14 +79,14 @@ You will find examples in `build\bin` directory.
 
 Source code target to be compatible with C++14.
 
-### Example
+### Quick Start
 
 Main node editor header is located in [imgui_node_editor.h](../imgui_node_editor.h).
 
 Minimal example of one node can be found in [simple-example.cpp](../examples/simple-example/simple-example.cpp).
 Press 'F' in editor to focus on editor content if you see only grid.
 ```cpp
-# include "Application.h"
+# include <application.h>
 # include <imgui_node_editor.h>
 
 namespace ed = ax::NodeEditor;
