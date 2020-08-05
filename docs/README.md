@@ -45,11 +45,13 @@ Here are some highlights:
 
 Editor is used to implement blueprint editor in Spark CE engine, it proved itself there by allowing to do everything we needed. Therefore it is now slowly moving into stable state from beeing a prototype.
 
+Note: Project recently was restructured to mimic ImGui layout.
+
 Please report issues or questions if something isn't clear.
 
 ## Dependencies
 
- * Vanilla ImGui 1.72+ (WIP)
+ * Vanilla ImGui 1.72+
  * C++14
  
 ### Dependencies for examples:
@@ -59,9 +61,12 @@ Please report issues or questions if something isn't clear.
  * https://github.com/thedmd/imgui/tree/feature/draw-list-fringe-scale (for sharp rendering, while zooming)
  * https://github.com/thedmd/imgui/tree/feature/extra-keys (for extra shortcuts)
 
-## Code
+## Building / Installing
 
-Editor code is root directory alone. Examples can be build with CMake:
+Node Editor sources are located in root project directory. To use it, simply copy&paste sources into your project. Exactly like you can do with ImGui.
+
+### Examples
+[Examples](../examples) can be build with CMake:
 ```
 Windows:
     cmake -Hexamples -Bbuild -G "Visual Studio 15 2017 Win64"
@@ -75,9 +80,7 @@ Linux:
 Build:
     cmake --build build --config Release
 ```
-You will find examples in `build\bin` directory.
-
-Source code target to be compatible with C++14.
+Executables will be located in `build\bin` directory.
 
 ### Quick Start
 
