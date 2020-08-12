@@ -105,10 +105,28 @@ struct FlowPin final : Pin
 
 struct BoolPin final : Pin
 {
-    BoolPin(Node* node, bool value = false): Pin(node, PinType::Bool), m_Value(value) {}
-    BoolPin(Node* node, string_view name, bool value = false): Pin(node, PinType::Bool, name), m_Value(value) {}
+    BoolPin(Node* node, bool value = false)
+        : Pin(node, PinType::Bool)
+        , m_Value(value)
+    {
+    }
 
-    bool m_Value;
+    // C++ implicitly convert literals to bool, this will intercept
+    // such calls an do the right thing.
+    template <size_t N>
+    BoolPin(Node* node, const char (&name)[N], bool value = false)
+        : Pin(node, PinType::Bool, name)
+        , m_Value(value)
+    {
+    }
+
+    BoolPin(Node* node, string_view name, bool value = false)
+        : Pin(node, PinType::Bool, name)
+        , m_Value(value)
+    {
+    }
+
+    bool m_Value = false;
 
 protected:
     PinValue GetValue() const override { return m_Value; }
@@ -119,7 +137,7 @@ struct Int32Pin final : Pin
     Int32Pin(Node* node, int32_t value = 0): Pin(node, PinType::Int32), m_Value(value) {}
     Int32Pin(Node* node, string_view name, int32_t value = 0): Pin(node, PinType::Int32, name), m_Value(value) {}
 
-    int32_t m_Value;
+    int32_t m_Value = 0;
 
 protected:
     PinValue GetValue() const override { return m_Value; }
@@ -130,7 +148,7 @@ struct FloatPin final : Pin
     FloatPin(Node* node, float value = 0.0f): Pin(node, PinType::Float), m_Value(value) {}
     FloatPin(Node* node, string_view name, float value = 0.0f): Pin(node, PinType::Float, name), m_Value(value) {}
 
-    float m_Value;
+    float m_Value = 0.0f;
 
 protected:
     PinValue GetValue() const override { return m_Value; }
@@ -170,6 +188,10 @@ struct Node
     uint32_t GetId() const { return m_Id; }
 
     string_view GetName() const { return m_Name; }
+
+    virtual void Reset()
+    {
+    }
 
     virtual FlowPin Execute(Context& context, FlowPin& entryPoint)
     {
@@ -415,6 +437,11 @@ struct FlipFlopNode final : Node
 
     FlipFlopNode(IdGenerator& idGenerator): Node(idGenerator, "Flip Flop") {}
 
+    void Reset() override
+    {
+        m_IsA.m_Value = false;
+    }
+
     FlowPin Execute(Context& context, FlowPin& entryPoint) override
     {
         m_IsA.m_Value = !m_IsA.m_Value;
@@ -539,15 +566,15 @@ struct NodeRegistry
     uint32_t RegisterNodeType(string_view name, NodeTypeInfo::Factory factory);
     void UnregisterNodeType(string_view name);
 
-    Node* Create(uint32_t id, IdGenerator& generator);
-    Node* Create(string_view name, IdGenerator& generator);
+    Node* Create(uint32_t typeId, IdGenerator& generator);
+    Node* Create(string_view typeName, IdGenerator& generator);
 
     span<const NodeTypeInfo* const> GetTypes() const;
 
 private:
     void RebuildTypes();
 
-    NodeTypeInfo m_BuildInNodes[9] =
+    NodeTypeInfo m_BuildInNodes[10] =
     {
         ConstBoolNode::GetStaticTypeInfo(),
         ConstInt32Node::GetStaticTypeInfo(),
@@ -557,6 +584,7 @@ private:
         DoNNode::GetStaticTypeInfo(),
         FlipFlopNode::GetStaticTypeInfo(),
         ToStringNode::GetStaticTypeInfo(),
+        PrintNode::GetStaticTypeInfo(),
         EntryPointNode::GetStaticTypeInfo(),
     };
 
@@ -576,7 +604,17 @@ struct Blueprint
     Blueprint(shared_ptr<NodeRegistry> nodeRegistry = nullptr);
     ~Blueprint();
 
-    Node* CreateNode(string_view nodeName);
+    template <typename T>
+    T* CreateNode()
+    {
+        if (auto node = CreateNode(T::GetStaticTypeInfo().m_Id))
+            return static_cast<T*>(node);
+        else
+            return nullptr;
+    }
+
+    Node* CreateNode(uint32_t nodeTypeId);
+    Node* CreateNode(string_view nodeTypeName);
     void DeleteNode(Node* node);
 
     span<      Node*>       GetNodes();
@@ -591,6 +629,8 @@ struct Blueprint
     StepResult Execute(EntryPointNode& entryPointNode);
 
 private:
+    void Reset();
+
     shared_ptr<NodeRegistry>    m_NodeRegistry;
     IdGenerator                 m_Generator;
     vector<Node*>               m_Nodes;
