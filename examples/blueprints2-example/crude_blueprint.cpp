@@ -204,11 +204,11 @@ void crude_blueprint::NodeRegistry::RebuildTypes()
     m_Types.erase(std::unique(m_Types.begin(), m_Types.end()), m_Types.end());
 }
 
-crude_blueprint::Node* crude_blueprint::NodeRegistry::Create(uint32_t id, IdGenerator& generator)
+crude_blueprint::Node* crude_blueprint::NodeRegistry::Create(uint32_t typeId, IdGenerator& generator)
 {
     for (auto& nodeInfo : m_Types)
     {
-        if (nodeInfo->m_Id != id)
+        if (nodeInfo->m_Id != typeId)
             continue;
 
         return nodeInfo->m_Factory(generator);
@@ -217,11 +217,11 @@ crude_blueprint::Node* crude_blueprint::NodeRegistry::Create(uint32_t id, IdGene
     return nullptr;
 }
 
-crude_blueprint::Node* crude_blueprint::NodeRegistry::Create(string_view name, IdGenerator& generator)
+crude_blueprint::Node* crude_blueprint::NodeRegistry::Create(string_view typeName, IdGenerator& generator)
 {
     for (auto& nodeInfo : m_Types)
     {
-        if (nodeInfo->m_Name != name)
+        if (nodeInfo->m_Name != typeName)
             continue;
 
         return nodeInfo->m_Factory(generator);
@@ -246,6 +246,8 @@ crude_blueprint::span<const crude_blueprint::NodeTypeInfo* const> crude_blueprin
 crude_blueprint::Blueprint::Blueprint(shared_ptr<NodeRegistry> nodeRegistry)
     : m_NodeRegistry(std::move(nodeRegistry))
 {
+    if (!m_NodeRegistry)
+        m_NodeRegistry = make_shared<NodeRegistry>();
 }
 
 crude_blueprint::Blueprint::~Blueprint()
@@ -254,12 +256,26 @@ crude_blueprint::Blueprint::~Blueprint()
         delete node;
 }
 
-crude_blueprint::Node* crude_blueprint::Blueprint::CreateNode(string_view nodeName)
+crude_blueprint::Node* crude_blueprint::Blueprint::CreateNode(uint32_t nodeTypeId)
 {
     if (!m_NodeRegistry)
         return nullptr;
 
-    auto node = m_NodeRegistry->Create(nodeName, m_Generator);
+    auto node = m_NodeRegistry->Create(nodeTypeId, m_Generator);
+    if (!node)
+        return nullptr;
+
+    m_Nodes.push_back(node);
+
+    return node;
+}
+
+crude_blueprint::Node* crude_blueprint::Blueprint::CreateNode(string_view nodeTypeName)
+{
+    if (!m_NodeRegistry)
+        return nullptr;
+
+    auto node = m_NodeRegistry->Create(nodeTypeName, m_Generator);
     if (!node)
         return nullptr;
 
@@ -302,6 +318,8 @@ void crude_blueprint::Blueprint::Start(EntryPointNode& entryPointNode)
     if (nodeIt == m_Nodes.end())
         return;
 
+    Reset();
+
     m_Context.Start(entryPointNode.m_Exit);
 }
 
@@ -316,5 +334,13 @@ crude_blueprint::StepResult crude_blueprint::Blueprint::Execute(EntryPointNode& 
     if (nodeIt == m_Nodes.end())
         return StepResult::Error;
 
+    Reset();
+
     return m_Context.Execute(entryPointNode.m_Exit);
+}
+
+void crude_blueprint::Blueprint::Reset()
+{
+    for (auto node : m_Nodes)
+        node->Reset();
 }
