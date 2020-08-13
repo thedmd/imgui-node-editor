@@ -4,6 +4,8 @@
 
 # include "crude_blueprint.h"
 
+# include "crude_json.h"
+
 using namespace crude_blueprint;
 
 static Blueprint g_Blueprint;
@@ -87,10 +89,21 @@ void Application_Initialize()
     //auto toStringNode   = g_Blueprint.CreateNode<ToStringNode>();
     //auto printNodeNode  = g_Blueprint.CreateNode<PrintNode>();
 
+    crude_json::value value;
+    g_Blueprint.Save(value);
+    auto yyy = value.dump(4);
 
     g_Blueprint.Execute(*entryPointNode);
 
+    Blueprint b2;
 
+    b2.Load(value);
+
+    crude_json::value value2;
+    b2.Save(value2);
+    auto zzz = value2.dump(4);
+
+    bool ok = yyy == zzz;
 
 }
 

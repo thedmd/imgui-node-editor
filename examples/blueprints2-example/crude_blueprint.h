@@ -9,6 +9,10 @@
 # include <vector>
 # include <memory>
 
+namespace crude_json {
+struct value;
+} // crude_json
+
 namespace crude_blueprint {
 
 using nonstd::span;
@@ -69,6 +73,9 @@ struct Pin
 
     string_view GetName() const;
 
+    virtual bool Load(const crude_json::value& value);
+    virtual void Save(crude_json::value& value) const;
+
     uint32_t    m_Id   = 0;
     Node*       m_Node = nullptr;
     PinType     m_Type = PinType::Void;
@@ -126,6 +133,9 @@ struct BoolPin final : Pin
     {
     }
 
+    bool Load(const crude_json::value& value) override;
+    void Save(crude_json::value& value) const override;
+
     bool m_Value = false;
 
 protected:
@@ -136,6 +146,9 @@ struct Int32Pin final : Pin
 {
     Int32Pin(Node* node, int32_t value = 0): Pin(node, PinType::Int32), m_Value(value) {}
     Int32Pin(Node* node, string_view name, int32_t value = 0): Pin(node, PinType::Int32, name), m_Value(value) {}
+
+    bool Load(const crude_json::value& value) override;
+    void Save(crude_json::value& value) const override;
 
     int32_t m_Value = 0;
 
@@ -148,6 +161,9 @@ struct FloatPin final : Pin
     FloatPin(Node* node, float value = 0.0f): Pin(node, PinType::Float), m_Value(value) {}
     FloatPin(Node* node, string_view name, float value = 0.0f): Pin(node, PinType::Float, name), m_Value(value) {}
 
+    bool Load(const crude_json::value& value) override;
+    void Save(crude_json::value& value) const override;
+
     float m_Value = 0.0f;
 
 protected:
@@ -158,6 +174,9 @@ struct StringPin final : Pin
 {
     StringPin(Node* node, string value = ""): Pin(node, PinType::String), m_Value(value) {}
     StringPin(Node* node, string_view name, string value = ""): Pin(node, PinType::String, name), m_Value(value) {}
+
+    bool Load(const crude_json::value& value) override;
+    void Save(crude_json::value& value) const override;
 
     string m_Value;
 
@@ -185,10 +204,6 @@ struct Node
     Node(IdGenerator& idGenerator, string_view name);
     virtual ~Node() = default;
 
-    uint32_t GetId() const { return m_Id; }
-
-    string_view GetName() const { return m_Name; }
-
     virtual void Reset()
     {
     }
@@ -210,11 +225,14 @@ struct Node
 
     uint32_t MakeUniquePinId();
 
+    virtual bool Load(const crude_json::value& value);
+    virtual void Save(crude_json::value& value) const;
+
+    uint32_t    m_Id;
+    string_view m_Name;
 
 private:
     IdGenerator m_Generator;
-    uint32_t    m_Id;
-    string_view m_Name;
 };
 
 
@@ -627,6 +645,12 @@ struct Blueprint
     StepResult Step();
 
     StepResult Execute(EntryPointNode& entryPointNode);
+
+    bool Load(const crude_json::value& value);
+    void Save(crude_json::value& value) const;
+
+    bool Load(string_view path);
+    bool Save(string_view path) const;
 
 private:
     void Reset();
