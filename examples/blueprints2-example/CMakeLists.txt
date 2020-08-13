@@ -8,3 +8,7 @@ add_example_executable(blueprints2-example
 )
 
 target_include_directories(blueprints2-example PRIVATE external/include)
+
+if (MSVC)
+    target_compile_definitions(blueprints2-example PRIVATE _CRT_SECURE_NO_WARNINGS)
+endif()
