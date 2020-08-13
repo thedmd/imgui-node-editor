@@ -147,6 +147,22 @@ void value::push_back(value&& value)
     }
 }
 
+size_t value::erase(const string& key)
+{
+    if (!is_object())
+        return 0;
+
+    auto& o = *object_ptr(m_Storage);
+    auto it = o.find(key);
+
+    if (it == o.end())
+        return 0;
+
+    o.erase(it);
+
+    return 1;
+}
+
 void value::swap(value& other)
 {
     using std::swap;
