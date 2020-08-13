@@ -109,11 +109,6 @@ crude_blueprint::PinType crude_blueprint::Pin::GetType() const
         return m_Type;
 }
 
-crude_blueprint::string_view crude_blueprint::Pin::GetName() const
-{
-    return m_Name;
-}
-
 bool crude_blueprint::Pin::Load(const crude_json::value& value)
 {
     if (!detail::GetTo<crude_json::number>(value, "id", m_Id)) // required
@@ -133,9 +128,8 @@ bool crude_blueprint::Pin::Load(const crude_json::value& value)
 void crude_blueprint::Pin::Save(crude_json::value& value) const
 {
     value["id"] = crude_json::number(m_Id); // required
-    auto name = GetName();
-    if (!name.empty())
-        value["name"] = name.to_string();  // optional, to make data readable for humans
+    if (!m_Name.empty())
+        value["name"] = m_Name.to_string();  // optional, to make data readable for humans
     if (m_Link)
         value["link"] = crude_json::number(m_Link->m_Id);
 }
@@ -589,6 +583,18 @@ crude_blueprint::span<const crude_blueprint::Node* const> crude_blueprint::Bluep
 {
     const Node* const* begin = m_Nodes.data();
     const Node* const* end   = m_Nodes.data() + m_Nodes.size();
+    return make_span(begin, end);
+}
+
+crude_blueprint::span<crude_blueprint::Pin*> crude_blueprint::Blueprint::GetPins()
+{
+    return m_Pins;
+}
+
+crude_blueprint::span<const crude_blueprint::Pin* const> crude_blueprint::Blueprint::GetPins() const
+{
+    const Pin* const* begin = m_Pins.data();
+    const Pin* const* end   = m_Pins.data() + m_Pins.size();
     return make_span(begin, end);
 }
 

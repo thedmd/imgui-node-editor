@@ -71,8 +71,6 @@ struct Pin
 
     PinType GetType() const;
 
-    string_view GetName() const;
-
     virtual bool Load(const crude_json::value& value);
     virtual void Save(crude_json::value& value) const;
 
@@ -640,6 +638,9 @@ struct Blueprint
 
     span<      Node*>       GetNodes();
     span<const Node* const> GetNodes() const;
+
+    span<      Pin*>       GetPins();
+    span<const Pin* const> GetPins() const;
 
           Pin* FindPin(uint32_t pinId);
     const Pin* FindPin(uint32_t pinId) const;
