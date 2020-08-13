@@ -641,6 +641,9 @@ struct Blueprint
     span<      Node*>       GetNodes();
     span<const Node* const> GetNodes() const;
 
+          Pin* FindPin(uint32_t pinId);
+    const Pin* FindPin(uint32_t pinId) const;
+
     shared_ptr<NodeRegistry> GetNodeRegistry() const;
 
     void Start(EntryPointNode& entryPointNode);
