@@ -3,29 +3,22 @@
 # include <algorithm>
 # include <map>
 # include <stdio.h>
-# include <stdlib.h>
-# include <inttypes.h>
+//# include <stdlib.h>
+//# include <inttypes.h>
 
 
 namespace crude_blueprint { namespace detail {
 
-
-//template <typename T>
-//auto ToString(T&& value)
+//inline string ToString(uint32_t value)
 //{
-//    return crude_json::value(std::forward<T>(value)).get<string>();
+//    // buffer size is:
+//    //   + "4294967295" - longest value possible
+//    //   + terminating zero
+//    //   + extra zero for platform differences in snprintf()
+//    char buffer[12] = {};
+//    snprintf(buffer, 11, "%" PRIu32, value);
+//    return buffer;
 //}
-
-inline string ToString(uint32_t value)
-{
-    // buffer size is:
-    //   + "4294967295" - longest value possible
-    //   + terminating zero
-    //   + extra zero for platform differences in snprintf()
-    char buffer[12] = {};
-    snprintf(buffer, 11, "%" PRIu32, value);
-    return buffer;
-}
 
 template <typename T>
 inline bool GetPtrTo(const crude_json::value& value, string_view key, const T*& result)
@@ -68,17 +61,17 @@ inline bool GetTo(const crude_json::value& value, string_view key, V& result)
 
 uint32_t crude_blueprint::IdGenerator::GenerateId()
 {
-    return (*m_State)++;
+    return m_State++;
 }
 
 void crude_blueprint::IdGenerator::SetState(uint32_t state)
 {
-    *m_State = state;
+    m_State = state;
 }
 
 uint32_t crude_blueprint::IdGenerator::State() const
 {
-    return *m_State;
+    return m_State;
 }
 
 
@@ -93,7 +86,7 @@ crude_blueprint::Pin::Pin(Node* node, PinType type)
 }
 
 crude_blueprint::Pin::Pin(Node* node, PinType type, string_view name)
-    : m_Id(node ? node->MakeUniquePinId() : 0)
+    : m_Id(node ? node->m_Blueprint->MakePinId(this) : 0)
     , m_Node(node)
     , m_Type(type)
     , m_Name(name)
@@ -123,11 +116,11 @@ crude_blueprint::string_view crude_blueprint::Pin::GetName() const
 
 bool crude_blueprint::Pin::Load(const crude_json::value& value)
 {
-    if (!detail::GetTo<crude_json::number>(value, "id", m_Id))
+    if (!detail::GetTo<crude_json::number>(value, "id", m_Id)) // required
         return false;
 
     uint32_t linkId;
-    if (detail::GetTo<crude_json::number>(value, "link", linkId))
+    if (detail::GetTo<crude_json::number>(value, "link", linkId)) // optional
     {
         static_assert(sizeof(linkId) <= sizeof(void*), "Pin ID is expected to fit into the pointer.");
         // HACK: We store raw ID here, Blueprint::Load will expand it to valid pointer.
@@ -139,10 +132,10 @@ bool crude_blueprint::Pin::Load(const crude_json::value& value)
 
 void crude_blueprint::Pin::Save(crude_json::value& value) const
 {
-    value["id"] = crude_json::number(m_Id);
+    value["id"] = crude_json::number(m_Id); // required
     auto name = GetName();
     if (!name.empty())
-        value["name"] = name.to_string();
+        value["name"] = name.to_string();  // optional, to make data readable for humans
     if (m_Link)
         value["link"] = crude_json::number(m_Link->m_Id);
 }
@@ -151,6 +144,7 @@ crude_blueprint::PinValue crude_blueprint::Pin::GetValue() const
 {
     return PinValue{};
 }
+
 
 
 //
@@ -162,7 +156,7 @@ bool crude_blueprint::BoolPin::Load(const crude_json::value& value)
     if (!Pin::Load(value))
         return false;
 
-    if (!detail::GetTo<bool>(value, "value", m_Value))
+    if (!detail::GetTo<bool>(value, "value", m_Value)) // required
         return false;
 
     return true;
@@ -172,7 +166,7 @@ void crude_blueprint::BoolPin::Save(crude_json::value& value) const
 {
     Pin::Save(value);
 
-    value["value"] = m_Value;
+    value["value"] = m_Value; // required
 }
 
 bool crude_blueprint::Int32Pin::Load(const crude_json::value& value)
@@ -180,7 +174,7 @@ bool crude_blueprint::Int32Pin::Load(const crude_json::value& value)
     if (!Pin::Load(value))
         return false;
 
-    if (!detail::GetTo<crude_json::number>(value, "value", m_Value))
+    if (!detail::GetTo<crude_json::number>(value, "value", m_Value)) // required
         return false;
 
     return true;
@@ -190,7 +184,7 @@ void crude_blueprint::Int32Pin::Save(crude_json::value& value) const
 {
     Pin::Save(value);
 
-    value["value"] = crude_json::number(m_Value);
+    value["value"] = crude_json::number(m_Value); // required
 }
 
 bool crude_blueprint::FloatPin::Load(const crude_json::value& value)
@@ -198,7 +192,7 @@ bool crude_blueprint::FloatPin::Load(const crude_json::value& value)
     if (!Pin::Load(value))
         return false;
 
-    if (!detail::GetTo<crude_json::number>(value, "value", m_Value))
+    if (!detail::GetTo<crude_json::number>(value, "value", m_Value)) // required
         return false;
 
     return true;
@@ -208,14 +202,14 @@ void crude_blueprint::FloatPin::Save(crude_json::value& value) const
 {
     Pin::Save(value);
 
-    value["value"] = crude_json::number(m_Value);
+    value["value"] = crude_json::number(m_Value); // required
 }
 
 void crude_blueprint::StringPin::Save(crude_json::value& value) const
 {
     Pin::Save(value);
 
-    value["value"] = m_Value;
+    value["value"] = m_Value; // required
 }
 
 bool crude_blueprint::StringPin::Load(const crude_json::value& value)
@@ -223,7 +217,7 @@ bool crude_blueprint::StringPin::Load(const crude_json::value& value)
     if (!Pin::Load(value))
         return false;
 
-    if (!detail::GetTo<crude_json::string>(value, "value", m_Value))
+    if (!detail::GetTo<crude_json::string>(value, "value", m_Value)) // required
         return false;
 
     return true;
@@ -235,16 +229,11 @@ bool crude_blueprint::StringPin::Load(const crude_json::value& value)
 // -------[ Node ]-------
 //
 
-crude_blueprint::Node::Node(IdGenerator& idGenerator, string_view name)
-    : m_Generator(idGenerator)
-    , m_Id(m_Generator.GenerateId())
+crude_blueprint::Node::Node(Blueprint& blueprint, string_view name)
+    : m_Id(blueprint.MakeNodeId(this))
     , m_Name(name)
+    , m_Blueprint(&blueprint)
 {
-}
-
-uint32_t crude_blueprint::Node::MakeUniquePinId()
-{
-    return m_Generator.GenerateId();
 }
 
 bool crude_blueprint::Node::Load(const crude_json::value& value)
@@ -252,8 +241,11 @@ bool crude_blueprint::Node::Load(const crude_json::value& value)
     if (!value.is_object())
         return false;
 
+    if (!detail::GetTo<crude_json::number>(value, "id", m_Id)) // required
+        return false;
+
     const crude_json::array* inputPinsArray = nullptr;
-    if (detail::GetPtrTo(value, "input_pins", inputPinsArray))
+    if (detail::GetPtrTo(value, "input_pins", inputPinsArray)) // optional
     {
         auto pins = GetInputPins();
 
@@ -271,7 +263,7 @@ bool crude_blueprint::Node::Load(const crude_json::value& value)
     }
 
     const crude_json::array* outputPinsArray = nullptr;
-    if (detail::GetPtrTo(value, "output_pins", outputPinsArray))
+    if (detail::GetPtrTo(value, "output_pins", outputPinsArray)) // optional
     {
         auto pins = GetOutputPins();
 
@@ -293,9 +285,10 @@ bool crude_blueprint::Node::Load(const crude_json::value& value)
 
 void crude_blueprint::Node::Save(crude_json::value& value) const
 {
-    value["name"] = m_Name.to_string();
+    value["id"] = crude_json::number(m_Id); // required
+    value["name"] = m_Name.to_string(); // optional, to make data readable for humans
 
-    auto& inputPinsValue = value["input_pins"];
+    auto& inputPinsValue = value["input_pins"]; // optional
     for (auto& pin : const_cast<Node*>(this)->GetInputPins())
     {
         crude_json::value pinValue;
@@ -305,7 +298,7 @@ void crude_blueprint::Node::Save(crude_json::value& value) const
     if (inputPinsValue.is_null())
         value.erase("input_pins");
 
-    auto& outputPinsValue = value["output_pins"];
+    auto& outputPinsValue = value["output_pins"]; // optional
     for (auto& pin : const_cast<Node*>(this)->GetOutputPins())
     {
         crude_json::value pinValue;
@@ -436,27 +429,27 @@ void crude_blueprint::NodeRegistry::RebuildTypes()
     m_Types.erase(std::unique(m_Types.begin(), m_Types.end()), m_Types.end());
 }
 
-crude_blueprint::Node* crude_blueprint::NodeRegistry::Create(uint32_t typeId, IdGenerator& generator)
+crude_blueprint::Node* crude_blueprint::NodeRegistry::Create(uint32_t typeId, Blueprint& blueprint)
 {
     for (auto& nodeInfo : m_Types)
     {
         if (nodeInfo->m_Id != typeId)
             continue;
 
-        return nodeInfo->m_Factory(generator);
+        return nodeInfo->m_Factory(blueprint);
     }
 
     return nullptr;
 }
 
-crude_blueprint::Node* crude_blueprint::NodeRegistry::Create(string_view typeName, IdGenerator& generator)
+crude_blueprint::Node* crude_blueprint::NodeRegistry::Create(string_view typeName, Blueprint& blueprint)
 {
     for (auto& nodeInfo : m_Types)
     {
         if (nodeInfo->m_Name != typeName)
             continue;
 
-        return nodeInfo->m_Factory(generator);
+        return nodeInfo->m_Factory(blueprint);
     }
 
     return nullptr;
@@ -482,10 +475,58 @@ crude_blueprint::Blueprint::Blueprint(shared_ptr<NodeRegistry> nodeRegistry)
         m_NodeRegistry = make_shared<NodeRegistry>();
 }
 
+crude_blueprint::Blueprint::Blueprint(const Blueprint& other)
+    : m_NodeRegistry(other.m_NodeRegistry)
+    , m_Context(other.m_Context)
+{
+    crude_json::value value;
+    other.Save(value);
+    Load(value);
+}
+
+crude_blueprint::Blueprint::Blueprint(Blueprint&& other)
+    : m_NodeRegistry(std::move(other.m_NodeRegistry))
+    , m_Generator(std::move(other.m_Generator))
+    , m_Nodes(std::move(other.m_Nodes))
+    , m_Context(std::move(other.m_Context))
+{
+}
+
 crude_blueprint::Blueprint::~Blueprint()
 {
     for (auto node : m_Nodes)
         delete node;
+}
+
+
+crude_blueprint::Blueprint& crude_blueprint::Blueprint::operator=(const Blueprint& other)
+{
+    if (this == &other)
+        return *this;
+
+    Reset();
+
+    m_NodeRegistry = other.m_NodeRegistry;
+    m_Context = other.m_Context;
+
+    crude_json::value value;
+    other.Save(value);
+    Load(value);
+
+    return *this;
+}
+
+crude_blueprint::Blueprint& crude_blueprint::Blueprint::operator=(Blueprint&& other)
+{
+    if (this == &other)
+        return *this;
+
+    m_NodeRegistry = std::move(other.m_NodeRegistry);
+    m_Generator    = std::move(other.m_Generator);
+    m_Nodes        = std::move(other.m_Nodes);
+    m_Context      = std::move(other.m_Context);
+
+    return *this;
 }
 
 crude_blueprint::Node* crude_blueprint::Blueprint::CreateNode(uint32_t nodeTypeId)
@@ -493,7 +534,7 @@ crude_blueprint::Node* crude_blueprint::Blueprint::CreateNode(uint32_t nodeTypeI
     if (!m_NodeRegistry)
         return nullptr;
 
-    auto node = m_NodeRegistry->Create(nodeTypeId, m_Generator);
+    auto node = m_NodeRegistry->Create(nodeTypeId, *this);
     if (!node)
         return nullptr;
 
@@ -507,7 +548,7 @@ crude_blueprint::Node* crude_blueprint::Blueprint::CreateNode(string_view nodeTy
     if (!m_NodeRegistry)
         return nullptr;
 
-    auto node = m_NodeRegistry->Create(nodeTypeName, m_Generator);
+    auto node = m_NodeRegistry->Create(nodeTypeName, *this);
     if (!node)
         return nullptr;
 
@@ -577,28 +618,30 @@ bool crude_blueprint::Blueprint::Load(const crude_json::value& value)
         return false;
 
     const crude_json::array* nodeArray = nullptr;
-    if (!detail::GetPtrTo(value, "nodes", nodeArray))
+    if (!detail::GetPtrTo(value, "nodes", nodeArray)) // required
         return false;
 
+    Blueprint blueprint{m_NodeRegistry};
+
     IdGenerator generator;
-    vector<unique_ptr<Node>> nodes;
     std::map<uint32_t, Pin*> pinMap;
 
     for (auto& nodeValue : *nodeArray)
     {
         uint32_t typeId;
-        if (!detail::GetTo<crude_json::number>(nodeValue, "type_id", typeId))
+        if (!detail::GetTo<crude_json::number>(nodeValue, "type_id", typeId)) // required
             return false;
 
-        auto node = m_NodeRegistry->Create(typeId, generator);
+        auto node = m_NodeRegistry->Create(typeId, blueprint);
         if (!node)
             return false;
 
-        nodes.emplace_back(node);
+        blueprint.m_Nodes.push_back(node);
 
         if (!node->Load(nodeValue))
             return false;
 
+        // Collect pins for m_Link resolver
         for (auto pin : node->GetInputPins())
             pinMap[pin->m_Id] = pin;
         for (auto pin : node->GetOutputPins())
@@ -606,14 +649,14 @@ bool crude_blueprint::Blueprint::Load(const crude_json::value& value)
     }
 
     const crude_json::object* stateObject = nullptr;
-    if (!detail::GetPtrTo(value, "state", stateObject))
+    if (!detail::GetPtrTo(value, "state", stateObject)) // required
         return false;
 
     uint32_t generatorState = 0;
-    if (!detail::GetTo<crude_json::number>(*stateObject, "generator_state", generatorState))
+    if (!detail::GetTo<crude_json::number>(*stateObject, "generator_state", generatorState)) // required
         return false;
 
-    // Resolve pin links
+    // HACK: Pin::Load store pin ID in m_Link. Let's resolve ids to valid pointers.
     for (auto& entry : pinMap)
     {
         auto& pin = *entry.second;
@@ -628,36 +671,36 @@ bool crude_blueprint::Blueprint::Load(const crude_json::value& value)
         pin.m_Link = linketPinIt->second;
     }
 
+    for (auto& node : blueprint.m_Nodes)
+        node->m_Blueprint = this;
+
     Reset();
 
     m_Generator.SetState(generatorState);
 
-    m_Nodes.reserve(nodes.size());
-    for (auto& node : nodes)
-        m_Nodes.push_back(node.release());
+    m_Nodes.swap(blueprint.m_Nodes);
 
     return true;
 }
 
 void crude_blueprint::Blueprint::Save(crude_json::value& value) const
 {
-    auto& nodesValue = value["nodes"];
+    auto& nodesValue = value["nodes"]; // required
     nodesValue = crude_json::array();
     for (auto& node : m_Nodes)
     {
         crude_json::value nodeValue;
 
-        nodeValue["id"] = crude_json::number(node->m_Id);
-        nodeValue["type_id"] = crude_json::number(node->GetTypeInfo().m_Id);
-        nodeValue["type_name"] = node->GetTypeInfo().m_Name.to_string();
+        nodeValue["type_id"] = crude_json::number(node->GetTypeInfo().m_Id); // required
+        nodeValue["type_name"] = node->GetTypeInfo().m_Name.to_string(); // optional, to make data readable for humans
 
         node->Save(nodeValue);
 
         nodesValue.push_back(nodeValue);
     }
 
-    auto& stateValue = value["state"];
-    stateValue["generator_state"] = crude_json::number(m_Generator.State());
+    auto& stateValue = value["state"]; // required
+    stateValue["generator_state"] = crude_json::number(m_Generator.State()); // required
 }
 
 bool crude_blueprint::Blueprint::Load(string_view path)
@@ -700,6 +743,18 @@ bool crude_blueprint::Blueprint::Save(string_view path) const
         return false;
 
     return true;
+}
+
+uint32_t crude_blueprint::Blueprint::MakeNodeId(Node* node)
+{
+    (void)node;
+    return m_Generator.GenerateId();
+}
+
+uint32_t crude_blueprint::Blueprint::MakePinId(Pin* pin)
+{
+    (void)pin;
+    return m_Generator.GenerateId();
 }
 
 void crude_blueprint::Blueprint::Reset()

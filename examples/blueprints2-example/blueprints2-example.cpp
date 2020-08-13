@@ -60,9 +60,9 @@ void Application_Initialize()
 
 
 
+    auto printNode2Node = g_Blueprint.CreateNode<PrintNode>();
     auto entryPointNode = g_Blueprint.CreateNode<EntryPointNode>();
     auto printNode1Node = g_Blueprint.CreateNode<PrintNode>();
-    auto printNode2Node = g_Blueprint.CreateNode<PrintNode>();
     auto flipFlopNode = g_Blueprint.CreateNode<FlipFlopNode>();
     auto toStringNode = g_Blueprint.CreateNode<ToStringNode>();
     auto doNNode = g_Blueprint.CreateNode<DoNNode>();
