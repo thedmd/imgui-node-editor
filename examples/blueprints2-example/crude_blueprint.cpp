@@ -592,6 +592,22 @@ crude_blueprint::span<const crude_blueprint::Node* const> crude_blueprint::Bluep
     return make_span(begin, end);
 }
 
+crude_blueprint::Pin* crude_blueprint::Blueprint::FindPin(uint32_t pinId)
+{
+    return const_cast<Pin*>(const_cast<const Blueprint*>(this)->FindPin(pinId));
+}
+
+const crude_blueprint::Pin* crude_blueprint::Blueprint::FindPin(uint32_t pinId) const
+{
+    for (auto& pin : m_Pins)
+    {
+        if (pin->m_Id == pinId)
+            return pin;
+    }
+
+    return nullptr;
+}
+
 crude_blueprint::shared_ptr<crude_blueprint::NodeRegistry> crude_blueprint::Blueprint::GetNodeRegistry() const
 {
     return m_NodeRegistry;
