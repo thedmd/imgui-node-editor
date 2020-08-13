@@ -488,14 +488,14 @@ crude_blueprint::Blueprint::Blueprint(Blueprint&& other)
     : m_NodeRegistry(std::move(other.m_NodeRegistry))
     , m_Generator(std::move(other.m_Generator))
     , m_Nodes(std::move(other.m_Nodes))
+    , m_Pins(std::move(other.m_Pins))
     , m_Context(std::move(other.m_Context))
 {
 }
 
 crude_blueprint::Blueprint::~Blueprint()
 {
-    for (auto node : m_Nodes)
-        delete node;
+    Clear();
 }
 
 
@@ -504,7 +504,7 @@ crude_blueprint::Blueprint& crude_blueprint::Blueprint::operator=(const Blueprin
     if (this == &other)
         return *this;
 
-    Reset();
+    Clear();
 
     m_NodeRegistry = other.m_NodeRegistry;
     m_Context = other.m_Context;
@@ -524,6 +524,7 @@ crude_blueprint::Blueprint& crude_blueprint::Blueprint::operator=(Blueprint&& ot
     m_NodeRegistry = std::move(other.m_NodeRegistry);
     m_Generator    = std::move(other.m_Generator);
     m_Nodes        = std::move(other.m_Nodes);
+    m_Pins         = std::move(other.m_Pins);
     m_Context      = std::move(other.m_Context);
 
     return *this;
@@ -568,6 +569,17 @@ void crude_blueprint::Blueprint::DeleteNode(Node* node)
     m_Nodes.erase(nodeIt);
 }
 
+void crude_blueprint::Blueprint::Clear()
+{
+    for (auto node : m_Nodes)
+        delete node;
+
+    m_Nodes.resize(0);
+    m_Pins.resize(0);
+    m_Generator = IdGenerator();
+    m_Context = Context();
+}
+
 crude_blueprint::span<crude_blueprint::Node*> crude_blueprint::Blueprint::GetNodes()
 {
     return m_Nodes;
@@ -591,7 +603,7 @@ void crude_blueprint::Blueprint::Start(EntryPointNode& entryPointNode)
     if (nodeIt == m_Nodes.end())
         return;
 
-    Reset();
+    ResetState();
 
     m_Context.Start(entryPointNode.m_Exit);
 }
@@ -607,7 +619,7 @@ crude_blueprint::StepResult crude_blueprint::Blueprint::Execute(EntryPointNode& 
     if (nodeIt == m_Nodes.end())
         return StepResult::Error;
 
-    Reset();
+    ResetState();
 
     return m_Context.Execute(entryPointNode.m_Exit);
 }
@@ -674,11 +686,12 @@ bool crude_blueprint::Blueprint::Load(const crude_json::value& value)
     for (auto& node : blueprint.m_Nodes)
         node->m_Blueprint = this;
 
-    Reset();
+    Clear();
 
     m_Generator.SetState(generatorState);
 
     m_Nodes.swap(blueprint.m_Nodes);
+    m_Pins.swap(blueprint.m_Pins);
 
     return true;
 }
@@ -753,11 +766,12 @@ uint32_t crude_blueprint::Blueprint::MakeNodeId(Node* node)
 
 uint32_t crude_blueprint::Blueprint::MakePinId(Pin* pin)
 {
-    (void)pin;
+    m_Pins.push_back(pin);
+
     return m_Generator.GenerateId();
 }
 
-void crude_blueprint::Blueprint::Reset()
+void crude_blueprint::Blueprint::ResetState()
 {
     for (auto node : m_Nodes)
         node->Reset();

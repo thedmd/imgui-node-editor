@@ -91,7 +91,7 @@ void Application_Initialize()
 
     crude_json::value value;
     g_Blueprint.Save(value);
-    auto yyy = value.dump(4);
+    auto yyy = value.dump();
 
     g_Blueprint.Execute(*entryPointNode);
 
@@ -101,9 +101,13 @@ void Application_Initialize()
 
     crude_json::value value2;
     b2.Save(value2);
-    auto zzz = value2.dump(4);
+    auto zzz = value2.dump();
 
     bool ok = yyy == zzz;
+
+    auto b3 = b2;
+
+
 
 }
 

@@ -636,6 +636,8 @@ struct Blueprint
     Node* CreateNode(string_view nodeTypeName);
     void DeleteNode(Node* node);
 
+    void Clear();
+
     span<      Node*>       GetNodes();
     span<const Node* const> GetNodes() const;
 
@@ -657,11 +659,12 @@ struct Blueprint
     uint32_t MakePinId(Pin* pin);
 
 private:
-    void Reset();
+    void ResetState();
 
     shared_ptr<NodeRegistry>    m_NodeRegistry;
     IdGenerator                 m_Generator;
     vector<Node*>               m_Nodes;
+    vector<Pin*>                m_Pins;
     Context                     m_Context;
 };
 
