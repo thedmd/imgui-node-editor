@@ -29,7 +29,7 @@ using std::make_shared;
 
 struct Node;
 struct Context;
-struct Executor;
+struct Blueprint;
 
 
 enum class PinType { Void, Flow, Bool, Int32, Float, String };
@@ -49,7 +49,7 @@ struct IdGenerator
     uint32_t State() const;
 
 private:
-    shared_ptr<uint32_t> m_State = make_shared<uint32_t>(1);
+    uint32_t m_State = 1;
 };
 
 
@@ -192,7 +192,7 @@ protected:
 
 struct NodeTypeInfo
 {
-    using Factory = Node*(*)(IdGenerator& generator);
+    using Factory = Node*(*)(Blueprint& blueprint);
 
     uint32_t    m_Id;
     string_view m_Name;
@@ -201,7 +201,7 @@ struct NodeTypeInfo
 
 struct Node
 {
-    Node(IdGenerator& idGenerator, string_view name);
+    Node(Blueprint& blueprint, string_view name);
     virtual ~Node() = default;
 
     virtual void Reset()
@@ -223,16 +223,12 @@ struct Node
     virtual span<Pin*> GetInputPins() { return {}; }
     virtual span<Pin*> GetOutputPins() { return {}; }
 
-    uint32_t MakeUniquePinId();
-
     virtual bool Load(const crude_json::value& value);
     virtual void Save(crude_json::value& value) const;
 
     uint32_t    m_Id;
     string_view m_Name;
-
-private:
-    IdGenerator m_Generator;
+    Blueprint*  m_Blueprint;
 };
 
 
@@ -317,7 +313,7 @@ constexpr inline uint32_t fnv_1a_hash(const char (&string)[N])
         { \
             ::crude_blueprint::detail::fnv_1a_hash(#type), \
             #type, \
-            [](::crude_blueprint::IdGenerator& generator) -> ::crude_blueprint::Node* { return new type(generator); } \
+            [](::crude_blueprint::Blueprint& blueprint) -> ::crude_blueprint::Node* { return new type(blueprint); } \
         }; \
     } \
     \
@@ -336,7 +332,7 @@ struct ConstBoolNode final : Node
 {
     CRUDE_BP_NODE(ConstBoolNode)
 
-    ConstBoolNode(IdGenerator& idGenerator): Node(idGenerator, "Const Bool") {}
+    ConstBoolNode(Blueprint& blueprint): Node(blueprint, "Const Bool") {}
 
     span<Pin*> GetOutputPins() override { return m_OutputPins; }
 
@@ -349,7 +345,7 @@ struct ConstInt32Node final : Node
 {
     CRUDE_BP_NODE(ConstInt32Node)
 
-    ConstInt32Node(IdGenerator& idGenerator): Node(idGenerator, "Const Int32") {}
+    ConstInt32Node(Blueprint& blueprint): Node(blueprint, "Const Int32") {}
 
     span<Pin*> GetOutputPins() override { return m_OutputPins; }
 
@@ -362,7 +358,7 @@ struct ConstFloatNode final : Node
 {
     CRUDE_BP_NODE(ConstFloatNode)
 
-    ConstFloatNode(IdGenerator& idGenerator): Node(idGenerator, "Const Float") {}
+    ConstFloatNode(Blueprint& blueprint): Node(blueprint, "Const Float") {}
 
     span<Pin*> GetOutputPins() override { return m_OutputPins; }
 
@@ -375,7 +371,7 @@ struct ConstStringNode final : Node
 {
     CRUDE_BP_NODE(ConstStringNode)
 
-    ConstStringNode(IdGenerator& idGenerator): Node(idGenerator, "Const String") {}
+    ConstStringNode(Blueprint& blueprint): Node(blueprint, "Const String") {}
 
     span<Pin*> GetOutputPins() override { return m_OutputPins; }
 
@@ -388,7 +384,7 @@ struct BranchNode final : Node
 {
     CRUDE_BP_NODE(BranchNode)
 
-    BranchNode(IdGenerator& idGenerator): Node(idGenerator, "Branch") {}
+    BranchNode(Blueprint& blueprint): Node(blueprint, "Branch") {}
 
     FlowPin Execute(Context& context, FlowPin& entryPoint) override
     {
@@ -415,7 +411,7 @@ struct DoNNode final : Node
 {
     CRUDE_BP_NODE(DoNNode)
 
-    DoNNode(IdGenerator& idGenerator): Node(idGenerator, "Do N") {}
+    DoNNode(Blueprint& blueprint): Node(blueprint, "Do N") {}
 
     FlowPin Execute(Context& context, FlowPin& entryPoint) override
     {
@@ -453,7 +449,7 @@ struct FlipFlopNode final : Node
 {
     CRUDE_BP_NODE(FlipFlopNode)
 
-    FlipFlopNode(IdGenerator& idGenerator): Node(idGenerator, "Flip Flop") {}
+    FlipFlopNode(Blueprint& blueprint): Node(blueprint, "Flip Flop") {}
 
     void Reset() override
     {
@@ -485,7 +481,7 @@ struct ToStringNode final : Node
 {
     CRUDE_BP_NODE(ToStringNode)
 
-    ToStringNode(IdGenerator& idGenerator): Node(idGenerator, "To String") {}
+    ToStringNode(Blueprint& blueprint): Node(blueprint, "To String") {}
 
     FlowPin Execute(Context& context, FlowPin& entryPoint) override
     {
@@ -525,7 +521,7 @@ struct PrintNode final : Node
 {
     CRUDE_BP_NODE(PrintNode)
 
-    PrintNode(IdGenerator& idGenerator): Node(idGenerator, "Print") {}
+    PrintNode(Blueprint& blueprint): Node(blueprint, "Print") {}
 
     FlowPin Execute(Context& context, FlowPin& entryPoint) override
     {
@@ -557,7 +553,7 @@ struct EntryPointNode final : Node
 {
     CRUDE_BP_NODE(EntryPointNode)
 
-    EntryPointNode(IdGenerator& idGenerator): Node(idGenerator, "Start") {}
+    EntryPointNode(Blueprint& blueprint): Node(blueprint, "Start") {}
 
     FlowPin Execute(Context& context, FlowPin& entryPoint) override
     {
@@ -584,8 +580,8 @@ struct NodeRegistry
     uint32_t RegisterNodeType(string_view name, NodeTypeInfo::Factory factory);
     void UnregisterNodeType(string_view name);
 
-    Node* Create(uint32_t typeId, IdGenerator& generator);
-    Node* Create(string_view typeName, IdGenerator& generator);
+    Node* Create(uint32_t typeId, Blueprint& blueprint);
+    Node* Create(string_view typeName, Blueprint& blueprint);
 
     span<const NodeTypeInfo* const> GetTypes() const;
 
@@ -620,7 +616,12 @@ private:
 struct Blueprint
 {
     Blueprint(shared_ptr<NodeRegistry> nodeRegistry = nullptr);
+    Blueprint(const Blueprint& other);
+    Blueprint(Blueprint&& other);
     ~Blueprint();
+
+    Blueprint& operator=(const Blueprint& other);
+    Blueprint& operator=(Blueprint&& other);
 
     template <typename T>
     T* CreateNode()
@@ -651,6 +652,9 @@ struct Blueprint
 
     bool Load(string_view path);
     bool Save(string_view path) const;
+
+    uint32_t MakeNodeId(Node* node);
+    uint32_t MakePinId(Pin* pin);
 
 private:
     void Reset();
