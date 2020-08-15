@@ -486,6 +486,8 @@ struct ToStringNode final : Node
         string result;
         switch (m_Value.GetType())
         {
+            case PinType::Void:   break;
+            case PinType::Flow:   break;
             case PinType::Bool:   result = m_Value.GetValueAs<bool>(context) ? "true" : "false"; break;
             case PinType::Int32:  result = std::to_string(m_Value.GetValueAs<int32_t>(context)); break;
             case PinType::Float:  result = std::to_string(m_Value.GetValueAs<float>(context)); break;
