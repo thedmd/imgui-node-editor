@@ -134,6 +134,8 @@ enum StyleVar
     StyleVar_PinArrowWidth,
     StyleVar_GroupRounding,
     StyleVar_GroupBorderWidth,
+
+    StyleVar_Count
 };
 
 struct Style
