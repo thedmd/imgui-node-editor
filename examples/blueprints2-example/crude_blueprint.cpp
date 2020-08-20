@@ -311,6 +311,8 @@ void crude_blueprint::Node::Save(crude_json::value& value) const
 
 crude_blueprint::PinValue crude_blueprint::Context::GetPinValue(const Pin& pin) const
 {
+    pin.m_Node->m_Blueprint->TouchPin(pin);
+
     return pin.m_Node->EvaluatePin(*this, pin);
 }
 
@@ -318,10 +320,13 @@ void crude_blueprint::Context::Start(FlowPin& entryPoint)
 {
     m_Queue.resize(0);
     m_Queue.push_back(entryPoint);
+    m_CurrentNode = entryPoint.m_Node;
 }
 
 crude_blueprint::StepResult crude_blueprint::Context::Step()
 {
+    m_CurrentNode = nullptr;
+
     if (m_Queue.empty())
         return StepResult::Done;
 
@@ -331,9 +336,14 @@ crude_blueprint::StepResult crude_blueprint::Context::Step()
     if (entryPoint.m_Type != PinType::Flow)
         return StepResult::Error;
 
+    m_CurrentNode = entryPoint.m_Node;
+    entryPoint.m_Node->m_Blueprint->TouchPin(entryPoint);
+
     auto next = entryPoint.m_Node->Execute(*this, entryPoint);
     if (next.m_Link && next.m_Link->m_Type == PinType::Flow)
+    {
         m_Queue.push_back(*static_cast<FlowPin*>(next.m_Link));
+    }
 
     return StepResult::Success;
 }
@@ -357,6 +367,17 @@ crude_blueprint::StepResult crude_blueprint::Context::Execute(FlowPin& entryPoin
 
     return result;
 }
+
+crude_blueprint::Node* crude_blueprint::Context::CurrentNode()
+{
+    return m_CurrentNode;
+}
+
+const crude_blueprint::Node* crude_blueprint::Context::CurrentNode() const
+{
+    return m_CurrentNode;
+}
+
 
 
 
@@ -632,6 +653,8 @@ void crude_blueprint::Blueprint::Start(EntryPointNode& entryPointNode)
 
 crude_blueprint::StepResult crude_blueprint::Blueprint::Step()
 {
+    m_TouchedPinIds.resize(0);
+
     return m_Context.Step();
 }
 
@@ -644,6 +667,16 @@ crude_blueprint::StepResult crude_blueprint::Blueprint::Execute(EntryPointNode& 
     ResetState();
 
     return m_Context.Execute(entryPointNode.m_Exit);
+}
+
+crude_blueprint::Node* crude_blueprint::Blueprint::CurrentNode()
+{
+    return m_Context.CurrentNode();
+}
+
+const crude_blueprint::Node* crude_blueprint::Blueprint::CurrentNode() const
+{
+    return m_Context.CurrentNode();
 }
 
 bool crude_blueprint::Blueprint::Load(const crude_json::value& value)
@@ -793,8 +826,27 @@ uint32_t crude_blueprint::Blueprint::MakePinId(Pin* pin)
     return m_Generator.GenerateId();
 }
 
+bool crude_blueprint::Blueprint::IsPinLinked(const Pin* pin) const
+{
+    if (pin->m_Link)
+        return true;
+
+    for (auto& p : m_Pins)
+    {
+        if (p->m_Link && p->m_Link->m_Id == pin->m_Id)
+            return true;
+    }
+
+    return false;
+}
+
 void crude_blueprint::Blueprint::ResetState()
 {
     for (auto node : m_Nodes)
         node->Reset();
+}
+
+void crude_blueprint::Blueprint::TouchPin(const Pin& pin)
+{
+    m_TouchedPinIds.push_back(pin.m_Id);
 }

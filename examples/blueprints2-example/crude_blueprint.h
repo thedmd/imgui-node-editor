@@ -1,3 +1,8 @@
+// Simple blueprint implementation
+//
+// Simple mean - no fancy code unless necessary. It could be
+// simpler if I had more time.
+//
 # pragma once
 # define span_FEATURE_MAKE_SPAN 1
 # include "nonstd/span.hpp" // span<>, make_span
@@ -255,8 +260,12 @@ struct Context
 
     StepResult Execute(FlowPin& entryPoint);
 
+    Node* CurrentNode();
+    const Node* CurrentNode() const;
+
 private:
     vector<FlowPin> m_Queue;
+    Node* m_CurrentNode = nullptr;
 };
 
 
@@ -428,6 +437,11 @@ struct DoNNode final : Node
         context.PushReturnPoint(entryPoint);
 
         return m_Exit;
+    }
+
+    void Reset() override
+    {
+        m_Counter.m_Value = 0;
     }
 
     span<Pin*> GetInputPins() override { return m_InputPins; }
@@ -655,6 +669,9 @@ struct Blueprint
 
     StepResult Execute(EntryPointNode& entryPointNode);
 
+    Node* CurrentNode();
+    const Node* CurrentNode() const;
+
     bool Load(const crude_json::value& value);
     void Save(crude_json::value& value) const;
 
@@ -664,6 +681,11 @@ struct Blueprint
     uint32_t MakeNodeId(Node* node);
     uint32_t MakePinId(Pin* pin);
 
+    bool IsPinLinked(const Pin* pin) const;
+
+    void TouchPin(const Pin& pin);
+    span<uint32_t> GetTouchedPinIds() { return m_TouchedPinIds; }
+
 private:
     void ResetState();
 
@@ -672,6 +694,7 @@ private:
     vector<Node*>               m_Nodes;
     vector<Pin*>                m_Pins;
     Context                     m_Context;
+    vector<uint32_t>            m_TouchedPinIds;
 };
 
 } // namespace crude_blueprint {

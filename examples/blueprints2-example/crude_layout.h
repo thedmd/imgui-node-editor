@@ -3,6 +3,10 @@
 
 namespace crude_layout {
 
+// Very crude implementation of grid layout.
+//
+// It was made to fit the need of laying out blueprint
+// node, may not work in more general cases.
 struct Grid
 {
     void Begin(const char* id, int columns, float width = -1.0f);
