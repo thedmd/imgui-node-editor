@@ -56,7 +56,7 @@ macro(add_example_executable name)
         set(_Example_Type MACOSX_BUNDLE)
 
         set_source_files_properties(${_Example_Resources} ${_Example_CommonResources} PROPERTIES
-            MACOSX_PACKAGE_LOCATION "Resources/Data"
+            MACOSX_PACKAGE_LOCATION "Resources/data"
         )
         set(_Example_Icon "${IMGUI_NODE_EDITOR_ROOT_DIR}/examples/application/support/Icon.icns")
         list(APPEND _Example_Resources ${_Example_Icon})
@@ -105,6 +105,12 @@ macro(add_example_executable name)
             continue()
         elseif(NOT _ResourceRoot)
             set(_ResourceRoot ${_Resource})
+            continue()
+        endif()
+
+        if ("${_Resource}" MATCHES "\.DS_Store$")
+            list(REMOVE_ITEM _Example_Resources ${_Resource})
+            list(REMOVE_ITEM _Example_CommonResources ${_Resource})
             continue()
         endif()
 

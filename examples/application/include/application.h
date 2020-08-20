@@ -1,6 +1,9 @@
 #pragma once
 #include <imgui.h>
 
+ImFont* Application_DefaultFont();
+ImFont* Application_HeaderFont();
+
 ImTextureID Application_LoadTexture(const char* path);
 ImTextureID Application_CreateTexture(const void* data, int width, int height);
 void        Application_DestroyTexture(ImTextureID texture);

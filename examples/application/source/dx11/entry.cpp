@@ -141,6 +141,19 @@ static ImFont* ImGui_LoadFont(ImFontAtlas& atlas, const char* name, float size, 
     return font;
 }
 
+ImFont* g_DefaultFont = nullptr;
+ImFont* g_HeaderFont = nullptr;
+
+ImFont* Application_DefaultFont()
+{
+    return g_DefaultFont;
+}
+
+ImFont* Application_HeaderFont()
+{
+    return g_HeaderFont;
+}
+
 ImTextureID Application_LoadTexture(const char* path)
 {
     return ImGui_LoadTexture(path);
@@ -200,18 +213,22 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _
     if (CreateDeviceD3D(hwnd) < 0)
         return 1;
 
-    ImFontAtlas fontAtlas;
-    auto defaultFont = ImGui_LoadFont(fontAtlas, "segoeui.ttf", 22.0f);//16.0f * 96.0f / 72.0f);
-    fontAtlas.Build();
-    //ImGuiFreeType::BuildFontAtlas(&fontAtlas);
-
-    // Setup ImGui binding
-    ImGui::CreateContext(&fontAtlas);
+    ImGui::CreateContext();
     AX_SCOPE_EXIT{ ImGui::DestroyContext(); };
+
     ImGuiIO& io = ImGui::GetIO();
     //io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;  // Enable Keyboard Controls
     io.IniFilename = nullptr;
     io.LogFilename = nullptr;
+
+    ImFontConfig config;
+    config.OversampleH = 4;
+    config.OversampleV = 4;
+    config.PixelSnapH = false;
+
+    g_DefaultFont = io.Fonts->AddFontFromFileTTF("data/Play-Regular.ttf", 18.0f, &config);
+    g_HeaderFont = io.Fonts->AddFontFromFileTTF("data/Cuprum-Bold.ttf", 20.0f, &config);
+    io.Fonts->Build();
 
 
     // Setup ImGui binding

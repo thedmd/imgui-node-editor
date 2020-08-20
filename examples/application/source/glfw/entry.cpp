@@ -103,6 +103,20 @@ int Application_GetTextureHeight(ImTextureID texture)
     return 0;
 }
 
+ImFont* g_DefaultFont = nullptr;
+ImFont* g_HeaderFont = nullptr;
+
+ImFont* Application_DefaultFont()
+{
+    return g_DefaultFont;
+}
+
+ImFont* Application_HeaderFont()
+{
+    return g_HeaderFont;
+}
+
+
 int main(int, char**)
 {
     // Setup window
@@ -138,7 +152,14 @@ int main(int, char**)
     // - The fonts will be rasterized at a given size (w/ oversampling) and stored into a texture when calling ImFontAtlas::Build()/GetTexDataAsXXXX(), which ImGui_ImplXXXX_NewFrame below will call.
     // - Read 'extra_fonts/README.txt' for more instructions and details.
     // - Remember that in C/C++ if you want to include a backslash \ in a string literal you need to write a double backslash \\ !
+    ImFontConfig config;
+    config.OversampleH = 4;
+    config.OversampleV = 4;
+    config.PixelSnapH = false;
+
     ImGuiIO& io = ImGui::GetIO();
+    g_DefaultFont = io.Fonts->AddFontFromFileTTF("data/Play-Regular.ttf", 18.0f, &config);
+    g_HeaderFont = io.Fonts->AddFontFromFileTTF("data/Cuprum-Bold.ttf", 20.0f, &config);
     //io.Fonts->AddFontDefault();
     //io.Fonts->AddFontFromFileTTF("../../extra_fonts/Roboto-Medium.ttf", 16.0f);
     //io.Fonts->AddFontFromFileTTF("../../extra_fonts/Cousine-Regular.ttf", 15.0f);
