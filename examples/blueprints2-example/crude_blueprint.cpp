@@ -93,12 +93,12 @@ crude_blueprint::Pin::Pin(Node* node, PinType type, string_view name)
 {
 }
 
-crude_blueprint::PinValue crude_blueprint::Pin::GetValue(const Context& context) const
+crude_blueprint::PinValue crude_blueprint::Pin::GetValue() const
 {
     if (m_Link)
-        return context.GetPinValue(*m_Link);
+        return m_Link->GetValue();
     else
-        return GetValue();
+        return GetImmediateValue();
 }
 
 crude_blueprint::PinType crude_blueprint::Pin::GetType() const
@@ -134,7 +134,7 @@ void crude_blueprint::Pin::Save(crude_json::value& value) const
         value["link"] = crude_json::number(m_Link->m_Id);
 }
 
-crude_blueprint::PinValue crude_blueprint::Pin::GetValue() const
+crude_blueprint::PinValue crude_blueprint::Pin::GetImmediateValue() const
 {
     return PinValue{};
 }
@@ -309,23 +309,18 @@ void crude_blueprint::Node::Save(crude_json::value& value) const
 // -------[ Context ]-------
 //
 
-crude_blueprint::PinValue crude_blueprint::Context::GetPinValue(const Pin& pin) const
-{
-    pin.m_Node->m_Blueprint->TouchPin(pin);
-
-    return pin.m_Node->EvaluatePin(*this, pin);
-}
-
 void crude_blueprint::Context::Start(FlowPin& entryPoint)
 {
     m_Queue.resize(0);
     m_Queue.push_back(entryPoint);
     m_CurrentNode = entryPoint.m_Node;
+    m_CurrentFlowPin = entryPoint;
 }
 
 crude_blueprint::StepResult crude_blueprint::Context::Step()
 {
     m_CurrentNode = nullptr;
+    m_CurrentFlowPin = {};
 
     if (m_Queue.empty())
         return StepResult::Done;
@@ -337,12 +332,19 @@ crude_blueprint::StepResult crude_blueprint::Context::Step()
         return StepResult::Error;
 
     m_CurrentNode = entryPoint.m_Node;
+
     entryPoint.m_Node->m_Blueprint->TouchPin(entryPoint);
 
     auto next = entryPoint.m_Node->Execute(*this, entryPoint);
     if (next.m_Link && next.m_Link->m_Type == PinType::Flow)
     {
+        m_CurrentFlowPin = next;
         m_Queue.push_back(*static_cast<FlowPin*>(next.m_Link));
+    }
+    else
+    {
+        if (!m_Queue.empty())
+            m_CurrentFlowPin = m_Queue.back();
     }
 
     return StepResult::Success;
@@ -376,6 +378,11 @@ crude_blueprint::Node* crude_blueprint::Context::CurrentNode()
 const crude_blueprint::Node* crude_blueprint::Context::CurrentNode() const
 {
     return m_CurrentNode;
+}
+
+crude_blueprint::FlowPin crude_blueprint::Context::CurrentFlowPin() const
+{
+    return m_CurrentFlowPin;
 }
 
 
@@ -677,6 +684,11 @@ crude_blueprint::Node* crude_blueprint::Blueprint::CurrentNode()
 const crude_blueprint::Node* crude_blueprint::Blueprint::CurrentNode() const
 {
     return m_Context.CurrentNode();
+}
+
+crude_blueprint::FlowPin crude_blueprint::Blueprint::CurrentFlowPin() const
+{
+    return m_Context.CurrentFlowPin();
 }
 
 bool crude_blueprint::Blueprint::Load(const crude_json::value& value)
