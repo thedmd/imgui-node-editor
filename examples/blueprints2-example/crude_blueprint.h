@@ -37,7 +37,7 @@ struct Context;
 struct Blueprint;
 
 
-enum class PinType { Void, Flow, Bool, Int32, Float, String };
+enum class PinType { Any, Flow, Bool, Int32, Float, String };
 using PinValue = variant<monostate, Node*, bool, int32_t, float, string>;
 
 
@@ -70,9 +70,11 @@ struct Pin
     virtual ~Pin() = default;
 
     template <typename T>
-    T GetValueAs(const Context& context) const;
+    T GetValueAs() const;
 
-    PinValue GetValue(const Context& context) const;
+    PinValue GetValue() const;
+
+    virtual PinValue GetImmediateValue() const;
 
     PinType GetType() const;
 
@@ -81,18 +83,15 @@ struct Pin
 
     uint32_t    m_Id   = 0;
     Node*       m_Node = nullptr;
-    PinType     m_Type = PinType::Void;
+    PinType     m_Type = PinType::Any;
     string_view m_Name;
     Pin*        m_Link = nullptr;
-
-protected:
-    virtual PinValue GetValue() const;
 };
 
 template <typename T>
-T crude_blueprint::Pin::GetValueAs(const Context& context) const
+T crude_blueprint::Pin::GetValueAs() const
 {
-    return get<T>(GetValue(context));
+    return get<T>(GetValue());
 }
 
 
@@ -103,7 +102,7 @@ T crude_blueprint::Pin::GetValueAs(const Context& context) const
 
 struct AnyPin final : Pin
 {
-    AnyPin(Node* node, string_view name = ""): Pin(node, PinType::Void, name) {}
+    AnyPin(Node* node, string_view name = ""): Pin(node, PinType::Any, name) {}
 };
 
 struct FlowPin final : Pin
@@ -136,13 +135,12 @@ struct BoolPin final : Pin
     {
     }
 
+    PinValue GetImmediateValue() const override { return m_Value; }
+
     bool Load(const crude_json::value& value) override;
     void Save(crude_json::value& value) const override;
 
     bool m_Value = false;
-
-protected:
-    PinValue GetValue() const override { return m_Value; }
 };
 
 struct Int32Pin final : Pin
@@ -150,13 +148,12 @@ struct Int32Pin final : Pin
     Int32Pin(Node* node, int32_t value = 0): Pin(node, PinType::Int32), m_Value(value) {}
     Int32Pin(Node* node, string_view name, int32_t value = 0): Pin(node, PinType::Int32, name), m_Value(value) {}
 
+    PinValue GetImmediateValue() const override { return m_Value; }
+
     bool Load(const crude_json::value& value) override;
     void Save(crude_json::value& value) const override;
 
     int32_t m_Value = 0;
-
-protected:
-    PinValue GetValue() const override { return m_Value; }
 };
 
 struct FloatPin final : Pin
@@ -164,13 +161,12 @@ struct FloatPin final : Pin
     FloatPin(Node* node, float value = 0.0f): Pin(node, PinType::Float), m_Value(value) {}
     FloatPin(Node* node, string_view name, float value = 0.0f): Pin(node, PinType::Float, name), m_Value(value) {}
 
+    PinValue GetImmediateValue() const override { return m_Value; }
+
     bool Load(const crude_json::value& value) override;
     void Save(crude_json::value& value) const override;
 
     float m_Value = 0.0f;
-
-protected:
-    PinValue GetValue() const override { return m_Value; }
 };
 
 struct StringPin final : Pin
@@ -178,13 +174,12 @@ struct StringPin final : Pin
     StringPin(Node* node, string value = ""): Pin(node, PinType::String), m_Value(value) {}
     StringPin(Node* node, string_view name, string value = ""): Pin(node, PinType::String, name), m_Value(value) {}
 
+    PinValue GetImmediateValue() const override { return m_Value; }
+
     bool Load(const crude_json::value& value) override;
     void Save(crude_json::value& value) const override;
 
     string m_Value;
-
-protected:
-    PinValue GetValue() const override { return m_Value; }
 };
 
 
@@ -216,11 +211,6 @@ struct Node
         return {};
     }
 
-    virtual PinValue EvaluatePin(const Context& context, const Pin& pin)
-    {
-        return pin.GetValue(context);
-    }
-
     virtual NodeTypeInfo GetTypeInfo() const { return {}; }
 
     virtual span<Pin*> GetInputPins() { return {}; }
@@ -248,10 +238,14 @@ enum class StepResult
 };
 
 
+struct PinValuePair
+{
+    uint32_t m_PinId;
+    PinValue m_Value;
+};
+
 struct Context
 {
-    PinValue GetPinValue(const Pin& pin) const;
-
     void Start(FlowPin& entryPoint);
 
     StepResult Step();
@@ -263,9 +257,12 @@ struct Context
     Node* CurrentNode();
     const Node* CurrentNode() const;
 
+    FlowPin CurrentFlowPin() const;
+
 private:
     vector<FlowPin> m_Queue;
     Node* m_CurrentNode = nullptr;
+    FlowPin m_CurrentFlowPin = {};
 };
 
 
@@ -395,7 +392,7 @@ struct BranchNode final : Node
 
     FlowPin Execute(Context& context, FlowPin& entryPoint) override
     {
-        auto value = m_Condition.GetValueAs<bool>(context);
+        auto value = m_Condition.GetValueAs<bool>();
         if (value)
             return m_True;
         else
@@ -428,7 +425,7 @@ struct DoNNode final : Node
             return {};
         }
 
-        auto n = m_N.GetValueAs<int32_t>(context);
+        auto n = m_N.GetValueAs<int32_t>();
         if (m_Counter.m_Value >= n)
             return {};
 
@@ -500,12 +497,12 @@ struct ToStringNode final : Node
         string result;
         switch (m_Value.GetType())
         {
-            case PinType::Void:   break;
+            case PinType::Any:    break;
             case PinType::Flow:   break;
-            case PinType::Bool:   result = m_Value.GetValueAs<bool>(context) ? "true" : "false"; break;
-            case PinType::Int32:  result = std::to_string(m_Value.GetValueAs<int32_t>(context)); break;
-            case PinType::Float:  result = std::to_string(m_Value.GetValueAs<float>(context)); break;
-            case PinType::String: result = m_Value.GetValueAs<string>(context); break;
+            case PinType::Bool:   result = m_Value.GetValueAs<bool>() ? "true" : "false"; break;
+            case PinType::Int32:  result = std::to_string(m_Value.GetValueAs<int32_t>()); break;
+            case PinType::Float:  result = std::to_string(m_Value.GetValueAs<float>()); break;
+            case PinType::String: result = m_Value.GetValueAs<string>(); break;
         }
 
         m_String.m_Value = std::move(result);
@@ -539,7 +536,7 @@ struct PrintNode final : Node
 
     FlowPin Execute(Context& context, FlowPin& entryPoint) override
     {
-        auto value = m_String.GetValueAs<string>(context);
+        auto value = m_String.GetValueAs<string>();
 
 # ifdef _WIN32
         OutputDebugStringA("PrintNode: ");
@@ -671,6 +668,8 @@ struct Blueprint
 
     Node* CurrentNode();
     const Node* CurrentNode() const;
+
+    FlowPin CurrentFlowPin() const;
 
     bool Load(const crude_json::value& value);
     void Save(crude_json::value& value) const;
