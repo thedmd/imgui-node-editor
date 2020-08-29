@@ -5,6 +5,7 @@
 # include "crude_blueprint.h"
 # include "crude_layout.h"
 # include "imgui_extras.h"
+# include "imgui_blueprint_utilities.h"
 # include "imgui_node_editor.h"
 
 # include "crude_json.h"
@@ -12,18 +13,11 @@
 namespace ed = ax::NodeEditor;
 
 using namespace crude_blueprint;
+using namespace crude_blueprint_utilities;
 
 static ed::EditorContext* g_Editor = nullptr;
 static Blueprint g_Blueprint;
 
-
-static void Debug_DrawItemRect(const ImVec4& col = ImVec4(1.0f, 0.0f, 0.0f, 1.0f))
-{
-    auto drawList = ImGui::GetWindowDrawList();
-    auto itemMin = ImGui::GetItemRectMin();
-    auto itemMax = ImGui::GetItemRectMax();
-    drawList->AddRect(itemMin, itemMax, ImColor(col));
-}
 
 const char* Application_GetName()
 {
@@ -33,46 +27,6 @@ const char* Application_GetName()
 void Application_Initialize()
 {
     using namespace crude_blueprint;
-
-    //IdGenerator g;
-
-    //Context executor;
-
-    //ConstBoolNode valueA{g};
-    //valueA.m_Bool.m_Value = true;
-
-    //ToStringNode toStringNode{g};
-    //toStringNode.m_Value.m_Link = &valueA.m_Bool;
-
-    //PrintNode truePrintNode{g};
-    //truePrintNode.m_String.m_Value = "It's true!";
-    //truePrintNode.m_String.m_Link = &toStringNode.m_String;
-    //toStringNode.m_Exit.m_Link = &truePrintNode.m_Enter;
-
-    //PrintNode falsePrintNode{g};
-    //falsePrintNode.m_String.m_Value = "It's false!";
-
-
-    //BranchNode branchNode{g};
-    //branchNode.m_Condition.m_Link = &valueA.m_Bool;
-    //branchNode.m_True.m_Link = &toStringNode.m_Enter;
-    //branchNode.m_False.m_Link = &falsePrintNode.m_Enter;
-
-    //FlipFlopNode flipFlopNode{g};
-
-    //DoNNode doNNode{g};
-    //doNNode.m_Exit.m_Link = &flipFlopNode.m_Enter;
-    //doNNode.m_N.m_Value = 5;
-    //toStringNode.m_Value.m_Link = &doNNode.m_Counter;
-
-    //flipFlopNode.m_A.m_Link = &branchNode.m_Enter;
-    //flipFlopNode.m_B.m_Link = &falsePrintNode.m_Enter;
-
-    //executor.Execute(doNNode.m_Enter);
-
-
-
-
 
     auto printNode2Node = g_Blueprint.CreateNode<PrintNode>();
     auto entryPointNode = g_Blueprint.CreateNode<EntryPointNode>();
@@ -134,176 +88,18 @@ void Application_Finalize()
     ed::DestroyEditor(g_Editor);
 }
 
-static ImEx::IconType PinTypeToIconType(PinType pinType)
+static EntryPointNode* FindEntryPointNode()
 {
-    switch (pinType)
+    for (auto& node : g_Blueprint.GetNodes())
     {
-        case PinType::Any:      return ImEx::IconType::Diamond;
-        case PinType::Flow:     return ImEx::IconType::Flow;
-        case PinType::Bool:     return ImEx::IconType::Circle;
-        case PinType::Int32:    return ImEx::IconType::Circle;
-        case PinType::Float:    return ImEx::IconType::Circle;
-        case PinType::String:   return ImEx::IconType::Circle;
+        if (node->GetTypeInfo().m_Id == EntryPointNode::GetStaticTypeInfo().m_Id)
+        {
+            return static_cast<EntryPointNode*>(node);
+        }
     }
 
-    return ImEx::IconType::Circle;
+    return nullptr;
 }
-
-static ImVec4 PinTypeToIconColor(PinType pinType)
-{
-    switch (pinType)
-    {
-        case PinType::Any:      return ImVec4(1.0f, 1.0f, 1.0f, 1.0f);
-        case PinType::Flow:     return ImVec4(1.0f, 1.0f, 1.0f, 1.0f);
-        case PinType::Bool:     return ImVec4(220 / 255.0f,  48 / 255.0f,  48 / 255.0f, 1.0f);
-        case PinType::Int32:    return ImVec4( 68 / 255.0f, 201 / 255.0f, 156 / 255.0f, 1.0f);
-        case PinType::Float:    return ImVec4(147 / 255.0f, 226 / 255.0f,  74 / 255.0f, 1.0f);
-        case PinType::String:   return ImVec4(124 / 255.0f,  21 / 255.0f, 153 / 255.0f, 1.0f);
-    }
-
-    return ImVec4(1.0f, 1.0f, 1.0f, 1.0f);
-}
-
-static bool DrawPinValue(const PinValue& value)
-{
-    switch (static_cast<PinType>(value.index()))
-    {
-        case PinType::Any:
-            return false;
-        case PinType::Flow:
-            return false;
-        case PinType::Bool:
-            if (get<bool>(value))
-                ImGui::TextUnformatted("true");
-            else
-                ImGui::TextUnformatted("false");
-            return true;
-        case PinType::Int32:
-            ImGui::Text("%d", get<int32_t>(value));
-            return true;
-        case PinType::Float:
-            ImGui::Text("%f", get<float>(value));
-            return true;
-        case PinType::String:
-            ImGui::Text("%s", get<string>(value).c_str());
-            return true;
-    }
-
-    return false;
-}
-
-static bool DrawPinValue(const Pin& pin)
-{
-    return DrawPinValue(pin.GetValue());
-}
-
-static bool DrawPinImmediateValue(const Pin& pin)
-{
-    return DrawPinValue(pin.GetImmediateValue());
-}
-
-static bool EditPinImmediateValue(Pin& pin)
-{
-    ImEx::ScopedItemWidth scopedItemWidth{120};
-
-    switch (pin.m_Type)
-    {
-        case PinType::Any:
-            return false;
-        case PinType::Flow:
-            return false;
-        case PinType::Bool:
-            if (ImGui::Checkbox("##editor", &static_cast<BoolPin&>(pin).m_Value))
-                return false;
-            return true;
-        case PinType::Int32:
-            if (ImGui::InputInt("##editor", &static_cast<Int32Pin&>(pin).m_Value, 1, 100, ImGuiInputTextFlags_EnterReturnsTrue))
-                return false;
-            return true;
-        case PinType::Float:
-            if (ImGui::InputFloat("##editor", &static_cast<FloatPin&>(pin).m_Value, 1, 100, "%.3f", ImGuiInputTextFlags_EnterReturnsTrue))
-                return false;
-            return true;
-        case PinType::String:
-            auto& stringValue = static_cast<StringPin&>(pin).m_Value;
-            if (ImGui::InputText("##editor", (char*)stringValue.data(), stringValue.size() + 1, ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_CallbackResize, [](ImGuiInputTextCallbackData *data) -> int
-            {
-                if (data->EventFlag == ImGuiInputTextFlags_CallbackResize)
-                {
-                    auto& stringValue = *static_cast<string*>(data->UserData);
-                    ImVector<char>* my_str = (ImVector<char>*)data->UserData;
-                    IM_ASSERT(stringValue.data() == data->Buf);
-                    stringValue.resize(data->BufSize); // NB: On resizing calls, generally data->BufSize == data->BufTextLen + 1
-                    data->Buf = (char*)stringValue.data();
-                }
-                return 0;
-            }, &stringValue))
-                return false;
-            return true;
-    }
-
-    return false;
-}
-
-struct PinValueBackgroundDrawer
-{
-    PinValueBackgroundDrawer()
-        : PinValueBackgroundDrawer(ImGui::GetStyleColorVec4(ImGuiCol_CheckMark))
-    {
-    }
-
-    PinValueBackgroundDrawer(const ImVec4 color, float alpha = 0.25f)
-    {
-        m_DrawList = ImGui::GetWindowDrawList();
-        m_Splitter.Split(m_DrawList, 2);
-        m_Splitter.SetCurrentChannel(m_DrawList, 1);
-        m_Color = color;
-        m_Alpha = alpha;
-    }
-
-    ~PinValueBackgroundDrawer()
-    {
-        Commit();
-    }
-
-    void Commit()
-    {
-        if (m_Splitter._Current == 0)
-            return;
-
-        m_Splitter.SetCurrentChannel(m_DrawList, 0);
-
-        auto itemMin = ImGui::GetItemRectMin();
-        auto itemMax = ImGui::GetItemRectMax();
-        auto margin = ImGui::GetStyle().ItemSpacing * 0.25f;
-        margin.x = ImCeil(margin.x);
-        margin.y = ImCeil(margin.y);
-        itemMin -= margin;
-        itemMax += margin;
-
-        auto color = m_Color;
-        color.w *= m_Alpha;
-        m_DrawList->AddRectFilled(itemMin, itemMax,
-            ImGui::GetColorU32(color), 4.0f);
-
-        m_DrawList->AddRect(itemMin, itemMax,
-            ImGui::GetColorU32(ImGuiCol_Text, m_Alpha), 4.0f);
-
-        m_Splitter.Merge(m_DrawList);
-    }
-
-    void Discard()
-    {
-        if (m_Splitter._Current == 1)
-            m_Splitter.Merge(m_DrawList);
-    }
-
-private:
-    ImDrawList* m_DrawList = nullptr;
-    ImDrawListSplitter m_Splitter;
-    ImVec4 m_Color;
-    float m_Alpha = 1.0f;
-};
 
 static void EditOrDrawPinValue(Pin& pin)
 {
@@ -321,7 +117,7 @@ static void EditOrDrawPinValue(Pin& pin)
     else
     {
         // Draw pin value
-        PinValueBackgroundDrawer bg;
+        PinValueBackgroundRenderer bg;
         if (!DrawPinImmediateValue(pin))
         {
             bg.Discard();
@@ -344,17 +140,15 @@ static void EditOrDrawPinValue(Pin& pin)
     storage->SetInt(ImGui::GetID("PinValueEditor_ActivePinId"), activePinId);
 }
 
-static EntryPointNode* FindEntryPointNode()
+static const char* StepResultToString(StepResult stepResult)
 {
-    for (auto& node : g_Blueprint.GetNodes())
+    switch (stepResult)
     {
-        if (node->GetTypeInfo().m_Id == EntryPointNode::GetStaticTypeInfo().m_Id)
-        {
-            return static_cast<EntryPointNode*>(node);
-        }
+        case StepResult::Success:   return "Success";
+        case StepResult::Done:      return "Done";
+        case StepResult::Error:     return "Error";
+        default:                    return "";
     }
-
-    return nullptr;
 }
 
 static void ShowControlPanel()
@@ -379,7 +173,7 @@ static void ShowControlPanel()
         g_Blueprint.Step();
         if (auto currentNode = g_Blueprint.CurrentNode())
         {
-            ed::SelectNode(currentNode->m_Id);
+            //ed::SelectNode(currentNode->m_Id);
             //ed::NavigateToSelection();
         }
         else
@@ -397,7 +191,15 @@ static void ShowControlPanel()
     if (ImGui::Button("Run"))
     {
         g_Blueprint.Execute(*entryNode);
+
+        for (auto& touchedPinId : g_Blueprint.GetTouchedPinIds())
+        {
+            ed::Flow(touchedPinId);
+        }
     }
+
+    ImGui::SameLine();
+    ImGui::Text("Status: %s", StepResultToString(g_Blueprint.LastStepResult()));
 
     if (auto currentNode = g_Blueprint.CurrentNode())
     {
@@ -406,134 +208,16 @@ static void ShowControlPanel()
         ImGui::SameLine();
         ImGui::Text("Current Node: %*s", static_cast<int>(currentNode->m_Name.size()), currentNode->m_Name.data());
 
-        auto currentFlowPin = g_Blueprint.CurrentFlowPin();
-        auto nextNode = currentFlowPin.m_Link ? currentFlowPin.m_Link->m_Node : currentFlowPin.m_Node;
+        auto nextNode = g_Blueprint.NextNode();
         auto nextNodeName = nextNode ? nextNode->m_Name : "-";
+        ImGui::SameLine();
+        ImGui::Spacing();
         ImGui::SameLine();
         ImGui::Text("Next Node: %*s", static_cast<int>(nextNodeName.size()), nextNodeName.data());
     }
 
     ImGui::GetStyle().Alpha = 1.0f;
 }
-
-struct DebugOverlay
-{
-    void Begin(const Blueprint& blueprint)
-    {
-        m_Blueprint = &blueprint;
-        m_CurrentNode = m_Blueprint->CurrentNode();
-        m_CurrentFlowPin = m_Blueprint->CurrentFlowPin();
-
-        if (nullptr == m_CurrentNode)
-            return;
-
-        // Use splitter to draw pin values on top of nodes
-        m_DrawList = ImGui::GetWindowDrawList();
-        m_Splitter.Split(m_DrawList, 2);
-    }
-
-    void End()
-    {
-        if (nullptr == m_CurrentNode)
-            return;
-
-        m_Splitter.Merge(m_DrawList);
-    }
-
-    void DrawInputPin(const Pin& pin)
-    {
-        const auto isCurrentFlowPin = (m_CurrentFlowPin.m_Id == pin.m_Id);
-
-        if (nullptr == m_CurrentNode || (!pin.m_Link && !isCurrentFlowPin))
-            return;
-
-        // Draw to layer over nodes
-        m_Splitter.SetCurrentChannel(m_DrawList, 1);
-
-        // Save current layout to avoid conflicts with node measurements
-        ImEx::ScopedSuspendLayout suspendLayout;
-
-        // Put cursor on the left side of the Pin
-        auto itemRectMin = ImGui::GetItemRectMin();
-        auto itemRectMax = ImGui::GetItemRectMax();
-        ImGui::SetCursorScreenPos(ImVec2(itemRectMin.x, itemRectMin.y)
-            - ImVec2(1.75f * ImGui::GetStyle().ItemSpacing.x, 0.0f));
-
-        // Remember current vertex, later we will patch generated mesh so drawn value
-        // will be aligned to the right side of the pin.
-        auto vertexStartIdx = m_DrawList->_VtxCurrentOffset + m_DrawList->_VtxCurrentIdx;
-
-        auto isCurrentNode = (m_CurrentNode == pin.m_Node);
-        auto color = ImGui::GetStyleColorVec4(isCurrentNode || isCurrentFlowPin ? ImGuiCol_PlotHistogram : ImGuiCol_NavHighlight);
-
-        // Actual drawing
-        PinValueBackgroundDrawer bg(color, 0.5f);
-        if (!DrawPinValue(pin))
-        {
-            if (m_CurrentFlowPin.m_Id == pin.m_Id)
-            {
-                auto iconSize = ImVec2(ImGui::GetFontSize(), ImGui::GetFontSize());
-                ImEx::Icon(iconSize, ImEx::IconType::Flow, true, color);
-            }
-            else
-                bg.Discard();
-        }
-        bg.Commit();
-
-        // Move generated mesh to the left
-        auto itemWidth = ImGui::GetItemRectSize().x;
-        auto vertexEndIdx = m_DrawList->_VtxCurrentOffset + m_DrawList->_VtxCurrentIdx;
-        for (auto vertexIdx = vertexStartIdx; vertexIdx < vertexEndIdx; ++vertexIdx)
-            m_DrawList->VtxBuffer[vertexIdx].pos.x -= itemWidth;
-
-        // Switch back to normal layer
-        m_Splitter.SetCurrentChannel(m_DrawList, 0);
-    }
-
-    void DrawOutputPin(const Pin& pin)
-    {
-        if (nullptr == m_CurrentNode)
-            return;
-
-        // Draw to layer over nodes
-        m_Splitter.SetCurrentChannel(m_DrawList, 1);
-
-        ImEx::ScopedSuspendLayout suspendLayout;
-
-        // Put cursor on the right side of the Pin
-        auto itemRectMin = ImGui::GetItemRectMin();
-        auto itemRectMax = ImGui::GetItemRectMax();
-        ImGui::SetCursorScreenPos(ImVec2(itemRectMax.x, itemRectMin.y)
-            + ImVec2(1.75f * ImGui::GetStyle().ItemSpacing.x, 0.0f));
-
-        auto isCurrentNode = m_CurrentNode == pin.m_Node;
-        auto color = ImGui::GetStyleColorVec4(isCurrentNode ? ImGuiCol_PlotHistogram : ImGuiCol_NavHighlight);
-
-        // Actual drawing
-        PinValueBackgroundDrawer bg(color, 0.5f);
-        if (!DrawPinImmediateValue(pin))
-        {
-            if (m_CurrentFlowPin.m_Id == pin.m_Id)
-            {
-                auto iconSize = ImVec2(ImGui::GetFontSize(), ImGui::GetFontSize());
-                ImEx::Icon(iconSize, ImEx::IconType::Flow, true, color);
-            }
-            else
-                bg.Discard();
-        }
-        bg.Commit();
-
-        // Switch back to normal layer
-        m_Splitter.SetCurrentChannel(m_DrawList, 0);
-    }
-
-private:
-    const Blueprint* m_Blueprint = nullptr;
-    const Node* m_CurrentNode = nullptr;
-    FlowPin m_CurrentFlowPin;
-    ImDrawList* m_DrawList = nullptr;
-    ImDrawListSplitter m_Splitter;
-};
 
 void Application_Frame()
 {
@@ -599,7 +283,7 @@ void Application_Frame()
             }
             ed::EndPin();
 
-            // Show value of the pin if node is currently exeecuted
+            // Show value of the pin if node is currently executed
             debugValueRenderer.DrawInputPin(*pin);
 
             layout.NextRow();
@@ -624,7 +308,7 @@ void Application_Frame()
                 PinTypeToIconColor(pin->m_Type));
             ed::EndPin();
 
-            // Show value of the pin if node is currently exeecuted
+            // Show value of the pin if node is currently executed
             debugValueRenderer.DrawOutputPin(*pin);
 
             layout.NextRow();
@@ -633,6 +317,8 @@ void Application_Frame()
         layout.End();
 
         ed::EndNode();
+
+        debugValueRenderer.DrawNode(*node);
     }
 
     // Commit all links to editor
@@ -641,7 +327,6 @@ void Application_Frame()
         if (!pin->m_Link)
             continue;
 
-        //ed::Link(pin->m_Id, pin->m_Id, pin->m_Link->m_Id, PinTypeToIconColor(pin->m_Link->m_Type));
         ed::Link(pin->m_Link->m_Id, pin->m_Id, pin->m_Link->m_Id, PinTypeToIconColor(pin->m_Link->m_Type));
     }
 

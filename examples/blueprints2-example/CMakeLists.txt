@@ -6,6 +6,8 @@ add_example_executable(blueprints2-example
     crude_layout.h
     imgui_extras.cpp
     imgui_extras.h
+    imgui_blueprint_utilities.cpp
+    imgui_blueprint_utilities.h
     external/include/nonstd/span.hpp
     external/include/nonstd/string_view.hpp
     external/include/nonstd/variant.hpp

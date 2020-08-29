@@ -257,12 +257,23 @@ struct Context
     Node* CurrentNode();
     const Node* CurrentNode() const;
 
+    Node* NextNode();
+    const Node* NextNode() const;
+
     FlowPin CurrentFlowPin() const;
 
+    StepResult LastStepResult() const;
+
+    uint32_t StepCount() const;
+
 private:
+    StepResult SetStepResult(StepResult result);
+
     vector<FlowPin> m_Queue;
     Node* m_CurrentNode = nullptr;
     FlowPin m_CurrentFlowPin = {};
+    StepResult m_LastResult = StepResult::Done;
+    uint32_t m_StepCount = 0;
 };
 
 
@@ -669,7 +680,12 @@ struct Blueprint
     Node* CurrentNode();
     const Node* CurrentNode() const;
 
+    Node* NextNode();
+    const Node* NextNode() const;
+
     FlowPin CurrentFlowPin() const;
+
+    StepResult LastStepResult() const;
 
     bool Load(const crude_json::value& value);
     void Save(crude_json::value& value) const;
