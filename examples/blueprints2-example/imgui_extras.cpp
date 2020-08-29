@@ -12,11 +12,23 @@ void ImEx::DrawIcon(ImDrawList* drawList, const ImVec2& a, const ImVec2& b, Icon
           auto rect_center_x  = (rect.Min.x + rect.Max.x) * 0.5f;
           auto rect_center_y  = (rect.Min.y + rect.Max.y) * 0.5f;
           auto rect_center    = ImVec2(rect_center_x, rect_center_y);
-    const auto outline_scale  = rect_w / 24.0f;
+    const auto outline_scale  = ImMin(rect_w, rect_h) / 24.0f;
     const auto extra_segments = static_cast<int>(2 * outline_scale); // for full circle
 
-    if (type == IconType::Flow)
+    if (type == IconType::Flow || type == IconType::FlowDown)
     {
+        auto tr = [type, rect_center_x, rect_center_y](const ImVec2& point) -> ImVec2
+        {
+            ImVec2 result = point;
+            if (type == IconType::FlowDown)
+            {
+                result = point - ImVec2(rect_center_x, rect_center_y);
+                result = ImVec2(result.y, result.x);
+                result = result + ImVec2(rect_center_x, rect_center_y);
+            }
+            return result;
+        };
+
         const auto origin_scale = rect_w / 24.0f;
 
         const auto offset_x  = 1.0f * origin_scale;
@@ -26,10 +38,8 @@ void ImEx::DrawIcon(ImDrawList* drawList, const ImVec2& a, const ImVec2& b, Icon
         const auto tip_round  = 0.7f; // percentage of triangle edge (for tip)
         //const auto edge_round = 0.7f; // percentage of triangle edge (for corner)
         const auto canvas = ImRect(
-            rect.Min.x + margin + offset_x,
-            rect.Min.y + margin + offset_y,
-            rect.Max.x - margin + offset_x,
-            rect.Max.y - margin + offset_y);
+            tr(ImVec2(rect.Min.x + margin + offset_x, rect.Min.y + margin + offset_y)),
+            tr(ImVec2(rect.Max.x - margin + offset_x, rect.Max.y - margin + offset_y)));
         const auto canvas_x = canvas.Min.x;
         const auto canvas_y = canvas.Min.y;
         const auto canvas_w = canvas.Max.x - canvas.Min.x;
@@ -39,6 +49,7 @@ void ImEx::DrawIcon(ImDrawList* drawList, const ImVec2& a, const ImVec2& b, Icon
         const auto right  = canvas_x + canvas_w - canvas_w * 0.5f * 0.3f;
         const auto top    = canvas_y + canvas_h            * 0.5f * 0.2f;
         const auto bottom = canvas_y + canvas_h - canvas_h * 0.5f * 0.2f;
+        const auto center_x = (left + right) * 0.5f;
         const auto center_y = (top + bottom) * 0.5f;
         //const auto angle = AX_PI * 0.5f * 0.5f * 0.5f;
 
@@ -46,23 +57,37 @@ void ImEx::DrawIcon(ImDrawList* drawList, const ImVec2& a, const ImVec2& b, Icon
         const auto tip_right  = ImVec2(right, center_y);
         const auto tip_bottom = ImVec2(canvas_x + canvas_w * 0.5f, bottom);
 
-        drawList->PathLineTo(ImVec2(left, top) + ImVec2(0, rounding));
+        drawList->PathLineTo(tr(ImVec2(left, top) + ImVec2(0, rounding)));
         drawList->PathBezierCurveTo(
-            ImVec2(left, top),
-            ImVec2(left, top),
-            ImVec2(left, top) + ImVec2(rounding, 0));
-        drawList->PathLineTo(tip_top);
-        drawList->PathLineTo(tip_top + (tip_right - tip_top) * tip_round);
+            tr(ImVec2(left, top)),
+            tr(ImVec2(left, top)),
+            tr(ImVec2(left, top) + ImVec2(rounding, 0)));
+        drawList->PathLineTo(tr(tip_top));
+        drawList->PathLineTo(tr(tip_top + (tip_right - tip_top) * tip_round));
         drawList->PathBezierCurveTo(
-            tip_right,
-            tip_right,
-            tip_bottom + (tip_right - tip_bottom) * tip_round);
-        drawList->PathLineTo(tip_bottom);
-        drawList->PathLineTo(ImVec2(left, bottom) + ImVec2(rounding, 0));
+            tr(tip_right),
+            tr(tip_right),
+            tr(tip_bottom + (tip_right - tip_bottom) * tip_round));
+        drawList->PathLineTo(tr(tip_bottom));
+        drawList->PathLineTo(tr(ImVec2(left, bottom) + ImVec2(rounding, 0)));
         drawList->PathBezierCurveTo(
-            ImVec2(left, bottom),
-            ImVec2(left, bottom),
-            ImVec2(left, bottom) - ImVec2(0, rounding));
+            tr(ImVec2(left, bottom)),
+            tr(ImVec2(left, bottom)),
+            tr(ImVec2(left, bottom) - ImVec2(0, rounding)));
+
+        if (type == IconType::FlowDown)
+        {
+            // reverse order of vertices in path, so PathFillConvex will emit
+            // proper AA fringe
+            auto first = drawList->_Path.Data;
+            auto last = drawList->_Path.Data + drawList->_Path.Size;
+
+            while ((first != last) && (first != --last))
+            {
+                ImSwap(*first, *last);
+                ++first;
+            }
+        }
 
         if (!filled)
         {
