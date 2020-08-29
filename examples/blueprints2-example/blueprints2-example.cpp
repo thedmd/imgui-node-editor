@@ -4,7 +4,7 @@
 
 # include "crude_blueprint.h"
 # include "crude_layout.h"
-# include "utilities/widgets.h"
+# include "imgui_extras.h"
 # include "imgui_node_editor.h"
 
 # include "crude_json.h"
@@ -16,71 +16,6 @@ using namespace crude_blueprint;
 static ed::EditorContext* g_Editor = nullptr;
 static Blueprint g_Blueprint;
 
-struct ScopedItemWidth
-{
-    ScopedItemWidth(float width)
-    {
-        ImGui::PushItemWidth(width);
-    }
-
-    ~ScopedItemWidth()
-    {
-        ImGui::PopItemWidth();
-    }
-};
-
-struct ScopedItemFlag
-{
-    ScopedItemFlag(ImGuiItemFlags flag)
-        : m_Flag(flag)
-    {
-        ImGui::PushItemFlag(m_Flag, true);
-    }
-
-    ~ScopedItemFlag()
-    {
-        ImGui::PushItemFlag(m_Flag, false);
-    }
-
-private:
-    ImGuiItemFlags m_Flag = ImGuiItemFlags_None;
-};
-
-struct ScopedSuspendLayout
-{
-    ScopedSuspendLayout()
-    {
-        m_Window = ImGui::GetCurrentWindow();
-        m_CursorPos = m_Window->DC.CursorPos;
-        m_CursorPosPrevLine = m_Window->DC.CursorPosPrevLine;
-        m_CursorMaxPos = m_Window->DC.CursorMaxPos;
-        m_CurrLineSize = m_Window->DC.CurrLineSize;
-        m_PrevLineSize = m_Window->DC.PrevLineSize;
-        m_CurrLineTextBaseOffset = m_Window->DC.CurrLineTextBaseOffset;
-        m_PrevLineTextBaseOffset = m_Window->DC.PrevLineTextBaseOffset;
-    }
-
-    ~ScopedSuspendLayout()
-    {
-        m_Window->DC.CursorPos = m_CursorPos;
-        m_Window->DC.CursorPosPrevLine = m_CursorPosPrevLine;
-        m_Window->DC.CursorMaxPos = m_CursorMaxPos;
-        m_Window->DC.CurrLineSize = m_CurrLineSize;
-        m_Window->DC.PrevLineSize = m_PrevLineSize;
-        m_Window->DC.CurrLineTextBaseOffset = m_CurrLineTextBaseOffset;
-        m_Window->DC.PrevLineTextBaseOffset = m_PrevLineTextBaseOffset;
-    }
-
-private:
-    ImGuiWindow* m_Window = nullptr;
-    ImVec2 m_CursorPos;
-    ImVec2 m_CursorPosPrevLine;
-    ImVec2 m_CursorMaxPos;
-    ImVec2 m_CurrLineSize;
-    ImVec2 m_PrevLineSize;
-    float  m_CurrLineTextBaseOffset;
-    float  m_PrevLineTextBaseOffset;
-};
 
 static void Debug_DrawItemRect(const ImVec4& col = ImVec4(1.0f, 0.0f, 0.0f, 1.0f))
 {
@@ -199,19 +134,19 @@ void Application_Finalize()
     ed::DestroyEditor(g_Editor);
 }
 
-static ax::Widgets::IconType PinTypeToIconType(PinType pinType)
+static ImEx::IconType PinTypeToIconType(PinType pinType)
 {
     switch (pinType)
     {
-        case PinType::Any:      return ax::Widgets::IconType::Diamond;
-        case PinType::Flow:     return ax::Widgets::IconType::Flow;
-        case PinType::Bool:     return ax::Widgets::IconType::Circle;
-        case PinType::Int32:    return ax::Widgets::IconType::Circle;
-        case PinType::Float:    return ax::Widgets::IconType::Circle;
-        case PinType::String:   return ax::Widgets::IconType::Circle;
+        case PinType::Any:      return ImEx::IconType::Diamond;
+        case PinType::Flow:     return ImEx::IconType::Flow;
+        case PinType::Bool:     return ImEx::IconType::Circle;
+        case PinType::Int32:    return ImEx::IconType::Circle;
+        case PinType::Float:    return ImEx::IconType::Circle;
+        case PinType::String:   return ImEx::IconType::Circle;
     }
 
-    return ax::Widgets::IconType::Circle;
+    return ImEx::IconType::Circle;
 }
 
 static ImVec4 PinTypeToIconColor(PinType pinType)
@@ -229,9 +164,9 @@ static ImVec4 PinTypeToIconColor(PinType pinType)
     return ImVec4(1.0f, 1.0f, 1.0f, 1.0f);
 }
 
-static bool DrawPinValue(const Pin& pin, const PinValue& value)
+static bool DrawPinValue(const PinValue& value)
 {
-    switch (pin.m_Type)
+    switch (static_cast<PinType>(value.index()))
     {
         case PinType::Any:
             return false;
@@ -259,17 +194,17 @@ static bool DrawPinValue(const Pin& pin, const PinValue& value)
 
 static bool DrawPinValue(const Pin& pin)
 {
-    return DrawPinValue(pin, pin.GetValue());
+    return DrawPinValue(pin.GetValue());
 }
 
 static bool DrawPinImmediateValue(const Pin& pin)
 {
-    return DrawPinValue(pin, pin.GetImmediateValue());
+    return DrawPinValue(pin.GetImmediateValue());
 }
 
 static bool EditPinImmediateValue(Pin& pin)
 {
-    ScopedItemWidth scopedItemWidth{120};
+    ImEx::ScopedItemWidth scopedItemWidth{120};
 
     switch (pin.m_Type)
     {
@@ -426,7 +361,7 @@ static void ShowControlPanel()
 {
     auto entryNode = FindEntryPointNode();
 
-    ScopedItemFlag disableItemFlag(entryNode == nullptr);
+    ImEx::ScopedItemFlag disableItemFlag(entryNode == nullptr);
     ImGui::GetStyle().Alpha = entryNode == nullptr ? 0.5f : 1.0f;
 
     bool doStep = false;
@@ -464,10 +399,24 @@ static void ShowControlPanel()
         g_Blueprint.Execute(*entryNode);
     }
 
+    if (auto currentNode = g_Blueprint.CurrentNode())
+    {
+        ImGui::SameLine();
+        ImGui::Spacing();
+        ImGui::SameLine();
+        ImGui::Text("Current Node: %*s", static_cast<int>(currentNode->m_Name.size()), currentNode->m_Name.data());
+
+        auto currentFlowPin = g_Blueprint.CurrentFlowPin();
+        auto nextNode = currentFlowPin.m_Link ? currentFlowPin.m_Link->m_Node : currentFlowPin.m_Node;
+        auto nextNodeName = nextNode ? nextNode->m_Name : "-";
+        ImGui::SameLine();
+        ImGui::Text("Next Node: %*s", static_cast<int>(nextNodeName.size()), nextNodeName.data());
+    }
+
     ImGui::GetStyle().Alpha = 1.0f;
 }
 
-struct DebugPinValueRenderer
+struct DebugOverlay
 {
     void Begin(const Blueprint& blueprint)
     {
@@ -502,13 +451,13 @@ struct DebugPinValueRenderer
         m_Splitter.SetCurrentChannel(m_DrawList, 1);
 
         // Save current layout to avoid conflicts with node measurements
-        ScopedSuspendLayout suspendLayout;
+        ImEx::ScopedSuspendLayout suspendLayout;
 
         // Put cursor on the left side of the Pin
         auto itemRectMin = ImGui::GetItemRectMin();
         auto itemRectMax = ImGui::GetItemRectMax();
         ImGui::SetCursorScreenPos(ImVec2(itemRectMin.x, itemRectMin.y)
-            - ImVec2(1.5f * ImGui::GetStyle().ItemSpacing.x, 0.0f));
+            - ImVec2(1.75f * ImGui::GetStyle().ItemSpacing.x, 0.0f));
 
         // Remember current vertex, later we will patch generated mesh so drawn value
         // will be aligned to the right side of the pin.
@@ -524,7 +473,7 @@ struct DebugPinValueRenderer
             if (m_CurrentFlowPin.m_Id == pin.m_Id)
             {
                 auto iconSize = ImVec2(ImGui::GetFontSize(), ImGui::GetFontSize());
-                ax::Widgets::Icon(iconSize, ax::Widgets::IconType::Flow, true, color);
+                ImEx::Icon(iconSize, ImEx::IconType::Flow, true, color);
             }
             else
                 bg.Discard();
@@ -549,13 +498,13 @@ struct DebugPinValueRenderer
         // Draw to layer over nodes
         m_Splitter.SetCurrentChannel(m_DrawList, 1);
 
-        ScopedSuspendLayout suspendLayout;
+        ImEx::ScopedSuspendLayout suspendLayout;
 
         // Put cursor on the right side of the Pin
         auto itemRectMin = ImGui::GetItemRectMin();
         auto itemRectMax = ImGui::GetItemRectMax();
         ImGui::SetCursorScreenPos(ImVec2(itemRectMax.x, itemRectMin.y)
-            + ImVec2(1.5f * ImGui::GetStyle().ItemSpacing.x, 0.0f));
+            + ImVec2(1.75f * ImGui::GetStyle().ItemSpacing.x, 0.0f));
 
         auto isCurrentNode = m_CurrentNode == pin.m_Node;
         auto color = ImGui::GetStyleColorVec4(isCurrentNode ? ImGuiCol_PlotHistogram : ImGuiCol_NavHighlight);
@@ -567,7 +516,7 @@ struct DebugPinValueRenderer
             if (m_CurrentFlowPin.m_Id == pin.m_Id)
             {
                 auto iconSize = ImVec2(ImGui::GetFontSize(), ImGui::GetFontSize());
-                ax::Widgets::Icon(iconSize, ax::Widgets::IconType::Flow, true, color);
+                ImEx::Icon(iconSize, ImEx::IconType::Flow, true, color);
             }
             else
                 bg.Discard();
@@ -598,7 +547,7 @@ void Application_Frame()
 
     const auto iconSize = ImVec2(ImGui::GetTextLineHeight(), ImGui::GetTextLineHeight());
 
-    DebugPinValueRenderer debugValueRenderer;
+    DebugOverlay debugValueRenderer;
     debugValueRenderer.Begin(g_Blueprint);
 
     // Commit all nodes to editor
@@ -608,8 +557,6 @@ void Application_Frame()
 
         //
         // General node layout:
-        //
-        // Everything is aligned to the left. ImGui does not handle layouts, yet.
         //
         // +-----------------------------------+
         // | Title                             |
@@ -636,7 +583,7 @@ void Application_Frame()
             ImGui::Spacing(); // Add a bit of spacing to separate pins and make value not cramped
             ed::BeginPin(pin->m_Id, ed::PinKind::Input);
             ed::PinPivotAlignment(ImVec2(0.0f, 0.5f));
-            ax::Widgets::Icon(iconSize,
+            ImEx::Icon(iconSize,
                 PinTypeToIconType(pin->m_Type),
                 g_Blueprint.IsPinLinked(pin),
                 PinTypeToIconColor(pin->m_Link ? pin->m_Link->m_Type : pin->m_Type));
@@ -671,7 +618,7 @@ void Application_Frame()
                 ImGui::TextUnformatted(pin->m_Name.data(), pin->m_Name.data() + pin->m_Name.size());
                 ImGui::SameLine();
             }
-            ax::Widgets::Icon(iconSize,
+            ImEx::Icon(iconSize,
                 PinTypeToIconType(pin->m_Type),
                 g_Blueprint.IsPinLinked(pin),
                 PinTypeToIconColor(pin->m_Type));

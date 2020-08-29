@@ -4,13 +4,11 @@ add_example_executable(blueprints2-example
     crude_blueprint.h
     crude_layout.cpp
     crude_layout.h
+    imgui_extras.cpp
+    imgui_extras.h
     external/include/nonstd/span.hpp
     external/include/nonstd/string_view.hpp
     external/include/nonstd/variant.hpp
-    utilities/drawing.cpp
-    utilities/drawing.h
-    utilities/widgets.cpp
-    utilities/widgets.h
 )
 
 target_include_directories(blueprints2-example PRIVATE external/include)
