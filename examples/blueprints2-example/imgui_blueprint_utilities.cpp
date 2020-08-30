@@ -61,16 +61,6 @@ bool crude_blueprint_utilities::DrawPinValue(const PinValue& value)
     return false;
 }
 
-//bool crude_blueprint_utilities::DrawPinValue(const Pin& pin)
-//{
-//    return DrawPinValue(pin.GetValue());
-//}
-
-//bool crude_blueprint_utilities::DrawPinImmediateValue(const Pin& pin)
-//{
-//    return DrawPinValue(pin.GetImmediateValue());
-//}
-
 bool crude_blueprint_utilities::EditPinImmediateValue(Pin& pin)
 {
     ImEx::ScopedItemWidth scopedItemWidth{120};
@@ -112,6 +102,45 @@ bool crude_blueprint_utilities::EditPinImmediateValue(Pin& pin)
     }
 
     return false;
+}
+
+void crude_blueprint_utilities::EditOrDrawPinValue(Pin& pin)
+{
+    auto storage = ImGui::GetStateStorage();
+    auto activePinId = storage->GetInt(ImGui::GetID("PinValueEditor_ActivePinId"), false);
+
+    if (activePinId == pin.m_Id)
+    {
+        if (!EditPinImmediateValue(pin))
+        {
+            ax::NodeEditor::EnableShortcuts(true);
+            activePinId = 0;
+        }
+    }
+    else
+    {
+        // Draw pin value
+        PinValueBackgroundRenderer bg;
+        if (!DrawPinValue(pin.GetImmediateValue()))
+        {
+            bg.Discard();
+            return;
+        }
+
+        // Draw invisible button over pin value which triggers an editor if clicked
+        auto itemMin = ImGui::GetItemRectMin();
+        auto itemMax = ImGui::GetItemRectMax();
+
+        ImGui::SetCursorScreenPos(itemMin);
+
+        if (ImGui::InvisibleButton("###pin_value_editor", itemMax - itemMin))
+        {
+            activePinId = pin.m_Id;
+            ax::NodeEditor::EnableShortcuts(false);
+        }
+    }
+
+    storage->SetInt(ImGui::GetID("PinValueEditor_ActivePinId"), activePinId);
 }
 
 crude_blueprint_utilities::PinValueBackgroundRenderer::PinValueBackgroundRenderer(const ImVec4 color, float alpha /*= 0.25f*/)

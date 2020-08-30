@@ -331,8 +331,7 @@ void crude_blueprint::Context::Reset()
 
 crude_blueprint::StepResult crude_blueprint::Context::Start(FlowPin& entryPoint)
 {
-    m_Queue.resize(0);
-    m_Queue.push_back(entryPoint);
+    m_Callstack.resize(0);
     m_CurrentNode = entryPoint.m_Node;
     m_CurrentFlowPin = entryPoint;
     m_StepCount = 0;
@@ -356,7 +355,7 @@ crude_blueprint::StepResult crude_blueprint::Context::Step()
     m_CurrentNode = nullptr;
     m_CurrentFlowPin = {};
 
-    if (m_Queue.empty())
+    if (currentFlowPin.m_Id == 0 && m_Callstack.empty())
         return SetStepResult(StepResult::Done);
 
     auto entryPoint = GetPinValue(currentFlowPin);
@@ -379,13 +378,10 @@ crude_blueprint::StepResult crude_blueprint::Context::Step()
     {
         m_CurrentFlowPin = next;
     }
-    else
+    else if (!m_Callstack.empty())
     {
-        if (!m_Queue.empty())
-        {
-            m_CurrentFlowPin = m_Queue.back();
-            m_Queue.pop_back();
-        }
+        m_CurrentFlowPin = m_Callstack.back();
+        m_Callstack.pop_back();
     }
 
     if (m_Monitor)
@@ -446,7 +442,7 @@ uint32_t crude_blueprint::Context::StepCount() const
 
 void crude_blueprint::Context::PushReturnPoint(FlowPin& entryPoint)
 {
-    m_Queue.push_back(entryPoint);
+    m_Callstack.push_back(entryPoint);
 }
 
 void crude_blueprint::Context::SetPinValue(const Pin& pin, PinValue value)

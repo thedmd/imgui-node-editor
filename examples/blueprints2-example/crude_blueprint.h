@@ -210,13 +210,13 @@ struct Node
     Node(Blueprint& blueprint, string_view name);
     virtual ~Node() = default;
 
-    virtual void Reset(Context& context)
-    {
-    }
-
     virtual FlowPin Execute(Context& context, FlowPin& entryPoint)
     {
         return {};
+    }
+
+    virtual void Reset(Context& context)
+    {
     }
 
     virtual NodeTypeInfo GetTypeInfo() const { return {}; }
@@ -301,7 +301,7 @@ struct Context
 private:
     StepResult SetStepResult(StepResult result);
 
-    vector<FlowPin>         m_Queue;
+    vector<FlowPin>         m_Callstack;
     Node*                   m_CurrentNode = nullptr;
     FlowPin                 m_CurrentFlowPin = {};
     StepResult              m_LastResult = StepResult::Done;
@@ -489,7 +489,7 @@ struct DoNNode final : Node
 
     void Reset(Context& context) override
     {
-        m_Counter.m_Value = 0;
+        context.SetPinValue(m_Counter, 0);
     }
 
     span<Pin*> GetInputPins() override { return m_InputPins; }
@@ -511,11 +511,6 @@ struct FlipFlopNode final : Node
 
     FlipFlopNode(Blueprint& blueprint): Node(blueprint, "Flip Flop") {}
 
-    void Reset(Context& context) override
-    {
-        context.SetPinValue(m_IsA, false);
-    }
-
     FlowPin Execute(Context& context, FlowPin& entryPoint) override
     {
         auto isA = !context.GetPinValue<bool>(m_IsA);
@@ -524,6 +519,11 @@ struct FlipFlopNode final : Node
             return m_A;
         else
             return m_B;
+    }
+
+    void Reset(Context& context) override
+    {
+        context.SetPinValue(m_IsA, false);
     }
 
     span<Pin*> GetInputPins() override { return m_InputPins; }
