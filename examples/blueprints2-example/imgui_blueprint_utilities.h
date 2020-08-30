@@ -10,9 +10,8 @@ using namespace crude_blueprint;
 ImEx::IconType PinTypeToIconType(PinType pinType);
 ImVec4 PinTypeToIconColor(PinType pinType);
 bool DrawPinValue(const PinValue& value);
-//bool DrawPinValue(const Pin& pin);
-//bool DrawPinImmediateValue(const Pin& pin);
 bool EditPinImmediateValue(Pin& pin);
+void EditOrDrawPinValue(Pin& pin);
 
 struct PinValueBackgroundRenderer
 {

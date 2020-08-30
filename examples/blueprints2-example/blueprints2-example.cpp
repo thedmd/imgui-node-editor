@@ -83,7 +83,7 @@ void Application_Initialize()
 
     g_Editor = ed::CreateEditor(&config);
 
-    g_Blueprint.Start(*FindEntryPointNode());
+    //g_Blueprint.Start(*FindEntryPointNode());
 }
 
 void Application_Finalize()
@@ -102,45 +102,6 @@ static EntryPointNode* FindEntryPointNode()
     }
 
     return nullptr;
-}
-
-static void EditOrDrawPinValue(Pin& pin)
-{
-    auto storage = ImGui::GetStateStorage();
-    auto activePinId = storage->GetInt(ImGui::GetID("PinValueEditor_ActivePinId"), false);
-
-    if (activePinId == pin.m_Id)
-    {
-        if (!EditPinImmediateValue(pin))
-        {
-            ed::EnableShortcuts(true);
-            activePinId = 0;
-        }
-    }
-    else
-    {
-        // Draw pin value
-        PinValueBackgroundRenderer bg;
-        if (!DrawPinValue(pin.GetImmediateValue()))
-        {
-            bg.Discard();
-            return;
-        }
-
-        // Draw invisible button over pin value which triggers an editor if clicked
-        auto itemMin = ImGui::GetItemRectMin();
-        auto itemMax = ImGui::GetItemRectMax();
-
-        ImGui::SetCursorScreenPos(itemMin);
-
-        if (ImGui::InvisibleButton("###pin_value_editor", itemMax - itemMin))
-        {
-            activePinId = pin.m_Id;
-            ed::EnableShortcuts(false);
-        }
-    }
-
-    storage->SetInt(ImGui::GetID("PinValueEditor_ActivePinId"), activePinId);
 }
 
 static const char* StepResultToString(StepResult stepResult)
@@ -226,16 +187,19 @@ void Application_Frame()
         // +-----------------------------------+
         // | Title                             |
         // | +-----------[ Dummy ]-----------+ |
-        // | +-[ Group ]-----+   +-[ Group ]-+ |
+        // | +---------------+   +-----------+ |
         // | | o Pin         |   |   Out B o | |
         // | | o Pin <Value> |   |   Out A o | |
         // | | o Pin         |   |           | |
         // | +---------------+   +-----------+ |
         // +-----------------------------------+
 
-        ImGui::PushFont(Application_HeaderFont());
-        ImGui::TextUnformatted(node->m_Name.data(), node->m_Name.data() + node->m_Name.size());
-        ImGui::PopFont();
+        if (!node->m_Name.empty())
+        {
+            ImGui::PushFont(Application_HeaderFont());
+            ImGui::TextUnformatted(node->m_Name.data(), node->m_Name.data() + node->m_Name.size());
+            ImGui::PopFont();
+        }
 
         ImGui::Dummy(ImVec2(100.0f, 0.0f)); // For minimum node width
 
