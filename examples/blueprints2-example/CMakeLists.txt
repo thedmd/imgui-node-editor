@@ -11,6 +11,8 @@ add_example_executable(blueprints2-example
     external/include/nonstd/span.hpp
     external/include/nonstd/string_view.hpp
     external/include/nonstd/variant.hpp
+    misc/crude_blueprint.natvis
+    misc/nonstd.natvis
 )
 
 target_include_directories(blueprints2-example PRIVATE external/include)

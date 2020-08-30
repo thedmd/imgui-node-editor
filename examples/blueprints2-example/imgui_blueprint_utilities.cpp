@@ -1,6 +1,7 @@
 # include "imgui_blueprint_utilities.h"
 # define IMGUI_DEFINE_MATH_OPERATORS
 # include <imgui_internal.h>
+# include <imgui_node_editor.h>
 
 ImEx::IconType crude_blueprint_utilities::PinTypeToIconType(PinType pinType)
 {
@@ -60,15 +61,15 @@ bool crude_blueprint_utilities::DrawPinValue(const PinValue& value)
     return false;
 }
 
-bool crude_blueprint_utilities::DrawPinValue(const Pin& pin)
-{
-    return DrawPinValue(pin.GetValue());
-}
+//bool crude_blueprint_utilities::DrawPinValue(const Pin& pin)
+//{
+//    return DrawPinValue(pin.GetValue());
+//}
 
-bool crude_blueprint_utilities::DrawPinImmediateValue(const Pin& pin)
-{
-    return DrawPinValue(pin.GetImmediateValue());
-}
+//bool crude_blueprint_utilities::DrawPinImmediateValue(const Pin& pin)
+//{
+//    return DrawPinValue(pin.GetImmediateValue());
+//}
 
 bool crude_blueprint_utilities::EditPinImmediateValue(Pin& pin)
 {
@@ -164,9 +165,19 @@ void crude_blueprint_utilities::PinValueBackgroundRenderer::Discard()
         m_Splitter.Merge(m_DrawList);
 }
 
-void crude_blueprint_utilities::DebugOverlay::Begin(const Blueprint& blueprint)
+crude_blueprint_utilities::DebugOverlay::DebugOverlay(Blueprint& blueprint)
+    : m_Blueprint(&blueprint)
 {
-    m_Blueprint = &blueprint;
+    m_Blueprint->GetContext().SetMonitor(this);
+}
+
+crude_blueprint_utilities::DebugOverlay::~DebugOverlay()
+{
+    m_Blueprint->GetContext().SetMonitor(nullptr);
+}
+
+void crude_blueprint_utilities::DebugOverlay::Begin()
+{
     m_CurrentNode = m_Blueprint->CurrentNode();
     m_NextNode = m_Blueprint->NextNode();
     m_CurrentFlowPin = m_Blueprint->CurrentFlowPin();
@@ -223,9 +234,12 @@ void crude_blueprint_utilities::DebugOverlay::DrawNode(const Node& node)
 
 void crude_blueprint_utilities::DebugOverlay::DrawInputPin(const Pin& pin)
 {
-    const auto isCurrentFlowPin = (m_CurrentFlowPin.m_Id == pin.m_Id);
+    auto flowPinValue = m_Blueprint->GetContext().GetPinValue(m_CurrentFlowPin);
+    auto flowPin = get_if<FlowPin*>(&flowPinValue);
 
-    if (nullptr == m_CurrentNode || (!pin.m_Link && !isCurrentFlowPin))
+    const auto isCurrentFlowPin = flowPin && (*flowPin) && (*flowPin)->m_Id == pin.m_Id;
+
+    if (nullptr == m_CurrentNode || (/*!pin.m_Link &&*/ !isCurrentFlowPin))
         return;
 
     // Draw to layer over nodes
@@ -245,13 +259,13 @@ void crude_blueprint_utilities::DebugOverlay::DrawInputPin(const Pin& pin)
     auto vertexStartIdx = m_DrawList->_VtxCurrentOffset + m_DrawList->_VtxCurrentIdx;
 
     auto isCurrentNode = (m_CurrentNode == pin.m_Node);
-    auto color = ImGui::GetStyleColorVec4(isCurrentNode || isCurrentFlowPin ? ImGuiCol_PlotHistogram : ImGuiCol_NavHighlight);
+    auto color = ImGui::GetStyleColorVec4(isCurrentNode ? ImGuiCol_PlotHistogram : ImGuiCol_NavHighlight);
 
     // Actual drawing
     PinValueBackgroundRenderer bg(color, 0.5f);
-    if (!DrawPinValue(pin))
+    if (!DrawPinValue(m_Blueprint->GetContext().GetPinValue(pin)))
     {
-        if (m_CurrentFlowPin.m_Id == pin.m_Id)
+        if (isCurrentFlowPin)
         {
             auto iconSize = ImVec2(ImGui::GetFontSize(), ImGui::GetFontSize());
             ImEx::Icon(iconSize, ImEx::IconType::Flow, true, color);
@@ -292,7 +306,7 @@ void crude_blueprint_utilities::DebugOverlay::DrawOutputPin(const Pin& pin)
 
     // Actual drawing
     PinValueBackgroundRenderer bg(color, 0.5f);
-    if (!DrawPinImmediateValue(pin))
+    if (!DrawPinValue(m_Blueprint->GetContext().GetPinValue(pin)))
     {
         if (m_CurrentFlowPin.m_Id == pin.m_Id)
         {
@@ -306,4 +320,14 @@ void crude_blueprint_utilities::DebugOverlay::DrawOutputPin(const Pin& pin)
 
     // Switch back to normal layer
     m_Splitter.SetCurrentChannel(m_DrawList, 0);
+}
+
+void crude_blueprint_utilities::DebugOverlay::OnEvaluatePin(const Context& context, const Pin& pin)
+{
+    auto nodeEditor = ax::NodeEditor::GetCurrentEditor();
+    if (!nodeEditor)
+        return;
+
+    if (pin.m_Link)
+        ax::NodeEditor::Flow(pin.m_Link->m_Id);
 }

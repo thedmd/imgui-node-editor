@@ -13,6 +13,7 @@
 # include <string>
 # include <vector>
 # include <memory>
+# include <map>
 
 namespace crude_json {
 struct value;
@@ -25,20 +26,24 @@ using nonstd::make_span;
 using nonstd::string_view;
 using nonstd::variant;
 using nonstd::get;
+using nonstd::get_if;
 using nonstd::monostate;
 using std::string;
 using std::vector;
+using std::map;
 using std::shared_ptr;
 using std::unique_ptr;
 using std::make_shared;
 
+struct Pin;
+struct FlowPin;
 struct Node;
 struct Context;
 struct Blueprint;
 
 
 enum class PinType { Any, Flow, Bool, Int32, Float, String };
-using PinValue = variant<monostate, Node*, bool, int32_t, float, string>;
+using PinValue = variant<monostate, FlowPin*, bool, int32_t, float, string>;
 
 
 
@@ -69,11 +74,6 @@ struct Pin
     Pin(Node* node, PinType type, string_view name);
     virtual ~Pin() = default;
 
-    template <typename T>
-    T GetValueAs() const;
-
-    PinValue GetValue() const;
-
     virtual PinValue GetImmediateValue() const;
 
     PinType GetType() const;
@@ -86,10 +86,16 @@ struct Pin
     PinType     m_Type = PinType::Any;
     string_view m_Name;
     Pin*        m_Link = nullptr;
+
+private:
+    template <typename T>
+    auto GetValueAs() const;
+
+    PinValue GetValue() const;
 };
 
 template <typename T>
-T crude_blueprint::Pin::GetValueAs() const
+auto crude_blueprint::Pin::GetValueAs() const
 {
     return get<T>(GetValue());
 }
@@ -110,6 +116,8 @@ struct FlowPin final : Pin
     FlowPin(): FlowPin(nullptr) {}
     FlowPin(Node* node): Pin(node, PinType::Flow) {}
     FlowPin(Node* node, string_view name): Pin(node, PinType::Flow, name) {}
+
+    PinValue GetImmediateValue() const override { return const_cast<FlowPin*>(this); }
 };
 
 struct BoolPin final : Pin
@@ -202,7 +210,7 @@ struct Node
     Node(Blueprint& blueprint, string_view name);
     virtual ~Node() = default;
 
-    virtual void Reset()
+    virtual void Reset(Context& context)
     {
     }
 
@@ -244,13 +252,29 @@ struct PinValuePair
     PinValue m_Value;
 };
 
+struct ContextMonitor
+{
+    virtual ~ContextMonitor() {};
+    virtual void OnStart(const Context& context) {}
+    virtual void OnError(const Context& context) {}
+    virtual void OnDone(const Context& context) {}
+
+    virtual void OnPreStep(const Context& context) {}
+    virtual void OnPostStep(const Context& context) {}
+
+    virtual void OnEvaluatePin(const Context& context, const Pin& pin) {}
+};
+
 struct Context
 {
-    void Start(FlowPin& entryPoint);
+    void SetMonitor(ContextMonitor* monitor);
+          ContextMonitor* GetContextMonitor();
+    const ContextMonitor* GetContextMonitor() const;
 
+    void Reset();
+
+    StepResult Start(FlowPin& entryPoint);
     StepResult Step();
-
-    void PushReturnPoint(FlowPin& entryPoint);
 
     StepResult Execute(FlowPin& entryPoint);
 
@@ -266,16 +290,31 @@ struct Context
 
     uint32_t StepCount() const;
 
+    void PushReturnPoint(FlowPin& entryPoint);
+
+    template <typename T>
+    auto GetPinValue(const Pin& pin) const;
+
+    void SetPinValue(const Pin& pin, PinValue value);
+    PinValue GetPinValue(const Pin& pin) const;
+
 private:
     StepResult SetStepResult(StepResult result);
 
-    vector<FlowPin> m_Queue;
-    Node* m_CurrentNode = nullptr;
-    FlowPin m_CurrentFlowPin = {};
-    StepResult m_LastResult = StepResult::Done;
-    uint32_t m_StepCount = 0;
+    vector<FlowPin>         m_Queue;
+    Node*                   m_CurrentNode = nullptr;
+    FlowPin                 m_CurrentFlowPin = {};
+    StepResult              m_LastResult = StepResult::Done;
+    uint32_t                m_StepCount = 0;
+    map<uint32_t, PinValue> m_Values;
+    ContextMonitor*         m_Monitor = nullptr;
 };
 
+template <typename T>
+inline auto Context::GetPinValue(const Pin& pin) const
+{
+    return get<T>(GetPinValue(pin));
+}
 
 
 //
@@ -403,7 +442,7 @@ struct BranchNode final : Node
 
     FlowPin Execute(Context& context, FlowPin& entryPoint) override
     {
-        auto value = m_Condition.GetValueAs<bool>();
+        auto value = context.GetPinValue<bool>(m_Condition);
         if (value)
             return m_True;
         else
@@ -432,22 +471,23 @@ struct DoNNode final : Node
     {
         if (entryPoint.m_Id == m_Reset.m_Id)
         {
-            m_Counter.m_Value = 0;
+            context.SetPinValue(m_Counter, 0);
             return {};
         }
 
-        auto n = m_N.GetValueAs<int32_t>();
-        if (m_Counter.m_Value >= n)
+        auto n = context.GetPinValue<int32_t>(m_N);
+        auto c = context.GetPinValue<int32_t>(m_Counter);
+        if (c >= n)
             return {};
 
-        ++m_Counter.m_Value;
+        context.SetPinValue(m_Counter, c + 1);
 
         context.PushReturnPoint(entryPoint);
 
         return m_Exit;
     }
 
-    void Reset() override
+    void Reset(Context& context) override
     {
         m_Counter.m_Value = 0;
     }
@@ -471,15 +511,16 @@ struct FlipFlopNode final : Node
 
     FlipFlopNode(Blueprint& blueprint): Node(blueprint, "Flip Flop") {}
 
-    void Reset() override
+    void Reset(Context& context) override
     {
-        m_IsA.m_Value = false;
+        context.SetPinValue(m_IsA, false);
     }
 
     FlowPin Execute(Context& context, FlowPin& entryPoint) override
     {
-        m_IsA.m_Value = !m_IsA.m_Value;
-        if (m_IsA.m_Value)
+        auto isA = !context.GetPinValue<bool>(m_IsA);
+        context.SetPinValue(m_IsA, isA);
+        if (isA)
             return m_A;
         else
             return m_B;
@@ -510,13 +551,13 @@ struct ToStringNode final : Node
         {
             case PinType::Any:    break;
             case PinType::Flow:   break;
-            case PinType::Bool:   result = m_Value.GetValueAs<bool>() ? "true" : "false"; break;
-            case PinType::Int32:  result = std::to_string(m_Value.GetValueAs<int32_t>()); break;
-            case PinType::Float:  result = std::to_string(m_Value.GetValueAs<float>()); break;
-            case PinType::String: result = m_Value.GetValueAs<string>(); break;
+            case PinType::Bool:   result = context.GetPinValue<bool>(m_Value) ? "true" : "false"; break;
+            case PinType::Int32:  result = std::to_string(context.GetPinValue<int32_t>(m_Value)); break;
+            case PinType::Float:  result = std::to_string(context.GetPinValue<float>(m_Value)); break;
+            case PinType::String: result = context.GetPinValue<string>(m_Value); break;
         }
 
-        m_String.m_Value = std::move(result);
+        context.SetPinValue(m_String, std::move(result));
 
         return m_Exit;
     }
@@ -547,7 +588,7 @@ struct PrintNode final : Node
 
     FlowPin Execute(Context& context, FlowPin& entryPoint) override
     {
-        auto value = m_String.GetValueAs<string>();
+        auto value = context.GetPinValue<string>(m_String);
 
 # ifdef _WIN32
         OutputDebugStringA("PrintNode: ");
@@ -671,6 +712,9 @@ struct Blueprint
 
     shared_ptr<NodeRegistry> GetNodeRegistry() const;
 
+          Context& GetContext();
+    const Context& GetContext() const;
+
     void Start(EntryPointNode& entryPointNode);
 
     StepResult Step();
@@ -698,9 +742,6 @@ struct Blueprint
 
     bool IsPinLinked(const Pin* pin) const;
 
-    void TouchPin(const Pin& pin);
-    span<uint32_t> GetTouchedPinIds() { return m_TouchedPinIds; }
-
 private:
     void ResetState();
 
@@ -709,7 +750,6 @@ private:
     vector<Node*>               m_Nodes;
     vector<Pin*>                m_Pins;
     Context                     m_Context;
-    vector<uint32_t>            m_TouchedPinIds;
 };
 
 } // namespace crude_blueprint {

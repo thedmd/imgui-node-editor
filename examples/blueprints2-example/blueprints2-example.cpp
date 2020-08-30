@@ -18,6 +18,7 @@ using namespace crude_blueprint_utilities;
 static ed::EditorContext* g_Editor = nullptr;
 static Blueprint g_Blueprint;
 
+static EntryPointNode* FindEntryPointNode();
 
 const char* Application_GetName()
 {
@@ -81,6 +82,8 @@ void Application_Initialize()
 
 
     g_Editor = ed::CreateEditor(&config);
+
+    g_Blueprint.Start(*FindEntryPointNode());
 }
 
 void Application_Finalize()
@@ -118,7 +121,7 @@ static void EditOrDrawPinValue(Pin& pin)
     {
         // Draw pin value
         PinValueBackgroundRenderer bg;
-        if (!DrawPinImmediateValue(pin))
+        if (!DrawPinValue(pin.GetImmediateValue()))
         {
             bg.Discard();
             return;
@@ -158,44 +161,21 @@ static void ShowControlPanel()
     ImEx::ScopedItemFlag disableItemFlag(entryNode == nullptr);
     ImGui::GetStyle().Alpha = entryNode == nullptr ? 0.5f : 1.0f;
 
-    bool doStep = false;
     if (ImGui::Button("Start"))
     {
         g_Blueprint.Start(*entryNode);
-        //ed::SelectNode(entryNode->m_Id);
-        //ed::NavigateToSelection();
-        doStep = true;
     }
 
     ImGui::SameLine();
-    if (doStep || ImGui::Button("Step"))
+    if (ImGui::Button("Step"))
     {
         g_Blueprint.Step();
-        if (auto currentNode = g_Blueprint.CurrentNode())
-        {
-            //ed::SelectNode(currentNode->m_Id);
-            //ed::NavigateToSelection();
-        }
-        else
-        {
-            ed::ClearSelection();
-        }
-
-        for (auto& touchedPinId : g_Blueprint.GetTouchedPinIds())
-        {
-            ed::Flow(touchedPinId);
-        }
     }
 
     ImGui::SameLine();
     if (ImGui::Button("Run"))
     {
         g_Blueprint.Execute(*entryNode);
-
-        for (auto& touchedPinId : g_Blueprint.GetTouchedPinIds())
-        {
-            ed::Flow(touchedPinId);
-        }
     }
 
     ImGui::SameLine();
@@ -221,6 +201,8 @@ static void ShowControlPanel()
 
 void Application_Frame()
 {
+    DebugOverlay debugValueRenderer(g_Blueprint);
+
     ShowControlPanel();
 
     ImGui::Separator();
@@ -231,8 +213,7 @@ void Application_Frame()
 
     const auto iconSize = ImVec2(ImGui::GetTextLineHeight(), ImGui::GetTextLineHeight());
 
-    DebugOverlay debugValueRenderer;
-    debugValueRenderer.Begin(g_Blueprint);
+    debugValueRenderer.Begin();
 
     // Commit all nodes to editor
     for (auto& node : g_Blueprint.GetNodes())
