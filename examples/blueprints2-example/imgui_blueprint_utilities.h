@@ -10,8 +10,8 @@ using namespace crude_blueprint;
 ImEx::IconType PinTypeToIconType(PinType pinType);
 ImVec4 PinTypeToIconColor(PinType pinType);
 bool DrawPinValue(const PinValue& value);
-bool DrawPinValue(const Pin& pin);
-bool DrawPinImmediateValue(const Pin& pin);
+//bool DrawPinValue(const Pin& pin);
+//bool DrawPinImmediateValue(const Pin& pin);
 bool EditPinImmediateValue(Pin& pin);
 
 struct PinValueBackgroundRenderer
@@ -30,9 +30,13 @@ private:
     float m_Alpha = 1.0f;
 };
 
-struct DebugOverlay
+struct DebugOverlay:
+    private ContextMonitor
 {
-    void Begin(const Blueprint& blueprint);
+    DebugOverlay(Blueprint& blueprint);
+    ~DebugOverlay();
+
+    void Begin();
     void End();
 
     void DrawNode(const Node& node);
@@ -40,7 +44,9 @@ struct DebugOverlay
     void DrawOutputPin(const Pin& pin);
 
 private:
-    const Blueprint* m_Blueprint = nullptr;
+    void OnEvaluatePin(const Context& context, const Pin& pin) override;
+
+    Blueprint* m_Blueprint = nullptr;
     const Node* m_CurrentNode = nullptr;
     const Node* m_NextNode = nullptr;
     FlowPin m_CurrentFlowPin;

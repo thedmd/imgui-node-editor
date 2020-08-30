@@ -49,7 +49,6 @@ inline bool GetTo(const crude_json::value& value, string_view key, V& result)
     return true;
 };
 
-
 } } // namespace crude_blueprint { namespace detail {
 
 
@@ -309,17 +308,42 @@ void crude_blueprint::Node::Save(crude_json::value& value) const
 // -------[ Context ]-------
 //
 
-void crude_blueprint::Context::Start(FlowPin& entryPoint)
+
+void crude_blueprint::Context::SetMonitor(ContextMonitor* monitor)
+{
+    m_Monitor = monitor;
+}
+
+crude_blueprint::ContextMonitor* crude_blueprint::Context::GetContextMonitor()
+{
+    return m_Monitor;
+}
+
+const crude_blueprint::ContextMonitor* crude_blueprint::Context::GetContextMonitor() const
+{
+    return m_Monitor;
+}
+
+void crude_blueprint::Context::Reset()
+{
+    m_Values.clear();
+}
+
+crude_blueprint::StepResult crude_blueprint::Context::Start(FlowPin& entryPoint)
 {
     m_Queue.resize(0);
     m_Queue.push_back(entryPoint);
     m_CurrentNode = entryPoint.m_Node;
     m_CurrentFlowPin = entryPoint;
     m_StepCount = 0;
-    if (m_CurrentNode == nullptr || m_CurrentFlowPin.m_Id == 0)
-        SetStepResult(StepResult::Error);
 
-    SetStepResult(StepResult::Success);
+    if (m_Monitor)
+        m_Monitor->OnStart(*this);
+
+    if (m_CurrentNode == nullptr || m_CurrentFlowPin.m_Id == 0)
+        return SetStepResult(StepResult::Error);
+
+    return SetStepResult(StepResult::Success);
 }
 
 crude_blueprint::StepResult crude_blueprint::Context::Step()
@@ -327,42 +351,47 @@ crude_blueprint::StepResult crude_blueprint::Context::Step()
     if (m_LastResult != StepResult::Success)
         return m_LastResult;
 
+    auto currentFlowPin = m_CurrentFlowPin;
+
     m_CurrentNode = nullptr;
     m_CurrentFlowPin = {};
 
     if (m_Queue.empty())
         return SetStepResult(StepResult::Done);
 
-    auto entryPoint = m_Queue.back();
-    m_Queue.pop_back();
+    auto entryPoint = GetPinValue(currentFlowPin);
 
-    if (entryPoint.m_Type != PinType::Flow)
+    if (static_cast<PinType>(entryPoint.index()) != PinType::Flow)
         return SetStepResult(StepResult::Error);
 
-    m_CurrentNode = entryPoint.m_Node;
+    auto entryPin = get<FlowPin*>(entryPoint);
+
+    m_CurrentNode = entryPin->m_Node;
 
     ++m_StepCount;
 
-    entryPoint.m_Node->m_Blueprint->TouchPin(entryPoint);
+    if (m_Monitor)
+        m_Monitor->OnPreStep(*this);
 
-    auto next = entryPoint.m_Node->Execute(*this, entryPoint);
+    auto next = entryPin->m_Node->Execute(*this, *entryPin);
+
     if (next.m_Link && next.m_Link->m_Type == PinType::Flow)
     {
         m_CurrentFlowPin = next;
-        m_Queue.push_back(*static_cast<FlowPin*>(next.m_Link));
     }
     else
     {
         if (!m_Queue.empty())
+        {
             m_CurrentFlowPin = m_Queue.back();
+            m_Queue.pop_back();
+        }
     }
 
-    return SetStepResult(StepResult::Success);
-}
+    if (m_Monitor)
+        m_Monitor->OnPostStep(*this);
 
-void crude_blueprint::Context::PushReturnPoint(FlowPin& entryPoint)
-{
-    m_Queue.push_back(entryPoint);
+    return SetStepResult(StepResult::Success);
 }
 
 crude_blueprint::StepResult crude_blueprint::Context::Execute(FlowPin& entryPoint)
@@ -415,9 +444,55 @@ uint32_t crude_blueprint::Context::StepCount() const
     return m_StepCount;
 }
 
+void crude_blueprint::Context::PushReturnPoint(FlowPin& entryPoint)
+{
+    m_Queue.push_back(entryPoint);
+}
+
+void crude_blueprint::Context::SetPinValue(const Pin& pin, PinValue value)
+{
+    m_Values[pin.m_Id] = std::move(value);
+}
+
+crude_blueprint::PinValue crude_blueprint::Context::GetPinValue(const Pin& pin) const
+{
+    if (m_Monitor)
+        m_Monitor->OnEvaluatePin(*this, pin);
+
+    auto valueIt = m_Values.find(pin.m_Id);
+    if (valueIt != m_Values.end())
+        return valueIt->second;
+
+    PinValue value;
+    if (pin.m_Link)
+        value = GetPinValue(*pin.m_Link);
+    else
+        value = pin.GetImmediateValue();
+
+    return std::move(value);
+}
+
 crude_blueprint::StepResult crude_blueprint::Context::SetStepResult(StepResult result)
 {
     m_LastResult = result;
+
+    if (m_Monitor)
+    {
+        switch (result)
+        {
+            case StepResult::Done:
+                m_Monitor->OnDone(*this);
+                break;
+
+            case StepResult::Error:
+                m_Monitor->OnError(*this);
+                break;
+
+            default:
+                break;
+        }
+    }
+
     return result;
 }
 
@@ -683,6 +758,16 @@ crude_blueprint::shared_ptr<crude_blueprint::NodeRegistry> crude_blueprint::Blue
     return m_NodeRegistry;
 }
 
+crude_blueprint::Context& crude_blueprint::Blueprint::GetContext()
+{
+    return m_Context;
+}
+
+const crude_blueprint::Context& crude_blueprint::Blueprint::GetContext() const
+{
+    return m_Context;
+}
+
 void crude_blueprint::Blueprint::Start(EntryPointNode& entryPointNode)
 {
     auto nodeIt = std::find(m_Nodes.begin(), m_Nodes.end(), static_cast<Node*>(&entryPointNode));
@@ -696,8 +781,6 @@ void crude_blueprint::Blueprint::Start(EntryPointNode& entryPointNode)
 
 crude_blueprint::StepResult crude_blueprint::Blueprint::Step()
 {
-    m_TouchedPinIds.resize(0);
-
     return m_Context.Step();
 }
 
@@ -905,11 +988,8 @@ bool crude_blueprint::Blueprint::IsPinLinked(const Pin* pin) const
 
 void crude_blueprint::Blueprint::ResetState()
 {
-    for (auto node : m_Nodes)
-        node->Reset();
-}
+    m_Context.Reset();
 
-void crude_blueprint::Blueprint::TouchPin(const Pin& pin)
-{
-    m_TouchedPinIds.push_back(pin.m_Id);
+    for (auto node : m_Nodes)
+        node->Reset(m_Context);
 }

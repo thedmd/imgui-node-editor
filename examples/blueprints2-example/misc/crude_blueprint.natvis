@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AutoVisualizer xmlns="http://schemas.microsoft.com/vstudio/debugger/natvis/2010">
+
+    <Type Name="crude_blueprint::Node">
+        <DisplayString>{{ {m_Id}: {m_Name} }} Node</DisplayString>
+    </Type>
+
+    <Type Name="crude_blueprint::Pin">
+        <AlternativeType Name="crude_blueprint::AnyPin"/>
+        <AlternativeType Name="crude_blueprint::FlowPin"/>
+        <AlternativeType Name="crude_blueprint::BoolPin"/>
+        <AlternativeType Name="crude_blueprint::Int32Pin"/>
+        <AlternativeType Name="crude_blueprint::FloatPin"/>
+        <AlternativeType Name="crude_blueprint::StringPin"/>
+        <DisplayString Condition="m_Link">{{ {m_Id}: {m_Type,en}, {m_Name} }} Pin -&gt; {*m_Link}</DisplayString>
+        <DisplayString>{{ {m_Id}: {m_Type,en}, {m_Name} }} Pin</DisplayString>
+        <Expand>
+            <Item Name="Id">m_Id</Item>
+            <Item Name="Name">m_Name</Item>
+            <Item Name="Node">*m_Node</Item>
+            <Item Name="Type">m_Type</Item>
+            <Item Name="[Local Value]" Optional="true">m_Value</Item>
+            <Item Name="Link" Condition="m_Link">*m_Link</Item>
+            <Item Name="[Type]" Optional="true">GetType()</Item>
+            <Item Name="[Value]" Optional="true">GetValue()</Item>
+        </Expand>
+    </Type>
+
+</AutoVisualizer>
