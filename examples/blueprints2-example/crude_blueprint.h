@@ -255,19 +255,19 @@ struct PinValuePair
 struct ContextMonitor
 {
     virtual ~ContextMonitor() {};
-    virtual void OnStart(const Context& context) {}
-    virtual void OnError(const Context& context) {}
-    virtual void OnDone(const Context& context) {}
+    virtual void OnStart(Context& context) {}
+    virtual void OnError(Context& context) {}
+    virtual void OnDone(Context& context) {}
 
-    virtual void OnPreStep(const Context& context) {}
-    virtual void OnPostStep(const Context& context) {}
+    virtual void OnPreStep(Context& context) {}
+    virtual void OnPostStep(Context& context) {}
 
     virtual void OnEvaluatePin(const Context& context, const Pin& pin) {}
 };
 
 struct Context
 {
-    void SetMonitor(ContextMonitor* monitor);
+    void SetContextMonitor(ContextMonitor* monitor);
           ContextMonitor* GetContextMonitor();
     const ContextMonitor* GetContextMonitor() const;
 
@@ -712,8 +712,12 @@ struct Blueprint
 
     shared_ptr<NodeRegistry> GetNodeRegistry() const;
 
-          Context& GetContext();
+    //      Context& GetContext();
     const Context& GetContext() const;
+
+    void SetContextMonitor(ContextMonitor* monitor);
+          ContextMonitor* GetContextMonitor();
+    const ContextMonitor* GetContextMonitor() const;
 
     void Start(EntryPointNode& entryPointNode);
 

@@ -309,7 +309,7 @@ void crude_blueprint::Node::Save(crude_json::value& value) const
 //
 
 
-void crude_blueprint::Context::SetMonitor(ContextMonitor* monitor)
+void crude_blueprint::Context::SetContextMonitor(ContextMonitor* monitor)
 {
     m_Monitor = monitor;
 }
@@ -758,14 +758,29 @@ crude_blueprint::shared_ptr<crude_blueprint::NodeRegistry> crude_blueprint::Blue
     return m_NodeRegistry;
 }
 
-crude_blueprint::Context& crude_blueprint::Blueprint::GetContext()
-{
-    return m_Context;
-}
+//crude_blueprint::Context& crude_blueprint::Blueprint::GetContext()
+//{
+//    return m_Context;
+//}
 
 const crude_blueprint::Context& crude_blueprint::Blueprint::GetContext() const
 {
     return m_Context;
+}
+
+void crude_blueprint::Blueprint::SetContextMonitor(ContextMonitor* monitor)
+{
+    m_Context.SetContextMonitor(monitor);
+}
+
+crude_blueprint::ContextMonitor* crude_blueprint::Blueprint::GetContextMonitor()
+{
+    return m_Context.GetContextMonitor();
+}
+
+const crude_blueprint::ContextMonitor* crude_blueprint::Blueprint::GetContextMonitor() const
+{
+    return m_Context.GetContextMonitor();
 }
 
 void crude_blueprint::Blueprint::Start(EntryPointNode& entryPointNode)
