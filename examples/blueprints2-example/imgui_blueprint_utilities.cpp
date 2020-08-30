@@ -168,12 +168,12 @@ void crude_blueprint_utilities::PinValueBackgroundRenderer::Discard()
 crude_blueprint_utilities::DebugOverlay::DebugOverlay(Blueprint& blueprint)
     : m_Blueprint(&blueprint)
 {
-    m_Blueprint->GetContext().SetMonitor(this);
+    m_Blueprint->SetContextMonitor(this);
 }
 
 crude_blueprint_utilities::DebugOverlay::~DebugOverlay()
 {
-    m_Blueprint->GetContext().SetMonitor(nullptr);
+    m_Blueprint->SetContextMonitor(nullptr);
 }
 
 void crude_blueprint_utilities::DebugOverlay::Begin()
@@ -239,7 +239,7 @@ void crude_blueprint_utilities::DebugOverlay::DrawInputPin(const Pin& pin)
 
     const auto isCurrentFlowPin = flowPin && (*flowPin) && (*flowPin)->m_Id == pin.m_Id;
 
-    if (nullptr == m_CurrentNode || (/*!pin.m_Link &&*/ !isCurrentFlowPin))
+    if (nullptr == m_CurrentNode || (!pin.m_Link && !isCurrentFlowPin))
         return;
 
     // Draw to layer over nodes
