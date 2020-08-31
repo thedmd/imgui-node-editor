@@ -229,6 +229,21 @@ crude_blueprint::Node::Node(Blueprint& blueprint, string_view name)
 {
 }
 
+crude_blueprint::Pin* crude_blueprint::Node::CreatePin(PinType pinType, string_view name)
+{
+    switch (pinType)
+    {
+        case PinType::Any:      return new AnyPin(this, name);
+        case PinType::Flow:     return new FlowPin(this, name);
+        case PinType::Bool:     return new BoolPin(this, name);
+        case PinType::Int32:    return new Int32Pin(this, name);
+        case PinType::Float:    return new FloatPin(this, name);
+        case PinType::String:   return new StringPin(this, name);
+    }
+
+    return nullptr;
+}
+
 bool crude_blueprint::Node::Load(const crude_json::value& value)
 {
     if (!value.is_object())
@@ -462,6 +477,8 @@ crude_blueprint::PinValue crude_blueprint::Context::GetPinValue(const Pin& pin) 
     PinValue value;
     if (pin.m_Link)
         value = GetPinValue(*pin.m_Link);
+    else if (pin.m_Node)
+        value = pin.m_Node->EvaluatePin(*this, pin);
     else
         value = pin.GetImmediateValue();
 
@@ -594,6 +611,32 @@ crude_blueprint::span<const crude_blueprint::NodeTypeInfo* const> crude_blueprin
 
 
 //
+// -------[ Nodes ]-------
+//
+
+void crude_blueprint::AddNode::SetType(PinType type)
+{
+    if (type == m_Type)
+        return;
+
+    m_Blueprint->ForgetPin(m_A.get());
+    m_Blueprint->ForgetPin(m_B.get());
+    m_Blueprint->ForgetPin(m_Result.get());
+
+    m_Type = type;
+
+    m_A.reset(CreatePin(type, "A"));
+    m_B.reset(CreatePin(type, "B"));
+    m_Result.reset(CreatePin(type, "Result"));
+
+    m_InputPins[0] = m_A.get();
+    m_InputPins[1] = m_B.get();
+    m_OutputPins[0] = m_Result.get();
+}
+
+
+
+//
 // -------[ Blueprint ]-------
 //
 
@@ -696,6 +739,15 @@ void crude_blueprint::Blueprint::DeleteNode(Node* node)
     delete *nodeIt;
 
     m_Nodes.erase(nodeIt);
+}
+
+void crude_blueprint::Blueprint::ForgetPin(Pin* pin)
+{
+    auto pinIt = std::find(m_Pins.begin(), m_Pins.end(), pin);
+    if (pinIt == m_Pins.end())
+        return;
+
+    m_Pins.erase(pinIt);
 }
 
 void crude_blueprint::Blueprint::Clear()
