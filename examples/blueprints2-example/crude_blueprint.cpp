@@ -1,4 +1,5 @@
 # include "crude_blueprint.h"
+# include "crude_blueprint_library.h"
 # include <crude_json.h>
 # include <algorithm>
 # include <map>
@@ -517,6 +518,23 @@ crude_blueprint::StepResult crude_blueprint::Context::SetStepResult(StepResult r
 //
 
 crude_blueprint::NodeRegistry::NodeRegistry()
+    : m_BuildInNodes(
+        {
+            ConstBoolNode::GetStaticTypeInfo(),
+            ConstInt32Node::GetStaticTypeInfo(),
+            ConstFloatNode::GetStaticTypeInfo(),
+            ConstStringNode::GetStaticTypeInfo(),
+            BranchNode::GetStaticTypeInfo(),
+            DoNNode::GetStaticTypeInfo(),
+            DoOnceNode::GetStaticTypeInfo(),
+            FlipFlopNode::GetStaticTypeInfo(),
+            ForLoopNode::GetStaticTypeInfo(),
+            GateNode::GetStaticTypeInfo(),
+            ToStringNode::GetStaticTypeInfo(),
+            PrintNode::GetStaticTypeInfo(),
+            EntryPointNode::GetStaticTypeInfo(),
+            AddNode::GetStaticTypeInfo(),
+        })
 {
     RebuildTypes();
 }
@@ -606,32 +624,6 @@ crude_blueprint::span<const crude_blueprint::NodeTypeInfo* const> crude_blueprin
     const NodeTypeInfo* const* begin = m_Types.data();
     const NodeTypeInfo* const* end   = m_Types.data() + m_Types.size();
     return make_span(begin, end);
-}
-
-
-
-//
-// -------[ Nodes ]-------
-//
-
-void crude_blueprint::AddNode::SetType(PinType type)
-{
-    if (type == m_Type)
-        return;
-
-    m_Blueprint->ForgetPin(m_A.get());
-    m_Blueprint->ForgetPin(m_B.get());
-    m_Blueprint->ForgetPin(m_Result.get());
-
-    m_Type = type;
-
-    m_A.reset(CreatePin(type, "A"));
-    m_B.reset(CreatePin(type, "B"));
-    m_Result.reset(CreatePin(type, "Result"));
-
-    m_InputPins[0] = m_A.get();
-    m_InputPins[1] = m_B.get();
-    m_OutputPins[0] = m_Result.get();
 }
 
 

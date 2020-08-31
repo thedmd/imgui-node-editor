@@ -2,6 +2,8 @@ add_example_executable(blueprints2-example
     blueprints2-example.cpp
     crude_blueprint.cpp
     crude_blueprint.h
+    crude_blueprint_library.cpp
+    crude_blueprint_library.h
     crude_layout.cpp
     crude_layout.h
     imgui_extras.cpp

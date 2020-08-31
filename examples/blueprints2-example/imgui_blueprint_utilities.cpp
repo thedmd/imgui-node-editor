@@ -72,9 +72,8 @@ bool crude_blueprint_utilities::EditPinImmediateValue(Pin& pin)
         case PinType::Flow:
             return false;
         case PinType::Bool:
-            if (ImGui::Checkbox("##editor", &static_cast<BoolPin&>(pin).m_Value))
-                return false;
-            return true;
+            static_cast<BoolPin&>(pin).m_Value = !static_cast<BoolPin&>(pin).m_Value;
+            return false;
         case PinType::Int32:
             if (ImGui::InputInt("##editor", &static_cast<Int32Pin&>(pin).m_Value, 1, 100, ImGuiInputTextFlags_EnterReturnsTrue))
                 return false;
