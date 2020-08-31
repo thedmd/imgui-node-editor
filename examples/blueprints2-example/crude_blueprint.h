@@ -34,6 +34,7 @@ using std::map;
 using std::shared_ptr;
 using std::unique_ptr;
 using std::make_shared;
+using std::make_unique;
 
 struct Pin;
 struct FlowPin;
@@ -108,11 +109,15 @@ auto crude_blueprint::Pin::GetValueAs() const
 
 struct AnyPin final : Pin
 {
+    static constexpr auto TypeId = PinType::Any;
+
     AnyPin(Node* node, string_view name = ""): Pin(node, PinType::Any, name) {}
 };
 
 struct FlowPin final : Pin
 {
+    static constexpr auto TypeId = PinType::Flow;
+
     FlowPin(): FlowPin(nullptr) {}
     FlowPin(Node* node): Pin(node, PinType::Flow) {}
     FlowPin(Node* node, string_view name): Pin(node, PinType::Flow, name) {}
@@ -122,6 +127,8 @@ struct FlowPin final : Pin
 
 struct BoolPin final : Pin
 {
+    static constexpr auto TypeId = PinType::Bool;
+
     BoolPin(Node* node, bool value = false)
         : Pin(node, PinType::Bool)
         , m_Value(value)
@@ -153,6 +160,8 @@ struct BoolPin final : Pin
 
 struct Int32Pin final : Pin
 {
+    static constexpr auto TypeId = PinType::Int32;
+
     Int32Pin(Node* node, int32_t value = 0): Pin(node, PinType::Int32), m_Value(value) {}
     Int32Pin(Node* node, string_view name, int32_t value = 0): Pin(node, PinType::Int32, name), m_Value(value) {}
 
@@ -166,6 +175,8 @@ struct Int32Pin final : Pin
 
 struct FloatPin final : Pin
 {
+    static constexpr auto TypeId = PinType::Float;
+
     FloatPin(Node* node, float value = 0.0f): Pin(node, PinType::Float), m_Value(value) {}
     FloatPin(Node* node, string_view name, float value = 0.0f): Pin(node, PinType::Float, name), m_Value(value) {}
 
@@ -179,6 +190,8 @@ struct FloatPin final : Pin
 
 struct StringPin final : Pin
 {
+    static constexpr auto TypeId = PinType::String;
+
     StringPin(Node* node, string value = ""): Pin(node, PinType::String), m_Value(value) {}
     StringPin(Node* node, string_view name, string value = ""): Pin(node, PinType::String, name), m_Value(value) {}
 
@@ -210,13 +223,29 @@ struct Node
     Node(Blueprint& blueprint, string_view name);
     virtual ~Node() = default;
 
+    template <typename T>
+    T* CreatePin()
+    {
+        if (auto pin = CreatePin(T::TypeId))
+            return static_cast<T*>(pin);
+        else
+            return nullptr;
+    }
+
+    Pin* CreatePin(PinType pinType, string_view name);
+
+    virtual void Reset(Context& context)
+    {
+    }
+
     virtual FlowPin Execute(Context& context, FlowPin& entryPoint)
     {
         return {};
     }
 
-    virtual void Reset(Context& context)
+    virtual PinValue EvaluatePin(const Context& context, const Pin& pin) const
     {
+        return pin.GetImmediateValue();
     }
 
     virtual NodeTypeInfo GetTypeInfo() const { return {}; }
@@ -467,6 +496,11 @@ struct DoNNode final : Node
 
     DoNNode(Blueprint& blueprint): Node(blueprint, "Do N") {}
 
+    void Reset(Context& context) override
+    {
+        context.SetPinValue(m_Counter, 0);
+    }
+
     FlowPin Execute(Context& context, FlowPin& entryPoint) override
     {
         if (entryPoint.m_Id == m_Reset.m_Id)
@@ -485,11 +519,6 @@ struct DoNNode final : Node
         context.PushReturnPoint(entryPoint);
 
         return m_Exit;
-    }
-
-    void Reset(Context& context) override
-    {
-        context.SetPinValue(m_Counter, 0);
     }
 
     span<Pin*> GetInputPins() override { return m_InputPins; }
@@ -511,6 +540,11 @@ struct FlipFlopNode final : Node
 
     FlipFlopNode(Blueprint& blueprint): Node(blueprint, "Flip Flop") {}
 
+    void Reset(Context& context) override
+    {
+        context.SetPinValue(m_IsA, false);
+    }
+
     FlowPin Execute(Context& context, FlowPin& entryPoint) override
     {
         auto isA = !context.GetPinValue<bool>(m_IsA);
@@ -519,11 +553,6 @@ struct FlipFlopNode final : Node
             return m_A;
         else
             return m_B;
-    }
-
-    void Reset(Context& context) override
-    {
-        context.SetPinValue(m_IsA, false);
     }
 
     span<Pin*> GetInputPins() override { return m_InputPins; }
@@ -630,6 +659,58 @@ struct EntryPointNode final : Node
     Pin* m_OutputPins[1] = { &m_Exit };
 };
 
+struct AddNode final : Node
+{
+    CRUDE_BP_NODE(AddNode)
+
+    AddNode(Blueprint& blueprint): Node(blueprint, "Add (const)")
+    {
+        SetType(PinType::Any);
+    }
+
+    PinValue EvaluatePin(const Context& context, const Pin& pin) const override
+    {
+        if (pin.m_Id == m_Result->m_Id)
+        {
+            auto aValue = context.GetPinValue(*m_A);
+            auto bValue = context.GetPinValue(*m_B);
+
+            if (static_cast<PinType>(aValue.index()) != m_Type ||
+                static_cast<PinType>(bValue.index()) != m_Type)
+            {
+                return {}; // Error: Node values must be of same type
+            }
+
+            switch (m_Type)
+            {
+                case PinType::Int32:
+                    return get<int32_t>(aValue) + get<int32_t>(bValue);
+                case PinType::Float:
+                    return get<float>(aValue) + get<float>(bValue);
+                case PinType::String:
+                    return get<float>(aValue) + get<float>(bValue);
+            }
+
+            return {}; // Error: Unsupported type
+        }
+        else
+            return Node::EvaluatePin(context, pin);
+    }
+
+    void SetType(PinType type);
+
+    span<Pin*> GetInputPins() override { return m_InputPins; }
+    span<Pin*> GetOutputPins() override { return m_OutputPins; }
+
+    PinType m_Type = PinType::Any;
+    unique_ptr<Pin> m_A;
+    unique_ptr<Pin> m_B;
+    unique_ptr<Pin> m_Result;
+
+    Pin* m_InputPins[2];
+    Pin* m_OutputPins[1];
+};
+
 
 
 //
@@ -651,7 +732,7 @@ struct NodeRegistry
 private:
     void RebuildTypes();
 
-    NodeTypeInfo m_BuildInNodes[10] =
+    NodeTypeInfo m_BuildInNodes[11] =
     {
         ConstBoolNode::GetStaticTypeInfo(),
         ConstInt32Node::GetStaticTypeInfo(),
@@ -663,6 +744,7 @@ private:
         ToStringNode::GetStaticTypeInfo(),
         PrintNode::GetStaticTypeInfo(),
         EntryPointNode::GetStaticTypeInfo(),
+        AddNode::GetStaticTypeInfo(),
     };
 
     vector<NodeTypeInfo> m_CustomNodes;
@@ -698,6 +780,8 @@ struct Blueprint
     Node* CreateNode(uint32_t nodeTypeId);
     Node* CreateNode(string_view nodeTypeName);
     void DeleteNode(Node* node);
+
+    void ForgetPin(Pin* pin);
 
     void Clear();
 

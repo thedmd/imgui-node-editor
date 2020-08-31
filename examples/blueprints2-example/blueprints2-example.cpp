@@ -35,13 +35,18 @@ void Application_Initialize()
     auto flipFlopNode = g_Blueprint.CreateNode<FlipFlopNode>();
     auto toStringNode = g_Blueprint.CreateNode<ToStringNode>();
     auto doNNode = g_Blueprint.CreateNode<DoNNode>();
+    auto addNode = g_Blueprint.CreateNode<AddNode>();
 
     entryPointNode->m_Exit.m_Link = &doNNode->m_Enter;
 
     doNNode->m_N.m_Value = 5;
     doNNode->m_Exit.m_Link = &flipFlopNode->m_Enter;
 
-    toStringNode->m_Value.m_Link = &doNNode->m_Counter;
+    addNode->SetType(PinType::Int32);
+    addNode->m_A->m_Link = &doNNode->m_Counter;
+    static_cast<Int32Pin*>(addNode->m_B.get())->m_Value = 3;
+
+    toStringNode->m_Value.m_Link = addNode->m_Result.get();
     toStringNode->m_Exit.m_Link = &printNode2Node->m_Enter;
 
     printNode1Node->m_String.m_Value = "FlipFlop slot A!";
