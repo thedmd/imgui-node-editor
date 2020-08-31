@@ -3,6 +3,7 @@
 # include <imgui_internal.h>
 
 # include "crude_blueprint.h"
+# include "crude_blueprint_library.h"
 # include "crude_layout.h"
 # include "imgui_extras.h"
 # include "imgui_blueprint_utilities.h"
@@ -80,6 +81,14 @@ void Application_Initialize()
     //bool ok = yyy == zzz;
 
     //auto b3 = b2;
+
+    g_Blueprint.CreateNode<BranchNode>();
+    g_Blueprint.CreateNode<DoNNode>();
+    g_Blueprint.CreateNode<DoOnceNode>();
+    g_Blueprint.CreateNode<FlipFlopNode>();
+    g_Blueprint.CreateNode<ForLoopNode>();
+    g_Blueprint.CreateNode<GateNode>();
+    g_Blueprint.CreateNode<AddNode>();
 
 
     ed::Config config;
