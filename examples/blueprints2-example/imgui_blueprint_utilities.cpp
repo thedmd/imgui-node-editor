@@ -35,26 +35,26 @@ ImVec4 crude_blueprint_utilities::PinTypeToIconColor(PinType pinType)
 
 bool crude_blueprint_utilities::DrawPinValue(const PinValue& value)
 {
-    switch (static_cast<PinType>(value.index()))
+    switch (value.GetType())
     {
         case PinType::Any:
             return false;
         case PinType::Flow:
             return false;
         case PinType::Bool:
-            if (get<bool>(value))
+            if (value.As<bool>())
                 ImGui::TextUnformatted("true");
             else
                 ImGui::TextUnformatted("false");
             return true;
         case PinType::Int32:
-            ImGui::Text("%d", get<int32_t>(value));
+            ImGui::Text("%d", value.As<int32_t>());
             return true;
         case PinType::Float:
-            ImGui::Text("%f", get<float>(value));
+            ImGui::Text("%f", value.As<float>());
             return true;
         case PinType::String:
-            ImGui::Text("%s", get<string>(value).c_str());
+            ImGui::Text("%s", value.As<string>().c_str());
             return true;
     }
 
@@ -65,38 +65,57 @@ bool crude_blueprint_utilities::EditPinImmediateValue(Pin& pin)
 {
     ImEx::ScopedItemWidth scopedItemWidth{120};
 
-    switch (pin.m_Type)
+    auto pinValue = pin.GetValue();
+
+    switch (pinValue.GetType())
     {
         case PinType::Any:
             return false;
         case PinType::Flow:
             return false;
         case PinType::Bool:
-            static_cast<BoolPin&>(pin).m_Value = !static_cast<BoolPin&>(pin).m_Value;
+            pin.SetValue(!pinValue.As<bool>());
             return false;
         case PinType::Int32:
-            if (ImGui::InputInt("##editor", &static_cast<Int32Pin&>(pin).m_Value, 1, 100, ImGuiInputTextFlags_EnterReturnsTrue))
-                return false;
+            {
+                auto value = pinValue.As<int32_t>();
+                if (ImGui::InputInt("##editor", &value, 1, 100, ImGuiInputTextFlags_EnterReturnsTrue))
+                {
+                    pin.SetValue(value);
+                    return false;
+                }
+            }
             return true;
         case PinType::Float:
-            if (ImGui::InputFloat("##editor", &static_cast<FloatPin&>(pin).m_Value, 1, 100, "%.3f", ImGuiInputTextFlags_EnterReturnsTrue))
-                return false;
+            {
+                auto value = pinValue.As<float>();
+                if (ImGui::InputFloat("##editor", &value, 1, 100, "%.3f", ImGuiInputTextFlags_EnterReturnsTrue))
+                {
+                    pin.SetValue(value);
+                    return false;
+                }
+            }
             return true;
         case PinType::String:
-            auto& stringValue = static_cast<StringPin&>(pin).m_Value;
-            if (ImGui::InputText("##editor", (char*)stringValue.data(), stringValue.size() + 1, ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_CallbackResize, [](ImGuiInputTextCallbackData *data) -> int
             {
-                if (data->EventFlag == ImGuiInputTextFlags_CallbackResize)
+                auto value = pinValue.As<string>();
+                if (ImGui::InputText("##editor", (char*)value.data(), value.size() + 1, ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_CallbackResize, [](ImGuiInputTextCallbackData* data) -> int
                 {
-                    auto& stringValue = *static_cast<string*>(data->UserData);
-                    ImVector<char>* my_str = (ImVector<char>*)data->UserData;
-                    IM_ASSERT(stringValue.data() == data->Buf);
-                    stringValue.resize(data->BufSize); // NB: On resizing calls, generally data->BufSize == data->BufTextLen + 1
-                    data->Buf = (char*)stringValue.data();
+                    if (data->EventFlag == ImGuiInputTextFlags_CallbackResize)
+                    {
+                        auto& stringValue = *static_cast<string*>(data->UserData);
+                        ImVector<char>* my_str = (ImVector<char>*)data->UserData;
+                        IM_ASSERT(stringValue.data() == data->Buf);
+                        stringValue.resize(data->BufSize); // NB: On resizing calls, generally data->BufSize == data->BufTextLen + 1
+                        data->Buf = (char*)stringValue.data();
+                    }
+                    return 0;
+                }, &value))
+                {
+                    pin.SetValue(value);
+                    return false;
                 }
-                return 0;
-            }, &stringValue))
-                return false;
+            }
             return true;
     }
 
@@ -120,7 +139,7 @@ void crude_blueprint_utilities::EditOrDrawPinValue(Pin& pin)
     {
         // Draw pin value
         PinValueBackgroundRenderer bg;
-        if (!DrawPinValue(pin.GetImmediateValue()))
+        if (!DrawPinValue(pin.GetValue()))
         {
             bg.Discard();
             return;
@@ -129,10 +148,13 @@ void crude_blueprint_utilities::EditOrDrawPinValue(Pin& pin)
         // Draw invisible button over pin value which triggers an editor if clicked
         auto itemMin = ImGui::GetItemRectMin();
         auto itemMax = ImGui::GetItemRectMax();
+        auto itemSize = itemMax - itemMin;
+        itemSize.x = ImMax(itemSize.x, 1.0f);
+        itemSize.y = ImMax(itemSize.y, 1.0f);
 
         ImGui::SetCursorScreenPos(itemMin);
 
-        if (ImGui::InvisibleButton("###pin_value_editor", itemMax - itemMin))
+        if (ImGui::InvisibleButton("###pin_value_editor", itemSize))
         {
             activePinId = pin.m_Id;
             ax::NodeEditor::EnableShortcuts(false);
@@ -263,9 +285,9 @@ void crude_blueprint_utilities::DebugOverlay::DrawNode(const Node& node)
 void crude_blueprint_utilities::DebugOverlay::DrawInputPin(const Pin& pin)
 {
     auto flowPinValue = m_Blueprint->GetContext().GetPinValue(m_CurrentFlowPin);
-    auto flowPin = get_if<FlowPin*>(&flowPinValue);
+    auto flowPin = flowPinValue.GetType() == PinType::Flow ? flowPinValue.As<FlowPin*>() : nullptr;
 
-    const auto isCurrentFlowPin = flowPin && (*flowPin) && (*flowPin)->m_Id == pin.m_Id;
+    const auto isCurrentFlowPin = flowPin && flowPin->m_Id == pin.m_Id;
 
     if (nullptr == m_CurrentNode || (!pin.m_Link && !isCurrentFlowPin))
         return;

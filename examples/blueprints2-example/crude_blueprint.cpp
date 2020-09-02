@@ -93,20 +93,49 @@ crude_blueprint::Pin::Pin(Node* node, PinType type, string_view name)
 {
 }
 
-crude_blueprint::PinValue crude_blueprint::Pin::GetValue() const
-{
-    if (m_Link)
-        return m_Link->GetValue();
-    else
-        return GetImmediateValue();
-}
-
 crude_blueprint::PinType crude_blueprint::Pin::GetType() const
 {
     if (m_Link)
         return m_Link->GetType();
     else
-        return m_Type;
+        return GetValueType();
+}
+
+bool crude_blueprint::Pin::CanLinkTo(const Pin& pin) const
+{
+    if (!m_Node->AcceptLink(*this, pin))
+        return false;
+
+    if (!pin.m_Node->AcceptLink(*this, pin))
+        return false;
+
+    return true;
+}
+
+bool crude_blueprint::Pin::LinkTo(const Pin& pin)
+{
+    if (!CanLinkTo(pin))
+        return false;
+
+    m_Link = &pin;
+
+    m_Node->WasLinked(*this, pin);
+    pin.m_Node->WasLinked(*this, pin);
+
+    return true;
+}
+
+void crude_blueprint::Pin::Unlink()
+{
+    if (m_Link == nullptr)
+        return;
+
+    auto link = m_Link;
+
+    m_Link = nullptr;
+
+    m_Node->WasUnlinked(*this, *link);
+    link->m_Node->WasUnlinked(*this, *link);
 }
 
 bool crude_blueprint::Pin::Load(const crude_json::value& value)
@@ -134,7 +163,12 @@ void crude_blueprint::Pin::Save(crude_json::value& value) const
         value["link"] = crude_json::number(m_Link->m_Id);
 }
 
-crude_blueprint::PinValue crude_blueprint::Pin::GetImmediateValue() const
+crude_blueprint::PinType crude_blueprint::Pin::GetValueType() const
+{
+    return m_Type;
+}
+
+crude_blueprint::PinValue crude_blueprint::Pin::GetValue() const
 {
     return PinValue{};
 }
@@ -144,6 +178,61 @@ crude_blueprint::PinValue crude_blueprint::Pin::GetImmediateValue() const
 //
 // -------[ Pins Serialization ]-------
 //
+
+bool crude_blueprint::AnyPin::SetValueType(PinType type)
+{
+    if (GetValueType() == type)
+        return true;
+
+    m_InnerPin.reset();
+
+    if (type == PinType::Any)
+        return true;
+
+    m_InnerPin.reset(m_Node->CreatePin(type, ""));
+
+    return true;
+}
+
+bool crude_blueprint::AnyPin::SetValue(PinValue value)
+{
+    if (!m_InnerPin)
+        return false;
+
+    return m_InnerPin->SetValue(std::move(value));
+}
+
+bool crude_blueprint::AnyPin::Load(const crude_json::value& value)
+{
+    if (!Pin::Load(value))
+        return false;
+
+    PinType type = PinType::Any;
+    if (!detail::GetTo<double>(value, "type", type))
+        return false;
+
+    if (type != PinType::Any)
+    {
+        m_InnerPin.reset(m_Node->CreatePin(type, ""));
+
+        if (!value.contains("inner"))
+            return false;
+
+        if (!m_InnerPin->Load(value["inner"]))
+            return false;
+    }
+
+    return true;
+}
+
+void crude_blueprint::AnyPin::Save(crude_json::value& value) const
+{
+    Pin::Save(value);
+
+    value["type"] = static_cast<double>(GetValueType());
+    if (m_InnerPin)
+         m_InnerPin->Save(value["inner"]);
+}
 
 bool crude_blueprint::BoolPin::Load(const crude_json::value& value)
 {
@@ -243,6 +332,27 @@ crude_blueprint::Pin* crude_blueprint::Node::CreatePin(PinType pinType, string_v
     }
 
     return nullptr;
+}
+
+bool crude_blueprint::Node::AcceptLink(const Pin& target, const Pin& source) const
+{
+    if (target.m_Node == source.m_Node)
+        return false; // Error: Connecting pin of same node is not allowed.
+
+    const auto targetIsFlow = target.GetType() == PinType::Flow;
+    const auto sourceIsFlow = source.GetType() == PinType::Flow;
+    if (targetIsFlow != sourceIsFlow)
+        return false; // Error: Flow pins can be connected only to Flow pins.
+
+    return true;
+}
+
+void crude_blueprint::Node::WasLinked(const Pin& target, const Pin& source)
+{
+}
+
+void crude_blueprint::Node::WasUnlinked(const Pin& target, const Pin& source)
+{
 }
 
 bool crude_blueprint::Node::Load(const crude_json::value& value)
@@ -376,10 +486,10 @@ crude_blueprint::StepResult crude_blueprint::Context::Step()
 
     auto entryPoint = GetPinValue(currentFlowPin);
 
-    if (static_cast<PinType>(entryPoint.index()) != PinType::Flow)
+    if (entryPoint.GetType() != PinType::Flow)
         return SetStepResult(StepResult::Error);
 
-    auto entryPin = get<FlowPin*>(entryPoint);
+    auto entryPin = entryPoint.As<FlowPin*>();
 
     m_CurrentNode = entryPin->m_Node;
 
@@ -481,7 +591,7 @@ crude_blueprint::PinValue crude_blueprint::Context::GetPinValue(const Pin& pin) 
     else if (pin.m_Node)
         value = pin.m_Node->EvaluatePin(*this, pin);
     else
-        value = pin.GetImmediateValue();
+        value = pin.GetValue();
 
     return std::move(value);
 }

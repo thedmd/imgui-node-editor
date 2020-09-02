@@ -338,14 +338,14 @@ struct ToStringNode final : Node
         auto value = context.GetPinValue(m_Value);
 
         string result;
-        switch (static_cast<PinType>(value.index()))
+        switch (value.GetType())
         {
             case PinType::Any:    break;
             case PinType::Flow:   break;
-            case PinType::Bool:   result = get<bool>(value) ? "true" : "false"; break;
-            case PinType::Int32:  result = std::to_string(get<int32_t>(value)); break;
-            case PinType::Float:  result = std::to_string(get<float>(value)); break;
-            case PinType::String: result = get<string>(value); break;
+            case PinType::Bool:   result = value.As<bool>() ? "true" : "false"; break;
+            case PinType::Int32:  result = std::to_string(value.As<int32_t>()); break;
+            case PinType::Float:  result = std::to_string(value.As<float>()); break;
+            case PinType::String: result = value.As<string>(); break;
         }
 
         context.SetPinValue(m_String, std::move(result));
@@ -432,13 +432,13 @@ struct AddNode final : Node
 
     PinValue EvaluatePin(const Context& context, const Pin& pin) const override
     {
-        if (pin.m_Id == m_Result->m_Id)
+        if (pin.m_Id == m_Result.m_Id)
         {
-            auto aValue = context.GetPinValue(*m_A);
-            auto bValue = context.GetPinValue(*m_B);
+            auto aValue = context.GetPinValue(m_A);
+            auto bValue = context.GetPinValue(m_B);
 
-            if (static_cast<PinType>(aValue.index()) != m_Type ||
-                static_cast<PinType>(bValue.index()) != m_Type)
+            if (aValue.GetType() != m_Type ||
+                bValue.GetType() != m_Type)
             {
                 return {}; // Error: Node values must be of same type
             }
@@ -446,11 +446,11 @@ struct AddNode final : Node
             switch (m_Type)
             {
                 case PinType::Int32:
-                    return get<int32_t>(aValue) + get<int32_t>(bValue);
+                    return aValue.As<int32_t>() + bValue.As<int32_t>();
                 case PinType::Float:
-                    return get<float>(aValue) + get<float>(bValue);
+                    return aValue.As<float>() + bValue.As<float>();
                 case PinType::String:
-                    return get<string>(aValue) + get<string>(bValue);
+                    return aValue.As<string>() + bValue.As<string>();
             }
 
             return {}; // Error: Unsupported type
@@ -459,18 +459,52 @@ struct AddNode final : Node
             return Node::EvaluatePin(context, pin);
     }
 
+    bool AcceptLink(const Pin& target, const Pin& source) const override
+    {
+        if (!Node::AcceptLink(target, source))
+            return false;
+
+        // Accept connection of any type
+        if (m_Type != PinType::Any)
+        {
+            if (target.m_Node == this && target.GetType() != m_Type)
+                return false; // Error: Target must match type of the node.
+
+            if (source.m_Node == this && source.GetType() != m_Type)
+                return false; // Error: Source must match type of the node.
+        }
+
+        return true;
+    }
+
+    void WasLinked(const Pin& target, const Pin& source) override
+    {
+        if (m_Type != PinType::Any)
+            return;
+
+        if (target.m_Id == m_A.m_Id || target.m_Id == m_B.m_Id)
+            SetType(source.GetType());
+        else if (source.m_Id == m_Result.m_Id)
+            SetType(target.GetType());
+    }
+
+    void WasUnlinked(const Pin& target, const Pin& source) override
+    {
+    }
+
     void SetType(PinType type);
 
     span<Pin*> GetInputPins() override { return m_InputPins; }
     span<Pin*> GetOutputPins() override { return m_OutputPins; }
 
     PinType m_Type = PinType::Any;
-    unique_ptr<Pin> m_A;
-    unique_ptr<Pin> m_B;
-    unique_ptr<Pin> m_Result;
 
-    Pin* m_InputPins[2];
-    Pin* m_OutputPins[1];
+    AnyPin m_A = { this, "A" };
+    AnyPin m_B = { this, "B" };
+    AnyPin m_Result = { this, "Result" };
+
+    Pin* m_InputPins[2] = { &m_A, &m_B };
+    Pin* m_OutputPins[1] = { &m_Result };
 };
 
 } // namespace crude_blueprint {
