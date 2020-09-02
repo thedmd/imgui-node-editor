@@ -44,7 +44,44 @@ struct Blueprint;
 
 
 enum class PinType { Any, Flow, Bool, Int32, Float, String };
-using PinValue = variant<monostate, FlowPin*, bool, int32_t, float, string>;
+
+struct PinValue
+{
+    using ValueType = variant<monostate, FlowPin*, bool, int32_t, float, string>;
+
+    PinValue() = default;
+    PinValue(const PinValue&) = default;
+    PinValue(PinValue&&) = default;
+    PinValue& operator=(const PinValue&) = default;
+    PinValue& operator=(PinValue&&) = default;
+
+    PinValue(FlowPin* pin): m_Value(pin) {}
+    PinValue(bool value): m_Value(value) {}
+    PinValue(int32_t value): m_Value(value) {}
+    PinValue(float value): m_Value(value) {}
+    PinValue(string&& value): m_Value(std::move(value)) {}
+    PinValue(const string& value): m_Value(value) {}
+    PinValue(const char* value): m_Value(string(value)) {}
+
+    PinType GetType() const { return static_cast<PinType>(m_Value.index()); }
+
+    template <typename T>
+    T& As()
+    {
+        return get<T>(m_Value);
+    }
+
+    template <typename T>
+    const T& As() const
+    {
+        return get<T>(m_Value);
+    }
+
+private:
+    ValueType m_Value;
+};
+
+//using PinValue = variant<monostate, FlowPin*, bool, int32_t, float, string>;
 
 
 
@@ -75,9 +112,16 @@ struct Pin
     Pin(Node* node, PinType type, string_view name);
     virtual ~Pin() = default;
 
-    virtual PinValue GetImmediateValue() const;
+    virtual bool SetValueType(PinType type) { return false; }
+    virtual PinType GetValueType() const;
+    virtual bool SetValue(PinValue value) { return false; }
+    virtual PinValue GetValue() const;
 
     PinType GetType() const;
+
+    bool CanLinkTo(const Pin& pin) const;
+    bool LinkTo(const Pin& pin);
+    void Unlink();
 
     virtual bool Load(const crude_json::value& value);
     virtual void Save(crude_json::value& value) const;
@@ -86,20 +130,8 @@ struct Pin
     Node*       m_Node = nullptr;
     PinType     m_Type = PinType::Any;
     string_view m_Name;
-    Pin*        m_Link = nullptr;
-
-private:
-    template <typename T>
-    auto GetValueAs() const;
-
-    PinValue GetValue() const;
+    const Pin*  m_Link = nullptr;
 };
-
-template <typename T>
-auto crude_blueprint::Pin::GetValueAs() const
-{
-    return get<T>(GetValue());
-}
 
 
 
@@ -112,6 +144,16 @@ struct AnyPin final : Pin
     static constexpr auto TypeId = PinType::Any;
 
     AnyPin(Node* node, string_view name = ""): Pin(node, PinType::Any, name) {}
+
+    bool SetValueType(PinType type) override;
+    PinType GetValueType() const override { return m_InnerPin ? m_InnerPin->GetValueType() : Pin::GetValueType(); }
+    bool SetValue(PinValue value) override;
+    PinValue GetValue() const override { return m_InnerPin ? m_InnerPin->GetValue() : Pin::GetValue(); }
+
+    bool Load(const crude_json::value& value) override;
+    void Save(crude_json::value& value) const override;
+
+    unique_ptr<Pin> m_InnerPin;
 };
 
 struct FlowPin final : Pin
@@ -122,7 +164,7 @@ struct FlowPin final : Pin
     FlowPin(Node* node): Pin(node, PinType::Flow) {}
     FlowPin(Node* node, string_view name): Pin(node, PinType::Flow, name) {}
 
-    PinValue GetImmediateValue() const override { return const_cast<FlowPin*>(this); }
+    PinValue GetValue() const override { return const_cast<FlowPin*>(this); }
 };
 
 struct BoolPin final : Pin
@@ -150,7 +192,17 @@ struct BoolPin final : Pin
     {
     }
 
-    PinValue GetImmediateValue() const override { return m_Value; }
+    bool SetValue(PinValue value) override
+    {
+        if (value.GetType() != TypeId)
+            return false;
+
+        m_Value = value.As<bool>();
+
+        return true;
+    }
+
+    PinValue GetValue() const override { return m_Value; }
 
     bool Load(const crude_json::value& value) override;
     void Save(crude_json::value& value) const override;
@@ -165,7 +217,17 @@ struct Int32Pin final : Pin
     Int32Pin(Node* node, int32_t value = 0): Pin(node, PinType::Int32), m_Value(value) {}
     Int32Pin(Node* node, string_view name, int32_t value = 0): Pin(node, PinType::Int32, name), m_Value(value) {}
 
-    PinValue GetImmediateValue() const override { return m_Value; }
+    bool SetValue(PinValue value) override
+    {
+        if (value.GetType() != TypeId)
+            return false;
+
+        m_Value = value.As<int32_t>();
+
+        return true;
+    }
+
+    PinValue GetValue() const override { return m_Value; }
 
     bool Load(const crude_json::value& value) override;
     void Save(crude_json::value& value) const override;
@@ -180,7 +242,17 @@ struct FloatPin final : Pin
     FloatPin(Node* node, float value = 0.0f): Pin(node, PinType::Float), m_Value(value) {}
     FloatPin(Node* node, string_view name, float value = 0.0f): Pin(node, PinType::Float, name), m_Value(value) {}
 
-    PinValue GetImmediateValue() const override { return m_Value; }
+    bool SetValue(PinValue value) override
+    {
+        if (value.GetType() != TypeId)
+            return false;
+
+        m_Value = value.As<float>();
+
+        return true;
+    }
+
+    PinValue GetValue() const override { return m_Value; }
 
     bool Load(const crude_json::value& value) override;
     void Save(crude_json::value& value) const override;
@@ -195,7 +267,17 @@ struct StringPin final : Pin
     StringPin(Node* node, string value = ""): Pin(node, PinType::String), m_Value(value) {}
     StringPin(Node* node, string_view name, string value = ""): Pin(node, PinType::String, name), m_Value(value) {}
 
-    PinValue GetImmediateValue() const override { return m_Value; }
+    bool SetValue(PinValue value) override
+    {
+        if (value.GetType() != TypeId)
+            return false;
+
+        m_Value = value.As<string>();
+
+        return true;
+    }
+
+    PinValue GetValue() const override { return m_Value; }
 
     bool Load(const crude_json::value& value) override;
     void Save(crude_json::value& value) const override;
@@ -224,15 +306,15 @@ struct Node
     virtual ~Node() = default;
 
     template <typename T>
-    T* CreatePin()
+    T* CreatePin(string_view name = "")
     {
-        if (auto pin = CreatePin(T::TypeId))
+        if (auto pin = CreatePin(T::TypeId, name))
             return static_cast<T*>(pin);
         else
             return nullptr;
     }
 
-    Pin* CreatePin(PinType pinType, string_view name);
+    Pin* CreatePin(PinType pinType, string_view name = "");
 
     virtual void Reset(Context& context)
     {
@@ -245,10 +327,14 @@ struct Node
 
     virtual PinValue EvaluatePin(const Context& context, const Pin& pin) const
     {
-        return pin.GetImmediateValue();
+        return pin.GetValue();
     }
 
     virtual NodeTypeInfo GetTypeInfo() const { return {}; }
+
+    virtual bool AcceptLink(const Pin& target, const Pin& source) const;
+    virtual void WasLinked(const Pin& target, const Pin& source);
+    virtual void WasUnlinked(const Pin& target, const Pin& source);
 
     virtual span<Pin*> GetInputPins() { return {}; }
     virtual span<Pin*> GetOutputPins() { return {}; }
@@ -259,6 +345,8 @@ struct Node
     uint32_t    m_Id;
     string_view m_Name;
     Blueprint*  m_Blueprint;
+
+protected:
 };
 
 
@@ -342,7 +430,7 @@ private:
 template <typename T>
 inline auto Context::GetPinValue(const Pin& pin) const
 {
-    return get<T>(GetPinValue(pin));
+    return GetPinValue(pin).As<T>();
 }
 
 

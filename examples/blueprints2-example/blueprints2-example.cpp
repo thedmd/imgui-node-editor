@@ -38,26 +38,26 @@ void Application_Initialize()
     auto doNNode = g_Blueprint.CreateNode<DoNNode>();
     auto addNode = g_Blueprint.CreateNode<AddNode>();
 
-    entryPointNode->m_Exit.m_Link = &doNNode->m_Enter;
+    entryPointNode->m_Exit.LinkTo(doNNode->m_Enter);
 
-    doNNode->m_N.m_Value = 5;
-    doNNode->m_Exit.m_Link = &flipFlopNode->m_Enter;
+    doNNode->m_N.SetValue(5);
+    doNNode->m_Exit.LinkTo(flipFlopNode->m_Enter);
 
-    addNode->SetType(PinType::Int32);
-    addNode->m_A->m_Link = &doNNode->m_Counter;
-    static_cast<Int32Pin*>(addNode->m_B.get())->m_Value = 3;
+    toStringNode->m_Value.LinkTo(addNode->m_Result);
 
-    toStringNode->m_Value.m_Link = addNode->m_Result.get();
-    toStringNode->m_Exit.m_Link = &printNode2Node->m_Enter;
+    addNode->m_A.LinkTo(doNNode->m_Counter);
+    addNode->m_B.SetValue(3);
 
-    printNode1Node->m_String.m_Value = "FlipFlop slot A!";
-    printNode2Node->m_String.m_Value = "FlipFlop slot B!";
-    printNode2Node->m_String.m_Link = &toStringNode->m_String;
+    toStringNode->m_Exit.LinkTo(printNode2Node->m_Enter);
+
+    printNode1Node->m_String.SetValue("FlipFlop slot A!");
+    printNode2Node->m_String.SetValue("FlipFlop slot B!");
+    printNode2Node->m_String.LinkTo(toStringNode->m_String);
 
     //printNode2Node->m_String.m_Link = &toStringNode.m_Enter;
 
-    flipFlopNode->m_A.m_Link = &printNode1Node->m_Enter;
-    flipFlopNode->m_B.m_Link = &toStringNode->m_Enter;
+    flipFlopNode->m_A.LinkTo(printNode1Node->m_Enter);
+    flipFlopNode->m_B.LinkTo(toStringNode->m_Enter);
 
 
     //auto constBoolNode  = g_Blueprint.CreateNode<ConstBoolNode>();
@@ -227,9 +227,9 @@ void Application_Frame()
             ed::BeginPin(pin->m_Id, ed::PinKind::Input);
             ed::PinPivotAlignment(ImVec2(0.0f, 0.5f));
             ImEx::Icon(iconSize,
-                PinTypeToIconType(pin->m_Type),
+                PinTypeToIconType(pin->GetType()),
                 g_Blueprint.IsPinLinked(pin),
-                PinTypeToIconColor(pin->m_Link ? pin->m_Link->m_Type : pin->m_Type));
+                PinTypeToIconColor(pin->GetType()));
             if (!pin->m_Name.empty())
             {
                 ImGui::SameLine();
@@ -262,9 +262,9 @@ void Application_Frame()
                 ImGui::SameLine();
             }
             ImEx::Icon(iconSize,
-                PinTypeToIconType(pin->m_Type),
+                PinTypeToIconType(pin->GetType()),
                 g_Blueprint.IsPinLinked(pin),
-                PinTypeToIconColor(pin->m_Type));
+                PinTypeToIconColor(pin->GetType()));
             ed::EndPin();
 
             // Show value of the pin if node is currently executed

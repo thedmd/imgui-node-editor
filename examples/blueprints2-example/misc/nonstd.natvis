@@ -1,6 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <AutoVisualizer xmlns="http://schemas.microsoft.com/vstudio/debugger/natvis/2010">
 
+    <Type Name="nonstd::span_lite::span&lt;*,*&gt;">
+        <Intrinsic Name="size" Expression="$T2" Optional="true" />
+        <Intrinsic Name="size" Expression="size_" Optional="true" />
+        <DisplayString>{{ size={size()} }}</DisplayString>
+        <Expand>
+            <ArrayItems>
+                <Size>size()</Size>
+                <ValuePointer>data_</ValuePointer>
+            </ArrayItems>
+        </Expand>
+    </Type>
+
     <Type Name="nonstd::sv_lite::basic_string_view&lt;*&gt;">
         <!--<DisplayString Condition="m_Type == 1">{m_Type,en} {*(crude_json::object*)&amp;m_Storage,view(simple)}</DisplayString>-->
         <!--<StringView Condition="m_Type == 3">*(crude_json::string*)&amp;m_Storage</StringView>-->
