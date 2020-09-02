@@ -378,6 +378,6 @@ void crude_blueprint_utilities::DebugOverlay::OnEvaluatePin(const Context& conte
     if (!nodeEditor)
         return;
 
-    if (pin.m_Link)
-        ax::NodeEditor::Flow(pin.m_Link->m_Id);
+    //if (pin.m_Link)
+        ax::NodeEditor::Flow(pin.m_Id);
 }
