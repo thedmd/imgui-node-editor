@@ -174,28 +174,18 @@ static void ShowControlPanel()
     ImGui::GetStyle().Alpha = 1.0f;
 }
 
-void Application_Frame()
+// Iterate over blueprint nodes and commit them to node editor.
+static void CommitBlueprintNodes(Blueprint& blueprint, DebugOverlay& debugOverlay)
 {
-    DebugOverlay debugValueRenderer(g_Blueprint);
-
-    ShowControlPanel();
-
-    ImGui::Separator();
-
-    ed::SetCurrentEditor(g_Editor);
-
-    ed::Begin("###main_editor");
-
     const auto iconSize = ImVec2(ImGui::GetTextLineHeight(), ImGui::GetTextLineHeight());
 
-    debugValueRenderer.Begin();
+    debugOverlay.Begin();
 
     // Commit all nodes to editor
-    for (auto& node : g_Blueprint.GetNodes())
+    for (auto& node : blueprint.GetNodes())
     {
         ed::BeginNode(node->m_Id);
 
-        //
         // General node layout:
         //
         // +-----------------------------------+
@@ -208,6 +198,7 @@ void Application_Frame()
         // | +---------------+   +-----------+ |
         // +-----------------------------------+
 
+        // Show title if node has one.
         if (!node->m_Name.empty())
         {
             ImGui::PushFont(Application_HeaderFont());
@@ -221,29 +212,53 @@ void Application_Frame()
         layout.Begin(node->m_Id, 2, 100.0f);
         layout.SetColumnAlignment(0.0f);
 
+        // Draw column with input pins.
         for (auto& pin : node->GetInputPins())
         {
-            ImGui::Spacing(); // Add a bit of spacing to separate pins and make value not cramped
+            // Add a bit of spacing to separate pins and make value not cramped
+            ImGui::Spacing();
+
+            // Input pin layout:
+            //
+            //     +-[1]---+-[2]------+-[3]----------+
+            //     |       |          |              |
+            //    [X] Icon | Pin Name | Value/Editor |
+            //     |       |          |              |
+            //     +-------+----------+--------------+
+
             ed::BeginPin(pin->m_Id, ed::PinKind::Input);
+            // [X] - Tell editor to put pivot point in the middle of
+            //       the left side of the pin. This is the point
+            //       where link will be hooked to.
+            //
+            //       By default pivot is in pin center point which
+            //       does not look good for blueprint nodes.
             ed::PinPivotAlignment(ImVec2(0.0f, 0.5f));
+
+            // [1] - Icon
             ImEx::Icon(iconSize,
                 PinTypeToIconType(pin->GetType()),
-                g_Blueprint.IsPinLinked(pin),
+                blueprint.IsPinLinked(pin),
                 PinTypeToIconColor(pin->GetType()));
+
+            // [2] - Show pin name if it has one
             if (!pin->m_Name.empty())
             {
                 ImGui::SameLine();
                 ImGui::TextUnformatted(pin->m_Name.data(), pin->m_Name.data() + pin->m_Name.size());
             }
-            if (!g_Blueprint.IsPinLinked(pin))
+
+            // [3] - Show value/editor when pin is not linked to anything
+            if (!blueprint.IsPinLinked(pin))
             {
                 ImGui::SameLine();
                 EditOrDrawPinValue(*pin);
             }
+
             ed::EndPin();
 
-            // Show value of the pin if node is currently executed
-            debugValueRenderer.DrawInputPin(*pin);
+            // [Debug Overlay] Show value of the pin if node is currently executed
+            debugOverlay.DrawInputPin(*pin);
 
             layout.NextRow();
         }
@@ -251,24 +266,47 @@ void Application_Frame()
         layout.SetColumnAlignment(1.0f);
         layout.NextColumn();
 
+        // Draw column with output pins.
         for (auto& pin : node->GetOutputPins())
         {
-            ImGui::Spacing(); // Add a bit of spacing to separate pins and make value not cramped
+            // Add a bit of spacing to separate pins and make value not cramped
+            ImGui::Spacing();
+
+            // Output pin layout:
+            //
+            //    +-[1]------+-[2]---+
+            //    |          |       |
+            //    | Pin Name | Icon [X]
+            //    |          |       |
+            //    +----------+-------+
+
             ed::BeginPin(pin->m_Id, ed::PinKind::Output);
+
+            // [X] - Tell editor to put pivot point in the middle of
+            //       the right side of the pin. This is the point
+            //       where link will be hooked to.
+            //
+            //       By default pivot is in pin center point which
+            //       does not look good for blueprint nodes.
             ed::PinPivotAlignment(ImVec2(1.0f, 0.5f));
+
+            // [1] - Show pin name if it has one
             if (!pin->m_Name.empty())
             {
                 ImGui::TextUnformatted(pin->m_Name.data(), pin->m_Name.data() + pin->m_Name.size());
                 ImGui::SameLine();
             }
+
+            // [2] - Show icon
             ImEx::Icon(iconSize,
                 PinTypeToIconType(pin->GetType()),
-                g_Blueprint.IsPinLinked(pin),
+                blueprint.IsPinLinked(pin),
                 PinTypeToIconColor(pin->GetType()));
+
             ed::EndPin();
 
-            // Show value of the pin if node is currently executed
-            debugValueRenderer.DrawOutputPin(*pin);
+            // [Debug Overlay] Show value of the pin if node is currently executed
+            debugOverlay.DrawOutputPin(*pin);
 
             layout.NextRow();
         }
@@ -277,21 +315,38 @@ void Application_Frame()
 
         ed::EndNode();
 
-        debugValueRenderer.DrawNode(*node);
+        // [Debug Overlay] Show cursor over node
+        debugOverlay.DrawNode(*node);
     }
 
     // Commit all links to editor
-    for (auto& pin : g_Blueprint.GetPins())
+    for (auto& pin : blueprint.GetPins())
     {
         if (!pin->m_Link)
             continue;
 
-        ed::Link(pin->m_Link->m_Id, pin->m_Id, pin->m_Link->m_Id, PinTypeToIconColor(pin->m_Link->m_Type));
+        // To keep things simple, link id is same as pin id.
+        ed::Link(pin->m_Id, pin->m_Id, pin->m_Link->m_Id, PinTypeToIconColor(pin->GetType()));
     }
 
-    debugValueRenderer.End();
+    debugOverlay.End();
+}
+
+void Application_Frame()
+{
+    ed::SetCurrentEditor(g_Editor);
+
+    DebugOverlay debugOverlay(g_Blueprint);
+
+    ShowControlPanel();
+
+    ImGui::Separator();
+
+    ed::Begin("###main_editor");
+
+    CommitBlueprintNodes(g_Blueprint, debugOverlay);
 
     ed::End();
 
-
+    ed::SetCurrentEditor(nullptr);
 }
