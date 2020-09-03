@@ -138,6 +138,50 @@ void crude_blueprint::Pin::Unlink()
     link->m_Node->WasUnlinked(*this, *link);
 }
 
+bool crude_blueprint::Pin::IsInputPin() const
+{
+    for (auto pin : m_Node->GetInputPins())
+        if (pin->m_Id == m_Id)
+            return true;
+
+    return false;
+}
+
+bool crude_blueprint::Pin::IsOutputPin() const
+{
+    for (auto pin : m_Node->GetOutputPins())
+        if (pin->m_Id == m_Id)
+            return true;
+
+    return false;
+}
+
+bool crude_blueprint::Pin::IsSourcePin() const
+{
+    auto outputToInput = (GetValueType() != PinType::Flow);
+
+    auto pins = outputToInput ? m_Node->GetOutputPins() : m_Node->GetInputPins();
+
+    for (auto pin : pins)
+        if (pin->m_Id == m_Id)
+            return true;
+
+    return false;
+}
+
+bool crude_blueprint::Pin::IsTargetPin() const
+{
+    auto outputToInput = (GetValueType() != PinType::Flow);
+
+    auto pins = outputToInput ? m_Node->GetInputPins() : m_Node->GetOutputPins();
+
+    for (auto pin : pins)
+        if (pin->m_Id == m_Id)
+            return true;
+
+    return false;
+}
+
 bool crude_blueprint::Pin::Load(const crude_json::value& value)
 {
     if (!detail::GetTo<crude_json::number>(value, "id", m_Id)) // required
@@ -343,6 +387,21 @@ bool crude_blueprint::Node::AcceptLink(const Pin& target, const Pin& source) con
     const auto sourceIsFlow = source.GetType() == PinType::Flow;
     if (targetIsFlow != sourceIsFlow)
         return false; // Error: Flow pins can be connected only to Flow pins.
+
+    if (target.IsInputPin() && source.IsInputPin())
+        return false; // Error: Two input pins cannot be joined.
+
+    if (target.IsOutputPin() && source.IsOutputPin())
+        return false; // Error: Two output pins cannot be joined.
+
+    if (!target.IsTargetPin())
+        return false; // Error: Target pin pose as a source.
+
+    if (!source.IsSourcePin())
+        return false; // Error: Source pin pose as a target.
+
+    if (source.GetType() != target.GetValueType() && (source.GetValueType() != PinType::Any && target.GetValueType() != PinType::Any))
+        return false; // Error: Incompatible types.
 
     return true;
 }

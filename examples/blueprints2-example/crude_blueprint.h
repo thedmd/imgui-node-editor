@@ -81,8 +81,6 @@ private:
     ValueType m_Value;
 };
 
-//using PinValue = variant<monostate, FlowPin*, bool, int32_t, float, string>;
-
 
 
 //
@@ -122,6 +120,12 @@ struct Pin
     bool CanLinkTo(const Pin& pin) const;
     bool LinkTo(const Pin& pin);
     void Unlink();
+
+    bool IsInputPin() const;
+    bool IsOutputPin() const;
+
+    bool IsSourcePin() const;
+    bool IsTargetPin() const;
 
     virtual bool Load(const crude_json::value& value);
     virtual void Save(crude_json::value& value) const;
