@@ -1,6 +1,7 @@
 # include <application.h>
 # define IMGUI_DEFINE_MATH_OPERATORS
 # include <imgui_internal.h>
+# include <inttypes.h>
 
 # include "crude_blueprint.h"
 # include "crude_blueprint_library.h"
@@ -18,6 +19,8 @@ using namespace crude_blueprint_utilities;
 
 static ed::EditorContext* g_Editor = nullptr;
 static Blueprint g_Blueprint;
+
+static ed::PinId g_CreateLinkStartId = ed::PinId::Invalid;
 
 static EntryPointNode* FindEntryPointNode();
 
@@ -239,7 +242,7 @@ static void CommitBlueprintNodes(Blueprint& blueprint, DebugOverlay& debugOverla
             ImEx::Icon(iconSize,
                 PinTypeToIconType(pin->GetType()),
                 blueprint.IsPinLinked(pin),
-                PinTypeToIconColor(pin->GetType()));
+                PinTypeToColor(pin->GetType()));
 
             // [2] - Show pin name if it has one
             if (!pin->m_Name.empty())
@@ -301,7 +304,7 @@ static void CommitBlueprintNodes(Blueprint& blueprint, DebugOverlay& debugOverla
             ImEx::Icon(iconSize,
                 PinTypeToIconType(pin->GetType()),
                 blueprint.IsPinLinked(pin),
-                PinTypeToIconColor(pin->GetType()));
+                PinTypeToColor(pin->GetType()));
 
             ed::EndPin();
 
@@ -326,10 +329,102 @@ static void CommitBlueprintNodes(Blueprint& blueprint, DebugOverlay& debugOverla
             continue;
 
         // To keep things simple, link id is same as pin id.
-        ed::Link(pin->m_Id, pin->m_Id, pin->m_Link->m_Id, PinTypeToIconColor(pin->GetType()));
+        ed::Link(pin->m_Id, pin->m_Id, pin->m_Link->m_Id, PinTypeToColor(pin->GetType()));
     }
 
     debugOverlay.End();
+}
+
+struct CreateActionHandler
+{
+    struct LinkBuilder
+    {
+        ed::PinId m_StartPinId = ed::PinId::Invalid;
+        ed::PinId m_EndPinId = ed::PinId::Invalid;
+
+        bool Accept(const ImVec4& color = ImVec4(1.0f, 1.0f, 1.0f, 1.0f), float thickness = 1.0f)
+        {
+            return ed::AcceptNewItem(color, thickness);
+        }
+
+        void Reject()
+        {
+            ed::RejectNewItem(ImVec4(1.0f, 0.0f, 0.0f, 1.0f));
+        }
+    };
+
+    CreateActionHandler()
+        : m_InCreate(ed::BeginCreate())
+    {
+    }
+
+    ~CreateActionHandler()
+    {
+        ed::EndCreate();
+    }
+
+    LinkBuilder* QueryNewLink()
+    {
+        if (ed::QueryNewLink(&m_LinkBuilder.m_StartPinId, &m_LinkBuilder.m_EndPinId, ImGui::GetStyleColorVec4(ImGuiCol_PlotHistogram)))
+            return &m_LinkBuilder;
+        else
+            return nullptr;
+    }
+
+private:
+    bool m_InCreate = false;
+    LinkBuilder m_LinkBuilder;
+};
+
+static void HandleCreateAction(Blueprint& blueprint)
+{
+    CreateActionHandler handler;
+
+    if (auto linkBuilder = handler.QueryNewLink())
+    {
+        auto startPin = blueprint.FindPin(static_cast<uint32_t>(linkBuilder->m_StartPinId.Get()));
+        auto endPin   = blueprint.FindPin(static_cast<uint32_t>(linkBuilder->m_EndPinId.Get()));
+
+        auto canLinkFromStartToEnd = startPin->CanLinkTo(*endPin);
+        auto canLinkFromEndToStart = endPin->CanLinkTo(*startPin);
+
+        if (canLinkFromStartToEnd || canLinkFromEndToStart)
+        {
+            ed::Suspend();
+            ImGui::SetTooltip(
+                "Valid Link\n"
+                "From: %" PRIu32 " (%*s)\n"
+                "To: %" PRIu32 " (%*s)\n"
+                "Start -> End: %s\n"
+                "End -> Start: %s\n",
+                startPin->m_Id, static_cast<int>(startPin->m_Node->m_Name.size()), startPin->m_Node->m_Name.data(),
+                endPin->m_Id, static_cast<int>(endPin->m_Node->m_Name.size()), endPin->m_Node->m_Name.data(),
+                canLinkFromStartToEnd ? "true" : "false",
+                canLinkFromEndToStart ? "true" : "false");
+            ed::Resume();
+
+            auto linkType      = startPin->GetType() == PinType::Any ? endPin->GetType() : startPin->GetType();
+            auto linkColor     = PinTypeToColor(linkType);
+            auto linkThickness = 2.0f;
+
+            if (linkBuilder->Accept(linkColor, linkThickness))
+            {
+                if (canLinkFromStartToEnd)
+                    startPin->LinkTo(*endPin);
+                else if (canLinkFromEndToStart)
+                    endPin->LinkTo(*startPin);
+            }
+        }
+        else
+        {
+            ed::Suspend();
+            ImGui::SetTooltip("Invalid Link");
+            ed::Resume();
+
+            linkBuilder->Reject();
+        }
+    }
+
 }
 
 void Application_Frame()
@@ -345,6 +440,8 @@ void Application_Frame()
     ed::Begin("###main_editor");
 
     CommitBlueprintNodes(g_Blueprint, debugOverlay);
+
+    HandleCreateAction(g_Blueprint);
 
     ed::End();
 

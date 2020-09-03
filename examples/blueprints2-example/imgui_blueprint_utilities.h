@@ -8,7 +8,7 @@ namespace crude_blueprint_utilities {
 using namespace crude_blueprint;
 
 ImEx::IconType PinTypeToIconType(PinType pinType);
-ImVec4 PinTypeToIconColor(PinType pinType);
+ImVec4 PinTypeToColor(PinType pinType);
 bool DrawPinValue(const PinValue& value);
 bool EditPinImmediateValue(Pin& pin);
 void EditOrDrawPinValue(Pin& pin);

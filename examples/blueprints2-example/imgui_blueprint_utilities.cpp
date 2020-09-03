@@ -18,7 +18,7 @@ ImEx::IconType crude_blueprint_utilities::PinTypeToIconType(PinType pinType)
     return ImEx::IconType::Circle;
 }
 
-ImVec4 crude_blueprint_utilities::PinTypeToIconColor(PinType pinType)
+ImVec4 crude_blueprint_utilities::PinTypeToColor(PinType pinType)
 {
     switch (pinType)
     {
