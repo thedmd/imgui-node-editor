@@ -63,7 +63,7 @@ ImTextureID Application_CreateTexture(const void* data, int width, int height)
     texture.Width  = width;
     texture.Height = height;
 
-    return reinterpret_cast<ImTextureID>(texture.TextureID);
+    return reinterpret_cast<ImTextureID>(static_cast<std::intptr_t>(texture.TextureID));
 }
 
 static std::vector<ImTexture>::iterator Application_FindTexture(ImTextureID texture)
