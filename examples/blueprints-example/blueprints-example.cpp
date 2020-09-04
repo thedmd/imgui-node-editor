@@ -1667,6 +1667,8 @@ void Application_Frame()
 
         if (node)
         {
+            BuildNodes();
+
             createNewNode = false;
 
             ed::SetNodePosition(node->ID, newNodePostion);
