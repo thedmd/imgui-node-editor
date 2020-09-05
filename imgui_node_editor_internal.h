@@ -1394,6 +1394,8 @@ struct EditorContext
         return ImVec2(AlignPointToGrid(p.x), AlignPointToGrid(p.y));
     }
 
+    ImDrawList* GetDrawList() { return m_DrawList; }
+
 private:
     void LoadSettings();
     void SaveSettings();
@@ -1455,6 +1457,7 @@ private:
 
     Config              m_Config;
 
+    ImDrawList*         m_DrawList;
     int                 m_ExternalChannel;
     ImDrawListSplitter  m_Splitter;
 };

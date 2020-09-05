@@ -1040,6 +1040,7 @@ ed::EditorContext::EditorContext(const ax::NodeEditor::Config* config)
     , m_IsInitialized(false)
     , m_Settings()
     , m_Config(config)
+    , m_DrawList(nullptr)
     , m_ExternalChannel(0)
 {
 }
@@ -1071,10 +1072,10 @@ void ed::EditorContext::Begin(const char* id, const ImVec2& size)
     for (auto pin   : m_Pins)     pin->Reset();
     for (auto link  : m_Links)   link->Reset();
 
-    auto drawList = ImGui::GetWindowDrawList();
+    m_DrawList = ImGui::GetWindowDrawList();
 
-    ImDrawList_SwapSplitter(drawList, m_Splitter);
-    m_ExternalChannel = drawList->_Splitter._Current;
+    ImDrawList_SwapSplitter(m_DrawList, m_Splitter);
+    m_ExternalChannel = m_DrawList->_Splitter._Current;
 
     ImGui::PushID(id);
 
@@ -1117,7 +1118,7 @@ void ed::EditorContext::Begin(const char* id, const ImVec2& size)
     //    clipMin.x, clipMin.y, clipMax.x - clipMin.x, clipMax.y - clipMin.y, clipMax.x, clipMax.y);
 
     // Reserve channels for background and links
-    ImDrawList_ChannelsGrow(drawList, c_NodeStartChannel);
+    ImDrawList_ChannelsGrow(m_DrawList, c_NodeStartChannel);
 
     if (HasSelectionChanged())
         ++m_SelectionId;
@@ -1129,7 +1130,6 @@ void ed::EditorContext::End()
 {
     //auto& io          = ImGui::GetIO();
     auto  control     = BuildControl(m_CurrentAction && m_CurrentAction->IsDragging()); // NavigateAction.IsMovingOverEdge()
-    auto  drawList    = ImGui::GetWindowDrawList();
     //auto& editorStyle = GetStyle();
 
     m_DoubleClickedNode       = control.DoubleClickedNode ? control.DoubleClickedNode->m_ID : 0;
@@ -1150,12 +1150,12 @@ void ed::EditorContext::End()
     // Draw nodes
     for (auto node : m_Nodes)
         if (node->m_IsLive && node->IsVisible())
-            node->Draw(drawList);
+            node->Draw(m_DrawList);
 
     // Draw links
     for (auto link : m_Links)
         if (link->m_IsLive && link->IsVisible())
-            link->Draw(drawList);
+            link->Draw(m_DrawList);
 
     // Highlight selected objects
     {
@@ -1165,7 +1165,7 @@ void ed::EditorContext::End()
 
         for (auto selectedObject : *selectedObjects)
             if (selectedObject->IsVisible())
-                selectedObject->Draw(drawList, Object::Selected);
+                selectedObject->Draw(m_DrawList, Object::Selected);
     }
 
     if (!isSelecting)
@@ -1177,12 +1177,12 @@ void ed::EditorContext::End()
             hoveredObject = sizeAction->m_SizedNode;
 
         if (hoveredObject && !IsSelected(hoveredObject) && hoveredObject->IsVisible())
-            hoveredObject->Draw(drawList, Object::Hovered);
+            hoveredObject->Draw(m_DrawList, Object::Hovered);
     }
 
     // Draw animations
     for (auto controller : m_AnimationControllers)
-        controller->Draw(drawList);
+        controller->Draw(m_DrawList);
 
     if (m_CurrentAction && !m_CurrentAction->Process(control))
         m_CurrentAction = nullptr;
@@ -1236,7 +1236,7 @@ void ed::EditorContext::End()
         ImGui::SetMouseCursor(m_CurrentAction->GetCursor());
 
     // Draw selection rectangle
-    m_SelectAction.Draw(drawList);
+    m_SelectAction.Draw(m_DrawList);
 
     bool sortGroups = false;
     if (control.ActiveNode)
@@ -1290,18 +1290,18 @@ void ed::EditorContext::End()
         auto liveNodeCount = static_cast<int>(std::count_if(m_Nodes.begin(), m_Nodes.end(), [](Node* node) { return node->m_IsLive; }));
 
         // Reserve two additional channels for sorted list of channels
-        auto nodeChannelCount = drawList->_Splitter._Count;
-        ImDrawList_ChannelsGrow(drawList, drawList->_Splitter._Count + c_ChannelsPerNode * liveNodeCount + c_LinkChannelCount);
+        auto nodeChannelCount = m_DrawList->_Splitter._Count;
+        ImDrawList_ChannelsGrow(m_DrawList, m_DrawList->_Splitter._Count + c_ChannelsPerNode * liveNodeCount + c_LinkChannelCount);
 
         int targetChannel = nodeChannelCount;
 
-        auto copyNode = [&targetChannel, drawList](Node* node)
+        auto copyNode = [this, &targetChannel](Node* node)
         {
             if (!node->m_IsLive)
                 return;
 
             for (int i = 0; i < c_ChannelsPerNode; ++i)
-                ImDrawList_SwapChannels(drawList, node->m_Channel + i, targetChannel + i);
+                ImDrawList_SwapChannels(m_DrawList, node->m_Channel + i, targetChannel + i);
 
             node->m_Channel = targetChannel;
             targetChannel += c_ChannelsPerNode;
@@ -1314,7 +1314,7 @@ void ed::EditorContext::End()
 
         // Copy links
         for (int i = 0; i < c_LinkChannelCount; ++i, ++targetChannel)
-            ImDrawList_SwapChannels(drawList, c_LinkStartChannel + i, targetChannel);
+            ImDrawList_SwapChannels(m_DrawList, c_LinkStartChannel + i, targetChannel);
 
         // Copy normal nodes
         std::for_each(groupsItEnd, m_Nodes.end(), copyNode);
@@ -1328,7 +1328,7 @@ void ed::EditorContext::End()
     {
         //auto& style = ImGui::GetStyle();
 
-        drawList->ChannelsSetCurrent(c_UserChannel_Grid);
+        m_DrawList->ChannelsSetCurrent(c_UserChannel_Grid);
 
         ImVec2 offset    = m_Canvas.ViewOrigin() * (1.0f / m_Canvas.ViewScale());
         ImU32 GRID_COLOR = GetColor(StyleColor_Grid, ImClamp(m_Canvas.ViewScale() * m_Canvas.ViewScale(), 0.0f, 1.0f));
@@ -1337,12 +1337,12 @@ void ed::EditorContext::End()
         ImVec2 VIEW_POS  = m_Canvas.ViewRect().Min;
         ImVec2 VIEW_SIZE = m_Canvas.ViewRect().GetSize();
 
-        drawList->AddRectFilled(VIEW_POS, VIEW_POS + VIEW_SIZE, GetColor(StyleColor_Bg));
+        m_DrawList->AddRectFilled(VIEW_POS, VIEW_POS + VIEW_SIZE, GetColor(StyleColor_Bg));
 
         for (float x = fmodf(offset.x, GRID_SX); x < VIEW_SIZE.x; x += GRID_SX)
-            drawList->AddLine(ImVec2(x, 0.0f) + VIEW_POS, ImVec2(x, VIEW_SIZE.y) + VIEW_POS, GRID_COLOR);
+            m_DrawList->AddLine(ImVec2(x, 0.0f) + VIEW_POS, ImVec2(x, VIEW_SIZE.y) + VIEW_POS, GRID_COLOR);
         for (float y = fmodf(offset.y, GRID_SY); y < VIEW_SIZE.y; y += GRID_SY)
-            drawList->AddLine(ImVec2(0.0f, y) + VIEW_POS, ImVec2(VIEW_SIZE.x, y) + VIEW_POS, GRID_COLOR);
+            m_DrawList->AddLine(ImVec2(0.0f, y) + VIEW_POS, ImVec2(VIEW_SIZE.x, y) + VIEW_POS, GRID_COLOR);
     }
 # endif
 
@@ -1386,9 +1386,9 @@ void ed::EditorContext::End()
         // These channels already have clip planes in global space, so
         // we move them to clip plane. Batch transformation in canvas
         // will bring them back to global space.
-        auto preTransformClipRect = [this, drawList](int channelIndex)
+        auto preTransformClipRect = [this](int channelIndex)
         {
-            ImDrawChannel& channel = drawList->_Splitter._Channels[channelIndex];
+            ImDrawChannel& channel = m_DrawList->_Splitter._Channels[channelIndex];
             for (ImDrawCmd& cmd : channel._CmdBuffer)
             {
                 auto a = ToCanvas(ImVec2(cmd.ClipRect.x, cmd.ClipRect.y));
@@ -1397,13 +1397,13 @@ void ed::EditorContext::End()
             }
         };
 
-        drawList->ChannelsSetCurrent(0);
+        m_DrawList->ChannelsSetCurrent(0);
 
-        auto channelCount = drawList->_Splitter._Count;
-        ImDrawList_ChannelsGrow(drawList, channelCount + 3);
-        ImDrawList_SwapChannels(drawList, c_UserChannel_HintsBackground, channelCount + 0);
-        ImDrawList_SwapChannels(drawList, c_UserChannel_Hints,           channelCount + 1);
-        ImDrawList_SwapChannels(drawList, c_UserChannel_Content,         channelCount + 2);
+        auto channelCount = m_DrawList->_Splitter._Count;
+        ImDrawList_ChannelsGrow(m_DrawList, channelCount + 3);
+        ImDrawList_SwapChannels(m_DrawList, c_UserChannel_HintsBackground, channelCount + 0);
+        ImDrawList_SwapChannels(m_DrawList, c_UserChannel_Hints,           channelCount + 1);
+        ImDrawList_SwapChannels(m_DrawList, c_UserChannel_Content,         channelCount + 2);
 
         preTransformClipRect(channelCount + 0);
         preTransformClipRect(channelCount + 1);
@@ -1413,7 +1413,7 @@ void ed::EditorContext::End()
 
     UpdateAnimations();
 
-    drawList->ChannelsMerge();
+    m_DrawList->ChannelsMerge();
 
     // #debug
     // drawList->AddRectFilled(ImVec2(-10.0f, -10.0f), ImVec2(10.0f, 10.0f), IM_COL32(255, 0, 255, 255));
@@ -1423,15 +1423,15 @@ void ed::EditorContext::End()
     if (m_IsCanvasVisible)
         m_Canvas.End();
 
-    ImDrawList_SwapSplitter(drawList, m_Splitter);
+    ImDrawList_SwapSplitter(m_DrawList, m_Splitter);
 
     // Draw border
     {
         auto& style = ImGui::GetStyle();
         auto borderShadoColor = style.Colors[ImGuiCol_BorderShadow];
         auto borderColor = style.Colors[ImGuiCol_Border];
-        drawList->AddRect(m_Canvas.Rect().Min + ImVec2(1, 1), m_Canvas.Rect().Max - ImVec2(1, 1), ImColor(borderShadoColor));
-        drawList->AddRect(m_Canvas.Rect().Min, m_Canvas.Rect().Max, ImColor(borderColor));
+        m_DrawList->AddRect(m_Canvas.Rect().Min + ImVec2(1, 1), m_Canvas.Rect().Max - ImVec2(1, 1), ImColor(borderShadoColor));
+        m_DrawList->AddRect(m_Canvas.Rect().Min, m_Canvas.Rect().Max, ImColor(borderColor));
     }
 
     // ShowMetrics(control);
@@ -1452,6 +1452,7 @@ void ed::EditorContext::End()
     if (m_Settings.m_IsDirty && !m_CurrentAction)
         SaveSettings();
 
+    m_DrawList = nullptr;
     m_IsFirstFrame = false;
 }
 
@@ -1669,24 +1670,24 @@ void ed::EditorContext::NotifyLinkDeleted(Link* link)
 
 void ed::EditorContext::Suspend(SuspendFlags flags)
 {
-    auto drawList = ImGui::GetWindowDrawList();
-    auto lastChannel = drawList->_Splitter._Current;
-    drawList->ChannelsSetCurrent(m_ExternalChannel);
+    IM_ASSERT(m_DrawList != nullptr && "Suspend was called outiside of Begin/End.");
+    auto lastChannel = m_DrawList->_Splitter._Current;
+    m_DrawList->ChannelsSetCurrent(m_ExternalChannel);
     m_Canvas.Suspend();
-    drawList->ChannelsSetCurrent(lastChannel);
+    m_DrawList->ChannelsSetCurrent(lastChannel);
     if ((flags & SuspendFlags::KeepSplitter) != SuspendFlags::KeepSplitter)
-        ImDrawList_SwapSplitter(drawList, m_Splitter);
+        ImDrawList_SwapSplitter(m_DrawList, m_Splitter);
 }
 
 void ed::EditorContext::Resume(SuspendFlags flags)
 {
-    auto drawList = ImGui::GetWindowDrawList();
+    IM_ASSERT(m_DrawList != nullptr && "Reasume was called outiside of Begin/End.");
     if ((flags & SuspendFlags::KeepSplitter) != SuspendFlags::KeepSplitter)
-        ImDrawList_SwapSplitter(drawList, m_Splitter);
-    auto lastChannel = drawList->_Splitter._Current;
-    drawList->ChannelsSetCurrent(m_ExternalChannel);
+        ImDrawList_SwapSplitter(m_DrawList, m_Splitter);
+    auto lastChannel = m_DrawList->_Splitter._Current;
+    m_DrawList->ChannelsSetCurrent(m_ExternalChannel);
     m_Canvas.Resume();
-    drawList->ChannelsSetCurrent(lastChannel);
+    m_DrawList->ChannelsSetCurrent(lastChannel);
 }
 
 bool ed::EditorContext::IsSuspended()
@@ -1963,8 +1964,7 @@ void ed::EditorContext::SetUserContext(bool globalSpace)
 
     if (!IsSuspended())
     {
-        auto drawList = ImGui::GetWindowDrawList();
-        drawList->ChannelsSetCurrent(c_UserChannel_Content);
+        m_DrawList->ChannelsSetCurrent(c_UserChannel_Content);
     }
 
     // #debug
@@ -2018,7 +2018,7 @@ ed::Control ed::EditorContext::BuildControl(bool allowOffscreen)
         auto result = ImGui::InvisibleButton(idString, rect.GetSize());
 
         // #debug
-        //ImGui::GetWindowDrawList()->AddRectFilled(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), IM_COL32(0, 255, 0, 64));
+        //m_DrawList->AddRectFilled(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), IM_COL32(0, 255, 0, 64));
 
         return result;
     };
@@ -2928,8 +2928,8 @@ ed::EditorAction::AcceptResult ed::NavigateAction::Accept(const Control& control
     }
 
     // // #debug
-    // if (auto drawList = ImGui::GetWindowDrawList())
-    //     drawList->AddCircleFilled(io.MousePos, 4.0f, IM_COL32(255, 0, 255, 255));
+    // if (m_DrawList)
+    //     m_DrawList->AddCircleFilled(io.MousePos, 4.0f, IM_COL32(255, 0, 255, 255));
 
     if (HandleZoom(control))
         return True;
@@ -4151,7 +4151,7 @@ bool ed::CreateItemAction::Process(const Control& control)
         else
             DropNothing();
 
-        auto drawList = ImGui::GetWindowDrawList();
+        auto drawList = Editor->GetDrawList();
         drawList->ChannelsSetCurrent(c_LinkChannel_NewLink);
 
         candidate.UpdateEndpoints();
@@ -4234,7 +4234,7 @@ bool ed::CreateItemAction::Begin()
     if (m_CurrentStage == None)
         return false;
 
-    m_LastChannel = ImGui::GetWindowDrawList()->_Splitter._Current;
+    m_LastChannel = Editor->GetDrawList()->_Splitter._Current;
 
     return true;
 }
@@ -4248,9 +4248,9 @@ void ed::CreateItemAction::End()
         ImGui::PopClipRect();
         Editor->Resume(SuspendFlags::KeepSplitter);
 
-        auto currentChannel = ImGui::GetWindowDrawList()->_Splitter._Current;
+        auto currentChannel = Editor->GetDrawList()->_Splitter._Current;
         if (currentChannel != m_LastChannel)
-            ImGui::GetWindowDrawList()->ChannelsSetCurrent(m_LastChannel);
+            Editor->GetDrawList()->ChannelsSetCurrent(m_LastChannel);
 
         m_IsInGlobalSpace = false;
     }
@@ -4730,7 +4730,7 @@ void ed::NodeBuilder::Begin(NodeId nodeId)
     m_IsGroup = false;
 
     // Grow channel list and select user channel
-    if (auto drawList = ImGui::GetWindowDrawList())
+    if (auto drawList = Editor->GetDrawList())
     {
         m_CurrentNode->m_Channel = drawList->_Splitter._Count;
         ImDrawList_ChannelsGrow(drawList, drawList->_Splitter._Count + c_ChannelsPerNode);
@@ -4755,7 +4755,7 @@ void ed::NodeBuilder::End()
 {
     IM_ASSERT(nullptr != m_CurrentNode);
 
-    if (auto drawList = ImGui::GetWindowDrawList())
+    if (auto drawList = Editor->GetDrawList())
     {
         IM_ASSERT(drawList->_Splitter._Count == 1); // Did you forgot to call drawList->ChannelsMerge()?
         ImDrawList_SwapSplitter(drawList, m_Splitter);
@@ -4832,7 +4832,7 @@ void ed::NodeBuilder::BeginPin(PinId pinId, PinKind kind)
     m_ResolvePinRect          = true;
     m_ResolvePivot            = true;
 
-    if (auto drawList = ImGui::GetWindowDrawList())
+    if (auto drawList = Editor->GetDrawList())
     {
         m_PinSplitter.Clear();
         ImDrawList_SwapSplitter(drawList, m_PinSplitter);
@@ -4845,7 +4845,7 @@ void ed::NodeBuilder::EndPin()
 {
     IM_ASSERT(nullptr != m_CurrentPin);
 
-    if (auto drawList = ImGui::GetWindowDrawList())
+    if (auto drawList = Editor->GetDrawList())
     {
         IM_ASSERT(drawList->_Splitter._Count == 1); // Did you forgot to call drawList->ChannelsMerge()?
         ImDrawList_SwapSplitter(drawList, m_PinSplitter);
@@ -4870,10 +4870,10 @@ void ed::NodeBuilder::EndPin()
     }
 
     // #debug: Draw pin bounds
-    //ImGui::GetWindowDrawList()->AddRect(m_CurrentPin->m_Bounds.Min, m_CurrentPin->m_Bounds.Max, IM_COL32(255, 255, 0, 255));
+    //Editor->GetDrawList()->AddRect(m_CurrentPin->m_Bounds.Min, m_CurrentPin->m_Bounds.Max, IM_COL32(255, 255, 0, 255));
 
     // #debug: Draw pin pivot rectangle
-    //ImGui::GetWindowDrawList()->AddRect(m_CurrentPin->m_Pivot.Min, m_CurrentPin->m_Pivot.Max, IM_COL32(255, 0, 255, 255));
+    //Editor->GetDrawList()->AddRect(m_CurrentPin->m_Pivot.Min, m_CurrentPin->m_Pivot.Max, IM_COL32(255, 0, 255, 255));
 
     m_CurrentPin = nullptr;
 }
@@ -4945,7 +4945,7 @@ ImDrawList* ed::NodeBuilder::GetUserBackgroundDrawList(Node* node) const
 {
     if (node && node->m_IsLive)
     {
-        auto drawList = ImGui::GetWindowDrawList();
+        auto drawList = Editor->GetDrawList();
         drawList->ChannelsSetCurrent(node->m_Channel + c_NodeUserBackgroundChannel);
         return drawList;
     }
@@ -4987,16 +4987,16 @@ bool ed::HintBuilder::Begin(NodeId nodeId)
 
     m_CurrentNode = node;
 
-    m_LastChannel = ImGui::GetWindowDrawList()->_Splitter._Current;
+    m_LastChannel = Editor->GetDrawList()->_Splitter._Current;
 
     Editor->Suspend(SuspendFlags::KeepSplitter);
 
     const auto alpha = ImMax(0.0f, std::min(1.0f, (view.Scale - c_min_zoom) / (c_max_zoom - c_min_zoom)));
 
-    ImGui::GetWindowDrawList()->ChannelsSetCurrent(c_UserChannel_HintsBackground);
+    Editor->GetDrawList()->ChannelsSetCurrent(c_UserChannel_HintsBackground);
     ImGui::PushClipRect(rect.Min + ImVec2(1, 1), rect.Max - ImVec2(1, 1), false);
 
-    ImGui::GetWindowDrawList()->ChannelsSetCurrent(c_UserChannel_Hints);
+    Editor->GetDrawList()->ChannelsSetCurrent(c_UserChannel_Hints);
     ImGui::PushClipRect(rect.Min + ImVec2(1, 1), rect.Max - ImVec2(1, 1), false);
 
     ImGui::PushStyleVar(ImGuiStyleVar_Alpha, alpha);
@@ -5013,13 +5013,13 @@ void ed::HintBuilder::End()
 
     ImGui::PopStyleVar();
 
-    ImGui::GetWindowDrawList()->ChannelsSetCurrent(c_UserChannel_Hints);
+    Editor->GetDrawList()->ChannelsSetCurrent(c_UserChannel_Hints);
     ImGui::PopClipRect();
 
-    ImGui::GetWindowDrawList()->ChannelsSetCurrent(c_UserChannel_HintsBackground);
+    Editor->GetDrawList()->ChannelsSetCurrent(c_UserChannel_HintsBackground);
     ImGui::PopClipRect();
 
-    ImGui::GetWindowDrawList()->ChannelsSetCurrent(m_LastChannel);
+    Editor->GetDrawList()->ChannelsSetCurrent(m_LastChannel);
 
     Editor->Resume(SuspendFlags::KeepSplitter);
 
@@ -5045,7 +5045,7 @@ ImDrawList* ed::HintBuilder::GetForegroundDrawList()
 {
     IM_ASSERT(nullptr != m_CurrentNode);
 
-    auto drawList = ImGui::GetWindowDrawList();
+    auto drawList = Editor->GetDrawList();
 
     drawList->ChannelsSetCurrent(c_UserChannel_Hints);
 
@@ -5056,7 +5056,7 @@ ImDrawList* ed::HintBuilder::GetBackgroundDrawList()
 {
     IM_ASSERT(nullptr != m_CurrentNode);
 
-    auto drawList = ImGui::GetWindowDrawList();
+    auto drawList = Editor->GetDrawList();
 
     drawList->ChannelsSetCurrent(c_UserChannel_HintsBackground);
 
