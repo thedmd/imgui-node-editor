@@ -43,7 +43,7 @@ struct Context;
 struct Blueprint;
 
 
-enum class PinType { Any, Flow, Bool, Int32, Float, String };
+enum class PinType: int32_t { Void = -1, Any, Flow, Bool, Int32, Float, String };
 
 struct PinValue
 {
@@ -104,35 +104,54 @@ private:
 // -------[ Generic Pin ]-------
 //
 
+struct AcceptLinkResult
+{
+    AcceptLinkResult(bool result, string_view reason = "")
+        : m_Result(result)
+        , m_Reason(reason.to_string())
+    {
+    }
+
+    explicit operator bool() const { return m_Result; }
+
+    bool Result() const { return m_Result; }
+    const string& Reason() const { return m_Reason; }
+
+private:
+    bool    m_Result = false;
+    string  m_Reason;
+};
+
 struct Pin
 {
-    Pin(Node* node, PinType type);
-    Pin(Node* node, PinType type, string_view name);
+    Pin(Node* node, PinType type, string_view name = "");
     virtual ~Pin() = default;
 
-    virtual bool SetValueType(PinType type) { return false; }
+    virtual bool SetValueType(PinType type) { return m_Type == type; }
     virtual PinType GetValueType() const;
     virtual bool SetValue(PinValue value) { return false; }
     virtual PinValue GetValue() const;
 
     PinType GetType() const;
 
-    bool CanLinkTo(const Pin& pin) const;
+    AcceptLinkResult CanLinkTo(const Pin& pin) const;
     bool LinkTo(const Pin& pin);
     void Unlink();
+    bool IsLinked() const;
+    const Pin* GetLink() const;
 
-    bool IsInputPin() const;
-    bool IsOutputPin() const;
+    bool IsInput() const;
+    bool IsOutput() const;
 
-    bool IsSourcePin() const;
-    bool IsTargetPin() const;
+    bool IsProvider() const;
+    bool IsReceiver() const;
 
     virtual bool Load(const crude_json::value& value);
     virtual void Save(crude_json::value& value) const;
 
     uint32_t    m_Id   = 0;
     Node*       m_Node = nullptr;
-    PinType     m_Type = PinType::Any;
+    PinType     m_Type = PinType::Void;
     string_view m_Name;
     const Pin*  m_Link = nullptr;
 };
@@ -310,15 +329,15 @@ struct Node
     virtual ~Node() = default;
 
     template <typename T>
-    T* CreatePin(string_view name = "")
+    unique_ptr<T> CreatePin(string_view name = "")
     {
         if (auto pin = CreatePin(T::TypeId, name))
-            return static_cast<T*>(pin);
+            return unique_ptr<T>(static_cast<T*>(pin.release()));
         else
             return nullptr;
     }
 
-    Pin* CreatePin(PinType pinType, string_view name = "");
+    unique_ptr<Pin> CreatePin(PinType pinType, string_view name = "");
 
     virtual void Reset(Context& context)
     {
@@ -336,7 +355,7 @@ struct Node
 
     virtual NodeTypeInfo GetTypeInfo() const { return {}; }
 
-    virtual bool AcceptLink(const Pin& target, const Pin& source) const;
+    virtual AcceptLinkResult AcceptLink(const Pin& target, const Pin& source) const;
     virtual void WasLinked(const Pin& target, const Pin& source);
     virtual void WasUnlinked(const Pin& target, const Pin& source);
 
@@ -605,7 +624,9 @@ struct Blueprint
     uint32_t MakeNodeId(Node* node);
     uint32_t MakePinId(Pin* pin);
 
-    bool IsPinLinked(const Pin* pin) const;
+    bool HasPinAnyLink(const Pin& pin) const;
+
+    vector<Pin*> FindPinsLinkedTo(const Pin& pin) const;
 
 private:
     void ResetState();

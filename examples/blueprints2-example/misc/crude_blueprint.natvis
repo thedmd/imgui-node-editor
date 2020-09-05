@@ -21,8 +21,16 @@
             <Item Name="Type">m_Type</Item>
             <Item Name="[Local Value]" Optional="true">m_Value</Item>
             <Item Name="Link" Condition="m_Link">*m_Link</Item>
-            <Item Name="[Type]" Optional="true">GetType()</Item>
+            <Item Name="[Type]" Optional="true">GetValueType()</Item>
             <Item Name="[Value]" Optional="true">GetValue()</Item>
+        </Expand>
+    </Type>
+
+    <Type Name="crude_blueprint::PinValue">
+        <DisplayString>{{ Type={(crude_blueprint::PinType)m_Value.type_index,en}, Value={m_Value,view(value)} }}</DisplayString>
+        <Expand>
+            <Item Name="Type">(crude_blueprint::PinType)m_Value.type_index,en</Item>
+            <Item Name="Value">m_Value,view(value)</Item>
         </Expand>
     </Type>
 

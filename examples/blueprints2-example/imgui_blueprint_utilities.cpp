@@ -51,7 +51,7 @@ bool crude_blueprint_utilities::DrawPinValue(const PinValue& value)
             ImGui::Text("%d", value.As<int32_t>());
             return true;
         case PinType::Float:
-            ImGui::Text("%f", value.As<float>());
+            ImGui::Text("%g", value.As<float>());
             return true;
         case PinType::String:
             ImGui::Text("%s", value.As<string>().c_str());
