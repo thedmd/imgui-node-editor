@@ -80,11 +80,6 @@ uint32_t crude_blueprint::IdGenerator::State() const
 // -------[ Pin ]-------
 //
 
-crude_blueprint::Pin::Pin(Node* node, PinType type)
-    : Pin(node, type, "")
-{
-}
-
 crude_blueprint::Pin::Pin(Node* node, PinType type, string_view name)
     : m_Id(node ? node->m_Blueprint->MakePinId(this) : 0)
     , m_Node(node)
@@ -95,27 +90,36 @@ crude_blueprint::Pin::Pin(Node* node, PinType type, string_view name)
 
 crude_blueprint::PinType crude_blueprint::Pin::GetType() const
 {
-    if (m_Link)
-        return m_Link->GetType();
-    else
-        return GetValueType();
+    return m_Type;
+    //if (m_Link)
+    //    return m_Link->GetType();
+    //else
+    //    return GetValueType();
 }
 
-bool crude_blueprint::Pin::CanLinkTo(const Pin& pin) const
+crude_blueprint::AcceptLinkResult crude_blueprint::Pin::CanLinkTo(const Pin& pin) const
 {
-    if (!m_Node->AcceptLink(*this, pin))
-        return false;
+    auto result = m_Node->AcceptLink(*this, pin);
+    if (!result)
+        return result;
 
-    if (!pin.m_Node->AcceptLink(*this, pin))
-        return false;
+    auto result2 = pin.m_Node->AcceptLink(*this, pin);
+    if (!result2)
+        return result2;
 
-    return true;
+    if (result.Reason().empty())
+        return result2;
+
+    return result;
 }
 
 bool crude_blueprint::Pin::LinkTo(const Pin& pin)
 {
     if (!CanLinkTo(pin))
         return false;
+
+    if (m_Link)
+        Unlink();
 
     m_Link = &pin;
 
@@ -138,7 +142,17 @@ void crude_blueprint::Pin::Unlink()
     link->m_Node->WasUnlinked(*this, *link);
 }
 
-bool crude_blueprint::Pin::IsInputPin() const
+bool crude_blueprint::Pin::IsLinked() const
+{
+    return m_Link != nullptr;
+}
+
+const crude_blueprint::Pin* crude_blueprint::Pin::GetLink() const
+{
+    return m_Link;
+}
+
+bool crude_blueprint::Pin::IsInput() const
 {
     for (auto pin : m_Node->GetInputPins())
         if (pin->m_Id == m_Id)
@@ -147,7 +161,7 @@ bool crude_blueprint::Pin::IsInputPin() const
     return false;
 }
 
-bool crude_blueprint::Pin::IsOutputPin() const
+bool crude_blueprint::Pin::IsOutput() const
 {
     for (auto pin : m_Node->GetOutputPins())
         if (pin->m_Id == m_Id)
@@ -156,7 +170,7 @@ bool crude_blueprint::Pin::IsOutputPin() const
     return false;
 }
 
-bool crude_blueprint::Pin::IsSourcePin() const
+bool crude_blueprint::Pin::IsProvider() const
 {
     auto outputToInput = (GetValueType() != PinType::Flow);
 
@@ -169,7 +183,7 @@ bool crude_blueprint::Pin::IsSourcePin() const
     return false;
 }
 
-bool crude_blueprint::Pin::IsTargetPin() const
+bool crude_blueprint::Pin::IsReceiver() const
 {
     auto outputToInput = (GetValueType() != PinType::Flow);
 
@@ -228,12 +242,24 @@ bool crude_blueprint::AnyPin::SetValueType(PinType type)
     if (GetValueType() == type)
         return true;
 
-    m_InnerPin.reset();
+    if (m_InnerPin)
+    {
+        m_Node->m_Blueprint->ForgetPin(m_InnerPin.get());
+        m_InnerPin.reset();
+    }
 
     if (type == PinType::Any)
         return true;
 
-    m_InnerPin.reset(m_Node->CreatePin(type, ""));
+    m_InnerPin = m_Node->CreatePin(type);
+
+    auto links = m_Node->m_Blueprint->FindPinsLinkedTo(*this);
+    for (auto link : links)
+    {
+        link->Unlink();
+        if (link->SetValueType(type))
+            link->LinkTo(*this);
+    }
 
     return true;
 }
@@ -257,7 +283,7 @@ bool crude_blueprint::AnyPin::Load(const crude_json::value& value)
 
     if (type != PinType::Any)
     {
-        m_InnerPin.reset(m_Node->CreatePin(type, ""));
+        m_InnerPin = m_Node->CreatePin(type);
 
         if (!value.contains("inner"))
             return false;
@@ -363,47 +389,48 @@ crude_blueprint::Node::Node(Blueprint& blueprint, string_view name)
 {
 }
 
-crude_blueprint::Pin* crude_blueprint::Node::CreatePin(PinType pinType, string_view name)
+crude_blueprint::unique_ptr<crude_blueprint::Pin> crude_blueprint::Node::CreatePin(PinType pinType, string_view name)
 {
     switch (pinType)
     {
-        case PinType::Any:      return new AnyPin(this, name);
-        case PinType::Flow:     return new FlowPin(this, name);
-        case PinType::Bool:     return new BoolPin(this, name);
-        case PinType::Int32:    return new Int32Pin(this, name);
-        case PinType::Float:    return new FloatPin(this, name);
-        case PinType::String:   return new StringPin(this, name);
+        case PinType::Void:     return nullptr;
+        case PinType::Any:      return make_unique<AnyPin>(this, name);
+        case PinType::Flow:     return make_unique<FlowPin>(this, name);
+        case PinType::Bool:     return make_unique<BoolPin>(this, name);
+        case PinType::Int32:    return make_unique<Int32Pin>(this, name);
+        case PinType::Float:    return make_unique<FloatPin>(this, name);
+        case PinType::String:   return make_unique<StringPin>(this, name);
     }
 
     return nullptr;
 }
 
-bool crude_blueprint::Node::AcceptLink(const Pin& target, const Pin& source) const
+crude_blueprint::AcceptLinkResult crude_blueprint::Node::AcceptLink(const Pin& target, const Pin& source) const
 {
     if (target.m_Node == source.m_Node)
-        return false; // Error: Connecting pin of same node is not allowed.
+        return { false, "Pins of same node cannot be connected"};
 
     const auto targetIsFlow = target.GetType() == PinType::Flow;
     const auto sourceIsFlow = source.GetType() == PinType::Flow;
     if (targetIsFlow != sourceIsFlow)
-        return false; // Error: Flow pins can be connected only to Flow pins.
+        return { false, "Flow pins can be connected only to other Flow pins"};
 
-    if (target.IsInputPin() && source.IsInputPin())
-        return false; // Error: Two input pins cannot be joined.
+    if (target.IsInput() && source.IsInput())
+        return { false, "Input pins cannot be linked together"};
 
-    if (target.IsOutputPin() && source.IsOutputPin())
-        return false; // Error: Two output pins cannot be joined.
+    if (target.IsOutput() && source.IsOutput())
+        return { false, "Output pins cannot be linked together"};
 
-    if (!target.IsTargetPin())
-        return false; // Error: Target pin pose as a source.
+    if (!target.IsReceiver())
+        return { false, "Target pin cannot be used as source"};
 
-    if (!source.IsSourcePin())
-        return false; // Error: Source pin pose as a target.
+    if (!source.IsProvider())
+        return { false, "Source pin cannot be used as target"};
 
-    if (source.GetType() != target.GetValueType() && (source.GetValueType() != PinType::Any && target.GetValueType() != PinType::Any))
-        return false; // Error: Incompatible types.
+    if (source.GetValueType() != target.GetValueType() && (source.GetValueType() != PinType::Any && target.GetValueType() != PinType::Any))
+        return { false, "Incompatible types"};
 
-    return true;
+    return {true};
 }
 
 void crude_blueprint::Node::WasLinked(const Pin& target, const Pin& source)
@@ -1196,18 +1223,35 @@ uint32_t crude_blueprint::Blueprint::MakePinId(Pin* pin)
     return m_Generator.GenerateId();
 }
 
-bool crude_blueprint::Blueprint::IsPinLinked(const Pin* pin) const
+bool crude_blueprint::Blueprint::HasPinAnyLink(const Pin& pin) const
 {
-    if (pin->m_Link)
+    if (pin.IsLinked())
         return true;
 
     for (auto& p : m_Pins)
     {
-        if (p->m_Link && p->m_Link->m_Id == pin->m_Id)
+        auto linkedPin = p->GetLink();
+
+        if (linkedPin && linkedPin->m_Id == pin.m_Id)
             return true;
     }
 
     return false;
+}
+
+crude_blueprint::vector<crude_blueprint::Pin*> crude_blueprint::Blueprint::FindPinsLinkedTo(const Pin& pin) const
+{
+    vector<Pin*> result;
+
+    for (auto& p : m_Pins)
+    {
+        auto linkedPin = p->GetLink();
+
+        if (linkedPin && linkedPin->m_Id == pin.m_Id)
+            result.push_back(p);
+    }
+
+    return result;
 }
 
 void crude_blueprint::Blueprint::ResetState()

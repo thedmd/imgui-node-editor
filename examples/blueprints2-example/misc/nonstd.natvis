@@ -61,6 +61,72 @@
         <AlternativeType Name="nonstd::variants::variant&lt;*,*,*,*,*,*,*,*,*,*,*,*,*,*,*,*,*,*,*,*,*,*,*,*,*,*,*,*,*,*&gt;"/>
         <AlternativeType Name="nonstd::variants::variant&lt;*,*,*,*,*,*,*,*,*,*,*,*,*,*,*,*,*,*,*,*,*,*,*,*,*,*,*,*,*,*,*&gt;"/>
         <AlternativeType Name="nonstd::variants::variant&lt;*,*,*,*,*,*,*,*,*,*,*,*,*,*,*,*,*,*,*,*,*,*,*,*,*,*,*,*,*,*,*,*&gt;"/>
+        <DisplayString Condition="type_index ==  0" Optional="true" IncludeView="value">{*(($T1*)&amp;data)}</DisplayString>
+        <DisplayString Condition="type_index ==  1" Optional="true" IncludeView="value">{*(($T2*)&amp;data)}</DisplayString>
+        <DisplayString Condition="type_index ==  2" Optional="true" IncludeView="value">{*(($T3*)&amp;data)}</DisplayString>
+        <DisplayString Condition="type_index ==  3" Optional="true" IncludeView="value">{*(($T4*)&amp;data)}</DisplayString>
+        <DisplayString Condition="type_index ==  4" Optional="true" IncludeView="value">{*(($T5*)&amp;data)}</DisplayString>
+        <DisplayString Condition="type_index ==  5" Optional="true" IncludeView="value">{*(($T6*)&amp;data)}</DisplayString>
+        <DisplayString Condition="type_index ==  6" Optional="true" IncludeView="value">{*(($T7*)&amp;data)}</DisplayString>
+        <DisplayString Condition="type_index ==  7" Optional="true" IncludeView="value">{*(($T8*)&amp;data)}</DisplayString>
+        <DisplayString Condition="type_index ==  8" Optional="true" IncludeView="value">{*(($T9*)&amp;data)}</DisplayString>
+        <DisplayString Condition="type_index ==  9" Optional="true" IncludeView="value">{*(($T10*)&amp;data)}</DisplayString>
+        <DisplayString Condition="type_index == 10" Optional="true" IncludeView="value">{*(($T11*)&amp;data)}</DisplayString>
+        <DisplayString Condition="type_index == 11" Optional="true" IncludeView="value">{*(($T12*)&amp;data)}</DisplayString>
+        <DisplayString Condition="type_index == 12" Optional="true" IncludeView="value">{*(($T13*)&amp;data)}</DisplayString>
+        <DisplayString Condition="type_index == 13" Optional="true" IncludeView="value">{*(($T14*)&amp;data)}</DisplayString>
+        <DisplayString Condition="type_index == 14" Optional="true" IncludeView="value">{*(($T15*)&amp;data)}</DisplayString>
+        <DisplayString Condition="type_index == 15" Optional="true" IncludeView="value">{*(($T16*)&amp;data)}</DisplayString>
+        <DisplayString Condition="type_index == 16" Optional="true" IncludeView="value">{*(($T17*)&amp;data)}</DisplayString>
+        <DisplayString Condition="type_index == 17" Optional="true" IncludeView="value">{*(($T18*)&amp;data)}</DisplayString>
+        <DisplayString Condition="type_index == 18" Optional="true" IncludeView="value">{*(($T19*)&amp;data)}</DisplayString>
+        <DisplayString Condition="type_index == 19" Optional="true" IncludeView="value">{*(($T20*)&amp;data)}</DisplayString>
+        <DisplayString Condition="type_index == 20" Optional="true" IncludeView="value">{*(($T21*)&amp;data)}</DisplayString>
+        <DisplayString Condition="type_index == 21" Optional="true" IncludeView="value">{*(($T22*)&amp;data)}</DisplayString>
+        <DisplayString Condition="type_index == 22" Optional="true" IncludeView="value">{*(($T23*)&amp;data)}</DisplayString>
+        <DisplayString Condition="type_index == 23" Optional="true" IncludeView="value">{*(($T24*)&amp;data)}</DisplayString>
+        <DisplayString Condition="type_index == 24" Optional="true" IncludeView="value">{*(($T25*)&amp;data)}</DisplayString>
+        <DisplayString Condition="type_index == 25" Optional="true" IncludeView="value">{*(($T26*)&amp;data)}</DisplayString>
+        <DisplayString Condition="type_index == 26" Optional="true" IncludeView="value">{*(($T27*)&amp;data)}</DisplayString>
+        <DisplayString Condition="type_index == 27" Optional="true" IncludeView="value">{*(($T28*)&amp;data)}</DisplayString>
+        <DisplayString Condition="type_index == 28" Optional="true" IncludeView="value">{*(($T29*)&amp;data)}</DisplayString>
+        <DisplayString Condition="type_index == 29" Optional="true" IncludeView="value">{*(($T30*)&amp;data)}</DisplayString>
+        <DisplayString Condition="type_index == 30" Optional="true" IncludeView="value">{*(($T31*)&amp;data)}</DisplayString>
+        <DisplayString Condition="type_index == 31" Optional="true" IncludeView="value">{*(($T32*)&amp;data)}</DisplayString>
+
+        <DisplayString Condition="type_index ==  0" Optional="true" IncludeView="index">{(int)type_index}</DisplayString>
+        <DisplayString Condition="type_index ==  1" Optional="true" IncludeView="index">{(int)type_index}</DisplayString>
+        <DisplayString Condition="type_index ==  2" Optional="true" IncludeView="index">{(int)type_index}</DisplayString>
+        <DisplayString Condition="type_index ==  3" Optional="true" IncludeView="index">{(int)type_index}</DisplayString>
+        <DisplayString Condition="type_index ==  4" Optional="true" IncludeView="index">{(int)type_index}</DisplayString>
+        <DisplayString Condition="type_index ==  5" Optional="true" IncludeView="index">{(int)type_index}</DisplayString>
+        <DisplayString Condition="type_index ==  6" Optional="true" IncludeView="index">{(int)type_index}</DisplayString>
+        <DisplayString Condition="type_index ==  7" Optional="true" IncludeView="index">{(int)type_index}</DisplayString>
+        <DisplayString Condition="type_index ==  8" Optional="true" IncludeView="index">{(int)type_index}</DisplayString>
+        <DisplayString Condition="type_index ==  9" Optional="true" IncludeView="index">{(int)type_index}</DisplayString>
+        <DisplayString Condition="type_index == 10" Optional="true" IncludeView="index">{(int)type_index}</DisplayString>
+        <DisplayString Condition="type_index == 11" Optional="true" IncludeView="index">{(int)type_index}</DisplayString>
+        <DisplayString Condition="type_index == 12" Optional="true" IncludeView="index">{(int)type_index}</DisplayString>
+        <DisplayString Condition="type_index == 13" Optional="true" IncludeView="index">{(int)type_index}</DisplayString>
+        <DisplayString Condition="type_index == 14" Optional="true" IncludeView="index">{(int)type_index}</DisplayString>
+        <DisplayString Condition="type_index == 15" Optional="true" IncludeView="index">{(int)type_index}</DisplayString>
+        <DisplayString Condition="type_index == 16" Optional="true" IncludeView="index">{(int)type_index}</DisplayString>
+        <DisplayString Condition="type_index == 17" Optional="true" IncludeView="index">{(int)type_index}</DisplayString>
+        <DisplayString Condition="type_index == 18" Optional="true" IncludeView="index">{(int)type_index}</DisplayString>
+        <DisplayString Condition="type_index == 19" Optional="true" IncludeView="index">{(int)type_index}</DisplayString>
+        <DisplayString Condition="type_index == 20" Optional="true" IncludeView="index">{(int)type_index}</DisplayString>
+        <DisplayString Condition="type_index == 21" Optional="true" IncludeView="index">{(int)type_index}</DisplayString>
+        <DisplayString Condition="type_index == 22" Optional="true" IncludeView="index">{(int)type_index}</DisplayString>
+        <DisplayString Condition="type_index == 23" Optional="true" IncludeView="index">{(int)type_index}</DisplayString>
+        <DisplayString Condition="type_index == 24" Optional="true" IncludeView="index">{(int)type_index}</DisplayString>
+        <DisplayString Condition="type_index == 25" Optional="true" IncludeView="index">{(int)type_index}</DisplayString>
+        <DisplayString Condition="type_index == 26" Optional="true" IncludeView="index">{(int)type_index}</DisplayString>
+        <DisplayString Condition="type_index == 27" Optional="true" IncludeView="index">{(int)type_index}</DisplayString>
+        <DisplayString Condition="type_index == 28" Optional="true" IncludeView="index">{(int)type_index}</DisplayString>
+        <DisplayString Condition="type_index == 29" Optional="true" IncludeView="index">{(int)type_index}</DisplayString>
+        <DisplayString Condition="type_index == 30" Optional="true" IncludeView="index">{(int)type_index}</DisplayString>
+        <DisplayString Condition="type_index == 31" Optional="true" IncludeView="index">{(int)type_index}</DisplayString>
+
         <DisplayString Condition="type_index ==  0" Optional="true">{{ index={(int)type_index}, value={*(($T1*)&amp;data)} }}</DisplayString>
         <DisplayString Condition="type_index ==  1" Optional="true">{{ index={(int)type_index}, value={*(($T2*)&amp;data)} }}</DisplayString>
         <DisplayString Condition="type_index ==  2" Optional="true">{{ index={(int)type_index}, value={*(($T3*)&amp;data)} }}</DisplayString>
@@ -94,7 +160,7 @@
         <DisplayString Condition="type_index == 30" Optional="true">{{ index={(int)type_index}, value={*(($T31*)&amp;data)} }}</DisplayString>
         <DisplayString Condition="type_index == 31" Optional="true">{{ index={(int)type_index}, value={*(($T32*)&amp;data)} }}</DisplayString>
         <Expand>
-            <Item Name="index">type_index</Item>
+            <Item Name="index">(int)type_index</Item>
             <Item Name="[value]" Condition="type_index ==  0" Optional="true">*(($T1*)&amp;data)</Item>
             <Item Name="[value]" Condition="type_index ==  1" Optional="true">*(($T2*)&amp;data)</Item>
             <Item Name="[value]" Condition="type_index ==  2" Optional="true">*(($T3*)&amp;data)</Item>

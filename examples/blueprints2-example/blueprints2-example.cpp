@@ -12,6 +12,9 @@
 
 # include "crude_json.h"
 
+//#include <float.h>
+//unsigned int fp_control_state = _controlfp(_EM_INEXACT, _MCW_EM);
+
 namespace ed = ax::NodeEditor;
 
 using namespace crude_blueprint;
@@ -91,6 +94,13 @@ void Application_Initialize()
     g_Blueprint.CreateNode<FlipFlopNode>();
     g_Blueprint.CreateNode<ForLoopNode>();
     g_Blueprint.CreateNode<GateNode>();
+    g_Blueprint.CreateNode<AddNode>();
+    g_Blueprint.CreateNode<PrintNode>();
+    g_Blueprint.CreateNode<ConstBoolNode>();
+    g_Blueprint.CreateNode<ConstInt32Node>();
+    g_Blueprint.CreateNode<ConstFloatNode>();
+    g_Blueprint.CreateNode<ConstStringNode>();
+    g_Blueprint.CreateNode<ToStringNode>();
     g_Blueprint.CreateNode<AddNode>();
 
 
@@ -241,8 +251,8 @@ static void CommitBlueprintNodes(Blueprint& blueprint, DebugOverlay& debugOverla
             // [1] - Icon
             ImEx::Icon(iconSize,
                 PinTypeToIconType(pin->GetType()),
-                blueprint.IsPinLinked(pin),
-                PinTypeToColor(pin->GetType()));
+                blueprint.HasPinAnyLink(*pin),
+                PinTypeToColor(pin->GetValueType()));
 
             // [2] - Show pin name if it has one
             if (!pin->m_Name.empty())
@@ -252,7 +262,7 @@ static void CommitBlueprintNodes(Blueprint& blueprint, DebugOverlay& debugOverla
             }
 
             // [3] - Show value/editor when pin is not linked to anything
-            if (!blueprint.IsPinLinked(pin))
+            if (!blueprint.HasPinAnyLink(*pin))
             {
                 ImGui::SameLine();
                 EditOrDrawPinValue(*pin);
@@ -303,8 +313,8 @@ static void CommitBlueprintNodes(Blueprint& blueprint, DebugOverlay& debugOverla
             // [2] - Show icon
             ImEx::Icon(iconSize,
                 PinTypeToIconType(pin->GetType()),
-                blueprint.IsPinLinked(pin),
-                PinTypeToColor(pin->GetType()));
+                blueprint.HasPinAnyLink(*pin),
+                PinTypeToColor(pin->GetValueType()));
 
             ed::EndPin();
 
@@ -329,22 +339,22 @@ static void CommitBlueprintNodes(Blueprint& blueprint, DebugOverlay& debugOverla
             continue;
 
         // To keep things simple, link id is same as pin id.
-        ed::Link(pin->m_Id, pin->m_Id, pin->m_Link->m_Id, PinTypeToColor(pin->GetType()));
+        ed::Link(pin->m_Id, pin->m_Id, pin->m_Link->m_Id, PinTypeToColor(pin->GetValueType()));
     }
 
     debugOverlay.End();
 }
 
-struct CreateActionHandler
+struct ItemBuilder
 {
     struct LinkBuilder
     {
         ed::PinId m_StartPinId = ed::PinId::Invalid;
         ed::PinId m_EndPinId = ed::PinId::Invalid;
 
-        bool Accept(const ImVec4& color = ImVec4(1.0f, 1.0f, 1.0f, 1.0f), float thickness = 1.0f)
+        bool Accept()
         {
-            return ed::AcceptNewItem(color, thickness);
+            return ed::AcceptNewItem(ImVec4(0.34f, 1.0f, 0.34f, 1.0f), 3.0f);
         }
 
         void Reject()
@@ -353,19 +363,19 @@ struct CreateActionHandler
         }
     };
 
-    CreateActionHandler()
-        : m_InCreate(ed::BeginCreate())
+    ItemBuilder()
+        : m_InCreate(ed::BeginCreate(ImGui::GetStyleColorVec4(ImGuiCol_NavHighlight)))
     {
     }
 
-    ~CreateActionHandler()
+    ~ItemBuilder()
     {
         ed::EndCreate();
     }
 
     LinkBuilder* QueryNewLink()
     {
-        if (ed::QueryNewLink(&m_LinkBuilder.m_StartPinId, &m_LinkBuilder.m_EndPinId, ImGui::GetStyleColorVec4(ImGuiCol_PlotHistogram)))
+        if (ed::QueryNewLink(&m_LinkBuilder.m_StartPinId, &m_LinkBuilder.m_EndPinId))
             return &m_LinkBuilder;
         else
             return nullptr;
@@ -378,47 +388,46 @@ private:
 
 static void HandleCreateAction(Blueprint& blueprint)
 {
-    CreateActionHandler handler;
+    ItemBuilder itemBuilder;
 
-    if (auto linkBuilder = handler.QueryNewLink())
+    if (auto linkBuilder = itemBuilder.QueryNewLink())
     {
         auto startPin = blueprint.FindPin(static_cast<uint32_t>(linkBuilder->m_StartPinId.Get()));
         auto endPin   = blueprint.FindPin(static_cast<uint32_t>(linkBuilder->m_EndPinId.Get()));
 
-        auto canLinkFromStartToEnd = startPin->CanLinkTo(*endPin);
-        auto canLinkFromEndToStart = endPin->CanLinkTo(*startPin);
+        // Editor return pins in order draw by the user. It is up to the
+        // user to determine if it is valid. In blueprints we accept only links
+        // from receivers to providers. Other graph types may allow bi-directional
+        // links between nodes and this ordering make this feature possible.
+        if (endPin->IsReceiver() && startPin->IsProvider())
+            ImSwap(startPin, endPin);
 
-        if (canLinkFromStartToEnd || canLinkFromEndToStart)
+        if (auto canLinkResult = startPin->CanLinkTo(*endPin))
         {
             ed::Suspend();
             ImGui::SetTooltip(
-                "Valid Link\n"
+                "Valid Link%s%s\n"
                 "From: %" PRIu32 " (%*s)\n"
-                "To: %" PRIu32 " (%*s)\n"
-                "Start -> End: %s\n"
-                "End -> Start: %s\n",
+                "To: %" PRIu32 " (%*s)",
+                canLinkResult.Reason().empty() ? "" : ": ",
+                canLinkResult.Reason().empty() ? "" : canLinkResult.Reason().c_str(),
                 startPin->m_Id, static_cast<int>(startPin->m_Node->m_Name.size()), startPin->m_Node->m_Name.data(),
-                endPin->m_Id, static_cast<int>(endPin->m_Node->m_Name.size()), endPin->m_Node->m_Name.data(),
-                canLinkFromStartToEnd ? "true" : "false",
-                canLinkFromEndToStart ? "true" : "false");
+                endPin->m_Id, static_cast<int>(endPin->m_Node->m_Name.size()), endPin->m_Node->m_Name.data()
+            );
             ed::Resume();
 
-            auto linkType      = startPin->GetType() == PinType::Any ? endPin->GetType() : startPin->GetType();
-            auto linkColor     = PinTypeToColor(linkType);
-            auto linkThickness = 2.0f;
-
-            if (linkBuilder->Accept(linkColor, linkThickness))
+            if (linkBuilder->Accept())
             {
-                if (canLinkFromStartToEnd)
-                    startPin->LinkTo(*endPin);
-                else if (canLinkFromEndToStart)
-                    endPin->LinkTo(*startPin);
+                startPin->LinkTo(*endPin);
             }
         }
         else
         {
             ed::Suspend();
-            ImGui::SetTooltip("Invalid Link");
+            ImGui::SetTooltip(
+                "Invalid Link: %s",
+                canLinkResult.Reason().c_str()
+            );
             ed::Resume();
 
             linkBuilder->Reject();
