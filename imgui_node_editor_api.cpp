@@ -706,3 +706,18 @@ ImVec2 ax::NodeEditor::CanvasToScreen(const ImVec2& pos)
 {
     return s_Editor->ToScreen(pos);
 }
+
+ImVector<ax::NodeEditor::LinkId> ax::NodeEditor::FindLinksForNode(NodeId nodeId)
+{
+    ImVector<LinkId> result;
+
+    std::vector<ax::NodeEditor::Detail::Link*> links;
+    s_Editor->FindLinksForNode(nodeId, links, false);
+
+    result.reserve(static_cast<int>(links.size()));
+
+    for (auto link : links)
+        result.push_back(link->m_ID);
+
+    return result;
+}
