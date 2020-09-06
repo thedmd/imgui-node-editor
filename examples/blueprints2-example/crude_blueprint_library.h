@@ -353,15 +353,15 @@ struct ToStringNode final : Node
         return m_Exit;
     }
 
-    void WasLinked(const Pin& target, const Pin& source) override
+    void WasLinked(const Pin& receiver, const Pin& provider) override
     {
-        if (target.m_Id == m_Value.m_Id)
-            m_Value.SetValueType(source.GetValueType());
+        if (receiver.m_Id == m_Value.m_Id)
+            m_Value.SetValueType(provider.GetValueType());
     }
 
-    void WasUnlinked(const Pin& target, const Pin& source) override
+    void WasUnlinked(const Pin& receiver, const Pin& provider) override
     {
-        if (target.m_Id == m_Value.m_Id)
+        if (receiver.m_Id == m_Value.m_Id)
             m_Value.SetValueType(PinType::Any);
     }
 
@@ -471,28 +471,28 @@ struct AddNode final : Node
             return Node::EvaluatePin(context, pin);
     }
 
-    AcceptLinkResult AcceptLink(const Pin& target, const Pin& source) const override
+    LinkQueryResult AcceptLink(const Pin& receiver, const Pin& provider) const override
     {
-        auto result = Node::AcceptLink(target, source);
+        auto result = Node::AcceptLink(receiver, provider);
         if (!result)
             return result;
 
         // Accept connection of any type
         if (m_Type != PinType::Any)
         {
-            if (target.m_Node == this && target.GetValueType() != m_Type)
-                return { false, "Target must match type of the node" };
+            if (receiver.m_Node == this && receiver.GetValueType() != m_Type)
+                return { false, "Receiver must match type of the node" };
 
-            if (source.m_Node == this && source.GetValueType() != m_Type)
-                return { false, "Source must match type of the node" };
+            if (provider.m_Node == this && provider.GetValueType() != m_Type)
+                return { false, "Provider must match type of the node" };
         }
         else if (m_Type == PinType::Any)
         {
             auto candidateType = PinType::Void;
-            if (target.m_Node != this)
-                candidateType = target.GetValueType();
-            else if (source.m_Node != this)
-                candidateType = source.GetValueType();
+            if (receiver.m_Node != this)
+                candidateType = receiver.GetValueType();
+            else if (provider.m_Node != this)
+                candidateType = provider.GetValueType();
 
             switch (candidateType)
             {
@@ -510,18 +510,18 @@ struct AddNode final : Node
         return {true};
     }
 
-    void WasLinked(const Pin& target, const Pin& source) override
+    void WasLinked(const Pin& receiver, const Pin& provider) override
     {
         if (m_Type != PinType::Any)
             return;
 
-        if (target.m_Id == m_A.m_Id || target.m_Id == m_B.m_Id)
-            SetType(source.GetValueType());
-        else if (source.m_Id == m_Result.m_Id)
-            SetType(target.GetValueType());
+        if (receiver.m_Id == m_A.m_Id || receiver.m_Id == m_B.m_Id)
+            SetType(provider.GetValueType());
+        else if (provider.m_Id == m_Result.m_Id)
+            SetType(receiver.GetValueType());
     }
 
-    void WasUnlinked(const Pin& target, const Pin& source) override
+    void WasUnlinked(const Pin& receiver, const Pin& provider) override
     {
     }
 

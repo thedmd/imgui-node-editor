@@ -104,9 +104,9 @@ private:
 // -------[ Generic Pin ]-------
 //
 
-struct AcceptLinkResult
+struct LinkQueryResult
 {
-    AcceptLinkResult(bool result, string_view reason = "")
+    LinkQueryResult(bool result, string_view reason = "")
         : m_Result(result)
         , m_Reason(reason.to_string())
     {
@@ -127,24 +127,28 @@ struct Pin
     Pin(Node* node, PinType type, string_view name = "");
     virtual ~Pin() = default;
 
-    virtual bool SetValueType(PinType type) { return m_Type == type; }
-    virtual PinType GetValueType() const;
-    virtual bool SetValue(PinValue value) { return false; }
-    virtual PinValue GetValue() const;
+    virtual bool     SetValueType(PinType type) { return m_Type == type; } // By default, type of held value cannot be changed
+    virtual PinType  GetValueType() const;                                 // Returns type of held value (may be different from GetType() for Any pin)
+    virtual bool     SetValue(PinValue value) { return false; }            // Sets new value to be held by the pin (not all allow data to be modified)
+    virtual PinValue GetValue() const;                                     // Returns value held by this pin
 
-    PinType GetType() const;
+    PinType GetType() const; // Returns type of this pin (which may differ from the type of held value for AnyPin)
 
-    AcceptLinkResult CanLinkTo(const Pin& pin) const;
-    bool LinkTo(const Pin& pin);
-    void Unlink();
-    bool IsLinked() const;
-    const Pin* GetLink() const;
+    // Links can be created from receivers to providers but not other way around.
+    // This API deal with only this type of connection.
+    // To find what receivers are connected to this node use
+    // Blueprint::FindPinsLinkedTo() function.
+    LinkQueryResult CanLinkTo(const Pin& pin) const; // Check if link between this and other pin can be created
+    bool LinkTo(const Pin& pin);                     // Tries to create link to specified pin as a provider
+    void Unlink();                                   // Breaks link from this receiver to provider
+    bool IsLinked() const;                           // Returns true if this pin is linked to provider
+    const Pin* GetLink() const;                      // Returns provider pin
 
-    bool IsInput() const;
-    bool IsOutput() const;
+    bool IsInput() const;  // Pin is on input side
+    bool IsOutput() const; // Pin is on output side
 
-    bool IsProvider() const;
-    bool IsReceiver() const;
+    bool IsProvider() const; // Pin can provide data
+    bool IsReceiver() const; // Pin can receive data
 
     virtual bool Load(const crude_json::value& value);
     virtual void Save(crude_json::value& value) const;
@@ -162,15 +166,16 @@ struct Pin
 // -------[ Concrete Pin Types ]-------
 //
 
+// AnyPin can morph into any other data pin while creating a link
 struct AnyPin final : Pin
 {
     static constexpr auto TypeId = PinType::Any;
 
     AnyPin(Node* node, string_view name = ""): Pin(node, PinType::Any, name) {}
 
-    bool SetValueType(PinType type) override;
-    PinType GetValueType() const override { return m_InnerPin ? m_InnerPin->GetValueType() : Pin::GetValueType(); }
-    bool SetValue(PinValue value) override;
+    bool     SetValueType(PinType type) override;
+    PinType  GetValueType() const override { return m_InnerPin ? m_InnerPin->GetValueType() : Pin::GetValueType(); }
+    bool     SetValue(PinValue value) override;
     PinValue GetValue() const override { return m_InnerPin ? m_InnerPin->GetValue() : Pin::GetValue(); }
 
     bool Load(const crude_json::value& value) override;
@@ -179,6 +184,7 @@ struct AnyPin final : Pin
     unique_ptr<Pin> m_InnerPin;
 };
 
+// FlowPin represent execution flow
 struct FlowPin final : Pin
 {
     static constexpr auto TypeId = PinType::Flow;
@@ -190,6 +196,7 @@ struct FlowPin final : Pin
     PinValue GetValue() const override { return const_cast<FlowPin*>(this); }
 };
 
+// Boolean type pin
 struct BoolPin final : Pin
 {
     static constexpr auto TypeId = PinType::Bool;
@@ -233,6 +240,7 @@ struct BoolPin final : Pin
     bool m_Value = false;
 };
 
+// Integer type pin
 struct Int32Pin final : Pin
 {
     static constexpr auto TypeId = PinType::Int32;
@@ -258,6 +266,7 @@ struct Int32Pin final : Pin
     int32_t m_Value = 0;
 };
 
+// Floating point type pin
 struct FloatPin final : Pin
 {
     static constexpr auto TypeId = PinType::Float;
@@ -283,6 +292,7 @@ struct FloatPin final : Pin
     float m_Value = 0.0f;
 };
 
+// String type pin
 struct StringPin final : Pin
 {
     static constexpr auto TypeId = PinType::String;
@@ -323,44 +333,68 @@ struct NodeTypeInfo
     Factory     m_Factory;
 };
 
+// Base for all nodes
+//
+// Node is a function with can have multiple entry points and multiple exit points.
+// Execution of the node can behave differently depending of entry point passed to Execute(),
+// also may lead to different exit point depending on node internal state.
+//
+// Execution to work required node to have one or more Flow pins. Otherwise it cannot be linked with
+// other nodes. Implementation of execution logic is optional since node may not have any Flow
+// pin. In such case node can do its thing in EvaluatePin() function and do something more
+// than simply return value held by a pin.
+//
+// Reset(), Execute() and EvaluatePin() operate on provided execution context. All input
+// pins should be evaluated using `context.GetPinValue<>(pin)` instead of accessed directly
+// by calling `pin.GetValue()`. Later is valid only for output pins, former is valid
+// for input pins.
+// Not sticking to these rules will lead to bugs. One node can be executed in multiple context
+// exactly like a class method can be run on different instances on the object in C++. Blueprint
+// is a like a class not an instance. Using `pin.GetValue()` on input pins is similar to
+// having static members in class.
+//
+// Output pins values can be updated only in Execute() and Reset() by
+// `context.SetPinValue(pin, value)`. Other nodes will read it using `context.GetPinValue<>(pin)`
+// call.
+//
+// EvaluatePin() wlays calculate value each time it is called. Execution context nor node itself
+// is changed in the process. This is like calling method marked as a `const` in C++.
+//
+// Nodes can create or destroy pins at will. It is advised to not do that while executing
+// a blueprint. That would be analogous to self-modifying code (which is neat trick, but
+// a hell to debug).
+//
 struct Node
 {
     Node(Blueprint& blueprint, string_view name);
     virtual ~Node() = default;
 
     template <typename T>
-    unique_ptr<T> CreatePin(string_view name = "")
-    {
-        if (auto pin = CreatePin(T::TypeId, name))
-            return unique_ptr<T>(static_cast<T*>(pin.release()));
-        else
-            return nullptr;
-    }
-
+    unique_ptr<T> CreatePin(string_view name = "");
     unique_ptr<Pin> CreatePin(PinType pinType, string_view name = "");
 
-    virtual void Reset(Context& context)
+    virtual void Reset(Context& context) // Reset state of the node before execution. Allows to set initial state for the specified execution context.
     {
     }
 
-    virtual FlowPin Execute(Context& context, FlowPin& entryPoint)
+    virtual FlowPin Execute(Context& context, FlowPin& entryPoint) // Executes node logic from specified entry point. Returns exit point (flow pin on output side) or nothing.
     {
         return {};
     }
 
-    virtual PinValue EvaluatePin(const Context& context, const Pin& pin) const
+    virtual PinValue EvaluatePin(const Context& context, const Pin& pin) const // Evaluates pin in node in specified execution context.
     {
         return pin.GetValue();
     }
 
     virtual NodeTypeInfo GetTypeInfo() const { return {}; }
 
-    virtual AcceptLinkResult AcceptLink(const Pin& target, const Pin& source) const;
-    virtual void WasLinked(const Pin& target, const Pin& source);
-    virtual void WasUnlinked(const Pin& target, const Pin& source);
+    virtual LinkQueryResult AcceptLink(const Pin& receiver, const Pin& provider) const; // Checks if node accept link between these two pins. There node can filter out unsupported link types.
+    virtual void WasLinked(const Pin& receiver, const Pin& provider); // Notifies node that link involving one of its pins has been made.
+    virtual void WasUnlinked(const Pin& receiver, const Pin& provider); // Notifies node that link involving one of its pins has been broken.
 
-    virtual span<Pin*> GetInputPins() { return {}; }
-    virtual span<Pin*> GetOutputPins() { return {}; }
+    virtual span<Pin*> GetInputPins() { return {}; } // Returns list of input pins of the node
+    virtual span<Pin*> GetOutputPins() { return {}; } // Returns list of output pins of the node
 
     virtual bool Load(const crude_json::value& value);
     virtual void Save(crude_json::value& value) const;
@@ -372,6 +406,14 @@ struct Node
 protected:
 };
 
+template <typename T>
+inline crude_blueprint::unique_ptr<T> crude_blueprint::Node::CreatePin(string_view name /*= ""*/)
+{
+    if (auto pin = CreatePin(T::TypeId, name))
+        return unique_ptr<T>(static_cast<T*>(pin.release()));
+    else
+        return nullptr;
+}
 
 
 //
@@ -383,13 +425,6 @@ enum class StepResult
     Success,
     Done,
     Error
-};
-
-
-struct PinValuePair
-{
-    uint32_t m_PinId;
-    PinValue m_Value;
 };
 
 struct ContextMonitor
