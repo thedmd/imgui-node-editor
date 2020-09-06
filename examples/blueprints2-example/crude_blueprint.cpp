@@ -91,13 +91,9 @@ crude_blueprint::Pin::Pin(Node* node, PinType type, string_view name)
 crude_blueprint::PinType crude_blueprint::Pin::GetType() const
 {
     return m_Type;
-    //if (m_Link)
-    //    return m_Link->GetType();
-    //else
-    //    return GetValueType();
 }
 
-crude_blueprint::AcceptLinkResult crude_blueprint::Pin::CanLinkTo(const Pin& pin) const
+crude_blueprint::LinkQueryResult crude_blueprint::Pin::CanLinkTo(const Pin& pin) const
 {
     auto result = m_Node->AcceptLink(*this, pin);
     if (!result)
@@ -405,39 +401,39 @@ crude_blueprint::unique_ptr<crude_blueprint::Pin> crude_blueprint::Node::CreateP
     return nullptr;
 }
 
-crude_blueprint::AcceptLinkResult crude_blueprint::Node::AcceptLink(const Pin& target, const Pin& source) const
+crude_blueprint::LinkQueryResult crude_blueprint::Node::AcceptLink(const Pin& receiver, const Pin& provider) const
 {
-    if (target.m_Node == source.m_Node)
+    if (receiver.m_Node == provider.m_Node)
         return { false, "Pins of same node cannot be connected"};
 
-    const auto targetIsFlow = target.GetType() == PinType::Flow;
-    const auto sourceIsFlow = source.GetType() == PinType::Flow;
-    if (targetIsFlow != sourceIsFlow)
+    const auto receiverIsFlow = receiver.GetType() == PinType::Flow;
+    const auto providerIsFlow = provider.GetType() == PinType::Flow;
+    if (receiverIsFlow != providerIsFlow)
         return { false, "Flow pins can be connected only to other Flow pins"};
 
-    if (target.IsInput() && source.IsInput())
+    if (receiver.IsInput() && provider.IsInput())
         return { false, "Input pins cannot be linked together"};
 
-    if (target.IsOutput() && source.IsOutput())
+    if (receiver.IsOutput() && provider.IsOutput())
         return { false, "Output pins cannot be linked together"};
 
-    if (!target.IsReceiver())
-        return { false, "Target pin cannot be used as source"};
+    if (!receiver.IsReceiver())
+        return { false, "Receiver pin cannot be used as provider"};
 
-    if (!source.IsProvider())
-        return { false, "Source pin cannot be used as target"};
+    if (!provider.IsProvider())
+        return { false, "Provider pin cannot be used as receiver"};
 
-    if (source.GetValueType() != target.GetValueType() && (source.GetValueType() != PinType::Any && target.GetValueType() != PinType::Any))
+    if (provider.GetValueType() != receiver.GetValueType() && (provider.GetValueType() != PinType::Any && receiver.GetValueType() != PinType::Any))
         return { false, "Incompatible types"};
 
     return {true};
 }
 
-void crude_blueprint::Node::WasLinked(const Pin& target, const Pin& source)
+void crude_blueprint::Node::WasLinked(const Pin& receiver, const Pin& provider)
 {
 }
 
-void crude_blueprint::Node::WasUnlinked(const Pin& target, const Pin& source)
+void crude_blueprint::Node::WasUnlinked(const Pin& receiver, const Pin& provider)
 {
 }
 
