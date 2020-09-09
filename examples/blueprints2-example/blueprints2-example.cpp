@@ -170,13 +170,15 @@ static void ShowControlPanel()
 
     if (auto currentNode = g_Blueprint.CurrentNode())
     {
+        auto nodeName = currentNode->GetName();
+
         ImGui::SameLine();
         ImGui::Spacing();
         ImGui::SameLine();
-        ImGui::Text("Current Node: %*s", static_cast<int>(currentNode->m_Name.size()), currentNode->m_Name.data());
+        ImGui::Text("Current Node: %*s", static_cast<int>(nodeName.size()), nodeName.data());
 
         auto nextNode = g_Blueprint.NextNode();
-        auto nextNodeName = nextNode ? nextNode->m_Name : "-";
+        auto nextNodeName = nextNode ? nextNode->GetName() : "-";
         ImGui::SameLine();
         ImGui::Spacing();
         ImGui::SameLine();
@@ -211,10 +213,11 @@ static void CommitBlueprintNodes(Blueprint& blueprint, DebugOverlay& debugOverla
         // +-----------------------------------+
 
         // Show title if node has one.
-        if (!node->m_Name.empty())
+        auto nodeName = node->GetName();
+        if (!nodeName.empty())
         {
             ImGui::PushFont(Application_HeaderFont());
-            ImGui::TextUnformatted(node->m_Name.data(), node->m_Name.data() + node->m_Name.size());
+            ImGui::TextUnformatted(nodeName.data(), nodeName.data() + nodeName.size());
             ImGui::PopFont();
         }
 
@@ -365,6 +368,9 @@ static void HandleCreateAction(Blueprint& blueprint)
 
         if (auto canLinkResult = startPin->CanLinkTo(*endPin))
         {
+            auto startNodeName = startPin->m_Node->GetName();
+            auto   endNodeName =   endPin->m_Node->GetName();
+
             ed::Suspend();
             ImGui::SetTooltip(
                 "Valid Link%s%s\n"
@@ -372,8 +378,8 @@ static void HandleCreateAction(Blueprint& blueprint)
                 "To: %" PRIu32 " (%*s)",
                 canLinkResult.Reason().empty() ? "" : ": ",
                 canLinkResult.Reason().empty() ? "" : canLinkResult.Reason().c_str(),
-                startPin->m_Id, static_cast<int>(startPin->m_Node->m_Name.size()), startPin->m_Node->m_Name.data(),
-                endPin->m_Id, static_cast<int>(endPin->m_Node->m_Name.size()), endPin->m_Node->m_Name.data()
+                startPin->m_Id, static_cast<int>(startNodeName.size()), startNodeName.data(),
+                endPin->m_Id, static_cast<int>(endNodeName.size()), endNodeName.data()
             );
             ed::Resume();
 
@@ -453,6 +459,95 @@ static void HandleDestroyAction(Blueprint& blueprint)
         blueprint.DeleteNode(node);
 }
 
+static void ShowInfoTooltip(Blueprint& blueprint)
+{
+    if (!ed::IsActive())
+        return;
+
+    auto hoveredNode = blueprint.FindNode(static_cast<uint32_t>(ed::GetHoveredNode().Get()));
+    auto hoveredPin  = blueprint.FindPin(static_cast<uint32_t>(ed::GetHoveredPin().Get()));
+    if (!hoveredNode && hoveredPin)
+        hoveredNode = hoveredPin->m_Node;
+
+    auto pinTooltip = [](const char* label, const Pin& pin, bool showNode)
+    {
+        ImGui::TextUnformatted(label);
+        ImGui::Bullet(); ImGui::Text("ID: %" PRIu32, pin.m_Id);
+        if (!pin.m_Name.empty())
+        {
+            ImGui::Bullet(); ImGui::Text("Name: %*s", static_cast<int>(pin.m_Name.size()), pin.m_Name.data());
+        }
+        if (showNode && pin.m_Node)
+        {
+            auto nodeName = pin.m_Node->GetName();
+            ImGui::Bullet(); ImGui::Text("Node: %*s", static_cast<int>(nodeName.size()), nodeName.data());
+        }
+        ImGui::Bullet(); ImGui::Text("Type: %s", PinTypeToString(pin.GetType()));
+        ImGui::Bullet(); ImGui::Text("Value Type: %s", PinTypeToString(pin.GetValueType()));
+
+        string flags;
+        if (pin.IsLinked())
+            flags += "linked, ";
+        if (pin.IsInput())
+            flags += "input, ";
+        if (pin.IsOutput())
+            flags += "output, ";
+        if (pin.IsProvider())
+            flags += "provider, ";
+        if (pin.IsReceiver())
+            flags += "receiver, ";
+        if (!flags.empty())
+            flags = flags.substr(0, flags.size() - 2);
+        ImGui::Bullet(); ImGui::Text("Flags: %s", flags.c_str());
+    };
+
+    if (hoveredNode)
+    {
+        auto nodeTypeInfo = hoveredNode->GetTypeInfo();
+        auto nodeName = hoveredNode->GetName();
+
+        ed::Suspend();
+        ImGui::BeginTooltip();
+
+        ImGui::Text("Node ID: %" PRIu32, hoveredNode->m_Id);
+        ImGui::Text("Name: %*s", static_cast<int>(nodeName.size()), nodeName.data());
+        ImGui::Separator();
+        ImGui::TextUnformatted("Type:");
+        ImGui::Bullet(); ImGui::Text("ID: 0x%08" PRIX32, nodeTypeInfo.m_Id);
+        ImGui::Bullet(); ImGui::Text("Name: %*s", static_cast<int>(nodeTypeInfo.m_Name.size()), nodeTypeInfo.m_Name.data());
+
+        if (hoveredPin)
+        {
+            ImGui::Separator();
+            pinTooltip("Pin", *hoveredPin, false);
+        }
+
+        ImGui::EndTooltip();
+        ed::Resume();
+    }
+    else if (auto hoveredLinkId = ed::GetHoveredLink())
+    {
+        ed::PinId startPinId, endPinId;
+        ed::GetLinkPins(hoveredLinkId, &startPinId, &endPinId);
+
+        auto startPin = blueprint.FindPin(static_cast<uint32_t>(startPinId.Get()));
+        auto endPin = blueprint.FindPin(static_cast<uint32_t>(endPinId.Get()));
+
+        ed::Suspend();
+        ImGui::BeginTooltip();
+
+        ImGui::Text("Link ID: %" PRIu32, startPin->m_Id);
+        ImGui::Text("Type: %s", PinTypeToString(startPin->GetValueType()));
+        ImGui::Separator();
+        pinTooltip("Start Pin:", *startPin, true);
+        ImGui::Separator();
+        pinTooltip("End Pin:", *endPin, true);
+
+        ImGui::EndTooltip();
+        ed::Resume();
+    }
+}
+
 static void ShowDialogs(Blueprint& blueprint)
 {
     ed::Suspend();
@@ -480,6 +575,8 @@ void Application_Frame()
     HandleDestroyAction(g_Blueprint);
 
     ShowDialogs(g_Blueprint);
+
+    ShowInfoTooltip(g_Blueprint);
 
     ed::End();
 

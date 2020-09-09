@@ -56,6 +56,28 @@ inline bool GetTo(const crude_json::value& value, string_view key, V& result)
 
 
 //
+// -------[ PinType ]-------
+//
+
+const char* crude_blueprint::PinTypeToString(PinType pinType)
+{
+    switch (pinType)
+    {
+        default:
+        case PinType::Void:     return "Void";
+        case PinType::Any:      return "Any";
+        case PinType::Flow:     return "Flow";
+        case PinType::Bool:     return "Bool";
+        case PinType::Int32:    return "Int32";
+        case PinType::Float:    return "Float";
+        case PinType::String:   return "String";
+    }
+}
+
+
+
+
+//
 // -------[ IdGenerator ]-------
 //
 
@@ -255,9 +277,21 @@ bool crude_blueprint::AnyPin::SetValueType(PinType type)
 
     m_InnerPin = m_Node->CreatePin(type);
 
+    if (auto link = GetLink())
+    {
+        if (link->GetValueType() != type)
+        {
+            Unlink();
+            LinkTo(*link);
+        }
+    }
+
     auto links = m_Node->m_Blueprint->FindPinsLinkedTo(*this);
     for (auto link : links)
     {
+        if (link->GetValueType() == type)
+            continue;
+
         link->Unlink();
         if (link->SetValueType(type))
             link->LinkTo(*this);
@@ -384,9 +418,8 @@ bool crude_blueprint::StringPin::Load(const crude_json::value& value)
 // -------[ Node ]-------
 //
 
-crude_blueprint::Node::Node(Blueprint& blueprint, string_view name)
+crude_blueprint::Node::Node(Blueprint& blueprint)
     : m_Id(blueprint.MakeNodeId(this))
-    , m_Name(name)
     , m_Blueprint(&blueprint)
 {
 }
@@ -405,6 +438,11 @@ crude_blueprint::unique_ptr<crude_blueprint::Pin> crude_blueprint::Node::CreateP
     }
 
     return nullptr;
+}
+
+crude_blueprint::string_view crude_blueprint::Node::GetName() const
+{
+    return GetTypeInfo().m_DisplayName;
 }
 
 crude_blueprint::LinkQueryResult crude_blueprint::Node::AcceptLink(const Pin& receiver, const Pin& provider) const
@@ -493,7 +531,7 @@ bool crude_blueprint::Node::Load(const crude_json::value& value)
 void crude_blueprint::Node::Save(crude_json::value& value) const
 {
     value["id"] = crude_json::number(m_Id); // required
-    value["name"] = m_Name.to_string(); // optional, to make data readable for humans
+    value["name"] = GetName().to_string(); // optional, to make data readable for humans
 
     auto& inputPinsValue = value["input_pins"]; // optional
     for (auto& pin : const_cast<Node*>(this)->GetInputPins())
