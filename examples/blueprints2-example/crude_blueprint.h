@@ -125,7 +125,7 @@ private:
 struct Pin
 {
     Pin(Node* node, PinType type, string_view name = "");
-    virtual ~Pin() = default;
+    virtual ~Pin();
 
     virtual bool     SetValueType(PinType type) { return m_Type == type; } // By default, type of held value cannot be changed
     virtual PinType  GetValueType() const;                                 // Returns type of held value (may be different from GetType() for Any pin)
@@ -621,6 +621,9 @@ struct Blueprint
 
     span<      Pin*>       GetPins();
     span<const Pin* const> GetPins() const;
+
+          Node* FindNode(uint32_t nodeId);
+    const Node* FindNode(uint32_t nodeId) const;
 
           Pin* FindPin(uint32_t pinId);
     const Pin* FindPin(uint32_t pinId) const;
