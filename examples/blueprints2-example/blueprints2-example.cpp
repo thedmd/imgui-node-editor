@@ -5,9 +5,9 @@
 
 # include "crude_blueprint.h"
 # include "crude_blueprint_library.h"
+# include "crude_blueprint_utilities.h"
 # include "crude_layout.h"
 # include "imgui_extras.h"
-# include "imgui_blueprint_utilities.h"
 # include "imgui_node_editor.h"
 
 # include "crude_json.h"
@@ -22,8 +22,7 @@ using namespace crude_blueprint_utilities;
 
 static ed::EditorContext* g_Editor = nullptr;
 static Blueprint g_Blueprint;
-
-static ed::PinId g_CreateLinkStartId = ed::PinId::Invalid;
+static CreateNodeDialog g_CreateNodeDailog;
 
 static EntryPointNode* FindEntryPointNode();
 
@@ -345,50 +344,12 @@ static void CommitBlueprintNodes(Blueprint& blueprint, DebugOverlay& debugOverla
     debugOverlay.End();
 }
 
-struct ItemBuilder
-{
-    struct LinkBuilder
-    {
-        ed::PinId m_StartPinId = ed::PinId::Invalid;
-        ed::PinId m_EndPinId = ed::PinId::Invalid;
-
-        bool Accept()
-        {
-            return ed::AcceptNewItem(ImVec4(0.34f, 1.0f, 0.34f, 1.0f), 3.0f);
-        }
-
-        void Reject()
-        {
-            ed::RejectNewItem(ImVec4(1.0f, 0.0f, 0.0f, 1.0f));
-        }
-    };
-
-    ItemBuilder()
-        : m_InCreate(ed::BeginCreate(ImGui::GetStyleColorVec4(ImGuiCol_NavHighlight)))
-    {
-    }
-
-    ~ItemBuilder()
-    {
-        ed::EndCreate();
-    }
-
-    LinkBuilder* QueryNewLink()
-    {
-        if (ed::QueryNewLink(&m_LinkBuilder.m_StartPinId, &m_LinkBuilder.m_EndPinId))
-            return &m_LinkBuilder;
-        else
-            return nullptr;
-    }
-
-private:
-    bool m_InCreate = false;
-    LinkBuilder m_LinkBuilder;
-};
-
 static void HandleCreateAction(Blueprint& blueprint)
 {
     ItemBuilder itemBuilder;
+
+    if (!itemBuilder)
+        return;
 
     if (auto linkBuilder = itemBuilder.QueryNewLink())
     {
@@ -433,7 +394,72 @@ static void HandleCreateAction(Blueprint& blueprint)
             linkBuilder->Reject();
         }
     }
+    else if (auto nodeBuilder = itemBuilder.QueryNewNode())
+    {
+        // Arguably creation of node is simpler than a link.
+        ed::Suspend();
+        ImGui::SetTooltip("Create Node...");
+        ed::Resume();
 
+        // Node builder accept return true when user release mouse button.
+        // When this happen we request CreateNodeDialog to open.
+        if (nodeBuilder->Accept())
+        {
+            // Get node from which link was pulled (if any). After creating
+            // node we will try to make link with first matching pin of the node.
+            auto pin = blueprint.FindPin(static_cast<uint32_t>(nodeBuilder->m_PinId.Get()));
+
+            ed::Suspend();
+            g_CreateNodeDailog.Open(pin);
+            ed::Resume();
+        }
+    }
+}
+
+static void HandleDestroyAction(Blueprint& blueprint)
+{
+    ItemDeleter itemDeleter;
+
+    if (!itemDeleter)
+        return;
+
+    vector<Node*> nodesToDelete;
+
+    // Process all nodes marked for deletion
+    while (auto nodeDeleter = itemDeleter.QueryDeletedNode())
+    {
+        // Remove node, pass 'true' so links attached to node will also be queued for deletion.
+        if (nodeDeleter->Accept(true))
+        {
+            auto node = blueprint.FindNode(static_cast<uint32_t>(nodeDeleter->m_NodeId.Get()));
+            if (node != nullptr)
+                // Queue nodes for deletion. We need to serve links first to avoid crash.
+                nodesToDelete.push_back(node);
+        }
+    }
+
+    // Process all links marked for deletion
+    while (auto linkDeleter = itemDeleter.QueryDeleteLink())
+    {
+        if (linkDeleter->Accept())
+        {
+            auto startPin = blueprint.FindPin(static_cast<uint32_t>(linkDeleter->m_StartPinId.Get()));
+            startPin->Unlink();
+        }
+    }
+
+    // After links was removed, now it is safe to delete nodes.
+    for (auto node : nodesToDelete)
+        blueprint.DeleteNode(node);
+}
+
+static void ShowDialogs(Blueprint& blueprint)
+{
+    ed::Suspend();
+
+    g_CreateNodeDailog.Show(blueprint);
+
+    ed::Resume();
 }
 
 void Application_Frame()
@@ -451,6 +477,9 @@ void Application_Frame()
     CommitBlueprintNodes(g_Blueprint, debugOverlay);
 
     HandleCreateAction(g_Blueprint);
+    HandleDestroyAction(g_Blueprint);
+
+    ShowDialogs(g_Blueprint);
 
     ed::End();
 

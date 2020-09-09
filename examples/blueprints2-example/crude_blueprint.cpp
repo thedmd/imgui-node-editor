@@ -88,6 +88,12 @@ crude_blueprint::Pin::Pin(Node* node, PinType type, string_view name)
 {
 }
 
+crude_blueprint::Pin::~Pin()
+{
+    if (m_Node)
+        m_Node->m_Blueprint->ForgetPin(this);
+}
+
 crude_blueprint::PinType crude_blueprint::Pin::GetType() const
 {
     return m_Type;
@@ -967,6 +973,22 @@ crude_blueprint::span<const crude_blueprint::Pin* const> crude_blueprint::Bluepr
     const Pin* const* begin = m_Pins.data();
     const Pin* const* end   = m_Pins.data() + m_Pins.size();
     return make_span(begin, end);
+}
+
+crude_blueprint::Node* crude_blueprint::Blueprint::FindNode(uint32_t nodeId)
+{
+    return const_cast<Node*>(const_cast<const Blueprint*>(this)->FindNode(nodeId));
+}
+
+const crude_blueprint::Node* crude_blueprint::Blueprint::FindNode(uint32_t nodeId) const
+{
+    for (auto& node : m_Nodes)
+    {
+        if (node->m_Id == nodeId)
+            return node;
+    }
+
+    return nullptr;
 }
 
 crude_blueprint::Pin* crude_blueprint::Blueprint::FindPin(uint32_t pinId)

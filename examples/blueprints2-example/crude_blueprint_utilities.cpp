@@ -1,7 +1,6 @@
-# include "imgui_blueprint_utilities.h"
+# include "crude_blueprint_utilities.h"
 # define IMGUI_DEFINE_MATH_OPERATORS
 # include <imgui_internal.h>
-# include <imgui_node_editor.h>
 
 ImEx::IconType crude_blueprint_utilities::PinTypeToIconType(PinType pinType)
 {
@@ -380,4 +379,173 @@ void crude_blueprint_utilities::DebugOverlay::OnEvaluatePin(const Context& conte
 
     //if (pin.m_Link)
         ax::NodeEditor::Flow(pin.m_Id);
+}
+
+
+
+
+crude_blueprint_utilities::ItemBuilder::ItemBuilder()
+    : m_InCreate(ax::NodeEditor::BeginCreate(ImGui::GetStyleColorVec4(ImGuiCol_NavHighlight)))
+{
+
+}
+
+crude_blueprint_utilities::ItemBuilder::~ItemBuilder()
+{
+    ax::NodeEditor::EndCreate();
+}
+
+crude_blueprint_utilities::ItemBuilder::operator bool() const
+{
+    return m_InCreate;
+}
+
+crude_blueprint_utilities::ItemBuilder::NodeBuilder* crude_blueprint_utilities::ItemBuilder::QueryNewNode()
+{
+    if (m_InCreate && ax::NodeEditor::QueryNewNode(&m_NodeBuilder.m_PinId))
+        return &m_NodeBuilder;
+    else
+        return nullptr;
+}
+
+crude_blueprint_utilities::ItemBuilder::LinkBuilder* crude_blueprint_utilities::ItemBuilder::QueryNewLink()
+{
+    if (m_InCreate && ax::NodeEditor::QueryNewLink(&m_LinkBuilder.m_StartPinId, &m_LinkBuilder.m_EndPinId))
+        return &m_LinkBuilder;
+    else
+        return nullptr;
+}
+
+bool crude_blueprint_utilities::ItemBuilder::LinkBuilder::Accept()
+{
+    return ax::NodeEditor::AcceptNewItem(ImVec4(0.34f, 1.0f, 0.34f, 1.0f), 3.0f);
+}
+
+void crude_blueprint_utilities::ItemBuilder::LinkBuilder::Reject()
+{
+    ax::NodeEditor::RejectNewItem(ImVec4(1.0f, 0.0f, 0.0f, 1.0f));
+}
+
+bool crude_blueprint_utilities::ItemBuilder::NodeBuilder::Accept()
+{
+    return ax::NodeEditor::AcceptNewItem(ImVec4(0.34f, 1.0f, 0.34f, 1.0f), 3.0f);
+}
+
+void crude_blueprint_utilities::ItemBuilder::NodeBuilder::Reject()
+{
+    ax::NodeEditor::RejectNewItem(ImVec4(1.0f, 0.0f, 0.0f, 1.0f));
+}
+
+
+
+
+crude_blueprint_utilities::ItemDeleter::ItemDeleter()
+    : m_InDelete(ax::NodeEditor::BeginDelete())
+{
+
+}
+
+crude_blueprint_utilities::ItemDeleter::~ItemDeleter()
+{
+    ax::NodeEditor::EndDelete();
+}
+
+crude_blueprint_utilities::ItemDeleter::operator bool() const
+{
+    return m_InDelete;
+}
+
+crude_blueprint_utilities::ItemDeleter::NodeDeleter* crude_blueprint_utilities::ItemDeleter::QueryDeletedNode()
+{
+    if (m_InDelete && ax::NodeEditor::QueryDeletedNode(&m_NodeDeleter.m_NodeId))
+        return &m_NodeDeleter;
+    else
+        return nullptr;
+}
+
+crude_blueprint_utilities::ItemDeleter::LinkDeleter* crude_blueprint_utilities::ItemDeleter::QueryDeleteLink()
+{
+    if (m_InDelete && ax::NodeEditor::QueryDeletedLink(&m_LinkDeleter.m_LinkId, &m_LinkDeleter.m_StartPinId, &m_LinkDeleter.m_EndPinId))
+        return &m_LinkDeleter;
+    else
+        return nullptr;
+}
+
+bool crude_blueprint_utilities::ItemDeleter::LinkDeleter::Accept()
+{
+    return ax::NodeEditor::AcceptDeletedItem();
+}
+
+void crude_blueprint_utilities::ItemDeleter::LinkDeleter::Reject()
+{
+    ax::NodeEditor::RejectDeletedItem();
+}
+
+bool crude_blueprint_utilities::ItemDeleter::NodeDeleter::Accept(bool deleteLinks /*= true*/)
+{
+    return ax::NodeEditor::AcceptDeletedItem(deleteLinks);
+}
+
+void crude_blueprint_utilities::ItemDeleter::NodeDeleter::Reject()
+{
+    ax::NodeEditor::RejectDeletedItem();
+}
+
+
+
+
+void crude_blueprint_utilities::CreateNodeDialog::Open(Pin* fromPin)
+{
+    auto storage = ImGui::GetStateStorage();
+    storage->SetVoidPtr(ImGui::GetID("##create_node_pin"), fromPin);
+    ImGui::OpenPopup("##create_node");
+}
+
+void crude_blueprint_utilities::CreateNodeDialog::Show(Blueprint& blueprint)
+{
+    if (!ImGui::IsPopupOpen("##create_node"))
+        return;
+
+    auto storage = ImGui::GetStateStorage();
+    auto fromPin = reinterpret_cast<Pin*>(storage->GetVoidPtr(ImGui::GetID("##create_node_pin")));
+
+    if (!ImGui::BeginPopup("##create_node"))
+        return;
+
+    auto popupPosition = ImGui::GetMousePosOnOpeningCurrentPopup();
+
+    auto nodeRegistry = blueprint.GetNodeRegistry();
+
+    for (auto nodeTypeInfo : nodeRegistry->GetTypes())
+    {
+        bool selected = false;
+        if (ImGui::Selectable(nodeTypeInfo->m_Name.to_string().c_str(), &selected))
+        {
+            auto node = blueprint.CreateNode(nodeTypeInfo->m_Id);
+
+            auto nodePosition = ax::NodeEditor::ScreenToCanvas(popupPosition);
+
+            ax::NodeEditor::SetNodePosition(node->m_Id, nodePosition);
+
+            ax::NodeEditor::SelectNode(node->m_Id);
+
+            if (fromPin)
+                CreateLinkToFirstMatchingPin(*node, *fromPin);
+        }
+    }
+
+    ImGui::EndPopup();
+}
+
+bool crude_blueprint_utilities::CreateNodeDialog::CreateLinkToFirstMatchingPin(Node& node, Pin& fromPin)
+{
+    for (auto nodePin : node.GetInputPins())
+        if (nodePin->LinkTo(fromPin) || fromPin.LinkTo(*nodePin))
+            return true;
+
+    for (auto nodePin : node.GetOutputPins())
+        if (nodePin->LinkTo(fromPin) || fromPin.LinkTo(*nodePin))
+            return true;
+
+    return false;
 }
