@@ -4408,31 +4408,26 @@ ed::DeleteItemsAction::DeleteItemsAction(EditorContext* editor):
 {
 }
 
+void ed::DeleteItemsAction::DeleteDeadLinks(NodeId nodeId)
+{
+    vector<ed::Link*> links;
+    Editor->FindLinksForNode(nodeId, links, true);
+    for (auto link : links)
+    {
+        auto it = std::find(m_CandidateObjects.begin(), m_CandidateObjects.end(), link);
+        if (it != m_CandidateObjects.end())
+            continue;
+
+        m_CandidateObjects.push_back(link);
+    }
+}
+
 ed::EditorAction::AcceptResult ed::DeleteItemsAction::Accept(const Control& control)
 {
     IM_ASSERT(!m_IsActive);
 
     if (m_IsActive)
         return False;
-
-    auto addDeadLinks = [this]()
-    {
-        vector<ed::Link*> links;
-        for (auto object : m_CandidateObjects)
-        {
-            auto node = object->AsNode();
-            if (!node)
-                continue;
-
-            Editor->FindLinksForNode(node->m_ID, links, true);
-        }
-        if (!links.empty())
-        {
-            std::sort(links.begin(), links.end());
-            links.erase(std::unique(links.begin(), links.end()), links.end());
-            m_CandidateObjects.insert(m_CandidateObjects.end(), links.begin(), links.end());
-        }
-    };
 
     auto& io = ImGui::GetIO();
     if (ImGui::IsWindowFocused() && ImGui::IsKeyPressed(ImGui::GetKeyIndex(ImGuiKey_Delete)) && Editor->AreShortcutsEnabled())
@@ -4441,7 +4436,6 @@ ed::EditorAction::AcceptResult ed::DeleteItemsAction::Accept(const Control& cont
         if (!selection.empty())
         {
             m_CandidateObjects = selection;
-            addDeadLinks();
             m_IsActive = true;
             return True;
         }
@@ -4458,7 +4452,6 @@ ed::EditorAction::AcceptResult ed::DeleteItemsAction::Accept(const Control& cont
     {
         m_CandidateObjects = m_ManuallyDeletedObjects;
         m_ManuallyDeletedObjects.clear();
-        addDeadLinks();
         m_IsActive = true;
         return True;
     }
@@ -4612,14 +4605,14 @@ bool ed::DeleteItemsAction::QueryItem(ObjectId* itemId, IteratorType itemType)
     return false;
 }
 
-bool ed::DeleteItemsAction::AcceptItem()
+bool ed::DeleteItemsAction::AcceptItem(bool deleteDependencies)
 {
     if (!m_InInteraction)
         return false;
 
     m_UserAction = Accepted;
 
-    RemoveItem();
+    RemoveItem(deleteDependencies);
 
     return true;
 }
@@ -4631,15 +4624,18 @@ void ed::DeleteItemsAction::RejectItem()
 
     m_UserAction = Rejected;
 
-    RemoveItem();
+    RemoveItem(false);
 }
 
-void ed::DeleteItemsAction::RemoveItem()
+void ed::DeleteItemsAction::RemoveItem(bool deleteDependencies)
 {
     auto item = m_CandidateObjects[m_CandidateItemIndex];
     m_CandidateObjects.erase(m_CandidateObjects.begin() + m_CandidateItemIndex);
 
     Editor->DeselectObject(item);
+
+    if (deleteDependencies && m_CurrentItemType == Node)
+        DeleteDeadLinks(item->ID().AsNodeId());
 
     if (m_CurrentItemType == Link)
         Editor->NotifyLinkDeleted(item->AsLink());

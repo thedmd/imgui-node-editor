@@ -341,11 +341,11 @@ bool ax::NodeEditor::QueryDeletedNode(NodeId* nodeId)
     return context.QueryNode(nodeId);
 }
 
-bool ax::NodeEditor::AcceptDeletedItem()
+bool ax::NodeEditor::AcceptDeletedItem(bool deleteDependencies)
 {
     auto& context = s_Editor->GetItemDeleter();
 
-    return context.AcceptItem();
+    return context.AcceptItem(deleteDependencies);
 }
 
 void ax::NodeEditor::RejectDeletedItem()

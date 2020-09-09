@@ -276,7 +276,7 @@ void EndCreate();
 bool BeginDelete();
 bool QueryDeletedLink(LinkId* linkId, PinId* startId = nullptr, PinId* endId = nullptr);
 bool QueryDeletedNode(NodeId* nodeId);
-bool AcceptDeletedItem();
+bool AcceptDeletedItem(bool deleteDependencies = true);
 void RejectDeletedItem();
 void EndDelete();
 

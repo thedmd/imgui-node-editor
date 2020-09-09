@@ -1107,15 +1107,17 @@ struct DeleteItemsAction final: EditorAction
     bool QueryLink(LinkId* linkId, PinId* startId = nullptr, PinId* endId = nullptr);
     bool QueryNode(NodeId* nodeId);
 
-    bool AcceptItem();
+    bool AcceptItem(bool deleteDependencies);
     void RejectItem();
 
 private:
     enum IteratorType { Unknown, Link, Node };
     enum UserAction { Undetermined, Accepted, Rejected };
 
+    void DeleteDeadLinks(NodeId nodeId);
+
     bool QueryItem(ObjectId* itemId, IteratorType itemType);
-    void RemoveItem();
+    void RemoveItem(bool deleteDependencies);
 
     vector<Object*> m_ManuallyDeletedObjects;
 
