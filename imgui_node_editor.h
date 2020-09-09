@@ -330,6 +330,9 @@ void EndShortcut();
 
 float GetCurrentZoom();
 
+NodeId GetHoveredNode();
+PinId GetHoveredPin();
+LinkId GetHoveredLink();
 NodeId GetDoubleClickedNode();
 PinId GetDoubleClickedPin();
 LinkId GetDoubleClickedLink();

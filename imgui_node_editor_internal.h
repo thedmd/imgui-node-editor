@@ -1377,6 +1377,9 @@ struct EditorContext
     void EnableShortcuts(bool enable);
     bool AreShortcutsEnabled();
 
+    NodeId GetHoveredNode()            const { return m_HoveredNode;             }
+    PinId  GetHoveredPin()             const { return m_HoveredPin;              }
+    LinkId GetHoveredLink()            const { return m_HoveredLink;             }
     NodeId GetDoubleClickedNode()      const { return m_DoubleClickedNode;       }
     PinId  GetDoubleClickedPin()       const { return m_DoubleClickedPin;        }
     LinkId GetDoubleClickedLink()      const { return m_DoubleClickedLink;       }
@@ -1448,6 +1451,9 @@ private:
     vector<AnimationController*> m_AnimationControllers;
     FlowAnimationController      m_FlowAnimationController;
 
+    NodeId              m_HoveredNode;
+    PinId               m_HoveredPin;
+    LinkId              m_HoveredLink;
     NodeId              m_DoubleClickedNode;
     PinId               m_DoubleClickedPin;
     LinkId              m_DoubleClickedLink;

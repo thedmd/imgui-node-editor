@@ -1032,6 +1032,9 @@ ed::EditorContext::EditorContext(const ax::NodeEditor::Config* config)
     , m_DeleteItemsAction(this)
     , m_AnimationControllers{ &m_FlowAnimationController }
     , m_FlowAnimationController(this)
+    , m_HoveredNode(0)
+    , m_HoveredPin(0)
+    , m_HoveredLink(0)
     , m_DoubleClickedNode(0)
     , m_DoubleClickedPin(0)
     , m_DoubleClickedLink(0)
@@ -1132,6 +1135,9 @@ void ed::EditorContext::End()
     auto  control     = BuildControl(m_CurrentAction && m_CurrentAction->IsDragging()); // NavigateAction.IsMovingOverEdge()
     //auto& editorStyle = GetStyle();
 
+    m_HoveredNode             = control.HotNode && m_CurrentAction == nullptr ? control.HotNode->m_ID : 0;
+    m_HoveredPin              = control.HotPin  && m_CurrentAction == nullptr ? control.HotPin->m_ID  : 0;
+    m_HoveredLink             = control.HotLink && m_CurrentAction == nullptr ? control.HotLink->m_ID : 0;
     m_DoubleClickedNode       = control.DoubleClickedNode ? control.DoubleClickedNode->m_ID : 0;
     m_DoubleClickedPin        = control.DoubleClickedPin  ? control.DoubleClickedPin->m_ID  : 0;
     m_DoubleClickedLink       = control.DoubleClickedLink ? control.DoubleClickedLink->m_ID : 0;
