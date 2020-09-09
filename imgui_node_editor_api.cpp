@@ -631,6 +631,20 @@ bool ax::NodeEditor::IsBackgroundDoubleClicked()
     return s_Editor->IsBackgroundDoubleClicked();
 }
 
+bool ax::NodeEditor::GetLinkPins(LinkId linkId, PinId* startPinId, PinId* endPinId)
+{
+    auto link = s_Editor->FindLink(linkId);
+    if (!link)
+        return false;
+
+    if (startPinId)
+        *startPinId = link->m_StartPin->m_ID;
+    if (endPinId)
+        *endPinId = link->m_EndPin->m_ID;
+
+    return true;
+}
+
 bool ax::NodeEditor::PinHadAnyLinks(PinId pinId)
 {
     return s_Editor->PinHadAnyLinks(pinId);

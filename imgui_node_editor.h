@@ -339,6 +339,8 @@ LinkId GetDoubleClickedLink();
 bool IsBackgroundClicked();
 bool IsBackgroundDoubleClicked();
 
+bool GetLinkPins(LinkId linkId, PinId* startPinId, PinId* endPinId); // pass nullptr if particular pin do not interest you
+
 bool PinHadAnyLinks(PinId pinId);
 
 ImVec2 GetScreenSize();
