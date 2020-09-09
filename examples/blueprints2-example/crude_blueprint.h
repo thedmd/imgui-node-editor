@@ -45,6 +45,8 @@ struct Blueprint;
 
 enum class PinType: int32_t { Void = -1, Any, Flow, Bool, Int32, Float, String };
 
+const char* PinTypeToString(PinType pinType);
+
 struct PinValue
 {
     using ValueType = variant<monostate, FlowPin*, bool, int32_t, float, string>;
@@ -330,6 +332,7 @@ struct NodeTypeInfo
 
     uint32_t    m_Id;
     string_view m_Name;
+    string_view m_DisplayName;
     Factory     m_Factory;
 };
 
@@ -366,7 +369,7 @@ struct NodeTypeInfo
 //
 struct Node
 {
-    Node(Blueprint& blueprint, string_view name);
+    Node(Blueprint& blueprint);
     virtual ~Node() = default;
 
     template <typename T>
@@ -389,6 +392,8 @@ struct Node
 
     virtual NodeTypeInfo GetTypeInfo() const { return {}; }
 
+    virtual string_view GetName() const;
+
     virtual LinkQueryResult AcceptLink(const Pin& receiver, const Pin& provider) const; // Checks if node accept link between these two pins. There node can filter out unsupported link types.
     virtual void WasLinked(const Pin& receiver, const Pin& provider); // Notifies node that link involving one of its pins has been made.
     virtual void WasUnlinked(const Pin& receiver, const Pin& provider); // Notifies node that link involving one of its pins has been broken.
@@ -400,7 +405,6 @@ struct Node
     virtual void Save(crude_json::value& value) const;
 
     uint32_t    m_Id;
-    string_view m_Name;
     Blueprint*  m_Blueprint;
 
 protected:
@@ -535,13 +539,14 @@ constexpr inline uint32_t fnv_1a_hash(const char (&string)[N])
 //
 //     NodeTypeInfo GetTypeInfo() const override { ... }
 //
-# define CRUDE_BP_NODE(type) \
+# define CRUDE_BP_NODE(type, displayName) \
     static ::crude_blueprint::NodeTypeInfo GetStaticTypeInfo() \
     { \
         return \
         { \
             ::crude_blueprint::detail::fnv_1a_hash(#type), \
             #type, \
+            displayName, \
             [](::crude_blueprint::Blueprint& blueprint) -> ::crude_blueprint::Node* { return new type(blueprint); } \
         }; \
     } \

@@ -519,7 +519,7 @@ void crude_blueprint_utilities::CreateNodeDialog::Show(Blueprint& blueprint)
     for (auto nodeTypeInfo : nodeRegistry->GetTypes())
     {
         bool selected = false;
-        if (ImGui::Selectable(nodeTypeInfo->m_Name.to_string().c_str(), &selected))
+        if (ImGui::Selectable(nodeTypeInfo->m_DisplayName.to_string().c_str(), &selected))
         {
             auto node = blueprint.CreateNode(nodeTypeInfo->m_Id);
 

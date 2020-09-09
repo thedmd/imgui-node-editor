@@ -14,9 +14,9 @@ namespace crude_blueprint {
 
 struct ConstBoolNode final : Node
 {
-    CRUDE_BP_NODE(ConstBoolNode)
+    CRUDE_BP_NODE(ConstBoolNode, "Const Bool")
 
-    ConstBoolNode(Blueprint& blueprint): Node(blueprint, "Const Bool") {}
+    ConstBoolNode(Blueprint& blueprint): Node(blueprint) {}
 
     span<Pin*> GetOutputPins() override { return m_OutputPins; }
 
@@ -27,9 +27,9 @@ struct ConstBoolNode final : Node
 
 struct ConstInt32Node final : Node
 {
-    CRUDE_BP_NODE(ConstInt32Node)
+    CRUDE_BP_NODE(ConstInt32Node, "Const Int32")
 
-    ConstInt32Node(Blueprint& blueprint): Node(blueprint, "Const Int32") {}
+    ConstInt32Node(Blueprint& blueprint): Node(blueprint) {}
 
     span<Pin*> GetOutputPins() override { return m_OutputPins; }
 
@@ -40,9 +40,9 @@ struct ConstInt32Node final : Node
 
 struct ConstFloatNode final : Node
 {
-    CRUDE_BP_NODE(ConstFloatNode)
+    CRUDE_BP_NODE(ConstFloatNode, "Const Float")
 
-    ConstFloatNode(Blueprint& blueprint): Node(blueprint, "Const Float") {}
+    ConstFloatNode(Blueprint& blueprint): Node(blueprint) {}
 
     span<Pin*> GetOutputPins() override { return m_OutputPins; }
 
@@ -53,9 +53,9 @@ struct ConstFloatNode final : Node
 
 struct ConstStringNode final : Node
 {
-    CRUDE_BP_NODE(ConstStringNode)
+    CRUDE_BP_NODE(ConstStringNode, "Const String")
 
-    ConstStringNode(Blueprint& blueprint): Node(blueprint, "Const String") {}
+    ConstStringNode(Blueprint& blueprint): Node(blueprint) {}
 
     span<Pin*> GetOutputPins() override { return m_OutputPins; }
 
@@ -71,9 +71,9 @@ struct ConstStringNode final : Node
 
 struct BranchNode final : Node
 {
-    CRUDE_BP_NODE(BranchNode)
+    CRUDE_BP_NODE(BranchNode, "Branch")
 
-    BranchNode(Blueprint& blueprint): Node(blueprint, "Branch") {}
+    BranchNode(Blueprint& blueprint): Node(blueprint) {}
 
     FlowPin Execute(Context& context, FlowPin& entryPoint) override
     {
@@ -98,9 +98,9 @@ struct BranchNode final : Node
 
 struct DoNNode final : Node
 {
-    CRUDE_BP_NODE(DoNNode)
+    CRUDE_BP_NODE(DoNNode, "Do N")
 
-    DoNNode(Blueprint& blueprint): Node(blueprint, "Do N") {}
+    DoNNode(Blueprint& blueprint): Node(blueprint) {}
 
     void Reset(Context& context) override
     {
@@ -142,9 +142,9 @@ struct DoNNode final : Node
 
 struct DoOnceNode final : Node
 {
-    CRUDE_BP_NODE(DoOnceNode)
+    CRUDE_BP_NODE(DoOnceNode, "Do Once")
 
-    DoOnceNode(Blueprint& blueprint): Node(blueprint, "Do Once") {}
+    DoOnceNode(Blueprint& blueprint): Node(blueprint) {}
 
     void Reset(Context& context) override
     {
@@ -191,9 +191,9 @@ struct DoOnceNode final : Node
 
 struct FlipFlopNode final : Node
 {
-    CRUDE_BP_NODE(FlipFlopNode)
+    CRUDE_BP_NODE(FlipFlopNode, "Flip Flop")
 
-    FlipFlopNode(Blueprint& blueprint): Node(blueprint, "Flip Flop") {}
+    FlipFlopNode(Blueprint& blueprint): Node(blueprint) {}
 
     void Reset(Context& context) override
     {
@@ -225,9 +225,9 @@ struct FlipFlopNode final : Node
 // In UE4 one iteration is done per frame. Here whole loop is executed at once.
 struct ForLoopNode final : Node
 {
-    CRUDE_BP_NODE(ForLoopNode)
+    CRUDE_BP_NODE(ForLoopNode, "For Loop")
 
-    ForLoopNode(Blueprint& blueprint): Node(blueprint, "For Loop") {}
+    ForLoopNode(Blueprint& blueprint): Node(blueprint) {}
 
     void Reset(Context& context) override
     {
@@ -279,9 +279,9 @@ struct ForLoopNode final : Node
 
 struct GateNode final : Node
 {
-    CRUDE_BP_NODE(GateNode)
+    CRUDE_BP_NODE(GateNode, "Gate")
 
-    GateNode(Blueprint& blueprint): Node(blueprint, "Gate") {}
+    GateNode(Blueprint& blueprint): Node(blueprint) {}
 
     void Reset(Context& context) override
     {
@@ -329,9 +329,12 @@ struct GateNode final : Node
 
 struct ToStringNode final : Node
 {
-    CRUDE_BP_NODE(ToStringNode)
+    CRUDE_BP_NODE(ToStringNode, "To String")
 
-    ToStringNode(Blueprint& blueprint): Node(blueprint, "To String") {}
+    ToStringNode(Blueprint& blueprint): Node(blueprint)
+    {
+        SetType(PinType::Any);
+    }
 
     FlowPin Execute(Context& context, FlowPin& entryPoint) override
     {
@@ -353,20 +356,37 @@ struct ToStringNode final : Node
         return m_Exit;
     }
 
+    string_view GetName() const override
+    {
+        return m_Name;
+    }
+
+    void SetType(PinType type)
+    {
+        if (type != PinType::Any)
+            m_Name = string(PinTypeToString(type)) + " To String";
+        else
+            m_Name = "To String";
+
+        m_Value.SetValueType(type);
+    }
+
     void WasLinked(const Pin& receiver, const Pin& provider) override
     {
         if (receiver.m_Id == m_Value.m_Id)
-            m_Value.SetValueType(provider.GetValueType());
+            SetType(provider.GetValueType());
     }
 
     void WasUnlinked(const Pin& receiver, const Pin& provider) override
     {
         if (receiver.m_Id == m_Value.m_Id)
-            m_Value.SetValueType(PinType::Any);
+            SetType(PinType::Any);
     }
 
     span<Pin*> GetInputPins() override { return m_InputPins; }
     span<Pin*> GetOutputPins() override { return m_OutputPins; }
+
+    string m_Name;
 
     FlowPin   m_Enter  = { this };
     FlowPin   m_Exit   = { this };
@@ -385,9 +405,9 @@ extern "C" __declspec(dllimport) void __stdcall OutputDebugStringA(const char* s
 
 struct PrintNode final : Node
 {
-    CRUDE_BP_NODE(PrintNode)
+    CRUDE_BP_NODE(PrintNode, "Print")
 
-    PrintNode(Blueprint& blueprint): Node(blueprint, "Print") {}
+    PrintNode(Blueprint& blueprint): Node(blueprint) {}
 
     FlowPin Execute(Context& context, FlowPin& entryPoint) override
     {
@@ -417,9 +437,9 @@ struct PrintNode final : Node
 
 struct EntryPointNode final : Node
 {
-    CRUDE_BP_NODE(EntryPointNode)
+    CRUDE_BP_NODE(EntryPointNode, "Start")
 
-    EntryPointNode(Blueprint& blueprint): Node(blueprint, "Start") {}
+    EntryPointNode(Blueprint& blueprint): Node(blueprint) {}
 
     FlowPin Execute(Context& context, FlowPin& entryPoint) override
     {
@@ -435,9 +455,9 @@ struct EntryPointNode final : Node
 
 struct AddNode final : Node
 {
-    CRUDE_BP_NODE(AddNode)
+    CRUDE_BP_NODE(AddNode, "Add (const)")
 
-    AddNode(Blueprint& blueprint): Node(blueprint, "Add (const)")
+    AddNode(Blueprint& blueprint): Node(blueprint)
     {
         SetType(PinType::Any);
     }
@@ -469,6 +489,11 @@ struct AddNode final : Node
         }
         else
             return Node::EvaluatePin(context, pin);
+    }
+
+    string_view GetName() const override
+    {
+        return m_Name;
     }
 
     LinkQueryResult AcceptLink(const Pin& receiver, const Pin& provider) const override
@@ -527,6 +552,11 @@ struct AddNode final : Node
 
     void SetType(PinType type)
     {
+        if (type != PinType::Any)
+            m_Name = string("Add ") + PinTypeToString(type) + " (const)";
+        else
+            m_Name = "Add (const)";
+
         m_Type = type;
 
         m_A.SetValueType(type);
@@ -536,6 +566,8 @@ struct AddNode final : Node
 
     span<Pin*> GetInputPins() override { return m_InputPins; }
     span<Pin*> GetOutputPins() override { return m_OutputPins; }
+
+    string m_Name;
 
     PinType m_Type = PinType::Any;
 
