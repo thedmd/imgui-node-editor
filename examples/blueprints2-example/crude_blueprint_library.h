@@ -502,22 +502,31 @@ struct AddNode final : Node
         if (!result)
             return result;
 
-        // Accept connection of any type
-        if (m_Type != PinType::Any)
+        if (m_Type == PinType::Void)
         {
-            if (receiver.m_Node == this && receiver.GetValueType() != m_Type)
-                return { false, "Receiver must match type of the node" };
-
-            if (provider.m_Node == this && provider.GetValueType() != m_Type)
+            if (receiver.m_Node == this && provider.GetValueType() != m_PendingType && provider.GetType() != PinType::Any)
                 return { false, "Provider must match type of the node" };
+
+            if (provider.m_Node == this && receiver.GetValueType() != m_PendingType && receiver.GetType() != PinType::Any)
+                return { false, "Receiver must match type of the node" };
         }
-        else if (m_Type == PinType::Any)
+
+        // Accept connection of any type
+        //if (m_Type != PinType::Any && m_Type != PinType::Void)
+        //{
+        //    if (receiver.m_Node == this && receiver.GetValueType() != m_Type)
+        //        return { false, "Receiver must match type of the node" };
+
+        //    if (provider.m_Node == this && provider.GetValueType() != m_Type)
+        //        return { false, "Provider must match type of the node" };
+        //}
+        //else if (m_Type == PinType::Any)
         {
             auto candidateType = PinType::Void;
             if (receiver.m_Node != this)
-                candidateType = receiver.GetValueType();
+                candidateType = receiver.GetType() != PinType::Any ? receiver.GetValueType() : PinType::Any;
             else if (provider.m_Node != this)
-                candidateType = provider.GetValueType();
+                candidateType = provider.GetType() != PinType::Any ? provider.GetValueType() : PinType::Any;
 
             switch (candidateType)
             {
@@ -537,7 +546,7 @@ struct AddNode final : Node
 
     void WasLinked(const Pin& receiver, const Pin& provider) override
     {
-        if (m_Type != PinType::Any)
+        if (m_Type == PinType::Void)
             return;
 
         if (receiver.m_Id == m_A.m_Id || receiver.m_Id == m_B.m_Id)
@@ -557,11 +566,14 @@ struct AddNode final : Node
         else
             m_Name = "Add (const)";
 
-        m_Type = type;
+        m_Type = PinType::Void;
+        m_PendingType = type;
 
         m_A.SetValueType(type);
         m_B.SetValueType(type);
         m_Result.SetValueType(type);
+
+        m_Type = type;
     }
 
     span<Pin*> GetInputPins() override { return m_InputPins; }
@@ -577,6 +589,9 @@ struct AddNode final : Node
 
     Pin* m_InputPins[2] = { &m_A, &m_B };
     Pin* m_OutputPins[1] = { &m_Result };
+
+private:
+    PinType m_PendingType = PinType::Any;
 };
 
 } // namespace crude_blueprint {

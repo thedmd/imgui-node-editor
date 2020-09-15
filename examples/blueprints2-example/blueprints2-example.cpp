@@ -12,6 +12,9 @@
 
 # include "crude_json.h"
 
+// TODO:
+//  - figure out how to present possible action (ex. Alt + click on link)
+
 //#include <float.h>
 //unsigned int fp_control_state = _controlfp(_EM_INEXACT, _MCW_EM);
 
@@ -23,6 +26,9 @@ using namespace crude_blueprint_utilities;
 static ed::EditorContext* g_Editor = nullptr;
 static Blueprint g_Blueprint;
 static CreateNodeDialog g_CreateNodeDailog;
+static NodeContextMenu g_NodeContextMenu;
+static PinContextMenu g_PinContextMenu;
+static LinkContextMenu g_LinkContextMenu;
 
 static EntryPointNode* FindEntryPointNode();
 
@@ -87,20 +93,20 @@ void Application_Initialize()
 
     //auto b3 = b2;
 
-    g_Blueprint.CreateNode<BranchNode>();
-    g_Blueprint.CreateNode<DoNNode>();
-    g_Blueprint.CreateNode<DoOnceNode>();
-    g_Blueprint.CreateNode<FlipFlopNode>();
-    g_Blueprint.CreateNode<ForLoopNode>();
-    g_Blueprint.CreateNode<GateNode>();
-    g_Blueprint.CreateNode<AddNode>();
-    g_Blueprint.CreateNode<PrintNode>();
-    g_Blueprint.CreateNode<ConstBoolNode>();
-    g_Blueprint.CreateNode<ConstInt32Node>();
-    g_Blueprint.CreateNode<ConstFloatNode>();
-    g_Blueprint.CreateNode<ConstStringNode>();
-    g_Blueprint.CreateNode<ToStringNode>();
-    g_Blueprint.CreateNode<AddNode>();
+    //g_Blueprint.CreateNode<BranchNode>();
+    //g_Blueprint.CreateNode<DoNNode>();
+    //g_Blueprint.CreateNode<DoOnceNode>();
+    //g_Blueprint.CreateNode<FlipFlopNode>();
+    //g_Blueprint.CreateNode<ForLoopNode>();
+    //g_Blueprint.CreateNode<GateNode>();
+    //g_Blueprint.CreateNode<AddNode>();
+    //g_Blueprint.CreateNode<PrintNode>();
+    //g_Blueprint.CreateNode<ConstBoolNode>();
+    //g_Blueprint.CreateNode<ConstInt32Node>();
+    //g_Blueprint.CreateNode<ConstFloatNode>();
+    //g_Blueprint.CreateNode<ConstStringNode>();
+    //g_Blueprint.CreateNode<ToStringNode>();
+    //g_Blueprint.CreateNode<AddNode>();
 
 
     ed::Config config;
@@ -267,7 +273,7 @@ static void CommitBlueprintNodes(Blueprint& blueprint, DebugOverlay& debugOverla
             if (!blueprint.HasPinAnyLink(*pin))
             {
                 ImGui::SameLine();
-                EditOrDrawPinValue(*pin);
+                DrawPinValueWithEditor(*pin);
             }
 
             ed::EndPin();
@@ -459,6 +465,58 @@ static void HandleDestroyAction(Blueprint& blueprint)
         blueprint.DeleteNode(node);
 }
 
+static void HandleContextMenuAction(Blueprint& blueprint)
+{
+    if (ed::ShowBackgroundContextMenu())
+    {
+        ed::Suspend();
+        g_CreateNodeDailog.Open();
+        ed::Resume();
+    }
+
+    ed::NodeId contextNodeId;
+    if (ed::ShowNodeContextMenu(&contextNodeId))
+    {
+        auto node = blueprint.FindNode(static_cast<uint32_t>(contextNodeId.Get()));
+
+        ed::Suspend();
+        g_NodeContextMenu.Open(node);
+        ed::Resume();
+    }
+
+    ed::PinId contextPinId;
+    if (ed::ShowPinContextMenu(&contextPinId))
+    {
+        auto pin = blueprint.FindPin(static_cast<uint32_t>(contextPinId.Get()));
+
+        ed::Suspend();
+        g_PinContextMenu.Open(pin);
+        ed::Resume();
+    }
+
+    ed::LinkId contextLinkId;
+    if (ed::ShowLinkContextMenu(&contextLinkId))
+    {
+        auto pin = blueprint.FindPin(static_cast<uint32_t>(contextLinkId.Get()));
+
+        ed::Suspend();
+        g_LinkContextMenu.Open(pin);
+        ed::Resume();
+    }
+}
+
+static void ShowDialogs(Blueprint& blueprint)
+{
+    ed::Suspend();
+
+    g_CreateNodeDailog.Show(blueprint);
+    g_NodeContextMenu.Show(blueprint);
+    g_PinContextMenu.Show(blueprint);
+    g_LinkContextMenu.Show(blueprint);
+
+    ed::Resume();
+}
+
 static void ShowInfoTooltip(Blueprint& blueprint)
 {
     if (!ed::IsActive())
@@ -548,15 +606,6 @@ static void ShowInfoTooltip(Blueprint& blueprint)
     }
 }
 
-static void ShowDialogs(Blueprint& blueprint)
-{
-    ed::Suspend();
-
-    g_CreateNodeDailog.Show(blueprint);
-
-    ed::Resume();
-}
-
 void Application_Frame()
 {
     ed::SetCurrentEditor(g_Editor);
@@ -573,6 +622,7 @@ void Application_Frame()
 
     HandleCreateAction(g_Blueprint);
     HandleDestroyAction(g_Blueprint);
+    HandleContextMenuAction(g_Blueprint);
 
     ShowDialogs(g_Blueprint);
 

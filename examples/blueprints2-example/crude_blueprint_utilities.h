@@ -8,12 +8,15 @@ namespace crude_blueprint_utilities {
 
 using namespace crude_blueprint;
 
-ImEx::IconType PinTypeToIconType(PinType pinType);
-ImVec4 PinTypeToColor(PinType pinType);
-bool DrawPinValue(const PinValue& value);
-bool EditPinImmediateValue(Pin& pin);
-void EditOrDrawPinValue(Pin& pin);
+ImEx::IconType PinTypeToIconType(PinType pinType); // Returns icon for corresponding pin type.
+ImVec4 PinTypeToColor(PinType pinType); // Returns color for corresponding pin type.
+bool DrawPinValue(const PinValue& value); // Draw widget representing pin value.
+bool EditPinValue(Pin& pin); // Show editor for pin. Returns true if edit is complete.
+void DrawPinValueWithEditor(Pin& pin); // Draw pin value or editor if value is clicked.
+const vector<Node*> GetSelectedNodes(Blueprint& blueprint); // Returns selected nodes as a vector.
+const vector<Pin*> GetSelectedLinks(Blueprint& blueprint); // Returns selected links as a vector.
 
+// Uses ImDrawListSplitter to draw background under pin value
 struct PinValueBackgroundRenderer
 {
     PinValueBackgroundRenderer();
@@ -30,6 +33,8 @@ private:
     float m_Alpha = 1.0f;
 };
 
+// Show overlay while blueprint is executed presenting
+// current state and execution point.
 struct DebugOverlay:
     private ContextMonitor
 {
@@ -54,6 +59,7 @@ private:
     ImDrawListSplitter m_Splitter;
 };
 
+// Wrapper over flat API for item construction
 struct ItemBuilder
 {
     struct NodeBuilder
@@ -87,6 +93,7 @@ private:
     LinkBuilder m_LinkBuilder;
 };
 
+// Wrapper over flat API for item deletion
 struct ItemDeleter
 {
     struct NodeDeleter
@@ -121,6 +128,7 @@ private:
     LinkDeleter m_LinkDeleter;
 };
 
+// Dialog for picking new node type
 struct CreateNodeDialog
 {
     void Open(Pin* fromPin = nullptr);
@@ -128,6 +136,26 @@ struct CreateNodeDialog
 
 private:
     bool CreateLinkToFirstMatchingPin(Node& node, Pin& fromPin);
+
+    vector<const NodeTypeInfo*> m_SortedNodes;
+};
+
+struct NodeContextMenu
+{
+    void Open(Node* node = nullptr);
+    void Show(Blueprint& blueprint);
+};
+
+struct PinContextMenu
+{
+    void Open(Pin* pin = nullptr);
+    void Show(Blueprint& blueprint);
+};
+
+struct LinkContextMenu
+{
+    void Open(Pin* pin = nullptr);
+    void Show(Blueprint& blueprint);
 };
 
 } // namespace crude_blueprint_utilities {
