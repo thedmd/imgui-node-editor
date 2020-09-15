@@ -1296,6 +1296,9 @@ struct EditorContext
     void FindNodesInRect(const ImRect& r, vector<Node*>& result, bool append = false, bool includeIntersecting = true);
     void FindLinksInRect(const ImRect& r, vector<Link*>& result, bool append = false);
 
+    bool HasAnyLinks(NodeId nodeId) const;
+    bool HasAnyLinks(PinId pinId) const;
+
     void FindLinksForNode(NodeId nodeId, vector<Link*>& result, bool add = false);
 
     bool PinHadAnyLinks(PinId pinId);

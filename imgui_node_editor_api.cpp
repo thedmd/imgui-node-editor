@@ -506,6 +506,16 @@ bool ax::NodeEditor::DeleteLink(LinkId linkId)
         return false;
 }
 
+bool ax::NodeEditor::HasAnyLinks(NodeId nodeId)
+{
+    return s_Editor->HasAnyLinks(nodeId);
+}
+
+bool ax::NodeEditor::HasAnyLinks(PinId pinId)
+{
+    return s_Editor->HasAnyLinks(pinId);
+}
+
 void ax::NodeEditor::NavigateToContent(float duration)
 {
     s_Editor->NavigateTo(s_Editor->GetContentBounds(), true, duration);

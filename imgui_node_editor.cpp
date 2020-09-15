@@ -1644,6 +1644,34 @@ void ed::EditorContext::FindLinksInRect(const ImRect& r, vector<Link*>& result, 
             result.push_back(link);
 }
 
+bool ed::EditorContext::HasAnyLinks(NodeId nodeId) const
+{
+    for (auto link : m_Links)
+    {
+        if (!link->m_IsLive)
+            continue;
+
+        if (link->m_StartPin->m_Node->m_ID == nodeId || link->m_EndPin->m_Node->m_ID == nodeId)
+            return true;
+    }
+
+    return false;
+}
+
+bool ed::EditorContext::HasAnyLinks(PinId pinId) const
+{
+    for (auto link : m_Links)
+    {
+        if (!link->m_IsLive)
+            continue;
+
+        if (link->m_StartPin->m_ID == pinId || link->m_EndPin->m_ID == pinId)
+            return true;
+    }
+
+    return false;
+}
+
 void ed::EditorContext::FindLinksForNode(NodeId nodeId, vector<Link*>& result, bool add)
 {
     if (!add)
