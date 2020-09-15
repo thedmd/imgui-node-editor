@@ -15,4 +15,33 @@
         </Expand>
     </Type>
 
+    <Type Name="ax::NodeEditor::Details::SafePointerType&lt;*&gt;">
+        <DisplayString>{m_Value}</DisplayString>
+        <Expand>
+            <Item Name="[Value]">m_Value</Item>
+            <Item Name="[Pointer]">($T1*)m_Value</Item>
+        </Expand>
+    </Type>
+
+    <Type Name="ax::NodeEditor::NodeId">
+        <DisplayString>Node {m_Value}</DisplayString>
+        <Expand>
+            <Item Name="[Value]">m_Value</Item>
+        </Expand>
+    </Type>
+
+    <Type Name="ax::NodeEditor::LinkId">
+        <DisplayString>Link {m_Value}</DisplayString>
+        <Expand>
+            <Item Name="[Value]">m_Value</Item>
+        </Expand>
+    </Type>
+
+    <Type Name="ax::NodeEditor::PinId">
+        <DisplayString>Pin {m_Value}</DisplayString>
+        <Expand>
+            <Item Name="[Value]">m_Value</Item>
+        </Expand>
+    </Type>
+
 </AutoVisualizer>
