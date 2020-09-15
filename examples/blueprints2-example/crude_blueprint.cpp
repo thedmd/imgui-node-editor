@@ -286,15 +286,14 @@ bool crude_blueprint::AnyPin::SetValueType(PinType type)
         }
     }
 
-    auto links = m_Node->m_Blueprint->FindPinsLinkedTo(*this);
-    for (auto link : links)
+    auto linkedToSet = m_Node->m_Blueprint->FindPinsLinkedTo(*this);
+    for (auto linkedTo : linkedToSet)
     {
-        if (link->GetValueType() == type)
+        if (linkedTo->GetValueType() == type)
             continue;
 
-        link->Unlink();
-        if (link->SetValueType(type))
-            link->LinkTo(*this);
+        linkedTo->Unlink();
+        linkedTo->LinkTo(*this);
     }
 
     return true;
@@ -467,7 +466,7 @@ crude_blueprint::LinkQueryResult crude_blueprint::Node::AcceptLink(const Pin& re
     if (!provider.IsProvider())
         return { false, "Provider pin cannot be used as receiver"};
 
-    if (provider.GetValueType() != receiver.GetValueType() && (provider.GetValueType() != PinType::Any && receiver.GetValueType() != PinType::Any))
+    if (provider.GetValueType() != receiver.GetValueType() && (provider.GetType() != PinType::Any && receiver.GetType() != PinType::Any))
         return { false, "Incompatible types"};
 
     return {true};
@@ -825,7 +824,7 @@ void crude_blueprint::NodeRegistry::RebuildTypes()
     for (auto& typeInfo : m_BuildInNodes)
         m_Types.push_back(&typeInfo);
 
-    std::stable_sort(m_Types.begin(), m_Types.end(), [](const NodeTypeInfo* lhs, const NodeTypeInfo* rhs) { return lhs->m_Id < rhs->m_Id; });
+    std::sort(m_Types.begin(), m_Types.end(), [](const NodeTypeInfo* lhs, const NodeTypeInfo* rhs) { return lhs->m_Id < rhs->m_Id; });
     m_Types.erase(std::unique(m_Types.begin(), m_Types.end()), m_Types.end());
 }
 

@@ -12,7 +12,9 @@
         <AlternativeType Name="crude_blueprint::Int32Pin"/>
         <AlternativeType Name="crude_blueprint::FloatPin"/>
         <AlternativeType Name="crude_blueprint::StringPin"/>
+        <DisplayString Condition="m_Link" Optional="true">{{ {m_Id}: {m_Type,en} ({(*m_InnerPin).m_Type,en}), {m_Name} }} Pin -&gt; {*m_Link}</DisplayString>
         <DisplayString Condition="m_Link">{{ {m_Id}: {m_Type,en}, {m_Name} }} Pin -&gt; {*m_Link}</DisplayString>
+        <DisplayString Optional="true">{{ {m_Id}: {m_Type,en}, ({(*m_InnerPin).m_Type,en}), {m_Name} }} Pin</DisplayString>
         <DisplayString>{{ {m_Id}: {m_Type,en}, {m_Name} }} Pin</DisplayString>
         <Expand>
             <Item Name="Id">m_Id</Item>
@@ -23,6 +25,7 @@
             <Item Name="Link" Condition="m_Link">*m_Link</Item>
             <Item Name="[Type]" Optional="true">GetValueType()</Item>
             <Item Name="[Value]" Optional="true">GetValue()</Item>
+            <Item Name="[Inner]" Optional="true">*m_InnerPin</Item>
         </Expand>
     </Type>
 

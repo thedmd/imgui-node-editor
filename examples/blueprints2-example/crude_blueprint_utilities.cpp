@@ -1,6 +1,7 @@
 # include "crude_blueprint_utilities.h"
 # define IMGUI_DEFINE_MATH_OPERATORS
 # include <imgui_internal.h>
+# include <algorithm>
 
 ImEx::IconType crude_blueprint_utilities::PinTypeToIconType(PinType pinType)
 {
@@ -60,7 +61,7 @@ bool crude_blueprint_utilities::DrawPinValue(const PinValue& value)
     return false;
 }
 
-bool crude_blueprint_utilities::EditPinImmediateValue(Pin& pin)
+bool crude_blueprint_utilities::EditPinValue(Pin& pin)
 {
     ImEx::ScopedItemWidth scopedItemWidth{120};
 
@@ -69,32 +70,32 @@ bool crude_blueprint_utilities::EditPinImmediateValue(Pin& pin)
     switch (pinValue.GetType())
     {
         case PinType::Any:
-            return false;
+            return true;
         case PinType::Flow:
-            return false;
+            return true;
         case PinType::Bool:
             pin.SetValue(!pinValue.As<bool>());
-            return false;
+            return true;
         case PinType::Int32:
             {
                 auto value = pinValue.As<int32_t>();
                 if (ImGui::InputInt("##editor", &value, 1, 100, ImGuiInputTextFlags_EnterReturnsTrue))
                 {
                     pin.SetValue(value);
-                    return false;
+                    return true;
                 }
             }
-            return true;
+            return false;
         case PinType::Float:
             {
                 auto value = pinValue.As<float>();
                 if (ImGui::InputFloat("##editor", &value, 1, 100, "%.3f", ImGuiInputTextFlags_EnterReturnsTrue))
                 {
                     pin.SetValue(value);
-                    return false;
+                    return true;
                 }
             }
-            return true;
+            return false;
         case PinType::String:
             {
                 auto value = pinValue.As<string>();
@@ -112,23 +113,23 @@ bool crude_blueprint_utilities::EditPinImmediateValue(Pin& pin)
                 }, &value))
                 {
                     pin.SetValue(value);
-                    return false;
+                    return true;
                 }
             }
-            return true;
+            return false;
     }
 
-    return false;
+    return true;
 }
 
-void crude_blueprint_utilities::EditOrDrawPinValue(Pin& pin)
+void crude_blueprint_utilities::DrawPinValueWithEditor(Pin& pin)
 {
     auto storage = ImGui::GetStateStorage();
     auto activePinId = storage->GetInt(ImGui::GetID("PinValueEditor_ActivePinId"), false);
 
     if (activePinId == pin.m_Id)
     {
-        if (!EditPinImmediateValue(pin))
+        if (EditPinValue(pin))
         {
             ax::NodeEditor::EnableShortcuts(true);
             activePinId = 0;
@@ -161,6 +162,48 @@ void crude_blueprint_utilities::EditOrDrawPinValue(Pin& pin)
     }
 
     storage->SetInt(ImGui::GetID("PinValueEditor_ActivePinId"), activePinId);
+}
+
+
+
+static const crude_blueprint_utilities::vector<crude_blueprint_utilities::Node*> crude_blueprint_utilities::GetSelectedNodes(Blueprint& blueprint)
+{
+    auto selectedObjects = ax::NodeEditor::GetSelectedNodes(nullptr, 0);
+
+    vector<ax::NodeEditor::NodeId> nodeIds;
+    nodeIds.resize(selectedObjects);
+    nodeIds.resize(ax::NodeEditor::GetSelectedNodes(nodeIds.data(), selectedObjects));
+
+    vector<Node*> result;
+    result.reserve(nodeIds.size());
+    for (auto nodeId : nodeIds)
+    {
+        auto node = blueprint.FindNode(static_cast<uint32_t>(nodeId.Get()));
+        IM_ASSERT(node != nullptr);
+        result.push_back(node);
+    }
+
+    return result;
+}
+
+static const crude_blueprint_utilities::vector<crude_blueprint_utilities::Pin*> crude_blueprint_utilities::GetSelectedLinks(Blueprint& blueprint)
+{
+    auto selectedObjects = ax::NodeEditor::GetSelectedLinks(nullptr, 0);
+
+    vector<ax::NodeEditor::LinkId> linkIds;
+    linkIds.resize(selectedObjects);
+    linkIds.resize(ax::NodeEditor::GetSelectedLinks(linkIds.data(), selectedObjects));
+
+    vector<Pin*> result;
+    result.reserve(linkIds.size());
+    for (auto linkId : linkIds)
+    {
+        auto node = blueprint.FindPin(static_cast<uint32_t>(linkId.Get()));
+        IM_ASSERT(node != nullptr);
+        result.push_back(node);
+    }
+
+    return result;
 }
 
 crude_blueprint_utilities::PinValueBackgroundRenderer::PinValueBackgroundRenderer(const ImVec4 color, float alpha /*= 0.25f*/)
@@ -499,6 +542,8 @@ void crude_blueprint_utilities::CreateNodeDialog::Open(Pin* fromPin)
     auto storage = ImGui::GetStateStorage();
     storage->SetVoidPtr(ImGui::GetID("##create_node_pin"), fromPin);
     ImGui::OpenPopup("##create_node");
+
+    m_SortedNodes.clear();
 }
 
 void crude_blueprint_utilities::CreateNodeDialog::Show(Blueprint& blueprint)
@@ -516,7 +561,20 @@ void crude_blueprint_utilities::CreateNodeDialog::Show(Blueprint& blueprint)
 
     auto nodeRegistry = blueprint.GetNodeRegistry();
 
-    for (auto nodeTypeInfo : nodeRegistry->GetTypes())
+    if (m_SortedNodes.empty())
+    {
+        auto types = nodeRegistry->GetTypes();
+
+        m_SortedNodes.assign(types.begin(), types.end());
+        std::sort(m_SortedNodes.begin(), m_SortedNodes.end(), [](const auto& lhs, const auto& rhs)
+        {
+            return std::lexicographical_compare(
+                lhs->m_DisplayName.begin(), lhs->m_DisplayName.end(),
+                rhs->m_DisplayName.begin(), rhs->m_DisplayName.end());
+        });
+    }
+
+    for (auto nodeTypeInfo : m_SortedNodes)
     {
         bool selected = false;
         if (ImGui::Selectable(nodeTypeInfo->m_DisplayName.to_string().c_str(), &selected))
@@ -548,4 +606,129 @@ bool crude_blueprint_utilities::CreateNodeDialog::CreateLinkToFirstMatchingPin(N
             return true;
 
     return false;
+}
+
+
+
+
+void crude_blueprint_utilities::NodeContextMenu::Open(Node* node /*= nullptr*/)
+{
+    ImGui::GetStateStorage()->SetVoidPtr(ImGui::GetID("##node-context-menu-node"), node);
+    ImGui::OpenPopup("##node-context-menu");
+}
+
+void crude_blueprint_utilities::NodeContextMenu::Show(Blueprint& blueprint)
+{
+    if (!ImGui::IsPopupOpen("##node-context-menu"))
+        return;
+
+    auto storage = ImGui::GetStateStorage();
+    auto node = reinterpret_cast<Node*>(storage->GetVoidPtr(ImGui::GetID("##node-context-menu-node")));
+
+    if (ImGui::BeginPopup("##node-context-menu"))
+    {
+        if (ImGui::MenuItem("Cut", nullptr, nullptr, false))
+        {
+            // #FIXME: Not implemented
+        }
+
+        if (ImGui::MenuItem("Copy", nullptr, nullptr, false))
+        {
+            // #FIXME: Not implemented
+        }
+
+        if (ImGui::MenuItem("Paste", nullptr, nullptr, false))
+        {
+            // #FIXME: Not implemented
+        }
+
+        if (ImGui::MenuItem("Duplicate", nullptr, nullptr, false))
+        {
+            // #FIXME: Not implemented
+        }
+
+        ImGui::Separator();
+
+        if (ImGui::MenuItem("Break Links", nullptr, nullptr, node != nullptr && ax::NodeEditor::HasAnyLinks(ax::NodeEditor::NodeId(node->m_Id))))
+        {
+            ax::NodeEditor::BreakLinks(ax::NodeEditor::NodeId(node->m_Id));
+        }
+
+        ImGui::Separator();
+
+        auto selectedNodes = GetSelectedNodes(blueprint);
+        if (ImGui::MenuItem("Delete This", nullptr, nullptr, node != nullptr))
+        {
+            ax::NodeEditor::DeleteNode(node->m_Id);
+        }
+        if (ImGui::MenuItem("Delete Selected", nullptr, nullptr, !selectedNodes.empty()))
+        {
+            for (auto selectedNode : selectedNodes)
+                ax::NodeEditor::DeleteNode(selectedNode->m_Id);
+        }
+
+        ImGui::EndPopup();
+    }
+}
+
+
+
+
+void crude_blueprint_utilities::PinContextMenu::Open(Pin* pin /*= nullptr*/)
+{
+    ImGui::GetStateStorage()->SetVoidPtr(ImGui::GetID("##pin-context-menu-pin"), pin);
+    ImGui::OpenPopup("##pin-context-menu");
+}
+
+void crude_blueprint_utilities::PinContextMenu::Show(Blueprint& blueprint)
+{
+    if (!ImGui::IsPopupOpen("##pin-context-menu"))
+        return;
+
+    auto storage = ImGui::GetStateStorage();
+    auto pin = reinterpret_cast<Pin*>(storage->GetVoidPtr(ImGui::GetID("##pin-context-menu-pin")));
+
+    if (ImGui::BeginPopup("##pin-context-menu"))
+    {
+        if (ImGui::MenuItem("Break Links", nullptr, nullptr, pin != nullptr && ax::NodeEditor::HasAnyLinks(ax::NodeEditor::PinId(pin->m_Id))))
+        {
+            ax::NodeEditor::BreakLinks(ax::NodeEditor::PinId(pin->m_Id));
+        }
+
+        ImGui::EndPopup();
+    }
+}
+
+
+
+
+void crude_blueprint_utilities::LinkContextMenu::Open(Pin* pin /*= nullptr*/)
+{
+    ImGui::GetStateStorage()->SetVoidPtr(ImGui::GetID("##link-context-menu-pin"), pin);
+    ImGui::OpenPopup("##link-context-menu");
+}
+
+void crude_blueprint_utilities::LinkContextMenu::Show(Blueprint& blueprint)
+{
+    if (!ImGui::IsPopupOpen("##link-context-menu"))
+        return;
+
+    auto storage = ImGui::GetStateStorage();
+    auto pin = reinterpret_cast<Pin*>(storage->GetVoidPtr(ImGui::GetID("##link-context-menu-pin")));
+
+    if (ImGui::BeginPopup("##link-context-menu"))
+    {
+        auto selectedLinks = GetSelectedLinks(blueprint);
+        if (ImGui::MenuItem("Break This", nullptr, nullptr, pin != nullptr))
+        {
+            ax::NodeEditor::DeleteLink(pin->m_Id);
+        }
+        if (ImGui::MenuItem("Break Selected", nullptr, nullptr, !selectedLinks.empty()))
+        {
+            for (auto selectedLink : selectedLinks)
+                ax::NodeEditor::DeleteLink(selectedLink->m_Id);
+        }
+
+        ImGui::EndPopup();
+    }
 }
