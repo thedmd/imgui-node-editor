@@ -1672,6 +1672,40 @@ bool ed::EditorContext::HasAnyLinks(PinId pinId) const
     return false;
 }
 
+int ed::EditorContext::BreakLinks(NodeId nodeId)
+{
+    int result = 0;
+    for (auto link : m_Links)
+    {
+        if (!link->m_IsLive)
+            continue;
+
+        if (link->m_StartPin->m_Node->m_ID == nodeId || link->m_EndPin->m_Node->m_ID == nodeId)
+        {
+            if (GetItemDeleter().Add(link))
+                ++result;
+        }
+    }
+    return result;
+}
+
+int ed::EditorContext::BreakLinks(PinId pinId)
+{
+    int result = 0;
+    for (auto link : m_Links)
+    {
+        if (!link->m_IsLive)
+            continue;
+
+        if (link->m_StartPin->m_ID == pinId || link->m_EndPin->m_ID == pinId)
+        {
+            if (GetItemDeleter().Add(link))
+                ++result;
+        }
+    }
+    return result;
+}
+
 void ed::EditorContext::FindLinksForNode(NodeId nodeId, vector<Link*>& result, bool add)
 {
     if (!add)

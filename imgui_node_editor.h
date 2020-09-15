@@ -310,6 +310,8 @@ bool DeleteLink(LinkId linkId);
 
 bool HasAnyLinks(NodeId nodeId); // Returns true if node has any link connected
 bool HasAnyLinks(PinId pinId); // Return true if pin has any link connected
+int BreakLinks(NodeId nodeId); // Break all links connected to this node
+int BreakLinks(PinId pinId); // Break all links connected to this pin
 
 void NavigateToContent(float duration = -1);
 void NavigateToSelection(bool zoomIn = false, float duration = -1);

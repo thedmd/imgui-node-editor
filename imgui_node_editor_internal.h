@@ -1299,6 +1299,9 @@ struct EditorContext
     bool HasAnyLinks(NodeId nodeId) const;
     bool HasAnyLinks(PinId pinId) const;
 
+    int BreakLinks(NodeId nodeId);
+    int BreakLinks(PinId pinId);
+
     void FindLinksForNode(NodeId nodeId, vector<Link*>& result, bool add = false);
 
     bool PinHadAnyLinks(PinId pinId);

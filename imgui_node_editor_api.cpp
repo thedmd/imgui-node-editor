@@ -516,6 +516,16 @@ bool ax::NodeEditor::HasAnyLinks(PinId pinId)
     return s_Editor->HasAnyLinks(pinId);
 }
 
+int ax::NodeEditor::BreakLinks(NodeId nodeId)
+{
+    return s_Editor->BreakLinks(nodeId);
+}
+
+int ax::NodeEditor::BreakLinks(PinId pinId)
+{
+    return s_Editor->BreakLinks(pinId);
+}
+
 void ax::NodeEditor::NavigateToContent(float duration)
 {
     s_Editor->NavigateTo(s_Editor->GetContentBounds(), true, duration);
