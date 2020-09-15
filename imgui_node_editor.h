@@ -357,8 +357,8 @@ void SelectLink(LinkId linkId, bool append = false);
 void DeselectNode(NodeId nodeId);
 void DeselectLink(LinkId linkId);
 
-bool DeleteNode(NodeId nodeId);
-bool DeleteLink(LinkId linkId);
+bool DeleteNode(NodeId nodeId); // Marks node for deletion in next BeginDelete() action
+bool DeleteLink(LinkId linkId); // Marks link for deletion in next BeginDelete() action
 
 bool HasAnyLinks(NodeId nodeId); // Returns true if node has any link connected
 bool HasAnyLinks(PinId pinId); // Return true if pin has any link connected
