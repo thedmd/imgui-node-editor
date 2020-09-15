@@ -435,6 +435,22 @@ int ax::NodeEditor::GetSelectedLinks(LinkId* links, int size)
     });
 }
 
+bool ax::NodeEditor::IsNodeSelected(NodeId nodeId)
+{
+    if (auto node = s_Editor->FindNode(nodeId))
+        return s_Editor->IsSelected(node);
+    else
+        return false;
+}
+
+bool ax::NodeEditor::IsLinkSelected(LinkId linkId)
+{
+    if (auto link = s_Editor->FindLink(linkId))
+        return s_Editor->IsSelected(link);
+    else
+        return false;
+}
+
 void ax::NodeEditor::ClearSelection()
 {
     s_Editor->ClearSelection();

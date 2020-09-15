@@ -297,6 +297,8 @@ bool HasSelectionChanged();
 int  GetSelectedObjectCount();
 int  GetSelectedNodes(NodeId* nodes, int size);
 int  GetSelectedLinks(LinkId* links, int size);
+bool IsNodeSelected(NodeId nodeId);
+bool IsLinkSelected(LinkId linkId);
 void ClearSelection();
 void SelectNode(NodeId nodeId, bool append = false);
 void SelectLink(LinkId linkId, bool append = false);
