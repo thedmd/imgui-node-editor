@@ -3,6 +3,12 @@
 #include <imgui_node_editor.h>
 #include "crude_blueprint.h"
 #include "imgui_extras.h"
+#include <inttypes.h>
+
+# define PRI_pin_fmt      "Pin %" PRIu32 "%s%*s%s"
+# define PRI_node_fmt     "Node %" PRIu32 "%s%*s%s"
+# define LOG_pin(pin)     (pin)->m_Id, (pin)->m_Name.empty() ? "" : " \"", static_cast<int>((pin)->m_Name.size()), (pin)->m_Name.data(), (pin)->m_Name.empty() ? "" : "\""
+# define LOG_node(node)   (node)->m_Id, (node)->GetName().empty() ? "" : " \"", static_cast<int>((node)->GetName().size()), (node)->GetName().data(), (node)->GetName().empty() ? "" : "\""
 
 namespace crude_blueprint_utilities {
 
@@ -57,6 +63,29 @@ private:
     FlowPin m_CurrentFlowPin;
     ImDrawList* m_DrawList = nullptr;
     ImDrawListSplitter m_Splitter;
+};
+
+struct OverlayLogger
+{
+    void Log(const char* format, ...) IM_FMTARGS(1);
+
+    void Update(float dt);
+    void Draw(const ImVec2& a, const ImVec2& b);
+
+private:
+    struct Entry
+    {
+        time_t m_Timestamp = 0;
+        string m_Buffer;
+        float  m_Timer = 0.0f;
+    };
+
+    float           m_OutlineSize                 = 0.5f;
+    float           m_Padding                     = 10.0f;
+    float           m_MessagePresentationDuration = 5.0f;
+    float           m_MessageFadeOutDuration      = 0.5f;
+    float           m_MessageLifeDuration         = m_MessagePresentationDuration + m_MessageFadeOutDuration;
+    vector<Entry>   m_Entries;
 };
 
 // Wrapper over flat API for item construction
@@ -132,10 +161,19 @@ private:
 struct CreateNodeDialog
 {
     void Open(Pin* fromPin = nullptr);
-    void Show(Blueprint& blueprint);
+    bool Show(Blueprint& blueprint);
+
+          Node* GetCreatedNode()       { return m_CreatedNode; }
+    const Node* GetCreatedNode() const { return m_CreatedNode; }
+
+    span<      Pin*>       GetCreatedLinks()       { return m_CreatedLinks; }
+    span<const Pin* const> GetCreatedLinks() const { return make_span(const_cast<const Pin* const*>(m_CreatedLinks.data()), m_CreatedLinks.size()); }
 
 private:
     bool CreateLinkToFirstMatchingPin(Node& node, Pin& fromPin);
+
+    Node*           m_CreatedNode = nullptr;
+    vector<Pin*>    m_CreatedLinks;
 
     vector<const NodeTypeInfo*> m_SortedNodes;
 };

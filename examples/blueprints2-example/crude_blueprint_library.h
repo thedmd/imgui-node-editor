@@ -397,11 +397,8 @@ struct ToStringNode final : Node
     Pin* m_OutputPins[2] = { &m_Exit, &m_String };
 };
 
-# ifdef _WIN32
-extern "C" __declspec(dllimport) void __stdcall OutputDebugStringA(const char* string);
-# else
-#     include <stdio.h>
-# endif
+struct PrintNode;
+using PrintFunction = void(*)(const PrintNode& node, string_view message);
 
 struct PrintNode final : Node
 {
@@ -409,20 +406,7 @@ struct PrintNode final : Node
 
     PrintNode(Blueprint& blueprint): Node(blueprint) {}
 
-    FlowPin Execute(Context& context, FlowPin& entryPoint) override
-    {
-        auto value = context.GetPinValue<string>(m_String);
-
-# ifdef _WIN32
-        OutputDebugStringA("PrintNode: ");
-        OutputDebugStringA(value.c_str());
-        OutputDebugStringA("\n");
-# else
-        printf("PrintNode: %s\n", value.c_str());
-# endif
-
-        return m_Exit;
-    }
+    FlowPin Execute(Context& context, FlowPin& entryPoint) override;
 
     span<Pin*> GetInputPins() override { return m_InputPins; }
     span<Pin*> GetOutputPins() override { return m_OutputPins; }
@@ -433,6 +417,8 @@ struct PrintNode final : Node
 
     Pin* m_InputPins[2] = { &m_Enter, &m_String };
     Pin* m_OutputPins[1] = { &m_Exit };
+
+    static PrintFunction s_PrintFunction;
 };
 
 struct EntryPointNode final : Node

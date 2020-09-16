@@ -2,6 +2,7 @@
 # define IMGUI_DEFINE_MATH_OPERATORS
 # include <imgui_internal.h>
 # include <algorithm>
+# include <time.h>
 
 ImEx::IconType crude_blueprint_utilities::PinTypeToIconType(PinType pinType)
 {
@@ -427,6 +428,109 @@ void crude_blueprint_utilities::DebugOverlay::OnEvaluatePin(const Context& conte
 
 
 
+void crude_blueprint_utilities::OverlayLogger::Log(const char* format, ...) IM_FMTARGS(1)
+{
+    va_list args;
+    va_start(args, format);
+    ImGuiTextBuffer textBuffer;
+    textBuffer.appendfv(format, args);
+    va_end(args);
+
+    auto timeStamp = time(nullptr);
+
+    char formattedTimeStamp[100] = {};
+    strftime(formattedTimeStamp, sizeof(formattedTimeStamp), "%H:%M:%S", localtime(&timeStamp));
+
+    auto formattedMessage = string("[") + formattedTimeStamp + "] " + textBuffer.c_str();
+
+    m_Entries.push_back({ timeStamp, std::move(formattedMessage) });
+}
+
+void crude_blueprint_utilities::OverlayLogger::Update(float dt)
+{
+    for (auto& entry : m_Entries)
+        entry.m_Timer += dt;
+
+    auto lastIt = std::remove_if(m_Entries.begin(), m_Entries.end(), [this](const Entry& entry)
+    {
+        return entry.m_Timer >= m_MessageLifeDuration;
+    });
+
+    m_Entries.erase(lastIt, m_Entries.end());
+}
+
+void crude_blueprint_utilities::OverlayLogger::Draw(const ImVec2& a, const ImVec2& b)
+{
+    const auto canvasMin = a + ImVec2(m_Padding, m_Padding);
+    const auto canvasMax = b - ImVec2(m_Padding, m_Padding);
+    const auto canvasSize = canvasMax - canvasMin;
+
+    auto drawList = ImGui::GetWindowDrawList();
+    //drawList->AddRect(a, b, IM_COL32(255, 255, 0, 255));
+
+    if (canvasSize.x < 1.0f || canvasSize.y < 1.0f)
+        return;
+
+    const auto clipRect = ImVec4(canvasMin.x, canvasMin.y, canvasMax.x, canvasMax.y);
+
+    //drawList->AddRect(canvasMin, canvasMax, IM_COL32(255, 0, 0, 255));
+
+    float outlineSize = m_OutlineSize;
+
+    auto cursor = ImVec2(canvasMin.x, canvasMax.y);
+    for (auto it = m_Entries.rbegin(), itEnd = m_Entries.rend(); it != itEnd; ++it)
+    {
+        auto& entry = *it;
+        auto message = entry.m_Buffer.data();
+        auto messageEnd = entry.m_Buffer.data() + entry.m_Buffer.size();
+
+        auto outlineOffset = ImCeil(outlineSize);
+
+
+        auto itemSize = ImGui::CalcTextSize(message, messageEnd, false, canvasSize.x);
+        itemSize.x += outlineOffset * 2.0f;
+        itemSize.y += outlineOffset * 2.0f;
+
+        cursor.y -= itemSize.y;
+
+        auto textPosition = cursor + ImVec2(outlineOffset, outlineOffset);
+
+        auto alpha = 1.0f;
+        if (entry.m_Timer > m_MessagePresentationDuration && m_MessageFadeOutDuration > 0.0f)
+        {
+            alpha = ImMin(1.0f, (entry.m_Timer - m_MessagePresentationDuration) / m_MessageFadeOutDuration);
+            alpha = 1.0f - alpha * alpha;
+        }
+
+        auto textColor = ImColor(1.0f, 1.0f, 1.0f, alpha);
+        auto outlineColor = ImColor(0.0f, 0.0f, 0.0f, alpha / 2.0f);
+
+        if (outlineSize > 0.0f)
+        {
+            // Shadow `outlineSize`. AddText() does not support subpixel rendering,
+            // to avoid artifact apply rounded up offset.
+            float outlineSize = outlineOffset;
+
+            drawList->AddText(nullptr, 0.0f, textPosition + ImVec2(+outlineSize, +outlineSize), outlineColor, message, messageEnd, canvasSize.x, &clipRect);
+            drawList->AddText(nullptr, 0.0f, textPosition + ImVec2(+outlineSize, -outlineSize), outlineColor, message, messageEnd, canvasSize.x, &clipRect);
+            drawList->AddText(nullptr, 0.0f, textPosition + ImVec2(-outlineSize, -outlineSize), outlineColor, message, messageEnd, canvasSize.x, &clipRect);
+            drawList->AddText(nullptr, 0.0f, textPosition + ImVec2(-outlineSize, +outlineSize), outlineColor, message, messageEnd, canvasSize.x, &clipRect);
+            drawList->AddText(nullptr, 0.0f, textPosition + ImVec2(+outlineSize, 0.0f), outlineColor, message, messageEnd, canvasSize.x, &clipRect);
+            drawList->AddText(nullptr, 0.0f, textPosition + ImVec2(-outlineSize, 0.0f), outlineColor, message, messageEnd, canvasSize.x, &clipRect);
+            drawList->AddText(nullptr, 0.0f, textPosition + ImVec2(0.0f, +outlineSize), outlineColor, message, messageEnd, canvasSize.x, &clipRect);
+            drawList->AddText(nullptr, 0.0f, textPosition + ImVec2(0.0f, -outlineSize), outlineColor, message, messageEnd, canvasSize.x, &clipRect);
+        }
+        drawList->AddText(nullptr, 0.0f, textPosition, textColor, message, messageEnd, canvasSize.x, &clipRect);
+        drawList->AddText(nullptr, 0.0f, textPosition, textColor, message, messageEnd, canvasSize.x, &clipRect);
+
+        if (cursor.y < canvasMin.y)
+            break;
+    }
+}
+
+
+
+
 crude_blueprint_utilities::ItemBuilder::ItemBuilder()
     : m_InCreate(ax::NodeEditor::BeginCreate(ImGui::GetStyleColorVec4(ImGuiCol_NavHighlight)))
 {
@@ -546,16 +650,16 @@ void crude_blueprint_utilities::CreateNodeDialog::Open(Pin* fromPin)
     m_SortedNodes.clear();
 }
 
-void crude_blueprint_utilities::CreateNodeDialog::Show(Blueprint& blueprint)
+bool crude_blueprint_utilities::CreateNodeDialog::Show(Blueprint& blueprint)
 {
     if (!ImGui::IsPopupOpen("##create_node"))
-        return;
+        return false;
 
     auto storage = ImGui::GetStateStorage();
     auto fromPin = reinterpret_cast<Pin*>(storage->GetVoidPtr(ImGui::GetID("##create_node_pin")));
 
     if (!ImGui::BeginPopup("##create_node"))
-        return;
+        return false;
 
     auto popupPosition = ImGui::GetMousePosOnOpeningCurrentPopup();
 
@@ -574,6 +678,8 @@ void crude_blueprint_utilities::CreateNodeDialog::Show(Blueprint& blueprint)
         });
     }
 
+    bool wasNodeCreated = false;
+
     for (auto nodeTypeInfo : m_SortedNodes)
     {
         bool selected = false;
@@ -587,23 +693,52 @@ void crude_blueprint_utilities::CreateNodeDialog::Show(Blueprint& blueprint)
 
             ax::NodeEditor::SelectNode(node->m_Id);
 
+            m_CreatedNode = node;
+            m_CreatedLinks.clear();
+
             if (fromPin)
                 CreateLinkToFirstMatchingPin(*node, *fromPin);
+
+            wasNodeCreated = true;
         }
     }
 
     ImGui::EndPopup();
+
+    return wasNodeCreated;
 }
 
 bool crude_blueprint_utilities::CreateNodeDialog::CreateLinkToFirstMatchingPin(Node& node, Pin& fromPin)
 {
     for (auto nodePin : node.GetInputPins())
-        if (nodePin->LinkTo(fromPin) || fromPin.LinkTo(*nodePin))
+    {
+        if (nodePin->LinkTo(fromPin))
+        {
+            m_CreatedLinks.push_back(nodePin);
             return true;
+        }
+
+        if (fromPin.LinkTo(*nodePin))
+        {
+            m_CreatedLinks.push_back(&fromPin);
+            return true;
+        }
+    }
 
     for (auto nodePin : node.GetOutputPins())
-        if (nodePin->LinkTo(fromPin) || fromPin.LinkTo(*nodePin))
+    {
+        if (nodePin->LinkTo(fromPin))
+        {
+            m_CreatedLinks.push_back(nodePin);
             return true;
+        }
+
+        if (fromPin.LinkTo(*nodePin))
+        {
+            m_CreatedLinks.push_back(&fromPin);
+            return true;
+        }
+    }
 
     return false;
 }
@@ -656,15 +791,18 @@ void crude_blueprint_utilities::NodeContextMenu::Show(Blueprint& blueprint)
 
         ImGui::Separator();
 
-        auto selectedNodes = GetSelectedNodes(blueprint);
-        if (ImGui::MenuItem("Delete This", nullptr, nullptr, node != nullptr))
+        if (ImGui::MenuItem("Delete"))
         {
-            ax::NodeEditor::DeleteNode(node->m_Id);
-        }
-        if (ImGui::MenuItem("Delete Selected", nullptr, nullptr, !selectedNodes.empty()))
-        {
-            for (auto selectedNode : selectedNodes)
-                ax::NodeEditor::DeleteNode(selectedNode->m_Id);
+            if (node && !ax::NodeEditor::IsNodeSelected(node->m_Id))
+            {
+                ax::NodeEditor::DeleteNode(node->m_Id);
+            }
+            else
+            {
+                auto selectedNodes = GetSelectedNodes(blueprint);
+                for (auto selectedNode : selectedNodes)
+                    ax::NodeEditor::DeleteNode(selectedNode->m_Id);
+            }
         }
 
         ImGui::EndPopup();
@@ -718,15 +856,18 @@ void crude_blueprint_utilities::LinkContextMenu::Show(Blueprint& blueprint)
 
     if (ImGui::BeginPopup("##link-context-menu"))
     {
-        auto selectedLinks = GetSelectedLinks(blueprint);
-        if (ImGui::MenuItem("Break This", nullptr, nullptr, pin != nullptr))
+        if (ImGui::MenuItem("Break"))
         {
-            ax::NodeEditor::DeleteLink(pin->m_Id);
-        }
-        if (ImGui::MenuItem("Break Selected", nullptr, nullptr, !selectedLinks.empty()))
-        {
-            for (auto selectedLink : selectedLinks)
-                ax::NodeEditor::DeleteLink(selectedLink->m_Id);
+            if (pin && !ax::NodeEditor::IsLinkSelected(pin->m_Id))
+            {
+                ax::NodeEditor::DeleteLink(pin->m_Id);
+            }
+            else
+            {
+                auto selectedLinks = GetSelectedLinks(blueprint);
+                for (auto selectedLink : selectedLinks)
+                    ax::NodeEditor::DeleteLink(selectedLink->m_Id);
+            }
         }
 
         ImGui::EndPopup();

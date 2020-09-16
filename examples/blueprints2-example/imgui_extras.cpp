@@ -267,3 +267,100 @@ void ImEx::Debug_DrawItemRect(const ImVec4& col)
     drawList->AddRect(itemMin, itemMax, ImColor(col));
 }
 
+
+
+
+ImEx::ScopedItemWidth::ScopedItemWidth(float width)
+{
+    ImGui::PushItemWidth(width);
+}
+
+ImEx::ScopedItemWidth::~ScopedItemWidth()
+{
+    Release();
+}
+
+void ImEx::ScopedItemWidth::Release()
+{
+    if (m_IsDone)
+        return;
+
+    ImGui::PopItemWidth();
+
+    m_IsDone = true;
+}
+
+
+
+
+ImEx::ScopedDisableItem::ScopedDisableItem(bool disable, float disabledAlpha)
+    : m_Disable(disable)
+{
+    if (!m_Disable)
+        return;
+
+    auto wasDisabled = (ImGui::GetCurrentWindow()->DC.ItemFlags & ImGuiItemFlags_Disabled) == ImGuiItemFlags_Disabled;
+
+    ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true);
+
+    auto& stale = ImGui::GetStyle();
+    m_LastAlpha = stale.Alpha;
+
+    // Don't override alpha if we're already in disabled context.
+    if (!wasDisabled)
+        stale.Alpha = disabledAlpha;
+}
+
+ImEx::ScopedDisableItem::~ScopedDisableItem()
+{
+    Release();
+}
+
+void ImEx::ScopedDisableItem::Release()
+{
+    if (!m_Disable)
+        return;
+
+    auto& stale = ImGui::GetStyle();
+    stale.Alpha = m_LastAlpha;
+
+    ImGui::PopItemFlag();
+
+    m_Disable = false;
+}
+
+
+
+
+ImEx::ScopedSuspendLayout::ScopedSuspendLayout()
+{
+    m_Window = ImGui::GetCurrentWindow();
+    m_CursorPos = m_Window->DC.CursorPos;
+    m_CursorPosPrevLine = m_Window->DC.CursorPosPrevLine;
+    m_CursorMaxPos = m_Window->DC.CursorMaxPos;
+    m_CurrLineSize = m_Window->DC.CurrLineSize;
+    m_PrevLineSize = m_Window->DC.PrevLineSize;
+    m_CurrLineTextBaseOffset = m_Window->DC.CurrLineTextBaseOffset;
+    m_PrevLineTextBaseOffset = m_Window->DC.PrevLineTextBaseOffset;
+}
+
+ImEx::ScopedSuspendLayout::~ScopedSuspendLayout()
+{
+    Release();
+}
+
+void ImEx::ScopedSuspendLayout::Release()
+{
+    if (m_Window == nullptr)
+        return;
+
+    m_Window->DC.CursorPos = m_CursorPos;
+    m_Window->DC.CursorPosPrevLine = m_CursorPosPrevLine;
+    m_Window->DC.CursorMaxPos = m_CursorMaxPos;
+    m_Window->DC.CurrLineSize = m_CurrLineSize;
+    m_Window->DC.PrevLineSize = m_PrevLineSize;
+    m_Window->DC.CurrLineTextBaseOffset = m_CurrLineTextBaseOffset;
+    m_Window->DC.PrevLineTextBaseOffset = m_PrevLineTextBaseOffset;
+
+    m_Window = nullptr;
+}

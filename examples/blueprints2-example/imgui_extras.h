@@ -19,59 +19,35 @@ void Debug_DrawItemRect(const ImVec4& col = ImVec4(1.0f, 0.0f, 0.0f, 1.0f));
 
 struct ScopedItemWidth
 {
-    ScopedItemWidth(float width)
-    {
-        ImGui::PushItemWidth(width);
-    }
+    ScopedItemWidth(float width);
+    ~ScopedItemWidth();
 
-    ~ScopedItemWidth()
-    {
-        ImGui::PopItemWidth();
-    }
-};
-
-
-struct ScopedItemFlag
-{
-    ScopedItemFlag(ImGuiItemFlags flag)
-        : m_Flag(flag)
-    {
-        ImGui::PushItemFlag(m_Flag, true);
-    }
-
-    ~ScopedItemFlag()
-    {
-        ImGui::PushItemFlag(m_Flag, false);
-    }
+    void Release();
 
 private:
-    ImGuiItemFlags m_Flag = ImGuiItemFlags_None;
+    bool m_IsDone = false;
 };
+
+
+struct ScopedDisableItem
+{
+    ScopedDisableItem(bool disable, float disabledAlpha = 0.5f);
+    ~ScopedDisableItem();
+
+    void Release();
+
+private:
+    bool    m_Disable       = false;
+    float   m_LastAlpha     = 1.0f;
+};
+
 
 struct ScopedSuspendLayout
 {
-    ScopedSuspendLayout()
-    {
-        m_Window = ImGui::GetCurrentWindow();
-        m_CursorPos = m_Window->DC.CursorPos;
-        m_CursorPosPrevLine = m_Window->DC.CursorPosPrevLine;
-        m_CursorMaxPos = m_Window->DC.CursorMaxPos;
-        m_CurrLineSize = m_Window->DC.CurrLineSize;
-        m_PrevLineSize = m_Window->DC.PrevLineSize;
-        m_CurrLineTextBaseOffset = m_Window->DC.CurrLineTextBaseOffset;
-        m_PrevLineTextBaseOffset = m_Window->DC.PrevLineTextBaseOffset;
-    }
+    ScopedSuspendLayout();
+    ~ScopedSuspendLayout();
 
-    ~ScopedSuspendLayout()
-    {
-        m_Window->DC.CursorPos = m_CursorPos;
-        m_Window->DC.CursorPosPrevLine = m_CursorPosPrevLine;
-        m_Window->DC.CursorMaxPos = m_CursorMaxPos;
-        m_Window->DC.CurrLineSize = m_CurrLineSize;
-        m_Window->DC.PrevLineSize = m_PrevLineSize;
-        m_Window->DC.CurrLineTextBaseOffset = m_CurrLineTextBaseOffset;
-        m_Window->DC.PrevLineTextBaseOffset = m_PrevLineTextBaseOffset;
-    }
+    void Release();
 
 private:
     ImGuiWindow* m_Window = nullptr;
