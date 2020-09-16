@@ -1,4 +1,4 @@
-﻿# define IMGUI_DEFINE_MATH_OPERATORS
+# define IMGUI_DEFINE_MATH_OPERATORS
 # include "imgui_canvas.h"
 # include <type_traits>
 
@@ -151,6 +151,8 @@ void ImGuiEx::Canvas::End()
     IM_ASSERT(m_SuspendCounter == 0);
 
     LeaveLocalSpace();
+
+    ImGui::SetItemAllowOverlap();
 
     // Emit dummy widget matching bounds of the canvas.
     ImGui::SetCursorScreenPos(m_WidgetPosition);
