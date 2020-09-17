@@ -80,6 +80,9 @@ struct OverlayLogger
     void Update(float dt);
     void Draw(const ImVec2& a, const ImVec2& b);
 
+    void AddKeyword(string_view keyword);
+    void RemoveKeyword(string_view keyword);
+
 private:
     struct Range
     {
@@ -92,15 +95,18 @@ private:
     {
         LogLevel        m_Level     = LogLevel::Verbose;
         time_t          m_Timestamp = 0;
-        string          m_Buffer;
+        string          m_Text;
         float           m_Timer     = 0.0f;
         bool            m_IsPinned  = false;
         vector<Range>   m_ColorRanges;
     };
 
+    ImColor GetLevelColor(LogLevel level) const;
+
     void TintVertices(ImDrawList* drawList, int firstVertexIndex, ImColor color, float alpha, int rangeStart, int rangeSize);
 
-    vector<Range> ParseMessage(string_view message) const;
+    vector<Range> ParseMessage(LogLevel level, string_view message) const;
+
 
     float           m_OutlineSize                 = 0.5f;
     float           m_Padding                     = 10.0f;
@@ -109,21 +115,25 @@ private:
     float           m_MessageLifeDuration         = m_MessagePresentationDuration + m_MessageFadeOutDuration;
     bool            m_HoldTimer                   = false;
     vector<Entry>   m_Entries;
+    vector<string>  m_Keywords;
     ImColor         m_HighlightBorder             = ImColor(  5, 130, 255, 128);
     ImColor         m_HighlightFill               = ImColor(  5, 130, 255,  64);
     ImColor         m_PinBorder                   = ImColor(255, 176,  50,   0);
     ImColor         m_PinFill                     = ImColor(  0,  75, 150, 128);
 
-    ImColor         m_LogTimeColor                = IM_COL32(0x96, 0xD1, 0x00, 0xFF);
-    ImColor         m_LogSymbolColor              = IM_COL32(0xC0, 0xC0, 0xC0, 0xFF);
-    ImColor         m_LogStringColor              = IM_COL32(0xFF, 0x80, 0x40, 0xFF);
-    ImColor         m_LogTagColor                 = IM_COL32(0xFF, 0xD6, 0x8F, 0xFF);
-    ImColor         m_LogNumberColor              = IM_COL32(0xFF, 0xFF, 0x80, 0xFF);
-    ImColor         m_LogVerboseColor             = IM_COL32(0x80, 0xFF, 0x80, 0xFF);
-    ImColor         m_LogWarningColor             = IM_COL32(0xFF, 0xFF, 0x80, 0xFF);
-    ImColor         m_LogErrorColor               = IM_COL32(0xFF, 0x70, 0x4D, 0xFF);
-    ImColor         m_LogInfoColor                = IM_COL32(0x8A, 0xC5, 0xFF, 0xFF);
-    ImColor         m_LogAssertColor              = IM_COL32(0xFF, 0x3D, 0x44, 0xFF);
+    ImColor         m_LogTimeColor                = ImColor(150, 209,   0, 255);
+    ImColor         m_LogSymbolColor              = ImColor(192, 192, 192, 255);
+    ImColor         m_LogStringColor              = ImColor(255, 174, 133, 255);
+    ImColor         m_LogTagColor                 = ImColor(255, 214, 143, 255);
+    ImColor         m_LogKeywordColor             = ImColor(255, 255, 255, 255);
+    ImColor         m_LogTextColor                = ImColor(192, 192, 192, 255);
+    ImColor         m_LogOutlineColor             = ImColor(  0,   0,   0, 255);
+    ImColor         m_LogNumberColor              = ImColor(255, 255, 128, 255);
+    ImColor         m_LogVerboseColor             = ImColor(128, 255, 128, 255);
+    ImColor         m_LogWarningColor             = ImColor(255, 255, 192, 255);
+    ImColor         m_LogErrorColor               = ImColor(255, 152, 152, 255);
+    ImColor         m_LogInfoColor                = ImColor(138, 197, 255, 255);
+    ImColor         m_LogAssertColor              = ImColor(255,  61,  68, 255);
 };
 
 // Wrapper over flat API for item construction

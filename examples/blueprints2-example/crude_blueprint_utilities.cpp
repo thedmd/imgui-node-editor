@@ -460,7 +460,10 @@ void crude_blueprint_utilities::OverlayLogger::Log(LogLevel level, const char* f
     auto formattedMessage = string("[") + formattedTimeStamp + "] [" + levelSymbol + "] " + textBuffer.c_str();
 
     auto entry = Entry{ level, timeStamp, std::move(formattedMessage) };
-    entry.m_ColorRanges = ParseMessage(entry.m_Buffer.c_str());
+
+    // Parse log message to get ranges for text coloring
+    entry.m_ColorRanges = ParseMessage(entry.m_Level, entry.m_Text.c_str());
+
     m_Entries.push_back(std::move(entry));
 }
 
@@ -505,13 +508,14 @@ void crude_blueprint_utilities::OverlayLogger::Draw(const ImVec2& a, const ImVec
 
     float outlineSize = m_OutlineSize;
 
+    // Draw messages from the last to first
     int entryIndex = 0;
     auto cursor = ImVec2(canvasMin.x, canvasMax.y);
     for (auto it = m_Entries.rbegin(), itEnd = m_Entries.rend(); it != itEnd; ++it, ++entryIndex)
     {
         auto& entry = *it;
-        auto message = entry.m_Buffer.data();
-        auto messageEnd = entry.m_Buffer.data() + entry.m_Buffer.size();
+        auto message = entry.m_Text.data();
+        auto messageEnd = entry.m_Text.data() + entry.m_Text.size();
 
         auto outlineOffset = ImCeil(outlineSize);
 
@@ -529,22 +533,14 @@ void crude_blueprint_utilities::OverlayLogger::Draw(const ImVec2& a, const ImVec
         if (entry.m_Timer > m_MessagePresentationDuration && m_MessageFadeOutDuration > 0.0f)
         {
             alpha = ImMin(1.0f, (entry.m_Timer - m_MessagePresentationDuration) / m_MessageFadeOutDuration);
-            alpha = 1.0f - alpha * alpha;
+            alpha = 1.0f - alpha * alpha; // Make fade out non-linear
         }
 
+        auto textColor    = m_LogTextColor;
+        auto outlineColor = m_LogOutlineColor;
 
-        auto textColor    = ImColor(1.0f, 1.0f, 1.0f, alpha);
-        auto outlineColor = ImColor(0.0f, 0.0f, 0.0f, alpha / 2.0f);
-
-        switch (entry.m_Level)
-        {
-            case LogLevel::Verbose: textColor = m_LogVerboseColor; break;
-            case LogLevel::Info:    textColor = m_LogInfoColor;    break;
-            case LogLevel::Warning: textColor = m_LogWarningColor; break;
-            case LogLevel::Error:   textColor = m_LogErrorColor;   break;
-        }
-
-        textColor.Value.w = alpha;
+           textColor.Value.w = alpha;
+        outlineColor.Value.w = alpha / 2.0f;
 
         if (isHovered || entry.m_IsPinned)
             drawList->AddRectFilled(cursor, cursor + itemSize, isHovered ? m_HighlightFill : m_PinFill);
@@ -555,6 +551,7 @@ void crude_blueprint_utilities::OverlayLogger::Draw(const ImVec2& a, const ImVec
             // to avoid artifact apply rounded up offset.
             float outlineSize = outlineOffset;
 
+            // Poor man outline, just stack same text around place when normal text would be
             drawList->AddText(nullptr, 0.0f, textPosition + ImVec2(+outlineSize, +outlineSize), outlineColor, message, messageEnd, canvasSize.x, &clipRect);
             drawList->AddText(nullptr, 0.0f, textPosition + ImVec2(+outlineSize, -outlineSize), outlineColor, message, messageEnd, canvasSize.x, &clipRect);
             drawList->AddText(nullptr, 0.0f, textPosition + ImVec2(-outlineSize, -outlineSize), outlineColor, message, messageEnd, canvasSize.x, &clipRect);
@@ -565,7 +562,7 @@ void crude_blueprint_utilities::OverlayLogger::Draw(const ImVec2& a, const ImVec
             drawList->AddText(nullptr, 0.0f, textPosition + ImVec2(0.0f, -outlineSize), outlineColor, message, messageEnd, canvasSize.x, &clipRect);
         }
 
-        for (int i = 0; i < 2; ++i)
+        for (int i = 0; i < 2; ++i) // Draw text twice to make it look sharper
         {
             auto stringStart = drawList->VtxBuffer.Size;
             drawList->AddText(nullptr, 0.0f, textPosition, textColor, message, messageEnd, canvasSize.x, &clipRect);
@@ -592,7 +589,7 @@ void crude_blueprint_utilities::OverlayLogger::Draw(const ImVec2& a, const ImVec
             ImGui::PopID();
 
             if (ImGui::IsItemHovered(ImGuiHoveredFlags_None))
-                ImGui::SetTooltip("Click to %s message", entry.m_IsPinned ? "pin" : "unpin");
+                ImGui::SetTooltip("Click to %s message", entry.m_IsPinned ? "unpin" : "pin");
         }
 
         if (cursor.y < canvasMin.y)
@@ -600,8 +597,38 @@ void crude_blueprint_utilities::OverlayLogger::Draw(const ImVec2& a, const ImVec
     }
 }
 
+void crude_blueprint_utilities::OverlayLogger::AddKeyword(string_view keyword)
+{
+    m_Keywords.push_back(keyword.to_string());
+}
+
+void crude_blueprint_utilities::OverlayLogger::RemoveKeyword(string_view keyword)
+{
+    auto it = std::find(m_Keywords.begin(), m_Keywords.end(), keyword);
+    if (it != m_Keywords.end())
+        m_Keywords.erase(it);
+}
+
+ImColor crude_blueprint_utilities::OverlayLogger::GetLevelColor(LogLevel level) const
+{
+    switch (level)
+    {
+        case LogLevel::Verbose: return m_LogVerboseColor; break;
+        case LogLevel::Info:    return m_LogInfoColor;    break;
+        case LogLevel::Warning: return m_LogWarningColor; break;
+        case LogLevel::Error:   return m_LogErrorColor;   break;
+    }
+
+    return ImColor();
+}
+
 void crude_blueprint_utilities::OverlayLogger::TintVertices(ImDrawList* drawList, int firstVertexIndex, ImColor color, float alpha, int rangeStart, int rangeSize)
 {
+    // We tint data vertices emitted by ImDrawList::AddText().
+    //
+    // We work under assumption that each character is built from
+    // four vertices.
+
     const int c_VertexPerCharacter = 4;
 
     color.Value.w = alpha;
@@ -626,20 +653,30 @@ void crude_blueprint_utilities::OverlayLogger::TintVertices(ImDrawList* drawList
     }
 }
 
-crude_blueprint::vector<crude_blueprint_utilities::OverlayLogger::Range> crude_blueprint_utilities::OverlayLogger::ParseMessage(string_view message) const
+crude_blueprint::vector<crude_blueprint_utilities::OverlayLogger::Range> crude_blueprint_utilities::OverlayLogger::ParseMessage(LogLevel level, string_view message) const
 {
+    // Totally not optimized message parsing. It identifies numbers,
+    // strings, tags, keywords and symbols.
+
     vector<Range> result;
 
-    const auto c_HeaderSize = 15;
+    auto levelColor = GetLevelColor(level);
 
-    // Color timestamp '[00:00:00] [x] '
+    // Color timestamp '[00:00:00] [x] ', this is present in all messages.
     result.push_back({  0, 10, m_LogSymbolColor });
     result.push_back({  1,  2, m_LogTimeColor });
     result.push_back({  4,  2, m_LogTimeColor });
     result.push_back({  7,  2, m_LogTimeColor });
     result.push_back({ 11,  1, m_LogSymbolColor });
+    result.push_back({ 12,  1, levelColor });
     result.push_back({ 13,  1, m_LogSymbolColor });
 
+    // Color rest of the message to level color.
+    result.push_back({ 15, static_cast<int>(message.size()) - 15, levelColor });
+
+    // More usefull variant of find_first_of().
+    // If end of the string is reached and last character is
+    // in searched set we return string size not npos.
     auto find_first_of = [message](const char* s, size_t offset = 0) -> size_t
     {
         auto result = message.find_first_of(s, offset);
@@ -658,6 +695,8 @@ crude_blueprint::vector<crude_blueprint_utilities::OverlayLogger::Range> crude_b
         return message.size();
     };
 
+    // More usefull variant of find_first_not_of().
+    // Behavior is modified in same way as for find_first_of().
     auto find_first_not_of = [message](const char* s, size_t offset = 0) -> size_t
     {
         auto result = message.find_first_not_of(s, offset);
@@ -670,7 +709,7 @@ crude_blueprint::vector<crude_blueprint_utilities::OverlayLogger::Range> crude_b
         if (offset > message.size())
             return string_view::npos;
 
-        if (!strchr(s, message.back()))
+        if (strchr(s, message.back()))
             return string_view::npos;
 
         return message.size();
@@ -678,8 +717,13 @@ crude_blueprint::vector<crude_blueprint_utilities::OverlayLogger::Range> crude_b
 
     auto isWhitespace = [](char c) { return c == ' ' || c == '\t' || c == '\n' || c == '\r'; };
 
-    auto symbols = "[]():;!*+-=<>{}\"'";
+    auto symbolsWithWhitespace = " \t\n\r[]():;!*+-=<>{}\"'";
+    auto symbols               = symbolsWithWhitespace + 4;
 
+    // Start search after timestamp, there is no need to parse it over and over again.
+    const auto c_HeaderSize = 15;
+
+    // Seek for symbols
     size_t searchStart = c_HeaderSize;
     while (true)
     {
@@ -692,6 +736,7 @@ crude_blueprint::vector<crude_blueprint_utilities::OverlayLogger::Range> crude_b
         searchStart = index + 1;
     }
 
+    // Seek for tags, text in brackets
     searchStart = c_HeaderSize;
     while (true)
     {
@@ -708,6 +753,29 @@ crude_blueprint::vector<crude_blueprint_utilities::OverlayLogger::Range> crude_b
         searchStart = tagEnd + 2;
     }
 
+    // Seek for tokens, matches standalone words separated by symbols
+    searchStart = c_HeaderSize;
+    while (true)
+    {
+        auto tokenStart = find_first_not_of(symbolsWithWhitespace, searchStart);
+        if (tokenStart == string_view::npos)
+            break;
+
+        auto tokenEnd = find_first_of(symbolsWithWhitespace, tokenStart + 1);
+        if (tokenEnd == string_view::npos)
+            tokenEnd = message.size();
+
+        auto token = message.substr(tokenStart, tokenEnd - tokenStart);
+
+        if (std::find(m_Keywords.begin(), m_Keywords.end(), token) != m_Keywords.end())
+        {
+            result.push_back({ static_cast<int>(tokenStart), static_cast<int>(tokenEnd - tokenStart), m_LogKeywordColor });
+        }
+
+        searchStart = tokenEnd + 1;
+    }
+
+    // Seek for strings, matches "strings" and 'strings'
     searchStart = c_HeaderSize;
     while (true)
     {
@@ -727,6 +795,7 @@ crude_blueprint::vector<crude_blueprint_utilities::OverlayLogger::Range> crude_b
         searchStart = stringEnd + 2;
     }
 
+    // Seek for decimal numbers
     searchStart = c_HeaderSize;
     while (true)
     {
@@ -756,6 +825,10 @@ crude_blueprint::vector<crude_blueprint_utilities::OverlayLogger::Range> crude_b
         searchStart = numberEnd + 1;
     }
 
+    // Now... ImDrawList::AddText() do not render whitespaces,
+    // our ranges are build on original string. To properly
+    // match generated vertex date we need to shift and shrink
+    // ranges.
     for (auto& range : result)
     {
         auto spacesBefore = std::count_if(message.begin(),                 message.begin() + range.m_Start,                isWhitespace);
@@ -764,6 +837,7 @@ crude_blueprint::vector<crude_blueprint_utilities::OverlayLogger::Range> crude_b
         range.m_Size  -= static_cast<int>(spacesInside);
     }
 
+    // Drop all empty ranges.
     result.erase(std::remove_if(result.begin(), result.end(), [](const auto& range)
     {
         return range.m_Size <= 0;
@@ -771,6 +845,7 @@ crude_blueprint::vector<crude_blueprint_utilities::OverlayLogger::Range> crude_b
 
     return result;
 }
+
 
 
 

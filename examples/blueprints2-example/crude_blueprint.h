@@ -450,10 +450,11 @@ struct Context
           ContextMonitor* GetContextMonitor();
     const ContextMonitor* GetContextMonitor() const;
 
-    void Reset();
+    void ResetState();
 
     StepResult Start(FlowPin& entryPoint);
     StepResult Step();
+    void Stop();
 
     StepResult Execute(FlowPin& entryPoint);
 
@@ -645,6 +646,8 @@ struct Blueprint
     void Start(EntryPointNode& entryPointNode);
 
     StepResult Step();
+
+    void Stop();
 
     StepResult Execute(EntryPointNode& entryPointNode);
 

@@ -64,6 +64,17 @@ void Application_Initialize()
 
     using namespace crude_blueprint;
 
+    g_OverlayLogger.AddKeyword("Node");
+    g_OverlayLogger.AddKeyword("Pin");
+    g_OverlayLogger.AddKeyword("Link");
+    g_OverlayLogger.AddKeyword("CreateNodeDialog");
+    g_OverlayLogger.AddKeyword("NodeContextMenu");
+    g_OverlayLogger.AddKeyword("PinContextMenu");
+    g_OverlayLogger.AddKeyword("LinkContextMenu");
+
+    for (auto nodeTypeInfo : g_Blueprint.GetNodeRegistry()->GetTypes())
+        g_OverlayLogger.AddKeyword(nodeTypeInfo->m_Name);
+
     PrintNode::s_PrintFunction = [](const PrintNode& node, string_view message)
     {
         LOGI("PrintNode(%" PRIu32 "): \"%*s\"", node.m_Id, static_cast<int>(message.size()), message.data());
@@ -199,6 +210,15 @@ static void ShowControlPanel()
             LOGI("Execution: Failed at step %" PRIu32, g_Blueprint.StepCount());
     }
     disableStepButton.Release();
+
+    ImGui::SameLine();
+    ImEx::ScopedDisableItem disableStopButton(g_Blueprint.CurrentNode() == nullptr);
+    if (ImGui::Button("Stop"))
+    {
+        LOGI("Execution: Stop");
+        g_Blueprint.Stop();
+    }
+    disableStopButton.Release();
 
     ImGui::SameLine();
     if (ImGui::Button("Run"))
@@ -537,7 +557,7 @@ static void HandleContextMenuAction(Blueprint& blueprint)
         auto node = blueprint.FindNode(static_cast<uint32_t>(contextNodeId.Get()));
 
         ed::Suspend();
-        LOGV("[HandleContextMenuAction] Open NodeContextMenu");
+        LOGV("[HandleContextMenuAction] Open NodeContextMenu for " PRI_node_fmt, LOG_node(node));
         g_NodeContextMenu.Open(node);
         ed::Resume();
     }
@@ -548,7 +568,7 @@ static void HandleContextMenuAction(Blueprint& blueprint)
         auto pin = blueprint.FindPin(static_cast<uint32_t>(contextPinId.Get()));
 
         ed::Suspend();
-        LOGV("[HandleContextMenuAction] Open PinContextMenu");
+        LOGV("[HandleContextMenuAction] Open PinContextMenu for " PRI_pin_fmt, LOG_pin(pin));
         g_PinContextMenu.Open(pin);
         ed::Resume();
     }
@@ -559,7 +579,7 @@ static void HandleContextMenuAction(Blueprint& blueprint)
         auto pin = blueprint.FindPin(static_cast<uint32_t>(contextLinkId.Get()));
 
         ed::Suspend();
-        LOGV("[HandleContextMenuAction] Open LinkContextMenu");
+        LOGV("[HandleContextMenuAction] Open LinkContextMenu for " PRI_pin_fmt, LOG_pin(pin));
         g_LinkContextMenu.Open(pin);
         ed::Resume();
     }
@@ -681,11 +701,43 @@ static void ShowMainMenu()
     {
         if (ImGui::BeginMenu("File"))
         {
+            ImGui::MenuItem("New");
+            ImGui::MenuItem("Open...");
+            ImGui::Separator();
+            ImGui::MenuItem("Close");
+            ImGui::Separator();
+            ImGui::MenuItem("Save As...");
+            ImGui::MenuItem("Save");
+            ImGui::Separator();
+            ImGui::MenuItem("Exit");
+
             ImGui::EndMenu();
         }
 
         if (ImGui::BeginMenu("Edit"))
         {
+            ImGui::MenuItem("Undo");
+            ImGui::MenuItem("Redo");
+            ImGui::Separator();
+            ImGui::MenuItem("Cut");
+            ImGui::MenuItem("Copy");
+            ImGui::MenuItem("Paste");
+            ImGui::MenuItem("Duplicate");
+            ImGui::MenuItem("Delete");
+            ImGui::Separator();
+            ImGui::MenuItem("Select All");
+
+            ImGui::EndMenu();
+        }
+
+        if (ImGui::BeginMenu("Blueprint"))
+        {
+            ImGui::MenuItem("Start");
+            ImGui::MenuItem("Step");
+            ImGui::MenuItem("Stop");
+            ImGui::Separator();
+            ImGui::MenuItem("Run");
+
             ImGui::EndMenu();
         }
         ImGui::EndMenuBar();
