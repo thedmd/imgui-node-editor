@@ -75,7 +75,7 @@ enum class LogLevel: int32_t
 
 struct OverlayLogger
 {
-    void Log(LogLevel level, const char* format, ...) IM_FMTARGS(1);
+    void Log(LogLevel level, const char* format, ...) IM_FMTARGS(3);
 
     void Update(float dt);
     void Draw(const ImVec2& a, const ImVec2& b);
