@@ -113,6 +113,7 @@ bool crude_blueprint_utilities::EditPinValue(Pin& pin)
                     return 0;
                 }, &value))
                 {
+                    value.resize(strlen(value.c_str()));
                     pin.SetValue(value);
                     return true;
                 }
@@ -428,7 +429,7 @@ void crude_blueprint_utilities::DebugOverlay::OnEvaluatePin(const Context& conte
 
 
 
-void crude_blueprint_utilities::OverlayLogger::Log(const char* format, ...) IM_FMTARGS(1)
+void crude_blueprint_utilities::OverlayLogger::Log(LogLevel level, const char* format, ...) IM_FMTARGS(1)
 {
     va_list args;
     va_start(args, format);
@@ -441,15 +442,34 @@ void crude_blueprint_utilities::OverlayLogger::Log(const char* format, ...) IM_F
     char formattedTimeStamp[100] = {};
     strftime(formattedTimeStamp, sizeof(formattedTimeStamp), "%H:%M:%S", localtime(&timeStamp));
 
-    auto formattedMessage = string("[") + formattedTimeStamp + "] " + textBuffer.c_str();
+    char levelSymbol = ' ';
+    switch (level)
+    {
+        case LogLevel::Verbose: levelSymbol = 'V'; break;
+        case LogLevel::Info:    levelSymbol = 'I'; break;
+        case LogLevel::Warning: levelSymbol = 'W'; break;
+        case LogLevel::Error:   levelSymbol = 'E'; break;
+    }
 
-    m_Entries.push_back({ timeStamp, std::move(formattedMessage) });
+    auto formattedMessage = string("[") + formattedTimeStamp + "][" + levelSymbol + "] " + textBuffer.c_str();
+
+    auto entry = Entry{ level, timeStamp, std::move(formattedMessage) };
+    entry.m_ColorRanges = ParseMessage(entry.m_Buffer.c_str());
+    m_Entries.push_back(std::move(entry));
 }
 
 void crude_blueprint_utilities::OverlayLogger::Update(float dt)
 {
+    if (m_HoldTimer)
+        return;
+
     for (auto& entry : m_Entries)
+    {
+        if (entry.m_IsPinned)
+            continue;
+
         entry.m_Timer += dt;
+    }
 
     auto lastIt = std::remove_if(m_Entries.begin(), m_Entries.end(), [this](const Entry& entry)
     {
@@ -468,6 +488,8 @@ void crude_blueprint_utilities::OverlayLogger::Draw(const ImVec2& a, const ImVec
     auto drawList = ImGui::GetWindowDrawList();
     //drawList->AddRect(a, b, IM_COL32(255, 255, 0, 255));
 
+    m_HoldTimer = false;
+
     if (canvasSize.x < 1.0f || canvasSize.y < 1.0f)
         return;
 
@@ -477,8 +499,9 @@ void crude_blueprint_utilities::OverlayLogger::Draw(const ImVec2& a, const ImVec
 
     float outlineSize = m_OutlineSize;
 
+    int entryIndex = 0;
     auto cursor = ImVec2(canvasMin.x, canvasMax.y);
-    for (auto it = m_Entries.rbegin(), itEnd = m_Entries.rend(); it != itEnd; ++it)
+    for (auto it = m_Entries.rbegin(), itEnd = m_Entries.rend(); it != itEnd; ++it, ++entryIndex)
     {
         auto& entry = *it;
         auto message = entry.m_Buffer.data();
@@ -486,12 +509,13 @@ void crude_blueprint_utilities::OverlayLogger::Draw(const ImVec2& a, const ImVec
 
         auto outlineOffset = ImCeil(outlineSize);
 
-
         auto itemSize = ImGui::CalcTextSize(message, messageEnd, false, canvasSize.x);
         itemSize.x += outlineOffset * 2.0f;
         itemSize.y += outlineOffset * 2.0f;
 
         cursor.y -= itemSize.y;
+
+        auto isHovered = ImGui::IsMouseHoveringRect(cursor, cursor + itemSize, true);
 
         auto textPosition = cursor + ImVec2(outlineOffset, outlineOffset);
 
@@ -502,8 +526,22 @@ void crude_blueprint_utilities::OverlayLogger::Draw(const ImVec2& a, const ImVec
             alpha = 1.0f - alpha * alpha;
         }
 
-        auto textColor = ImColor(1.0f, 1.0f, 1.0f, alpha);
+
+        auto textColor    = ImColor(1.0f, 1.0f, 1.0f, alpha);
         auto outlineColor = ImColor(0.0f, 0.0f, 0.0f, alpha / 2.0f);
+
+        switch (entry.m_Level)
+        {
+            case LogLevel::Verbose: textColor = m_LogVerboseColor; break;
+            case LogLevel::Info:    textColor = m_LogInfoColor;    break;
+            case LogLevel::Warning: textColor = m_LogWarningColor; break;
+            case LogLevel::Error:   textColor = m_LogErrorColor;   break;
+        }
+
+        textColor.Value.w = alpha;
+
+        if (isHovered || entry.m_IsPinned)
+            drawList->AddRectFilled(cursor, cursor + itemSize, isHovered ? m_HighlightFill : m_PinFill);
 
         if (outlineSize > 0.0f)
         {
@@ -520,12 +558,208 @@ void crude_blueprint_utilities::OverlayLogger::Draw(const ImVec2& a, const ImVec
             drawList->AddText(nullptr, 0.0f, textPosition + ImVec2(0.0f, +outlineSize), outlineColor, message, messageEnd, canvasSize.x, &clipRect);
             drawList->AddText(nullptr, 0.0f, textPosition + ImVec2(0.0f, -outlineSize), outlineColor, message, messageEnd, canvasSize.x, &clipRect);
         }
-        drawList->AddText(nullptr, 0.0f, textPosition, textColor, message, messageEnd, canvasSize.x, &clipRect);
-        drawList->AddText(nullptr, 0.0f, textPosition, textColor, message, messageEnd, canvasSize.x, &clipRect);
+
+        for (int i = 0; i < 2; ++i)
+        {
+            auto stringStart = drawList->VtxBuffer.Size;
+            drawList->AddText(nullptr, 0.0f, textPosition, textColor, message, messageEnd, canvasSize.x, &clipRect);
+            for (auto& range : entry.m_ColorRanges)
+               TintVertices(drawList, stringStart, range.m_Color, alpha, range.m_Start, range.m_Size);
+        }
+
+        if (isHovered)
+            m_HoldTimer = true;
+
+        if (isHovered || entry.m_IsPinned)
+            drawList->AddRect(cursor, cursor + itemSize, isHovered ? m_HighlightBorder : m_PinBorder);
+
+        if (entry.m_IsPinned || isHovered)
+        {
+            ImGui::SetItemAllowOverlap();
+            ImGui::SetCursorScreenPos(cursor);
+            ImGui::PushID(entryIndex);
+            if (ImGui::InvisibleButton("##pin", itemSize))
+            {
+                entry.m_IsPinned = !entry.m_IsPinned;
+                entry.m_Timer    = 0.0f;
+            }
+            ImGui::PopID();
+
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_None))
+                ImGui::SetTooltip("Click to %s message", entry.m_IsPinned ? "pin" : "unpin");
+        }
 
         if (cursor.y < canvasMin.y)
             break;
     }
+}
+
+void crude_blueprint_utilities::OverlayLogger::TintVertices(ImDrawList* drawList, int firstVertexIndex, ImColor color, float alpha, int rangeStart, int rangeSize)
+{
+    const int c_VertexPerCharacter = 4;
+
+    color.Value.w = alpha;
+    auto packedColor = static_cast<ImU32>(color);
+
+    auto vertexData    = drawList->VtxBuffer.Data;
+    auto vertexDataEnd = vertexData + drawList->VtxBuffer.Size;
+
+    auto data    = vertexData + firstVertexIndex + rangeStart * c_VertexPerCharacter;
+    auto dataEnd = data + rangeSize * c_VertexPerCharacter;
+
+    if (data >= vertexDataEnd)
+        return;
+
+    if (dataEnd >= vertexDataEnd)
+        dataEnd = vertexDataEnd;
+
+    while (data < dataEnd)
+    {
+        data->col = packedColor;
+        ++data;
+    }
+}
+
+crude_blueprint::vector<crude_blueprint_utilities::OverlayLogger::Range> crude_blueprint_utilities::OverlayLogger::ParseMessage(string_view message) const
+{
+    vector<Range> result;
+
+    const auto c_HeaderSize = 14;
+
+    // Color timestamp '[00:00:00][x] '
+    result.push_back({ 0, 10, m_LogSymbolColor });
+    result.push_back({ 1, 2,  m_LogTimeColor });
+    result.push_back({ 4, 2,  m_LogTimeColor });
+    result.push_back({ 7, 2,  m_LogTimeColor });
+
+    auto find_first_of = [message](const char* s, size_t offset = 0) -> size_t
+    {
+        auto result = message.find_first_of(s, offset);
+        if (result != string_view::npos)
+            return result;
+
+        if (offset == message.size())
+            return message.size();
+
+        if (offset > message.size())
+            return string_view::npos;
+
+        if (!strchr(s, message.back()))
+            return string_view::npos;
+
+        return message.size();
+    };
+
+    auto find_first_not_of = [message](const char* s, size_t offset = 0) -> size_t
+    {
+        auto result = message.find_first_not_of(s, offset);
+        if (result != string_view::npos)
+            return result;
+
+        if (offset == message.size())
+            return message.size();
+
+        if (offset > message.size())
+            return string_view::npos;
+
+        if (!strchr(s, message.back()))
+            return string_view::npos;
+
+        return message.size();
+    };
+
+    auto symbols = "[]():;!*+-=<>{}\"'";
+
+    size_t searchStart = c_HeaderSize;
+    while (true)
+    {
+        auto index = find_first_of(symbols, searchStart);
+        if (index == string_view::npos)
+            break;
+
+        result.push_back({ static_cast<int>(index), 1, m_LogSymbolColor });
+
+        searchStart = index + 1;
+    }
+
+    searchStart = c_HeaderSize;
+    while (true)
+    {
+        auto tagStart = find_first_of("[", searchStart);
+        if (tagStart == string_view::npos)
+            break;
+
+        auto tagEnd = find_first_of("]", tagStart + 1);
+        if (tagEnd == string_view::npos)
+            break;
+
+        result.push_back({ static_cast<int>(tagStart) + 1, static_cast<int>(tagEnd - tagStart) - 1, m_LogTagColor });
+
+        searchStart = tagEnd + 2;
+    }
+
+    searchStart = c_HeaderSize;
+    while (true)
+    {
+        auto stringStart = find_first_of("\"'", searchStart);
+        if (stringStart == string_view::npos)
+            break;
+
+        char search[2] = " ";
+        search[0] = message[stringStart];
+
+        auto stringEnd = find_first_of(search, stringStart + 1);
+        if (stringEnd == string_view::npos)
+            break;
+
+        result.push_back({ static_cast<int>(stringStart), static_cast<int>(stringEnd - stringStart) + 1, m_LogStringColor });
+
+        searchStart = stringEnd + 2;
+    }
+
+    searchStart = c_HeaderSize;
+    while (true)
+    {
+        auto numberStart = find_first_of("0123456789.", searchStart);
+        if (numberStart == string_view::npos)
+            break;
+
+        auto numberEnd = find_first_not_of("0123456789.", numberStart + 1);
+        if (numberEnd == string_view::npos)
+            break;
+
+        if (numberStart > 0 && message[numberStart - 1] != ' ' && message[numberStart - 1] != '\t' && !strchr(symbols, message[numberStart - 1]))
+        {
+            searchStart = numberEnd + 1;
+            continue;
+        }
+
+        auto dotCount = std::count_if(message.begin() + numberStart, message.begin() + numberEnd, [](auto c) { return c == '.'; });
+        if (dotCount > 1 || (dotCount == 1 && message[numberEnd - 1] == '.'))
+        {
+            searchStart = numberEnd + 1;
+            continue;
+        }
+
+        result.push_back({ static_cast<int>(numberStart), static_cast<int>(numberEnd - numberStart), m_LogNumberColor });
+
+        searchStart = numberEnd + 1;
+    }
+
+    for (auto& range : result)
+    {
+        auto spacesBefore = std::count_if(message.begin(),                 message.begin() + range.m_Start,                [](auto c) { return c == ' ' || c == '\t'; });
+        auto spacesInside = std::count_if(message.begin() + range.m_Start, message.begin() + range.m_Start + range.m_Size, [](auto c) { return c == ' ' || c == '\t'; });
+        range.m_Start -= static_cast<int>(spacesBefore);
+        range.m_Size  -= static_cast<int>(spacesInside);
+    }
+
+    result.erase(std::remove_if(result.begin(), result.end(), [](const auto& range)
+    {
+        return range.m_Size <= 0;
+    }), result.end());
+
+    return result;
 }
 
 
@@ -786,7 +1020,16 @@ void crude_blueprint_utilities::NodeContextMenu::Show(Blueprint& blueprint)
 
         if (ImGui::MenuItem("Break Links", nullptr, nullptr, node != nullptr && ax::NodeEditor::HasAnyLinks(ax::NodeEditor::NodeId(node->m_Id))))
         {
-            ax::NodeEditor::BreakLinks(ax::NodeEditor::NodeId(node->m_Id));
+            if (node && !ax::NodeEditor::IsNodeSelected(node->m_Id))
+            {
+                ax::NodeEditor::BreakLinks(ax::NodeEditor::NodeId(node->m_Id));
+            }
+            else
+            {
+                auto selectedNodes = GetSelectedNodes(blueprint);
+                for (auto selectedNode : selectedNodes)
+                    ax::NodeEditor::BreakLinks(ax::NodeEditor::NodeId(selectedNode->m_Id));
+            }
         }
 
         ImGui::Separator();
