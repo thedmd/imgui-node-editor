@@ -575,7 +575,7 @@ const crude_blueprint::ContextMonitor* crude_blueprint::Context::GetContextMonit
     return m_Monitor;
 }
 
-void crude_blueprint::Context::Reset()
+void crude_blueprint::Context::ResetState()
 {
     m_Values.clear();
 }
@@ -654,6 +654,18 @@ crude_blueprint::StepResult crude_blueprint::Context::Execute(FlowPin& entryPoin
     }
 
     return result;
+}
+
+void crude_blueprint::Context::Stop()
+{
+    if (m_LastResult != StepResult::Success)
+        return;
+
+    m_CurrentNode = nullptr;
+    m_CurrentFlowPin = {};
+    m_Callstack.clear();
+
+    SetStepResult(StepResult::Done);
 }
 
 crude_blueprint::Node* crude_blueprint::Context::CurrentNode()
@@ -979,6 +991,8 @@ void crude_blueprint::Blueprint::ForgetPin(Pin* pin)
 
 void crude_blueprint::Blueprint::Clear()
 {
+    m_Context.Stop();
+
     for (auto node : m_Nodes)
         delete node;
 
@@ -1088,6 +1102,11 @@ void crude_blueprint::Blueprint::Start(EntryPointNode& entryPointNode)
 crude_blueprint::StepResult crude_blueprint::Blueprint::Step()
 {
     return m_Context.Step();
+}
+
+void crude_blueprint::Blueprint::Stop()
+{
+    m_Context.Stop();
 }
 
 crude_blueprint::StepResult crude_blueprint::Blueprint::Execute(EntryPointNode& entryPointNode)
@@ -1316,7 +1335,7 @@ crude_blueprint::vector<crude_blueprint::Pin*> crude_blueprint::Blueprint::FindP
 
 void crude_blueprint::Blueprint::ResetState()
 {
-    m_Context.Reset();
+    m_Context.ResetState();
 
     for (auto node : m_Nodes)
         node->Reset(m_Context);
