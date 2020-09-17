@@ -658,6 +658,8 @@ struct Blueprint
 
     StepResult LastStepResult() const;
 
+    uint32_t StepCount() const;
+
     bool Load(const crude_json::value& value);
     void Save(crude_json::value& value) const;
 

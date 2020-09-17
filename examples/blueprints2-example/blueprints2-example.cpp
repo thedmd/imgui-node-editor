@@ -14,6 +14,7 @@
 
 // TODO:
 //  - figure out how to present possible action (ex. Alt + click on link)
+//  -
 
 //#include <float.h>
 //unsigned int fp_control_state = _controlfp(_EM_INEXACT, _MCW_EM);
@@ -35,8 +36,10 @@ struct EditorAction
 
 static ed::EditorContext* g_Editor = nullptr;
 
-
-# define LOG(...)       g_OverlayLogger.Log(__VA_ARGS__)
+# define LOGV(...)      g_OverlayLogger.Log(LogLevel::Verbose, __VA_ARGS__)
+# define LOGI(...)      g_OverlayLogger.Log(LogLevel::Info, __VA_ARGS__)
+# define LOGW(...)      g_OverlayLogger.Log(LogLevel::Warning, __VA_ARGS__)
+# define LOGE(...)      g_OverlayLogger.Log(LogLevel::Error, __VA_ARGS__)
 static OverlayLogger    g_OverlayLogger;
 
 static Blueprint        g_Blueprint;
@@ -63,7 +66,7 @@ void Application_Initialize()
 
     PrintNode::s_PrintFunction = [](const PrintNode& node, string_view message)
     {
-        LOG("PrintNode(%" PRIu32 "): %*s", node.m_Id, static_cast<int>(message.size()), message.data());
+        LOGI("PrintNode(%" PRIu32 "): \"%*s\"", node.m_Id, static_cast<int>(message.size()), message.data());
     };
 
     auto printNode2Node = g_Blueprint.CreateNode<PrintNode>();
@@ -180,7 +183,7 @@ static void ShowControlPanel()
 
     if (ImGui::Button("Start"))
     {
-        LOG("Execution: Start");
+        LOGI("Execution: Start");
         g_Blueprint.Start(*entryNode);
     }
 
@@ -188,16 +191,24 @@ static void ShowControlPanel()
     ImEx::ScopedDisableItem disableStepButton(g_Blueprint.CurrentNode() == nullptr);
     if (ImGui::Button("Step"))
     {
-        LOG("Execution: Step");
-        g_Blueprint.Step();
+        LOGI("Execution: Step %" PRIu32, g_Blueprint.StepCount());
+        auto result = g_Blueprint.Step();
+        if (result == StepResult::Done)
+            LOGI("Execution: Done (%" PRIu32 " steps)", g_Blueprint.StepCount());
+        else if (result == StepResult::Error)
+            LOGI("Execution: Failed at step %" PRIu32, g_Blueprint.StepCount());
     }
     disableStepButton.Release();
 
     ImGui::SameLine();
     if (ImGui::Button("Run"))
     {
-        LOG("Execution: Run");
-        g_Blueprint.Execute(*entryNode);
+        LOGI("Execution: Run");
+        auto result = g_Blueprint.Execute(*entryNode);
+        if (result == StepResult::Done)
+            LOGI("Execution: Done (%" PRIu32 " steps)", g_Blueprint.StepCount());
+        else if (result == StepResult::Error)
+            LOGI("Execution: Failed at step %" PRIu32, g_Blueprint.StepCount());
     }
 
     ImGui::SameLine();
@@ -419,7 +430,7 @@ static void HandleCreateAction(Blueprint& blueprint)
             if (linkBuilder->Accept())
             {
                 if (startPin->LinkTo(*endPin))
-                    LOG("[HandleCreateAction] " PRI_pin_fmt " linked with " PRI_pin_fmt, LOG_pin(startPin), LOG_pin(endPin));
+                    LOGV("[HandleCreateAction] " PRI_pin_fmt " linked with " PRI_pin_fmt, LOG_pin(startPin), LOG_pin(endPin));
             }
         }
         else
@@ -450,7 +461,7 @@ static void HandleCreateAction(Blueprint& blueprint)
             auto pin = blueprint.FindPin(static_cast<uint32_t>(nodeBuilder->m_PinId.Get()));
 
             ed::Suspend();
-            LOG("[HandleCreateAction] Open CreateNodeDialog");
+            LOGV("[HandleCreateAction] Open CreateNodeDialog");
             g_CreateNodeDailog.Open(pin);
             ed::Resume();
         }
@@ -465,6 +476,7 @@ static void HandleDestroyAction(Blueprint& blueprint)
         return;
 
     vector<Node*> nodesToDelete;
+    uint32_t brokenLinkCount = 0;
 
     // Process all nodes marked for deletion
     while (auto nodeDeleter = itemDeleter.QueryDeletedNode())
@@ -480,42 +492,33 @@ static void HandleDestroyAction(Blueprint& blueprint)
     }
 
     // Process all links marked for deletion
-    uint32_t removedLinkCount = 0;
-    const Pin* removedLinkStartPin = nullptr;
-    const Pin* removedLinkEndPin   = nullptr;
     while (auto linkDeleter = itemDeleter.QueryDeleteLink())
     {
         if (linkDeleter->Accept())
         {
             auto startPin = blueprint.FindPin(static_cast<uint32_t>(linkDeleter->m_StartPinId.Get()));
-
-            if (removedLinkStartPin == nullptr)
+            if (startPin != nullptr && startPin->IsLinked())
             {
-                removedLinkStartPin = startPin;
-                removedLinkEndPin   = startPin->GetLink();
+                LOGV("[HandleDestroyAction] " PRI_pin_fmt " unlinked from " PRI_pin_fmt, LOG_pin(startPin), LOG_pin(startPin->GetLink()));
+                startPin->Unlink();
+                ++brokenLinkCount;
             }
-
-            startPin->Unlink();
-
-            ++removedLinkCount;
         }
     }
 
-
-    if (removedLinkCount == 1)
-        LOG("[HandleDestroyAction] " PRI_pin_fmt " unlinked from " PRI_pin_fmt, LOG_pin(removedLinkStartPin), LOG_pin(removedLinkEndPin));
-    else if (removedLinkCount > 1)
-        LOG("[HandleDestroyAction] %" PRIu32 " pins unlinked", removedLinkCount);
-
-    if (nodesToDelete.size() == 1)
-        LOG("[HandleDestroyAction] " PRI_node_fmt " deleted", LOG_node(nodesToDelete.front()));
-    else if (nodesToDelete.size() > 1)
-        LOG("[HandleDestroyAction] %" PRIu32 " nodes deleted", static_cast<uint32_t>(nodesToDelete.size()));
-
     // After links was removed, now it is safe to delete nodes.
     for (auto node : nodesToDelete)
+    {
+        LOGV("[HandleDestroyAction] " PRI_node_fmt, LOG_node(node));
         blueprint.DeleteNode(node);
+    }
 
+    if (!nodesToDelete.empty() || brokenLinkCount)
+    {
+        LOGV("[HandleDestroyAction] %" PRIu32 " node%s deleted, %" PRIu32 " link%s broken",
+            static_cast<uint32_t>(nodesToDelete.size()), nodesToDelete.size() != 1 ? "s" : "",
+            brokenLinkCount, brokenLinkCount != 1 ? "s" : "");
+    }
 }
 
 static void HandleContextMenuAction(Blueprint& blueprint)
@@ -523,6 +526,7 @@ static void HandleContextMenuAction(Blueprint& blueprint)
     if (ed::ShowBackgroundContextMenu())
     {
         ed::Suspend();
+        LOGV("[HandleContextMenuAction] Open CreateNodeDialog");
         g_CreateNodeDailog.Open();
         ed::Resume();
     }
@@ -533,6 +537,7 @@ static void HandleContextMenuAction(Blueprint& blueprint)
         auto node = blueprint.FindNode(static_cast<uint32_t>(contextNodeId.Get()));
 
         ed::Suspend();
+        LOGV("[HandleContextMenuAction] Open NodeContextMenu");
         g_NodeContextMenu.Open(node);
         ed::Resume();
     }
@@ -543,6 +548,7 @@ static void HandleContextMenuAction(Blueprint& blueprint)
         auto pin = blueprint.FindPin(static_cast<uint32_t>(contextPinId.Get()));
 
         ed::Suspend();
+        LOGV("[HandleContextMenuAction] Open PinContextMenu");
         g_PinContextMenu.Open(pin);
         ed::Resume();
     }
@@ -553,6 +559,7 @@ static void HandleContextMenuAction(Blueprint& blueprint)
         auto pin = blueprint.FindPin(static_cast<uint32_t>(contextLinkId.Get()));
 
         ed::Suspend();
+        LOGV("[HandleContextMenuAction] Open LinkContextMenu");
         g_LinkContextMenu.Open(pin);
         ed::Resume();
     }
@@ -567,10 +574,10 @@ static void ShowDialogs(Blueprint& blueprint)
         auto createdNode = g_CreateNodeDailog.GetCreatedNode();
         auto nodeName    = createdNode->GetName();
 
-        LOG("[CreateNodeDailog] " PRI_node_fmt" created", LOG_node(createdNode));
+        LOGV("[CreateNodeDailog] " PRI_node_fmt" created", LOG_node(createdNode));
 
         for (auto startPin : g_CreateNodeDailog.GetCreatedLinks())
-            LOG("[CreateNodeDailog] " PRI_pin_fmt "  linked with " PRI_pin_fmt, LOG_pin(startPin), LOG_pin(startPin->GetLink()));
+            LOGV("[CreateNodeDailog] " PRI_pin_fmt "  linked with " PRI_pin_fmt, LOG_pin(startPin), LOG_pin(startPin->GetLink()));
     }
     g_NodeContextMenu.Show(blueprint);
     g_PinContextMenu.Show(blueprint);
@@ -681,7 +688,6 @@ static void ShowMainMenu()
         {
             ImGui::EndMenu();
         }
-
         ImGui::EndMenuBar();
     }
 }
@@ -716,4 +722,6 @@ void Application_Frame()
     g_OverlayLogger.Draw(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
 
     ed::SetCurrentEditor(nullptr);
+
+    //ImGui::ShowMetricsWindow();
 }

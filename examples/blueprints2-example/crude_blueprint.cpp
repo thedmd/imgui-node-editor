@@ -1131,6 +1131,11 @@ crude_blueprint::StepResult crude_blueprint::Blueprint::LastStepResult() const
     return m_Context.LastStepResult();
 }
 
+uint32_t crude_blueprint::Blueprint::StepCount() const
+{
+    return m_Context.StepCount();
+}
+
 bool crude_blueprint::Blueprint::Load(const crude_json::value& value)
 {
     if (!value.is_object())
