@@ -12,7 +12,11 @@ int         Application_GetTextureHeight(ImTextureID texture);
 
 extern ImGuiWindowFlags g_ApplicationWindowFlags;
 
+void Application_SetTitle(const char* title);
+void Application_Quit();
+
 const char* Application_GetName();
 void Application_Initialize();
 void Application_Finalize();
 void Application_Frame();
+bool Application_Close();

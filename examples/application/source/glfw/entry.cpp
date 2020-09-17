@@ -10,6 +10,7 @@
 #include <GLFW/glfw3.h>
 #include "application.h"
 #include <vector>
+#include <string>
 #include <algorithm>
 #include <cstdint>
 
@@ -105,6 +106,7 @@ int Application_GetTextureHeight(ImTextureID texture)
 
 ImFont* g_DefaultFont = nullptr;
 ImFont* g_HeaderFont = nullptr;
+GLFWwindow* g_Window = nullptr;
 
 ImFont* Application_DefaultFont()
 {
@@ -114,6 +116,17 @@ ImFont* Application_DefaultFont()
 ImFont* Application_HeaderFont()
 {
     return g_HeaderFont;
+}
+
+void Application_SetTitle(const char* title)
+{
+    glfwSetWindowTitle(g_Window, title);
+}
+
+void Application_Quit()
+{
+    glfwDestroyWindow(g_Window);
+    g_Window = nullptr;
 }
 
 ImGuiWindowFlags g_ApplicationWindowFlags =
@@ -143,15 +156,15 @@ int main(int, char**)
     glfwWindowHint(GLFW_COCOA_GRAPHICS_SWITCHING, GL_TRUE);
 #endif
 #endif
-    GLFWwindow* window = glfwCreateWindow(1280, 720, Application_GetName(), NULL, NULL);
-    glfwMakeContextCurrent(window);
+    g_Window = glfwCreateWindow(1280, 720, Application_GetName(), NULL, NULL);
+    glfwMakeContextCurrent(g_Window);
     glfwSwapInterval(1); // Enable vsync
     gl3wInit();
 
     ImGui::CreateContext();
 
     // Setup ImGui binding
-    ImGui_ImplGlfwGL3_Init(window, true);
+    ImGui_ImplGlfwGL3_Init(g_Window, true);
 
     // Load Fonts
     // - If no fonts are loaded, dear imgui will use the default font. You can also load multiple fonts and use ImGui::PushFont()/PopFont() to select them.
@@ -176,15 +189,23 @@ int main(int, char**)
     //ImFont* font = io.Fonts->AddFontFromFileTTF("c:\\Windows\\Fonts\\ArialUni.ttf", 18.0f, NULL, io.Fonts->GetGlyphRangesJapanese());
     //IM_ASSERT(font != NULL);
 
-    io.MouseDrawCursor = true;
+    //io.MouseDrawCursor = true;
 
     ImVec4 clear_color = ImVec4(0.125f, 0.125f, 0.125f, 1.00f);
 
     Application_Initialize();
 
     // Main loop
-    while (!glfwWindowShouldClose(window))
+    while (g_Window != nullptr)
     {
+        if (glfwWindowShouldClose(g_Window))
+        {
+            if (Application_Close())
+                break;
+
+            glfwSetWindowShouldClose(g_Window, false);
+        }
+
         // You can read the io.WantCaptureMouse, io.WantCaptureKeyboard flags to tell if dear imgui wants to use your inputs.
         // - When io.WantCaptureMouse is true, do not dispatch mouse input data to your main application.
         // - When io.WantCaptureKeyboard is true, do not dispatch keyboard input data to your main application.
@@ -200,14 +221,17 @@ int main(int, char**)
 
         ImGui::End();
 
+        if (g_Window == nullptr)
+            break;
+
         // Rendering
         int display_w, display_h;
-        glfwGetFramebufferSize(window, &display_w, &display_h);
+        glfwGetFramebufferSize(g_Window, &display_w, &display_h);
         glViewport(0, 0, display_w, display_h);
         glClearColor(clear_color.x, clear_color.y, clear_color.z, clear_color.w);
         glClear(GL_COLOR_BUFFER_BIT);
         ImGui::Render();
-        glfwSwapBuffers(window);
+        glfwSwapBuffers(g_Window);
     }
 
     Application_Finalize();

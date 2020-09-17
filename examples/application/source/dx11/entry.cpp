@@ -92,6 +92,11 @@ LRESULT WINAPI ImGui_WinProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 
     switch (msg)
     {
+        case WM_CLOSE:
+            if (Application_Close())
+                DestroyWindow(hWnd);
+            return 0;
+
         case WM_SIZE:
             if (g_pd3dDevice != nullptr && wParam != SIZE_MINIMIZED)
             {
@@ -143,6 +148,7 @@ static ImFont* ImGui_LoadFont(ImFontAtlas& atlas, const char* name, float size, 
 
 ImFont* g_DefaultFont = nullptr;
 ImFont* g_HeaderFont = nullptr;
+HWND    g_ApplicationWindow = nullptr;
 
 ImFont* Application_DefaultFont()
 {
@@ -189,6 +195,20 @@ std::wstring widen(const std::string& str)
 }
 # endif
 
+void Application_SetTitle(const char* title)
+{
+# if defined(_UNICODE)
+    SetWindowTextW(g_ApplicationWindow, widen(title).c_str());
+# else
+    SetWindowTextA(g_ApplicationWindow, title);
+# endif
+}
+
+void Application_Quit()
+{
+    PostQuitMessage(0);
+}
+
 ImGuiWindowFlags g_ApplicationWindowFlags =
     ImGuiWindowFlags_NoTitleBar |
     ImGuiWindowFlags_NoResize |
@@ -216,6 +236,7 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _
     RegisterClassEx(&wc); AX_SCOPE_EXIT { UnregisterClass(c_ClassName, wc.hInstance) ; };
 
     auto hwnd = CreateWindow(c_ClassName, c_WindowName.c_str(), WS_OVERLAPPEDWINDOW, 1920 + 100, 100, 1440, 800, nullptr, nullptr, wc.hInstance, nullptr);
+    g_ApplicationWindow = hwnd;
 
     // Initialize Direct3D
     AX_SCOPE_EXIT{ CleanupDeviceD3D(); };

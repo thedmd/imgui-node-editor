@@ -1732,3 +1732,8 @@ void Application_Frame()
     //ImGui::ShowMetricsWindow();
 }
 
+bool Application_Close()
+{
+    return true;
+}
+
