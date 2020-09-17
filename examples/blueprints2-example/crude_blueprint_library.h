@@ -343,6 +343,7 @@ struct ToStringNode final : Node
         string result;
         switch (value.GetType())
         {
+            case PinType::Void:   break;
             case PinType::Any:    break;
             case PinType::Flow:   break;
             case PinType::Bool:   result = value.As<bool>() ? "true" : "false"; break;
@@ -469,6 +470,8 @@ struct AddNode final : Node
                     return aValue.As<float>() + bValue.As<float>();
                 case PinType::String:
                     return aValue.As<string>() + bValue.As<string>();
+                default:
+                    break;
             }
 
             return {}; // Error: Unsupported type

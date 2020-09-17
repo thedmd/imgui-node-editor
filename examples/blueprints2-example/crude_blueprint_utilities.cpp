@@ -8,6 +8,7 @@ ImEx::IconType crude_blueprint_utilities::PinTypeToIconType(PinType pinType)
 {
     switch (pinType)
     {
+        case PinType::Void:     return ImEx::IconType::Circle;
         case PinType::Any:      return ImEx::IconType::Diamond;
         case PinType::Flow:     return ImEx::IconType::Flow;
         case PinType::Bool:     return ImEx::IconType::Circle;
@@ -23,6 +24,7 @@ ImVec4 crude_blueprint_utilities::PinTypeToColor(PinType pinType)
 {
     switch (pinType)
     {
+        case PinType::Void:     return ImVec4(1.0f, 1.0f, 1.0f, 1.0f);
         case PinType::Any:      return ImVec4(1.0f, 1.0f, 1.0f, 1.0f);
         case PinType::Flow:     return ImVec4(1.0f, 1.0f, 1.0f, 1.0f);
         case PinType::Bool:     return ImVec4(220 / 255.0f,  48 / 255.0f,  48 / 255.0f, 1.0f);
@@ -38,6 +40,8 @@ bool crude_blueprint_utilities::DrawPinValue(const PinValue& value)
 {
     switch (value.GetType())
     {
+        case PinType::Void:
+            return false;
         case PinType::Any:
             return false;
         case PinType::Flow:
@@ -70,6 +74,8 @@ bool crude_blueprint_utilities::EditPinValue(Pin& pin)
 
     switch (pinValue.GetType())
     {
+        case PinType::Void:
+            return true;
         case PinType::Any:
             return true;
         case PinType::Flow:
@@ -168,7 +174,7 @@ void crude_blueprint_utilities::DrawPinValueWithEditor(Pin& pin)
 
 
 
-static const crude_blueprint_utilities::vector<crude_blueprint_utilities::Node*> crude_blueprint_utilities::GetSelectedNodes(Blueprint& blueprint)
+const crude_blueprint_utilities::vector<crude_blueprint_utilities::Node*> crude_blueprint_utilities::GetSelectedNodes(Blueprint& blueprint)
 {
     auto selectedObjects = ax::NodeEditor::GetSelectedNodes(nullptr, 0);
 
@@ -188,7 +194,7 @@ static const crude_blueprint_utilities::vector<crude_blueprint_utilities::Node*>
     return result;
 }
 
-static const crude_blueprint_utilities::vector<crude_blueprint_utilities::Pin*> crude_blueprint_utilities::GetSelectedLinks(Blueprint& blueprint)
+const crude_blueprint_utilities::vector<crude_blueprint_utilities::Pin*> crude_blueprint_utilities::GetSelectedLinks(Blueprint& blueprint)
 {
     auto selectedObjects = ax::NodeEditor::GetSelectedLinks(nullptr, 0);
 
@@ -429,7 +435,7 @@ void crude_blueprint_utilities::DebugOverlay::OnEvaluatePin(const Context& conte
 
 
 
-void crude_blueprint_utilities::OverlayLogger::Log(LogLevel level, const char* format, ...) IM_FMTARGS(1)
+void crude_blueprint_utilities::OverlayLogger::Log(LogLevel level, const char* format, ...)
 {
     va_list args;
     va_start(args, format);
@@ -451,7 +457,7 @@ void crude_blueprint_utilities::OverlayLogger::Log(LogLevel level, const char* f
         case LogLevel::Error:   levelSymbol = 'E'; break;
     }
 
-    auto formattedMessage = string("[") + formattedTimeStamp + "][" + levelSymbol + "] " + textBuffer.c_str();
+    auto formattedMessage = string("[") + formattedTimeStamp + "] [" + levelSymbol + "] " + textBuffer.c_str();
 
     auto entry = Entry{ level, timeStamp, std::move(formattedMessage) };
     entry.m_ColorRanges = ParseMessage(entry.m_Buffer.c_str());
@@ -624,13 +630,15 @@ crude_blueprint::vector<crude_blueprint_utilities::OverlayLogger::Range> crude_b
 {
     vector<Range> result;
 
-    const auto c_HeaderSize = 14;
+    const auto c_HeaderSize = 15;
 
-    // Color timestamp '[00:00:00][x] '
-    result.push_back({ 0, 10, m_LogSymbolColor });
-    result.push_back({ 1, 2,  m_LogTimeColor });
-    result.push_back({ 4, 2,  m_LogTimeColor });
-    result.push_back({ 7, 2,  m_LogTimeColor });
+    // Color timestamp '[00:00:00] [x] '
+    result.push_back({  0, 10, m_LogSymbolColor });
+    result.push_back({  1,  2, m_LogTimeColor });
+    result.push_back({  4,  2, m_LogTimeColor });
+    result.push_back({  7,  2, m_LogTimeColor });
+    result.push_back({ 11,  1, m_LogSymbolColor });
+    result.push_back({ 13,  1, m_LogSymbolColor });
 
     auto find_first_of = [message](const char* s, size_t offset = 0) -> size_t
     {
@@ -667,6 +675,8 @@ crude_blueprint::vector<crude_blueprint_utilities::OverlayLogger::Range> crude_b
 
         return message.size();
     };
+
+    auto isWhitespace = [](char c) { return c == ' ' || c == '\t' || c == '\n' || c == '\r'; };
 
     auto symbols = "[]():;!*+-=<>{}\"'";
 
@@ -728,7 +738,7 @@ crude_blueprint::vector<crude_blueprint_utilities::OverlayLogger::Range> crude_b
         if (numberEnd == string_view::npos)
             break;
 
-        if (numberStart > 0 && message[numberStart - 1] != ' ' && message[numberStart - 1] != '\t' && !strchr(symbols, message[numberStart - 1]))
+        if (numberStart > 0 && !isWhitespace(message[numberStart - 1]) && !strchr(symbols, message[numberStart - 1]))
         {
             searchStart = numberEnd + 1;
             continue;
@@ -748,8 +758,8 @@ crude_blueprint::vector<crude_blueprint_utilities::OverlayLogger::Range> crude_b
 
     for (auto& range : result)
     {
-        auto spacesBefore = std::count_if(message.begin(),                 message.begin() + range.m_Start,                [](auto c) { return c == ' ' || c == '\t'; });
-        auto spacesInside = std::count_if(message.begin() + range.m_Start, message.begin() + range.m_Start + range.m_Size, [](auto c) { return c == ' ' || c == '\t'; });
+        auto spacesBefore = std::count_if(message.begin(),                 message.begin() + range.m_Start,                isWhitespace);
+        auto spacesInside = std::count_if(message.begin() + range.m_Start, message.begin() + range.m_Start + range.m_Size, isWhitespace);
         range.m_Start -= static_cast<int>(spacesBefore);
         range.m_Size  -= static_cast<int>(spacesInside);
     }
