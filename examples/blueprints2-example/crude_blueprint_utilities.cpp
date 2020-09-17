@@ -472,6 +472,8 @@ void crude_blueprint_utilities::OverlayLogger::Update(float dt)
     if (m_HoldTimer)
         return;
 
+    dt = ImMin(dt, 1.0f); // clamp dt, to prevent logs from suddenly disappearing while returning from debugger
+
     for (auto& entry : m_Entries)
     {
         if (entry.m_IsPinned)
@@ -780,7 +782,7 @@ crude_blueprint::vector<crude_blueprint_utilities::OverlayLogger::Range> crude_b
     while (true)
     {
         auto stringStart = find_first_of("\"'", searchStart);
-        if (stringStart == string_view::npos)
+        if (stringStart >= message.size())
             break;
 
         char search[2] = " ";
