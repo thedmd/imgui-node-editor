@@ -1258,6 +1258,7 @@ bool crude_blueprint::Blueprint::Load(string_view path)
 
     fseek(file.get(), 0, SEEK_END);
     auto size = static_cast<size_t>(ftell(file.get()));
+    fseek(file.get(), 0, SEEK_SET);
 
     string data;
     data.resize(size);

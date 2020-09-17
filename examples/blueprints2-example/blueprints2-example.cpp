@@ -1,6 +1,7 @@
 # include <application.h>
 # define IMGUI_DEFINE_MATH_OPERATORS
 # include <imgui_internal.h>
+# include <tinyfiledialogs.h>
 # include <inttypes.h>
 
 # include "crude_blueprint.h"
@@ -19,19 +20,61 @@
 //#include <float.h>
 //unsigned int fp_control_state = _controlfp(_EM_INEXACT, _MCW_EM);
 
-# include <time.h>
+# include <functional>
+# include <type_traits>
+# include <map>
 
 namespace ed = ax::NodeEditor;
 
 using namespace crude_blueprint;
 using namespace crude_blueprint_utilities;
 
-struct EditorAction
-{
-    virtual ~EditorAction() = default;
+using std::function;
 
-    virtual bool IsEnabled() const { return true; }
-    virtual void Execute() {}
+enum class EventHandle : uint64_t { Invalid };
+
+template <typename... Args>
+struct Event
+{
+    using Delegate = function<void(Args...)>;
+
+    EventHandle Add(Delegate delegate)
+    {
+        auto eventHandle = static_cast<EventHandle>(++m_LastHandleId);
+        m_Delegates[eventHandle] = std::move(delegate);
+        return eventHandle;
+    }
+
+    bool Remove(EventHandle eventHandle)
+    {
+        return m_Delegates.erase(eventHandle) > 0;
+    }
+
+    void Clear()
+    {
+        m_Delegates.clear();
+    }
+
+    void Invoke(Args&&... args)
+    {
+        vector<Delegate> delegates;
+        delegates.reserve(m_Delegates.size());
+        for (auto& entry : m_Delegates)
+            delegates.push_back(entry.second);
+
+        for (auto& delegate : delegates)
+            delegate(args...);
+    }
+
+    EventHandle operator += (Delegate delegate)       { return Add(std::move(delegate)); }
+    bool        operator -= (EventHandle eventHandle) { return Remove(eventHandle);      }
+    void        operator () (Args&&... args)          { Invoke(std::forward<Args>(args)...); }
+
+private:
+    using EventHandleType = std::underlying_type_t<EventHandle>;
+
+    map<EventHandle, Delegate> m_Delegates;
+    EventHandleType            m_LastHandleId = 0;
 };
 
 static ed::EditorContext* g_Editor = nullptr;
@@ -42,14 +85,392 @@ static ed::EditorContext* g_Editor = nullptr;
 # define LOGE(...)      g_OverlayLogger.Log(LogLevel::Error, __VA_ARGS__)
 static OverlayLogger    g_OverlayLogger;
 
-static Blueprint        g_Blueprint;
+
+
+struct Action
+{
+    using OnChangeEvent     = Event<Action*>;
+    using OnTriggeredEvent  = Event<>;
+
+    Action() = default;
+    Action(string_view name, OnTriggeredEvent::Delegate delegate = {});
+
+    void SetName(string_view name);
+    const string& GetName() const;
+
+    void SetEnabled(bool set);
+    bool IsEnabled() const;
+
+    void Execute();
+
+    OnChangeEvent       OnChange;
+    OnTriggeredEvent    OnTriggered;
+
+private:
+    string  m_Name;
+    bool    m_IsEnabled = true;
+};
+
+Action::Action(string_view name, OnTriggeredEvent::Delegate delegate)
+    : m_Name(name.to_string())
+{
+    if (delegate)
+        OnTriggered += std::move(delegate);
+}
+
+void Action::SetName(string_view name)
+{
+    if (m_Name == name)
+        return;
+
+    m_Name = name.to_string();
+
+    OnChange(this);
+}
+
+const crude_blueprint::string& Action::GetName() const
+{
+    return m_Name;
+}
+
+void Action::SetEnabled(bool set)
+{
+    if (m_IsEnabled == set)
+        return;
+
+    m_IsEnabled = set;
+
+    OnChange(this);
+}
+
+bool Action::IsEnabled() const
+{
+    return m_IsEnabled;
+}
+
+void Action::Execute()
+{
+    LOGV("Action: %s", m_Name.c_str());
+    OnTriggered();
+}
+
+struct Document
+{
+    void SetPath(string_view path)
+    {
+        m_Path = path.to_string();
+
+        auto lastSeparator = m_Path.find_last_of("\\/");
+        if (lastSeparator != string::npos)
+            m_Name = m_Path.substr(lastSeparator + 1);
+        else
+            m_Name = path.to_string();
+    }
+
+    string          m_Path;
+    string          m_Name;
+    bool            m_IsModified = false;
+    vector<string>  m_Undo;
+
+    Blueprint       m_Blueprint;
+};
+
+static void Application_UpdateTitle();
+
+static void File_New();
+static bool File_Open();
+static bool File_Close();
+static bool File_SaveAs();
+static bool File_Save();
+static void File_Exit();
+
+static void Edit_Undo();
+static void Edit_Redo();
+static void Edit_Cut();
+static void Edit_Copy();
+static void Edit_Paste();
+static void Edit_Duplicate();
+static void Edit_Delete();
+static void Edit_SelectAll();
+
+static void Blueprint_Start();
+static void Blueprint_Step();
+static void Blueprint_Stop();
+static void Blueprint_Run();
+
+static unique_ptr<Document> g_Document;
+static Blueprint*           g_Blueprint = nullptr;
+
 static CreateNodeDialog g_CreateNodeDailog;
 static NodeContextMenu  g_NodeContextMenu;
 static PinContextMenu   g_PinContextMenu;
 static LinkContextMenu  g_LinkContextMenu;
 
+static Action g_File_New        = { "New",          &File_New    };
+static Action g_File_Open       = { "Open...",      &File_Open   };
+static Action g_File_Close      = { "Close",        &File_Close  };
+static Action g_File_SaveAs     = { "Save As...",   &File_SaveAs };
+static Action g_File_Save       = { "Save",         &File_Save   };
+static Action g_File_Exit       = { "Exit",         &File_Exit   };
+
+static Action g_Edit_Undo       = { "Undo",         &Edit_Undo      };
+static Action g_Edit_Redo       = { "Redo",         &Edit_Redo      };
+static Action g_Edit_Cut        = { "Cut",          &Edit_Cut       };
+static Action g_Edit_Copy       = { "Copy",         &Edit_Copy      };
+static Action g_Edit_Paste      = { "Paste",        &Edit_Paste     };
+static Action g_Edit_Duplicate  = { "Duplicate",    &Edit_Duplicate };
+static Action g_Edit_Delete     = { "Delete",       &Edit_Delete    };
+static Action g_Edit_SelectAll  = { "Select All",   &Edit_SelectAll };
+
+static Action g_Blueprint_Start = { "Start",        &Blueprint_Start };
+static Action g_Blueprint_Step  = { "Step",         &Blueprint_Step  };
+static Action g_Blueprint_Stop  = { "Stop",         &Blueprint_Stop  };
+static Action g_Blueprint_Run   = { "Run",          &Blueprint_Run   };
+
+
 static EntryPointNode* FindEntryPointNode();
 
+static bool File_IsOpen()
+{
+    return g_Document != nullptr;
+}
+
+static bool File_IsModified()
+{
+    return g_Document->m_IsModified;
+}
+
+static void Application_UpdateTitle()
+{
+    string title = Application_GetName();
+
+    if (File_IsOpen())
+    {
+        title += " - ";
+        title += g_Document->m_Name.c_str();
+
+        if (File_IsModified())
+            title += "*";
+    }
+
+    Application_SetTitle(title.c_str());
+}
+
+static void File_New()
+{
+    if (!File_Close())
+        return;
+
+    g_Document = make_unique<Document>();
+    g_Blueprint = &g_Document->m_Blueprint;
+}
+
+static bool File_Open(string_view path, string* error = nullptr)
+{
+    auto document = make_unique<Document>();
+    if (!document->m_Blueprint.Load(path))
+    {
+        if (error)
+        {
+            ImGuiTextBuffer buffer;
+            buffer.appendf("Failed to load blueprint from file \"%*s\".", static_cast<int>(path.size()), path.data());
+            *error = buffer.c_str();
+        }
+        else
+            LOGE("Failed to load blueprint from file \"%*s\".", static_cast<int>(path.size()), path.data());
+        return false;
+    }
+
+    if (!File_Close())
+        return false;
+
+    document->SetPath(path);
+
+    g_Document = std::move(document);
+    g_Blueprint = &g_Document->m_Blueprint;
+
+    Application_UpdateTitle();
+
+    return true;
+}
+
+static bool File_Open()
+{
+    const char* filterPatterns[1] = { "*.bp" };
+    auto path = tinyfd_openFileDialog(
+        "Open Blueprint...",
+        g_Document ? g_Document->m_Path.c_str() : nullptr,
+        1, filterPatterns,
+        "Blueprint Files (*.bp)", 0);
+    if (!path)
+        return false;
+
+    string error;
+    if (!File_Open(path, &error) && !error.empty())
+    {
+        tinyfd_messageBox(
+            (string(Application_GetName()) + " - Open Blueprint...").c_str(),
+            error.c_str(),
+            "ok", "error", 1);
+
+        LOGE("%s", error.c_str());
+
+        return false;
+    }
+
+    return true;
+}
+
+static bool File_Close()
+{
+    if (!File_IsOpen())
+        return true;
+
+    if (File_IsModified())
+    {
+        auto dialogResult = tinyfd_messageBox(
+            Application_GetName(),
+            "Do you want to save changes to this blueprint before closing?",
+            "yesnocancel", "question", 1);
+        if (dialogResult == 1) // yes
+        {
+            if (!File_Save())
+                return false;
+        }
+        else if (dialogResult == 0) // cancel
+        {
+            return false;
+        }
+    }
+
+    g_Blueprint = nullptr;
+    g_Document = nullptr;
+
+    Application_UpdateTitle();
+
+    return true;
+}
+
+static bool File_SaveAs(string_view path)
+{
+    if (!File_IsOpen())
+        return true;
+
+    if (!g_Document->m_Blueprint.Save(path))
+    {
+        LOGE("Failed to save blueprint to file \"%*s\".", static_cast<int>(path.size()), path.data());
+        return false;
+    }
+
+    g_Document->m_IsModified = false;
+
+    return true;
+}
+
+static bool File_SaveAs()
+{
+    const char* filterPatterns[1] = { "*.bp" };
+    auto path = tinyfd_saveFileDialog(
+        "Save Blueprint...",
+        g_Document->m_Path.c_str(),
+        1, filterPatterns,
+        "Blueprint Files (*.bp)");
+    if (!path)
+        return false;
+
+    if (!File_SaveAs(path))
+        return false;
+
+    g_Document->SetPath(path);
+
+    Application_UpdateTitle();
+
+    return true;
+}
+
+static bool File_Save()
+{
+    if (!g_Document->m_Path.empty())
+        return File_SaveAs(g_Document->m_Path);
+    else
+        return File_SaveAs();
+}
+
+static void File_Exit()
+{
+    if (!Application_Close())
+        return;
+
+    Application_Quit();
+}
+
+static void Edit_Undo()
+{
+}
+
+static void Edit_Redo()
+{
+}
+
+static void Edit_Cut()
+{
+}
+
+static void Edit_Copy()
+{
+}
+
+static void Edit_Paste()
+{
+}
+
+static void Edit_Duplicate()
+{
+}
+
+static void Edit_Delete()
+{
+}
+
+static void Edit_SelectAll()
+{
+}
+
+static void Blueprint_Start()
+{
+    auto entryNode = FindEntryPointNode();
+
+    LOGI("Execution: Start");
+    g_Blueprint->Start(*entryNode);
+}
+
+static void Blueprint_Step()
+{
+    LOGI("Execution: Step %" PRIu32, g_Blueprint->StepCount());
+    auto result = g_Blueprint->Step();
+    if (result == StepResult::Done)
+        LOGI("Execution: Done (%" PRIu32 " steps)", g_Blueprint->StepCount());
+    else if (result == StepResult::Error)
+        LOGI("Execution: Failed at step %" PRIu32, g_Blueprint->StepCount());
+}
+
+static void Blueprint_Stop()
+{
+    LOGI("Execution: Stop");
+    g_Blueprint->Stop();
+}
+
+static void Blueprint_Run()
+{
+    auto entryNode = FindEntryPointNode();
+
+    LOGI("Execution: Run");
+    auto result = g_Blueprint->Execute(*entryNode);
+    if (result == StepResult::Done)
+        LOGI("Execution: Done (%" PRIu32 " steps)", g_Blueprint->StepCount());
+    else if (result == StepResult::Error)
+        LOGI("Execution: Failed at step %" PRIu32, g_Blueprint->StepCount());
+}
 
 
 
@@ -64,6 +485,9 @@ void Application_Initialize()
 
     using namespace crude_blueprint;
 
+    g_Document = make_unique<Document>();
+    g_Blueprint = &g_Document->m_Blueprint;
+
     g_OverlayLogger.AddKeyword("Node");
     g_OverlayLogger.AddKeyword("Pin");
     g_OverlayLogger.AddKeyword("Link");
@@ -72,7 +496,7 @@ void Application_Initialize()
     g_OverlayLogger.AddKeyword("PinContextMenu");
     g_OverlayLogger.AddKeyword("LinkContextMenu");
 
-    for (auto nodeTypeInfo : g_Blueprint.GetNodeRegistry()->GetTypes())
+    for (auto nodeTypeInfo : g_Blueprint->GetNodeRegistry()->GetTypes())
         g_OverlayLogger.AddKeyword(nodeTypeInfo->m_Name);
 
     PrintNode::s_PrintFunction = [](const PrintNode& node, string_view message)
@@ -80,13 +504,13 @@ void Application_Initialize()
         LOGI("PrintNode(%" PRIu32 "): \"%*s\"", node.m_Id, static_cast<int>(message.size()), message.data());
     };
 
-    auto printNode2Node = g_Blueprint.CreateNode<PrintNode>();
-    auto entryPointNode = g_Blueprint.CreateNode<EntryPointNode>();
-    auto printNode1Node = g_Blueprint.CreateNode<PrintNode>();
-    auto flipFlopNode = g_Blueprint.CreateNode<FlipFlopNode>();
-    auto toStringNode = g_Blueprint.CreateNode<ToStringNode>();
-    auto doNNode = g_Blueprint.CreateNode<DoNNode>();
-    auto addNode = g_Blueprint.CreateNode<AddNode>();
+    auto printNode2Node = g_Blueprint->CreateNode<PrintNode>();
+    auto entryPointNode = g_Blueprint->CreateNode<EntryPointNode>();
+    auto printNode1Node = g_Blueprint->CreateNode<PrintNode>();
+    auto flipFlopNode = g_Blueprint->CreateNode<FlipFlopNode>();
+    auto toStringNode = g_Blueprint->CreateNode<ToStringNode>();
+    auto doNNode = g_Blueprint->CreateNode<DoNNode>();
+    auto addNode = g_Blueprint->CreateNode<AddNode>();
 
     entryPointNode->m_Exit.LinkTo(doNNode->m_Enter);
 
@@ -110,15 +534,15 @@ void Application_Initialize()
     flipFlopNode->m_B.LinkTo(toStringNode->m_Enter);
 
 
-    //auto constBoolNode  = g_Blueprint.CreateNode<ConstBoolNode>();
-    //auto toStringNode   = g_Blueprint.CreateNode<ToStringNode>();
-    //auto printNodeNode  = g_Blueprint.CreateNode<PrintNode>();
+    //auto constBoolNode  = g_Blueprint->CreateNode<ConstBoolNode>();
+    //auto toStringNode   = g_Blueprint->CreateNode<ToStringNode>();
+    //auto printNodeNode  = g_Blueprint->CreateNode<PrintNode>();
 
     //crude_json::value value;
-    //g_Blueprint.Save(value);
+    //g_Blueprint->Save(value);
     //auto yyy = value.dump();
 
-    //g_Blueprint.Execute(*entryPointNode);
+    //g_Blueprint->Execute(*entryPointNode);
 
     //Blueprint b2;
 
@@ -132,20 +556,20 @@ void Application_Initialize()
 
     //auto b3 = b2;
 
-    //g_Blueprint.CreateNode<BranchNode>();
-    //g_Blueprint.CreateNode<DoNNode>();
-    //g_Blueprint.CreateNode<DoOnceNode>();
-    //g_Blueprint.CreateNode<FlipFlopNode>();
-    //g_Blueprint.CreateNode<ForLoopNode>();
-    //g_Blueprint.CreateNode<GateNode>();
-    //g_Blueprint.CreateNode<AddNode>();
-    //g_Blueprint.CreateNode<PrintNode>();
-    //g_Blueprint.CreateNode<ConstBoolNode>();
-    //g_Blueprint.CreateNode<ConstInt32Node>();
-    //g_Blueprint.CreateNode<ConstFloatNode>();
-    //g_Blueprint.CreateNode<ConstStringNode>();
-    //g_Blueprint.CreateNode<ToStringNode>();
-    //g_Blueprint.CreateNode<AddNode>();
+    //g_Blueprint->CreateNode<BranchNode>();
+    //g_Blueprint->CreateNode<DoNNode>();
+    //g_Blueprint->CreateNode<DoOnceNode>();
+    //g_Blueprint->CreateNode<FlipFlopNode>();
+    //g_Blueprint->CreateNode<ForLoopNode>();
+    //g_Blueprint->CreateNode<GateNode>();
+    //g_Blueprint->CreateNode<AddNode>();
+    //g_Blueprint->CreateNode<PrintNode>();
+    //g_Blueprint->CreateNode<ConstBoolNode>();
+    //g_Blueprint->CreateNode<ConstInt32Node>();
+    //g_Blueprint->CreateNode<ConstFloatNode>();
+    //g_Blueprint->CreateNode<ConstStringNode>();
+    //g_Blueprint->CreateNode<ToStringNode>();
+    //g_Blueprint->CreateNode<AddNode>();
 
 
     ed::Config config;
@@ -154,7 +578,7 @@ void Application_Initialize()
 
     g_Editor = ed::CreateEditor(&config);
 
-    //g_Blueprint.Start(*FindEntryPointNode());
+    //g_Blueprint->Start(*FindEntryPointNode());
 }
 
 void Application_Finalize()
@@ -164,7 +588,10 @@ void Application_Finalize()
 
 static EntryPointNode* FindEntryPointNode()
 {
-    for (auto& node : g_Blueprint.GetNodes())
+    if (!g_Blueprint)
+        return nullptr;
+
+    for (auto& node : g_Blueprint->GetNodes())
     {
         if (node->GetTypeInfo().m_Id == EntryPointNode::GetStaticTypeInfo().m_Id)
         {
@@ -188,53 +615,28 @@ static const char* StepResultToString(StepResult stepResult)
 
 static void ShowControlPanel()
 {
-    auto entryNode = FindEntryPointNode();
-
-    ImEx::ScopedDisableItem disablePanel(entryNode == nullptr);
-
-    if (ImGui::Button("Start"))
+    auto toolbarAction = [](Action& action)
     {
-        LOGI("Execution: Start");
-        g_Blueprint.Start(*entryNode);
-    }
+        ImEx::ScopedDisableItem disableAction(!action.IsEnabled());
+
+        if (ImGui::Button(action.GetName().c_str()))
+        {
+            action.Execute();
+        }
+    };
+
+    toolbarAction(g_Blueprint_Start);
+    ImGui::SameLine();
+    toolbarAction(g_Blueprint_Step);
+    ImGui::SameLine();
+    toolbarAction(g_Blueprint_Stop);
+    ImGui::SameLine();
+    toolbarAction(g_Blueprint_Run);
 
     ImGui::SameLine();
-    ImEx::ScopedDisableItem disableStepButton(g_Blueprint.CurrentNode() == nullptr);
-    if (ImGui::Button("Step"))
-    {
-        LOGI("Execution: Step %" PRIu32, g_Blueprint.StepCount());
-        auto result = g_Blueprint.Step();
-        if (result == StepResult::Done)
-            LOGI("Execution: Done (%" PRIu32 " steps)", g_Blueprint.StepCount());
-        else if (result == StepResult::Error)
-            LOGI("Execution: Failed at step %" PRIu32, g_Blueprint.StepCount());
-    }
-    disableStepButton.Release();
+    ImGui::Text("Status: %s", g_Blueprint ? StepResultToString(g_Blueprint->LastStepResult()) : "-");
 
-    ImGui::SameLine();
-    ImEx::ScopedDisableItem disableStopButton(g_Blueprint.CurrentNode() == nullptr);
-    if (ImGui::Button("Stop"))
-    {
-        LOGI("Execution: Stop");
-        g_Blueprint.Stop();
-    }
-    disableStopButton.Release();
-
-    ImGui::SameLine();
-    if (ImGui::Button("Run"))
-    {
-        LOGI("Execution: Run");
-        auto result = g_Blueprint.Execute(*entryNode);
-        if (result == StepResult::Done)
-            LOGI("Execution: Done (%" PRIu32 " steps)", g_Blueprint.StepCount());
-        else if (result == StepResult::Error)
-            LOGI("Execution: Failed at step %" PRIu32, g_Blueprint.StepCount());
-    }
-
-    ImGui::SameLine();
-    ImGui::Text("Status: %s", StepResultToString(g_Blueprint.LastStepResult()));
-
-    if (auto currentNode = g_Blueprint.CurrentNode())
+    if (auto currentNode = g_Blueprint ? g_Blueprint->CurrentNode() : nullptr)
     {
         auto nodeName = currentNode->GetName();
 
@@ -243,7 +645,7 @@ static void ShowControlPanel()
         ImGui::SameLine();
         ImGui::Text("Current Node: %*s", static_cast<int>(nodeName.size()), nodeName.data());
 
-        auto nextNode = g_Blueprint.NextNode();
+        auto nextNode = g_Blueprint->NextNode();
         auto nextNodeName = nextNode ? nextNode->GetName() : "-";
         ImGui::SameLine();
         ImGui::Spacing();
@@ -695,48 +1097,77 @@ static void ShowInfoTooltip(Blueprint& blueprint)
     }
 }
 
+static void UpdateActions()
+{
+    auto hasDocument = File_IsOpen();
+    auto isModified  = hasDocument && File_IsModified();
+
+    g_File_Close.SetEnabled(hasDocument);
+    g_File_SaveAs.SetEnabled(hasDocument);
+    g_File_Save.SetEnabled(isModified);
+
+    auto entryNode = FindEntryPointNode();
+
+    bool hasBlueprint  = (g_Blueprint != nullptr);
+    bool hasEntryPoint = (entryNode != nullptr);
+    bool isExecuting   = hasBlueprint && (g_Blueprint->CurrentNode() != nullptr);
+
+    g_Blueprint_Start.SetEnabled(hasBlueprint && hasEntryPoint);
+    g_Blueprint_Step.SetEnabled(hasBlueprint && isExecuting);
+    g_Blueprint_Stop.SetEnabled(hasBlueprint && isExecuting);
+    g_Blueprint_Run.SetEnabled(hasBlueprint && hasEntryPoint);
+}
+
 static void ShowMainMenu()
 {
+    auto menuAction = [](Action& action)
+    {
+        if (ImGui::MenuItem(action.GetName().c_str(), nullptr, nullptr, action.IsEnabled()))
+        {
+            action.Execute();
+        }
+    };
+
     if (ImGui::BeginMenuBar())
     {
         if (ImGui::BeginMenu("File"))
         {
-            ImGui::MenuItem("New");
-            ImGui::MenuItem("Open...");
+            menuAction(g_File_New);
+            menuAction(g_File_Open);
             ImGui::Separator();
-            ImGui::MenuItem("Close");
+            menuAction(g_File_Close);
             ImGui::Separator();
-            ImGui::MenuItem("Save As...");
-            ImGui::MenuItem("Save");
+            menuAction(g_File_SaveAs);
+            menuAction(g_File_Save);
             ImGui::Separator();
-            ImGui::MenuItem("Exit");
+            menuAction(g_File_Exit);
 
             ImGui::EndMenu();
         }
 
         if (ImGui::BeginMenu("Edit"))
         {
-            ImGui::MenuItem("Undo");
-            ImGui::MenuItem("Redo");
+            menuAction(g_Edit_Undo);
+            menuAction(g_Edit_Redo);
             ImGui::Separator();
-            ImGui::MenuItem("Cut");
-            ImGui::MenuItem("Copy");
-            ImGui::MenuItem("Paste");
-            ImGui::MenuItem("Duplicate");
-            ImGui::MenuItem("Delete");
+            menuAction(g_Edit_Cut);
+            menuAction(g_Edit_Copy);
+            menuAction(g_Edit_Paste);
+            menuAction(g_Edit_Duplicate);
+            menuAction(g_Edit_Delete);
             ImGui::Separator();
-            ImGui::MenuItem("Select All");
+            menuAction(g_Edit_SelectAll);
 
             ImGui::EndMenu();
         }
 
         if (ImGui::BeginMenu("Blueprint"))
         {
-            ImGui::MenuItem("Start");
-            ImGui::MenuItem("Step");
-            ImGui::MenuItem("Stop");
+            menuAction(g_Blueprint_Start);
+            menuAction(g_Blueprint_Step);
+            menuAction(g_Blueprint_Stop);
             ImGui::Separator();
-            ImGui::MenuItem("Run");
+            menuAction(g_Blueprint_Run);
 
             ImGui::EndMenu();
         }
@@ -748,27 +1179,35 @@ void Application_Frame()
 {
     ed::SetCurrentEditor(g_Editor);
 
+    UpdateActions();
+
     ShowMainMenu();
-
-    DebugOverlay debugOverlay(g_Blueprint);
-
     ShowControlPanel();
 
     ImGui::Separator();
 
-    ed::Begin("###main_editor");
+    if (g_Blueprint)
+    {
+        DebugOverlay debugOverlay(*g_Blueprint);
 
-    CommitBlueprintNodes(g_Blueprint, debugOverlay);
+        ed::Begin("###main_editor");
 
-    HandleCreateAction(g_Blueprint);
-    HandleDestroyAction(g_Blueprint);
-    HandleContextMenuAction(g_Blueprint);
+        CommitBlueprintNodes(*g_Blueprint, debugOverlay);
 
-    ShowDialogs(g_Blueprint);
+        HandleCreateAction(*g_Blueprint);
+        HandleDestroyAction(*g_Blueprint);
+        HandleContextMenuAction(*g_Blueprint);
 
-    ShowInfoTooltip(g_Blueprint);
+        ShowDialogs(*g_Blueprint);
 
-    ed::End();
+        ShowInfoTooltip(*g_Blueprint);
+
+        ed::End();
+    }
+    else
+    {
+        ImGui::Dummy(ImGui::GetContentRegionAvail());
+    }
 
     g_OverlayLogger.Update(ImGui::GetIO().DeltaTime);
     g_OverlayLogger.Draw(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
@@ -776,4 +1215,9 @@ void Application_Frame()
     ed::SetCurrentEditor(nullptr);
 
     //ImGui::ShowMetricsWindow();
+}
+
+bool Application_Close()
+{
+    return File_Close();
 }
