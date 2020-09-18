@@ -1249,45 +1249,19 @@ void crude_blueprint::Blueprint::Save(crude_json::value& value) const
 
 bool crude_blueprint::Blueprint::Load(string_view path)
 {
-    // Modern C++, so beautiful...
-    unique_ptr<FILE, void(*)(FILE*)> file{nullptr, [](FILE* file) { if (file) fclose(file); }};
-    file.reset(fopen(path.to_string().c_str(), "rb"));
-
-    if (!file)
+    auto value = crude_json::value::load(path.to_string());
+    if (!value.second)
         return false;
 
-    fseek(file.get(), 0, SEEK_END);
-    auto size = static_cast<size_t>(ftell(file.get()));
-    fseek(file.get(), 0, SEEK_SET);
-
-    string data;
-    data.resize(size);
-    if (fread(const_cast<char*>(data.data()), size, 1, file.get()) != 1)
-        return false;
-
-    auto value = crude_json::value::parse(data);
-
-    return Load(value);
+    return Load(value.first);
 }
 
 bool crude_blueprint::Blueprint::Save(string_view path) const
 {
-    // Modern C++, so beautiful...
-    unique_ptr<FILE, void(*)(FILE*)> file{nullptr, [](FILE* file) { if (file) fclose(file); }};
-    file.reset(fopen(path.to_string().c_str(), "wb"));
-
-    if (!file)
-        return false;
-
     crude_json::value value;
     Save(value);
 
-    auto data = value.dump(4);
-
-    if (fwrite(data.data(), data.size(), 1, file.get()) != 1)
-        return false;
-
-    return true;
+    return value.save(path.to_string(), 4);
 }
 
 uint32_t crude_blueprint::Blueprint::MakeNodeId(Node* node)
