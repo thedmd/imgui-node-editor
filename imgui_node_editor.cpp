@@ -1554,7 +1554,8 @@ void ed::EditorContext::RestoreNodeState(Node* node)
         return;
 
     // Load state from config (if possible)
-    if (!NodeSettings::Parse(m_Config.LoadNode(node->m_ID), *settings))
+    auto state = m_Config.LoadNode(node->m_ID);
+    if (!state.is_null() && !NodeSettings::Parse(state, *settings))
         return;
 
     node->m_Bounds.Min      = settings->m_Location;

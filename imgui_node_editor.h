@@ -305,6 +305,9 @@ ImVec2 GetNodePosition(NodeId nodeId);
 ImVec2 GetNodeSize(NodeId nodeId);
 void CenterNodeOnScreen(NodeId nodeId);
 
+void SaveState();
+void RestoreState();
+
 void RestoreNodeState(NodeId nodeId);
 
 void Suspend();
