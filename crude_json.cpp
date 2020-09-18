@@ -14,7 +14,10 @@
 # include <clocale>
 # include <cmath>
 # include <cstring>
-
+# if CRUDE_JSON_IO
+#     include <stdio.h>
+#     include <memory>
+# endif
 
 namespace crude_json {
 
@@ -826,5 +829,60 @@ value value::parse(const string& data)
 
     return v;
 }
+
+# if CRUDE_JSON_IO
+std::pair<value, bool> value::load(const string& path)
+{
+    // Modern C++, so beautiful...
+    std::unique_ptr<FILE, void(*)(FILE*)> file{nullptr, [](FILE* file) { if (file) fclose(file); }};
+# if defined(_MSC_VER) || (defined(__STDC_LIB_EXT1__) && __STDC_WANT_LIB_EXT1__)
+    FILE* handle = nullptr;
+    if (fopen_s(&handle, path.c_str(), "rb") != 0)
+        return {value{}, false};
+    file.reset(handle);
+# else
+    file.reset(fopen(path.c_str(), "rb"));
+# endif
+
+    if (!file)
+        return {value{}, false};
+
+    fseek(file.get(), 0, SEEK_END);
+    auto size = static_cast<size_t>(ftell(file.get()));
+    fseek(file.get(), 0, SEEK_SET);
+
+    string data;
+    data.resize(size);
+    if (fread(const_cast<char*>(data.data()), size, 1, file.get()) != 1)
+        return {value{}, false};
+
+    return {parse(data), true};
+}
+
+bool value::save(const string& path, const int indent, const char indent_char) const
+{
+    // Modern C++, so beautiful...
+    std::unique_ptr<FILE, void(*)(FILE*)> file{nullptr, [](FILE* file) { if (file) fclose(file); }};
+# if defined(_MSC_VER) || (defined(__STDC_LIB_EXT1__) && __STDC_WANT_LIB_EXT1__)
+    FILE* handle = nullptr;
+    if (fopen_s(&handle, path.c_str(), "wb") != 0)
+        return false;
+    file.reset(handle);
+# else
+    file.reset(fopen(path.c_str(), "wb"));
+# endif
+
+    if (!file)
+        return false;
+
+    auto data = dump(indent, indent_char);
+
+    if (fwrite(data.data(), data.size(), 1, file.get()) != 1)
+        return false;
+
+    return true;
+}
+
+# endif
 
 } // namespace crude_json

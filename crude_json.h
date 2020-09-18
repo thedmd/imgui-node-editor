@@ -24,6 +24,10 @@
 #     define CRUDE_ASSERT(expr) assert(expr)
 # endif
 
+# ifndef CRUDE_JSON_IO
+#     define CRUDE_JSON_IO 1
+# endif
+
 namespace crude_json {
 
 struct value;
@@ -118,6 +122,11 @@ struct value
 
     // Returns discarded value for invalid inputs.
     static value parse(const string& data);
+
+# if CRUDE_JSON_IO
+    static std::pair<value, bool> load(const string& path);
+    bool save(const string& path, const int indent = -1, const char indent_char = ' ') const;
+# endif
 
 private:
     struct parser;
