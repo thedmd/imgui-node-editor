@@ -26,6 +26,12 @@
 
 
 //------------------------------------------------------------------------------
+namespace crude_json {
+struct value;
+} // crude_json
+
+
+//------------------------------------------------------------------------------
 namespace ax {
 namespace NodeEditor {
 
@@ -79,6 +85,12 @@ using ConfigLoadSettings     = size_t (*)(char* data, void* userPointer);
 using ConfigSaveNodeSettings = bool   (*)(NodeId nodeId, const char* data, size_t size, SaveReasonFlags reason, void* userPointer);
 using ConfigLoadNodeSettings = size_t (*)(NodeId nodeId, char* data, void* userPointer);
 
+using ConfigSaveSettingsJson = bool              (*)(const crude_json::value&, SaveReasonFlags reason, void* userPointer);
+using ConfigLoadSettingsJson = crude_json::value (*)(void* userPointer);
+
+using ConfigSaveNodeSettingsJson = bool              (*)(NodeId nodeId, const crude_json::value& value, SaveReasonFlags reason, void* userPointer);
+using ConfigLoadNodeSettingsJson = crude_json::value (*)(NodeId nodeId, void* userPointer);
+
 using ConfigSession          = void   (*)(void* userPointer);
 
 struct Config
@@ -92,6 +104,10 @@ struct Config
     ConfigLoadSettings      LoadSettings;
     ConfigSaveNodeSettings  SaveNodeSettings;
     ConfigLoadNodeSettings  LoadNodeSettings;
+    ConfigSaveSettingsJson      SaveSettingsJson;
+    ConfigLoadSettingsJson      LoadSettingsJson;
+    ConfigSaveNodeSettingsJson  SaveNodeSettingsJson;
+    ConfigLoadNodeSettingsJson  LoadNodeSettingsJson;
     void*                   UserPointer;
     ImVector<float>         CustomZoomLevels;
     CanvasSizeModeAlias     CanvasSizeMode;
@@ -108,6 +124,10 @@ struct Config
         , LoadSettings(nullptr)
         , SaveNodeSettings(nullptr)
         , LoadNodeSettings(nullptr)
+        , SaveSettingsJson(nullptr)
+        , LoadSettingsJson(nullptr)
+        , SaveNodeSettingsJson(nullptr)
+        , LoadNodeSettingsJson(nullptr)
         , UserPointer(nullptr)
         , CustomZoomLevels()
         , CanvasSizeMode(CanvasSizeModeAlias::FitVerticalView)

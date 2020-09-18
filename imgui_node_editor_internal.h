@@ -516,7 +516,7 @@ struct NodeSettings
     void ClearDirty();
     void MakeDirty(SaveReasonFlags reason);
 
-    json::value Serialize();
+    json::value Serialize() const;
 
     static bool Parse(const std::string& string, NodeSettings& settings);
     static bool Parse(const json::value& data, NodeSettings& result);
@@ -549,9 +549,10 @@ struct Settings
     void ClearDirty(Node* node = nullptr);
     void MakeDirty(SaveReasonFlags reason, Node* node = nullptr);
 
-    std::string Serialize();
+    json::value Serialize() const;
 
     static bool Parse(const std::string& string, Settings& settings);
+    static bool Parse(const json::value& settingsValue, Settings& settings);
 };
 
 struct Control
@@ -1266,12 +1267,12 @@ struct Config: ax::NodeEditor::Config
 {
     Config(const ax::NodeEditor::Config* config);
 
-    std::string Load();
-    std::string LoadNode(NodeId nodeId);
+    json::value Load();
+    json::value LoadNode(NodeId nodeId);
 
     void BeginSave();
-    bool Save(const std::string& data, SaveReasonFlags flags);
-    bool SaveNode(NodeId nodeId, const std::string& data, SaveReasonFlags flags);
+    bool Save(const json::value& data, SaveReasonFlags flags);
+    bool SaveNode(NodeId nodeId, const json::value& data, SaveReasonFlags flags);
     void EndSave();
 };
 
