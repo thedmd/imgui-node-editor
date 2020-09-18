@@ -246,9 +246,11 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _
     ImGui::CreateContext();
     AX_SCOPE_EXIT{ ImGui::DestroyContext(); };
 
+    std::string iniFilename = std::string(Application_GetName()) + ".ini";
+
     ImGuiIO& io = ImGui::GetIO();
     //io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;  // Enable Keyboard Controls
-    io.IniFilename = nullptr;
+    io.IniFilename = iniFilename.c_str();
     io.LogFilename = nullptr;
 
     ImFontConfig config;

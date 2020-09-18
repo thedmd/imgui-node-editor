@@ -178,7 +178,12 @@ int main(int, char**)
     config.OversampleV = 4;
     config.PixelSnapH = false;
 
+    std::string iniFilename = std::string(Application_GetName()) + ".ini";
+
     ImGuiIO& io = ImGui::GetIO();
+    //io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;  // Enable Keyboard Controls
+    io.IniFilename = iniFilename.c_str();
+
     g_DefaultFont = io.Fonts->AddFontFromFileTTF("data/Play-Regular.ttf", 18.0f, &config);
     g_HeaderFont = io.Fonts->AddFontFromFileTTF("data/Cuprum-Bold.ttf", 20.0f, &config);
     //io.Fonts->AddFontDefault();
