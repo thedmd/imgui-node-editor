@@ -1,6 +1,7 @@
 # include "imgui_extras.h"
 # define IMGUI_DEFINE_MATH_OPERATORS
 # include <imgui_internal.h>
+# include <stdio.h>
 
 void ImEx::DrawIcon(ImDrawList* drawList, const ImVec2& a, const ImVec2& b, IconType type, bool filled, ImU32 color, ImU32 innerColor)
 {
@@ -363,4 +364,124 @@ void ImEx::ScopedSuspendLayout::Release()
     m_Window->DC.PrevLineTextBaseOffset = m_PrevLineTextBaseOffset;
 
     m_Window = nullptr;
+}
+
+
+
+
+ImEx::StorageHandler<ImEx::MostRecentlyUsedList::Settings> ImEx::MostRecentlyUsedList::s_Storage;
+
+void ImEx::MostRecentlyUsedList::Install(ImGuiContext* context)
+{
+    context->SettingsHandlers.push_back(s_Storage.MakeHandler("MostRecentlyUsedList"));
+
+    s_Storage.ReadLine = [](ImGuiContext*, Settings* entry, const char* line)
+    {
+        const char* lineEnd = line + strlen(line);
+
+        auto parseListEntry = [lineEnd](const char* line, int& index) -> const char*
+        {
+            char* indexEnd = nullptr;
+            errno = 0;
+            index = strtol(line, &indexEnd, 10);
+            if (errno == ERANGE)
+                return nullptr;
+            if (indexEnd >= lineEnd)
+                return nullptr;
+            if (*indexEnd != '=')
+                return nullptr;
+            return indexEnd + 1;
+        };
+
+
+        int index = 0;
+        if (auto path = parseListEntry(line, index))
+        {
+            if (static_cast<int>(entry->m_List.size()) <= index)
+                entry->m_List.resize(index + 1);
+            entry->m_List[index] = path;
+        }
+    };
+
+    s_Storage.WriteAll = [](ImGuiContext*, ImGuiTextBuffer* out_buf, const ImEx::StorageHandler<Settings>::Storage& storage)
+    {
+        for (auto& entry : storage)
+        {
+            out_buf->appendf("[%s][%s]\n", "MostRecentlyUsedList", entry.first.c_str());
+            int index = 0;
+            for (auto& value : entry.second->m_List)
+                out_buf->appendf("%d=%s\n", index++, value.c_str());
+            out_buf->append("\n");
+        }
+    };
+}
+
+ImEx::MostRecentlyUsedList::MostRecentlyUsedList(const char* id, int capacity /*= 10*/)
+    : m_ID(id)
+    , m_Capacity(capacity)
+    , m_List(s_Storage.FindOrCreate(id)->m_List)
+{
+}
+
+void ImEx::MostRecentlyUsedList::Add(const std::string& item)
+{
+    Add(item.c_str());
+}
+
+void ImEx::MostRecentlyUsedList::Add(const char* item)
+{
+    auto itemIt = std::find(m_List.begin(), m_List.end(), item);
+    if (itemIt != m_List.end())
+    {
+        // Item is already on the list. Rotate list to move it to the
+        // first place.
+        std::rotate(m_List.begin(), itemIt, itemIt + 1);
+    }
+    else
+    {
+        // Push new item to the back, rotate list to move it to the front,
+        // pop back last element if we're over capacity.
+        m_List.push_back(item);
+        std::rotate(m_List.begin(), m_List.end() - 1, m_List.end());
+        if (static_cast<int>(m_List.size()) > m_Capacity)
+            m_List.pop_back();
+    }
+
+    PushToStorage();
+
+    ImGui::MarkIniSettingsDirty();
+}
+
+void ImEx::MostRecentlyUsedList::Clear()
+{
+    if (m_List.empty())
+        return;
+
+    m_List.resize(0);
+
+    PushToStorage();
+
+    ImGui::MarkIniSettingsDirty();
+}
+
+const std::vector<std::string>& ImEx::MostRecentlyUsedList::GetList() const
+{
+    return m_List;
+}
+
+int ImEx::MostRecentlyUsedList::Size() const
+{
+    return static_cast<int>(m_List.size());
+}
+
+void ImEx::MostRecentlyUsedList::PullFromStorage()
+{
+    if (auto settings = s_Storage.Find(m_ID.c_str()))
+        m_List = settings->m_List;
+}
+
+void ImEx::MostRecentlyUsedList::PushToStorage()
+{
+    auto settings = s_Storage.FindOrCreate(m_ID.c_str());
+    settings->m_List = m_List;
 }

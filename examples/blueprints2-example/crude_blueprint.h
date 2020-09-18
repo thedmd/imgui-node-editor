@@ -431,6 +431,8 @@ enum class StepResult
     Error
 };
 
+const char* StepResultToString(StepResult stepResult);
+
 struct ContextMonitor
 {
     virtual ~ContextMonitor() {};
