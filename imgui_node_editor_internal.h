@@ -1470,6 +1470,20 @@ struct EditorContext
 
     ImDrawList* GetDrawList() { return m_DrawList; }
 
+    void SaveState()
+    {
+        SaveSettings();
+    }
+
+    void RestoreState()
+    {
+        m_Settings.ClearDirty();
+        m_Settings.m_Nodes.clear();
+        LoadSettings();
+        for (auto& node : m_Nodes)
+            UpdateNodeState(node);
+    }
+
 private:
     void LoadSettings();
     void SaveSettings();

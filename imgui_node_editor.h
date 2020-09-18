@@ -357,6 +357,9 @@ void CenterNodeOnScreen(NodeId nodeId);
 void SetNodeZPosition(NodeId nodeId, float z); // Sets node z position, nodes with higher value are drawn over nodes with lower value
 float GetNodeZPosition(NodeId nodeId); // Returns node z position, defaults is 0.0f
 
+void SaveState();
+void RestoreState();
+
 void RestoreNodeState(NodeId nodeId);
 
 void Suspend();

@@ -1726,7 +1726,8 @@ void ed::EditorContext::UpdateNodeState(Node* node)
     if (tryLoadState)
     {
         NodeSettings newSettings = *settings;
-        if (NodeSettings::Parse(m_Config.LoadNode(node->m_ID), newSettings))
+        auto state = m_Config.LoadNode(node->m_ID);
+        if (!state.is_null() && NodeSettings::Parse(state, newSettings))
             *settings = newSettings;
     }
 
