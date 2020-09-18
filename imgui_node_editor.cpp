@@ -2336,7 +2336,7 @@ void ed::NodeSettings::MakeDirty(SaveReasonFlags reason)
     m_DirtyReason = m_DirtyReason | reason;
 }
 
-ed::json::value ed::NodeSettings::Serialize()
+ed::json::value ed::NodeSettings::Serialize() const
 {
     json::value result;
     result["location"]["x"] = m_Location.x;
@@ -2448,7 +2448,7 @@ void ed::Settings::MakeDirty(SaveReasonFlags reason, Node* node)
     }
 }
 
-std::string ed::Settings::Serialize()
+ed::json::value ed::Settings::Serialize() const
 {
     json::value result;
 
@@ -2485,16 +2485,21 @@ std::string ed::Settings::Serialize()
     view["visible_rect"]["max"]["x"] = m_VisibleRect.Max.x;
     view["visible_rect"]["max"]["y"] = m_VisibleRect.Max.y;
 
-    return result.dump();
+    return result;
 }
 
 bool ed::Settings::Parse(const std::string& string, Settings& settings)
 {
-    Settings result = settings;
-
     auto settingsValue = json::value::parse(string);
     if (settingsValue.is_discarded())
         return false;
+
+    return Parse(settingsValue, settings);
+}
+
+bool ed::Settings::Parse(const json::value& settingsValue, Settings& settings)
+{
+    Settings result = settings;
 
     if (!settingsValue.is_object())
         return false;
@@ -5351,21 +5356,29 @@ ed::Config::Config(const ax::NodeEditor::Config* config)
         *static_cast<ax::NodeEditor::Config*>(this) = *config;
 }
 
-std::string ed::Config::Load()
+ed::json::value ed::Config::Load()
 {
-    std::string data;
-
-    if (LoadSettings)
+    if (LoadSettingsJson)
     {
+        return LoadSettingsJson(UserPointer);
+    }
+    else if (LoadSettings)
+    {
+        std::string data;
+
         const auto size = LoadSettings(nullptr, UserPointer);
         if (size > 0)
         {
             data.resize(size);
             LoadSettings(const_cast<char*>(data.data()), UserPointer);
         }
+
+        return json::value::parse(data);
     }
     else if (SettingsFile)
     {
+        std::string data;
+
         std::ifstream file(SettingsFile);
         if (file)
         {
@@ -5376,26 +5389,34 @@ std::string ed::Config::Load()
             data.reserve(size);
             data.assign(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
         }
-    }
 
-    return data;
+        return json::value::parse(data);
+    }
+    else
+        return json::value(json::type_t::null);
 }
 
-std::string ed::Config::LoadNode(NodeId nodeId)
+ed::json::value ed::Config::LoadNode(NodeId nodeId)
 {
-    std::string data;
-
-    if (LoadNodeSettings)
+    if (LoadNodeSettingsJson)
     {
+        return LoadNodeSettingsJson(nodeId, UserPointer);
+    }
+    else if (LoadNodeSettings)
+    {
+        std::string data;
+
         const auto size = LoadNodeSettings(nodeId, nullptr, UserPointer);
         if (size > 0)
         {
             data.resize(size);
             LoadNodeSettings(nodeId, const_cast<char*>(data.data()), UserPointer);
         }
-    }
 
-    return data;
+        return json::value::parse(data);
+    }
+    else
+        return json::value(json::type_t::null);
 }
 
 void ed::Config::BeginSave()
@@ -5404,17 +5425,22 @@ void ed::Config::BeginSave()
         BeginSaveSession(UserPointer);
 }
 
-bool ed::Config::Save(const std::string& data, SaveReasonFlags flags)
+bool ed::Config::Save(const json::value& data, SaveReasonFlags flags)
 {
-    if (SaveSettings)
+    if (SaveSettingsJson)
     {
-        return SaveSettings(data.c_str(), data.size(), flags, UserPointer);
+        return SaveSettingsJson(data, flags, UserPointer);
+    }
+    else if (SaveSettings)
+    {
+        auto serializedData = data.dump();
+        return SaveSettings(serializedData.c_str(), serializedData.size(), flags, UserPointer);
     }
     else if (SettingsFile)
     {
         std::ofstream settingsFile(SettingsFile);
         if (settingsFile)
-            settingsFile << data;
+            settingsFile << data.dump();
 
         return !!settingsFile;
     }
@@ -5422,10 +5448,17 @@ bool ed::Config::Save(const std::string& data, SaveReasonFlags flags)
     return false;
 }
 
-bool ed::Config::SaveNode(NodeId nodeId, const std::string& data, SaveReasonFlags flags)
+bool ed::Config::SaveNode(NodeId nodeId, const json::value& data, SaveReasonFlags flags)
 {
-    if (SaveNodeSettings)
-        return SaveNodeSettings(nodeId, data.c_str(), data.size(), flags, UserPointer);
+    if (SaveNodeSettingsJson)
+    {
+        return SaveNodeSettingsJson(nodeId, data, flags, UserPointer);
+    }
+    else if (SaveNodeSettings)
+    {
+        auto serializedData = data.dump();
+        return SaveNodeSettings(nodeId, serializedData.c_str(), serializedData.size(), flags, UserPointer);
+    }
 
     return false;
 }
