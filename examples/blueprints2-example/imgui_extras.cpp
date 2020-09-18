@@ -2,6 +2,8 @@
 # define IMGUI_DEFINE_MATH_OPERATORS
 # include <imgui_internal.h>
 # include <stdio.h>
+# include <stdlib.h>
+# include <errno.h>
 
 void ImEx::DrawIcon(ImDrawList* drawList, const ImVec2& a, const ImVec2& b, IconType type, bool filled, ImU32 color, ImU32 innerColor)
 {
