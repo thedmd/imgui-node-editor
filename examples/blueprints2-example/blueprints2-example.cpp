@@ -167,19 +167,62 @@ struct Document
             m_Name = path.to_string();
     }
 
-    string          m_Path;
-    string          m_Name;
-    bool            m_IsModified = false;
-    vector<string>  m_Undo;
+    bool Load(string_view path)
+    {
+        auto loadResult = crude_json::value::load(path.to_string());
+        if (!loadResult.second)
+            return false;
 
-    Blueprint       m_Blueprint;
+        auto& value = loadResult.first;
+
+        if (!value.is_object())
+            return false;
+
+        if (!value.contains("state") || !value.contains("data"))
+            return false;
+
+        auto& stateValue = value["state"];
+        auto&  dataValue = value["data"];
+
+        if (!stateValue.is_object())
+            return false;
+
+        if (!m_Blueprint.Load(dataValue))
+            return false;
+
+        m_EditorState = stateValue;
+
+        return true;
+    }
+
+    bool Save(string_view path)
+    {
+        crude_json::value result;
+        result["state"] = m_EditorState;
+        m_Blueprint.Save(result["data"]);
+
+        return result.save(path.to_string(), 4);
+    }
+
+    string              m_Path;
+    string              m_Name;
+    bool                m_IsModified = false;
+    vector<string>      m_Undo;
+    crude_json::value   m_EditorState;
+
+    Blueprint           m_Blueprint;
 };
 
 static void Application_UpdateTitle();
 
+static bool File_IsOpen();
+static bool File_IsModified();
+static void File_MarkModified();
 static void File_New();
+static bool File_OpenEx(string_view path, string* error = nullptr);
 static bool File_Open();
 static bool File_Close();
+static bool File_SaveAsEx(string_view path);
 static bool File_SaveAs();
 static bool File_Save();
 static void File_Exit();
@@ -230,16 +273,6 @@ static Action g_Blueprint_Run   = { "Run",          &Blueprint_Run   };
 
 static EntryPointNode* FindEntryPointNode();
 
-static bool File_IsOpen()
-{
-    return g_Document != nullptr;
-}
-
-static bool File_IsModified()
-{
-    return g_Document->m_IsModified;
-}
-
 static void Application_UpdateTitle()
 {
     string title = Application_GetName();
@@ -256,19 +289,41 @@ static void Application_UpdateTitle()
     Application_SetTitle(title.c_str());
 }
 
+static bool File_IsOpen()
+{
+    return g_Document != nullptr;
+}
+
+static bool File_IsModified()
+{
+    return g_Document->m_IsModified;
+}
+
+static void File_MarkModified()
+{
+    if (g_Document->m_IsModified)
+        return;
+
+    g_Document->m_IsModified = true;
+
+    Application_UpdateTitle();
+}
+
 static void File_New()
 {
     if (!File_Close())
         return;
 
+    LOGI("[File] New");
+
     g_Document = make_unique<Document>();
     g_Blueprint = &g_Document->m_Blueprint;
 }
 
-static bool File_Open(string_view path, string* error = nullptr)
+static bool File_OpenEx(string_view path, string* error)
 {
     auto document = make_unique<Document>();
-    if (!document->m_Blueprint.Load(path))
+    if (!document->Load(path))
     {
         if (error)
         {
@@ -284,12 +339,16 @@ static bool File_Open(string_view path, string* error = nullptr)
     if (!File_Close())
         return false;
 
+    LOGI("[File] Open \"%*s\"", static_cast<int>(path.size()), path.data());
+
     document->SetPath(path);
 
     g_Document = std::move(document);
     g_Blueprint = &g_Document->m_Blueprint;
 
     Application_UpdateTitle();
+
+    ed::RestoreState();
 
     return true;
 }
@@ -306,7 +365,7 @@ static bool File_Open()
         return false;
 
     string error;
-    if (!File_Open(path, &error) && !error.empty())
+    if (!File_OpenEx(path, &error) && !error.empty())
     {
         tinyfd_messageBox(
             (string(Application_GetName()) + " - Open Blueprint...").c_str(),
@@ -343,6 +402,8 @@ static bool File_Close()
         }
     }
 
+    LOGI("[File] Close");
+
     g_Blueprint = nullptr;
     g_Document = nullptr;
 
@@ -351,18 +412,22 @@ static bool File_Close()
     return true;
 }
 
-static bool File_SaveAs(string_view path)
+static bool File_SaveAsEx(string_view path)
 {
     if (!File_IsOpen())
         return true;
 
-    if (!g_Document->m_Blueprint.Save(path))
+    ed::SaveState();
+
+    if (!g_Document->Save(path))
     {
         LOGE("Failed to save blueprint to file \"%*s\".", static_cast<int>(path.size()), path.data());
         return false;
     }
 
     g_Document->m_IsModified = false;
+
+    LOGI("[File] Save \"%*s\".", static_cast<int>(path.size()), path.data());
 
     return true;
 }
@@ -378,7 +443,7 @@ static bool File_SaveAs()
     if (!path)
         return false;
 
-    if (!File_SaveAs(path))
+    if (!File_SaveAsEx(path))
         return false;
 
     g_Document->SetPath(path);
@@ -391,7 +456,7 @@ static bool File_SaveAs()
 static bool File_Save()
 {
     if (!g_Document->m_Path.empty())
-        return File_SaveAs(g_Document->m_Path);
+        return File_SaveAsEx(g_Document->m_Path);
     else
         return File_SaveAs();
 }
@@ -400,6 +465,8 @@ static void File_Exit()
 {
     if (!Application_Close())
         return;
+
+    LOGI("[File] Quit");
 
     Application_Quit();
 }
@@ -573,8 +640,24 @@ void Application_Initialize()
 
 
     ed::Config config;
-    config.SettingsFile = "blueprint2-example.cfg";
-
+    //config.SettingsFile = "blueprint2-example.cfg";
+    config.SaveSettingsJson = [](const crude_json::value& state, ed::SaveReasonFlags reason, void* userPointer) -> bool
+    {
+        if (g_Document)
+        {
+            g_Document->m_EditorState = state;
+            return true;
+        }
+        else
+            return false;
+    };
+    config.LoadSettingsJson = [](void* userPointer) -> crude_json::value
+    {
+        if (g_Document)
+            return g_Document->m_EditorState;
+        else
+            return {};
+    };
 
     g_Editor = ed::CreateEditor(&config);
 
@@ -1100,11 +1183,20 @@ static void ShowInfoTooltip(Blueprint& blueprint)
 static void UpdateActions()
 {
     auto hasDocument = File_IsOpen();
-    auto isModified  = hasDocument && File_IsModified();
+    //auto isModified  = hasDocument && File_IsModified();
 
     g_File_Close.SetEnabled(hasDocument);
     g_File_SaveAs.SetEnabled(hasDocument);
-    g_File_Save.SetEnabled(isModified);
+    g_File_Save.SetEnabled(hasDocument);
+
+    g_Edit_Undo.SetEnabled(hasDocument && false);
+    g_Edit_Redo.SetEnabled(hasDocument && false);
+    g_Edit_Cut.SetEnabled(hasDocument && false);
+    g_Edit_Copy.SetEnabled(hasDocument && false);
+    g_Edit_Paste.SetEnabled(hasDocument && false);
+    g_Edit_Duplicate.SetEnabled(hasDocument && false);
+    g_Edit_Delete.SetEnabled(hasDocument && false);
+    g_Edit_SelectAll.SetEnabled(hasDocument && false);
 
     auto entryNode = FindEntryPointNode();
 
