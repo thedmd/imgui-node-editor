@@ -1,6 +1,7 @@
 # include "imgui_extras.h"
 # define IMGUI_DEFINE_MATH_OPERATORS
 # include <imgui_internal.h>
+# include <algorithm>
 # include <stdio.h>
 # include <stdlib.h>
 # include <errno.h>
