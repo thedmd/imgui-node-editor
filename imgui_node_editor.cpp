@@ -1938,6 +1938,20 @@ ed::Link* ed::EditorContext::GetLink(LinkId id)
         return CreateLink(id);
 }
 
+void ed::EditorContext::SaveState()
+{
+    SaveSettings();
+}
+
+void ed::EditorContext::RestoreState()
+{
+    m_Settings.ClearDirty();
+    //m_Settings.m_Nodes.clear();
+    LoadSettings();
+    for (auto& node : m_Nodes)
+        RestoreNodeState(node);
+}
+
 void ed::EditorContext::LoadSettings()
 {
     ed::Settings::Parse(m_Config.Load(), m_Settings);
@@ -2467,6 +2481,7 @@ ed::json::value ed::Settings::Serialize() const
     };
 
     auto& nodes = result["nodes"];
+    nodes = json::object();
     for (auto& node : m_Nodes)
     {
         if (node.m_WasUsed)
@@ -2474,6 +2489,7 @@ ed::json::value ed::Settings::Serialize() const
     }
 
     auto& selection = result["selection"];
+    selection = json::array();
     for (auto& id : m_Selection)
         selection.push_back(serializeObjectId(id));
 
