@@ -556,8 +556,21 @@ void crude_blueprint::Node::Save(crude_json::value& value) const
 
 
 //
-// -------[ Context ]-------
+// -------[ Execution Context ]-------
 //
+
+
+const char* crude_blueprint::StepResultToString(StepResult stepResult)
+{
+    switch (stepResult)
+    {
+        case StepResult::Success:   return "Success";
+        case StepResult::Done:      return "Done";
+        case StepResult::Error:     return "Error";
+    }
+
+    return "";
+}
 
 
 void crude_blueprint::Context::SetContextMonitor(ContextMonitor* monitor)

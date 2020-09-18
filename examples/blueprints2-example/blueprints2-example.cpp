@@ -201,7 +201,7 @@ struct Document
         result["state"] = m_EditorState;
         m_Blueprint.Save(result["data"]);
 
-        return result.save(path.to_string(), 4);
+        return result.save(path.to_string());
     }
 
     string              m_Path;
@@ -212,6 +212,11 @@ struct Document
 
     Blueprint           m_Blueprint;
 };
+
+static ImEx::MostRecentlyUsedList Application_GetMostRecentlyOpenFileList()
+{
+    return ImEx::MostRecentlyUsedList("MostRecentlyOpenList");
+}
 
 static void Application_UpdateTitle();
 
@@ -251,9 +256,9 @@ static LinkContextMenu  g_LinkContextMenu;
 
 static Action g_File_New        = { "New",          &File_New    };
 static Action g_File_Open       = { "Open...",      &File_Open   };
-static Action g_File_Close      = { "Close",        &File_Close  };
 static Action g_File_SaveAs     = { "Save As...",   &File_SaveAs };
 static Action g_File_Save       = { "Save",         &File_Save   };
+static Action g_File_Close      = { "Close",        &File_Close  };
 static Action g_File_Exit       = { "Exit",         &File_Exit   };
 
 static Action g_Edit_Undo       = { "Undo",         &Edit_Undo      };
@@ -340,6 +345,9 @@ static bool File_OpenEx(string_view path, string* error)
         return false;
 
     LOGI("[File] Open \"%*s\"", static_cast<int>(path.size()), path.data());
+
+    auto mostRecentlyOpenFiles = Application_GetMostRecentlyOpenFileList();
+    mostRecentlyOpenFiles.Add(path.to_string());
 
     document->SetPath(path);
 
@@ -548,7 +556,34 @@ const char* Application_GetName()
 
 void Application_Initialize()
 {
+    ImEx::MostRecentlyUsedList::Install(ImGui::GetCurrentContext());
+
     g_ApplicationWindowFlags |= ImGuiWindowFlags_MenuBar;
+    g_ApplicationWindowFlags &= ~ImGuiWindowFlags_NoSavedSettings;
+
+    ed::Config config;
+    //config.SettingsFile = "blueprint2-example.cfg";
+    config.SaveSettingsJson = [](const crude_json::value& state, ed::SaveReasonFlags reason, void* userPointer) -> bool
+    {
+        if (g_Document)
+        {
+            g_Document->m_EditorState = state;
+            return true;
+        }
+        else
+            return false;
+    };
+    config.LoadSettingsJson = [](void* userPointer) -> crude_json::value
+    {
+        if (g_Document)
+            return g_Document->m_EditorState;
+        else
+            return {};
+    };
+
+    g_Editor = ed::CreateEditor(&config);
+    ed::SetCurrentEditor(g_Editor);
+
 
     using namespace crude_blueprint;
 
@@ -571,13 +606,13 @@ void Application_Initialize()
         LOGI("PrintNode(%" PRIu32 "): \"%*s\"", node.m_Id, static_cast<int>(message.size()), message.data());
     };
 
-    auto printNode2Node = g_Blueprint->CreateNode<PrintNode>();
-    auto entryPointNode = g_Blueprint->CreateNode<EntryPointNode>();
-    auto printNode1Node = g_Blueprint->CreateNode<PrintNode>();
-    auto flipFlopNode = g_Blueprint->CreateNode<FlipFlopNode>();
-    auto toStringNode = g_Blueprint->CreateNode<ToStringNode>();
-    auto doNNode = g_Blueprint->CreateNode<DoNNode>();
-    auto addNode = g_Blueprint->CreateNode<AddNode>();
+    auto printNode2Node = g_Blueprint->CreateNode<PrintNode>();         ed::SetNodePosition(printNode2Node->m_Id, ImVec2(828, 111));
+    auto entryPointNode = g_Blueprint->CreateNode<EntryPointNode>();    ed::SetNodePosition(entryPointNode->m_Id, ImVec2(-20,  95));
+    auto printNode1Node = g_Blueprint->CreateNode<PrintNode>();         ed::SetNodePosition(printNode1Node->m_Id, ImVec2(828,  -1));
+    auto flipFlopNode   = g_Blueprint->CreateNode<FlipFlopNode>();      ed::SetNodePosition(  flipFlopNode->m_Id, ImVec2(408,  -1));
+    auto toStringNode   = g_Blueprint->CreateNode<ToStringNode>();      ed::SetNodePosition(  toStringNode->m_Id, ImVec2(617, 111));
+    auto doNNode        = g_Blueprint->CreateNode<DoNNode>();           ed::SetNodePosition(       doNNode->m_Id, ImVec2(168,  95));
+    auto addNode        = g_Blueprint->CreateNode<AddNode>();           ed::SetNodePosition(       addNode->m_Id, ImVec2(404, 159));
 
     entryPointNode->m_Exit.LinkTo(doNNode->m_Enter);
 
@@ -638,30 +673,9 @@ void Application_Initialize()
     //g_Blueprint->CreateNode<ToStringNode>();
     //g_Blueprint->CreateNode<AddNode>();
 
-
-    ed::Config config;
-    //config.SettingsFile = "blueprint2-example.cfg";
-    config.SaveSettingsJson = [](const crude_json::value& state, ed::SaveReasonFlags reason, void* userPointer) -> bool
-    {
-        if (g_Document)
-        {
-            g_Document->m_EditorState = state;
-            return true;
-        }
-        else
-            return false;
-    };
-    config.LoadSettingsJson = [](void* userPointer) -> crude_json::value
-    {
-        if (g_Document)
-            return g_Document->m_EditorState;
-        else
-            return {};
-    };
-
-    g_Editor = ed::CreateEditor(&config);
-
     //g_Blueprint->Start(*FindEntryPointNode());
+
+    ed::SetCurrentEditor(nullptr);
 }
 
 void Application_Finalize()
@@ -685,18 +699,107 @@ static EntryPointNode* FindEntryPointNode()
     return nullptr;
 }
 
-static const char* StepResultToString(StepResult stepResult)
+static void UpdateActions()
 {
-    switch (stepResult)
+    auto hasDocument = File_IsOpen();
+    //auto isModified  = hasDocument && File_IsModified();
+
+    g_File_Close.SetEnabled(hasDocument);
+    g_File_SaveAs.SetEnabled(hasDocument);
+    g_File_Save.SetEnabled(hasDocument);
+
+    g_Edit_Undo.SetEnabled(hasDocument && false);
+    g_Edit_Redo.SetEnabled(hasDocument && false);
+    g_Edit_Cut.SetEnabled(hasDocument && false);
+    g_Edit_Copy.SetEnabled(hasDocument && false);
+    g_Edit_Paste.SetEnabled(hasDocument && false);
+    g_Edit_Duplicate.SetEnabled(hasDocument && false);
+    g_Edit_Delete.SetEnabled(hasDocument && false);
+    g_Edit_SelectAll.SetEnabled(hasDocument && false);
+
+    auto entryNode = FindEntryPointNode();
+
+    bool hasBlueprint  = (g_Blueprint != nullptr);
+    bool hasEntryPoint = (entryNode != nullptr);
+    bool isExecuting   = hasBlueprint && (g_Blueprint->CurrentNode() != nullptr);
+
+    g_Blueprint_Start.SetEnabled(hasBlueprint && hasEntryPoint);
+    g_Blueprint_Step.SetEnabled(hasBlueprint && isExecuting);
+    g_Blueprint_Stop.SetEnabled(hasBlueprint && isExecuting);
+    g_Blueprint_Run.SetEnabled(hasBlueprint && hasEntryPoint);
+}
+
+static void ShowMainMenu()
+{
+    auto menuAction = [](Action& action)
     {
-        case StepResult::Success:   return "Success";
-        case StepResult::Done:      return "Done";
-        case StepResult::Error:     return "Error";
-        default:                    return "";
+        if (ImGui::MenuItem(action.GetName().c_str(), nullptr, nullptr, action.IsEnabled()))
+        {
+            action.Execute();
+        }
+    };
+
+    if (ImGui::BeginMenuBar())
+    {
+        if (ImGui::BeginMenu("File"))
+        {
+            auto mostRecentlyOpenFiles = Application_GetMostRecentlyOpenFileList();
+
+            menuAction(g_File_New);
+            ImGui::Separator();
+            menuAction(g_File_Open);
+            if (ImGui::BeginMenu("Open Recent", !mostRecentlyOpenFiles.GetList().empty()))
+            {
+                for (auto& entry : mostRecentlyOpenFiles.GetList())
+                    if (ImGui::MenuItem(entry.c_str()))
+                        File_OpenEx(entry.c_str());
+                ImGui::Separator();
+                if (ImGui::MenuItem("Clear Recently Opened"))
+                    mostRecentlyOpenFiles.Clear();
+                ImGui::EndMenu();
+            }
+            ImGui::Separator();
+            menuAction(g_File_SaveAs);
+            menuAction(g_File_Save);
+            ImGui::Separator();
+            menuAction(g_File_Close);
+            ImGui::Separator();
+            menuAction(g_File_Exit);
+
+            ImGui::EndMenu();
+        }
+
+        if (ImGui::BeginMenu("Edit"))
+        {
+            menuAction(g_Edit_Undo);
+            menuAction(g_Edit_Redo);
+            ImGui::Separator();
+            menuAction(g_Edit_Cut);
+            menuAction(g_Edit_Copy);
+            menuAction(g_Edit_Paste);
+            menuAction(g_Edit_Duplicate);
+            menuAction(g_Edit_Delete);
+            ImGui::Separator();
+            menuAction(g_Edit_SelectAll);
+
+            ImGui::EndMenu();
+        }
+
+        if (ImGui::BeginMenu("Blueprint"))
+        {
+            menuAction(g_Blueprint_Start);
+            menuAction(g_Blueprint_Step);
+            menuAction(g_Blueprint_Stop);
+            ImGui::Separator();
+            menuAction(g_Blueprint_Run);
+
+            ImGui::EndMenu();
+        }
+        ImGui::EndMenuBar();
     }
 }
 
-static void ShowControlPanel()
+static void ShowToolbar()
 {
     auto toolbarAction = [](Action& action)
     {
@@ -708,6 +811,12 @@ static void ShowControlPanel()
         }
     };
 
+    toolbarAction(g_File_Open);
+    ImGui::SameLine();
+    toolbarAction(g_File_Save);
+    ImGui::SameLine();
+    ImGui::SeparatorEx(ImGuiSeparatorFlags_Vertical);
+    ImGui::SameLine();
     toolbarAction(g_Blueprint_Start);
     ImGui::SameLine();
     toolbarAction(g_Blueprint_Step);
@@ -721,19 +830,16 @@ static void ShowControlPanel()
 
     if (auto currentNode = g_Blueprint ? g_Blueprint->CurrentNode() : nullptr)
     {
-        auto nodeName = currentNode->GetName();
-
-        ImGui::SameLine();
-        ImGui::Spacing();
-        ImGui::SameLine();
-        ImGui::Text("Current Node: %*s", static_cast<int>(nodeName.size()), nodeName.data());
+        ImGui::SameLine(); ImGui::Spacing();
+        ImGui::SameLine(); ImGui::Text("Current: " PRI_node_fmt, LOG_node(currentNode));
 
         auto nextNode = g_Blueprint->NextNode();
-        auto nextNodeName = nextNode ? nextNode->GetName() : "-";
+        ImGui::SameLine(); ImGui::Spacing();
         ImGui::SameLine();
-        ImGui::Spacing();
-        ImGui::SameLine();
-        ImGui::Text("Next Node: %*s", static_cast<int>(nextNodeName.size()), nextNodeName.data());
+        if (nextNode)
+            ImGui::Text("Next: " PRI_node_fmt, LOG_node(nextNode));
+        else
+            ImGui::Text("Next: -");
     }
 }
 
@@ -1180,93 +1286,6 @@ static void ShowInfoTooltip(Blueprint& blueprint)
     }
 }
 
-static void UpdateActions()
-{
-    auto hasDocument = File_IsOpen();
-    //auto isModified  = hasDocument && File_IsModified();
-
-    g_File_Close.SetEnabled(hasDocument);
-    g_File_SaveAs.SetEnabled(hasDocument);
-    g_File_Save.SetEnabled(hasDocument);
-
-    g_Edit_Undo.SetEnabled(hasDocument && false);
-    g_Edit_Redo.SetEnabled(hasDocument && false);
-    g_Edit_Cut.SetEnabled(hasDocument && false);
-    g_Edit_Copy.SetEnabled(hasDocument && false);
-    g_Edit_Paste.SetEnabled(hasDocument && false);
-    g_Edit_Duplicate.SetEnabled(hasDocument && false);
-    g_Edit_Delete.SetEnabled(hasDocument && false);
-    g_Edit_SelectAll.SetEnabled(hasDocument && false);
-
-    auto entryNode = FindEntryPointNode();
-
-    bool hasBlueprint  = (g_Blueprint != nullptr);
-    bool hasEntryPoint = (entryNode != nullptr);
-    bool isExecuting   = hasBlueprint && (g_Blueprint->CurrentNode() != nullptr);
-
-    g_Blueprint_Start.SetEnabled(hasBlueprint && hasEntryPoint);
-    g_Blueprint_Step.SetEnabled(hasBlueprint && isExecuting);
-    g_Blueprint_Stop.SetEnabled(hasBlueprint && isExecuting);
-    g_Blueprint_Run.SetEnabled(hasBlueprint && hasEntryPoint);
-}
-
-static void ShowMainMenu()
-{
-    auto menuAction = [](Action& action)
-    {
-        if (ImGui::MenuItem(action.GetName().c_str(), nullptr, nullptr, action.IsEnabled()))
-        {
-            action.Execute();
-        }
-    };
-
-    if (ImGui::BeginMenuBar())
-    {
-        if (ImGui::BeginMenu("File"))
-        {
-            menuAction(g_File_New);
-            menuAction(g_File_Open);
-            ImGui::Separator();
-            menuAction(g_File_Close);
-            ImGui::Separator();
-            menuAction(g_File_SaveAs);
-            menuAction(g_File_Save);
-            ImGui::Separator();
-            menuAction(g_File_Exit);
-
-            ImGui::EndMenu();
-        }
-
-        if (ImGui::BeginMenu("Edit"))
-        {
-            menuAction(g_Edit_Undo);
-            menuAction(g_Edit_Redo);
-            ImGui::Separator();
-            menuAction(g_Edit_Cut);
-            menuAction(g_Edit_Copy);
-            menuAction(g_Edit_Paste);
-            menuAction(g_Edit_Duplicate);
-            menuAction(g_Edit_Delete);
-            ImGui::Separator();
-            menuAction(g_Edit_SelectAll);
-
-            ImGui::EndMenu();
-        }
-
-        if (ImGui::BeginMenu("Blueprint"))
-        {
-            menuAction(g_Blueprint_Start);
-            menuAction(g_Blueprint_Step);
-            menuAction(g_Blueprint_Stop);
-            ImGui::Separator();
-            menuAction(g_Blueprint_Run);
-
-            ImGui::EndMenu();
-        }
-        ImGui::EndMenuBar();
-    }
-}
-
 void Application_Frame()
 {
     ed::SetCurrentEditor(g_Editor);
@@ -1274,7 +1293,7 @@ void Application_Frame()
     UpdateActions();
 
     ShowMainMenu();
-    ShowControlPanel();
+    ShowToolbar();
 
     ImGui::Separator();
 

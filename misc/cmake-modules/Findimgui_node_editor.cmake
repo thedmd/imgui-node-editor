@@ -26,6 +26,7 @@ set(_imgui_node_editor_Sources
     ${IMGUI_NODE_EDITOR_ROOT_DIR}/imgui_node_editor.cpp
     ${IMGUI_NODE_EDITOR_ROOT_DIR}/imgui_node_editor.h
     ${IMGUI_NODE_EDITOR_ROOT_DIR}/misc/imgui_node_editor.natvis
+    ${IMGUI_NODE_EDITOR_ROOT_DIR}/misc/crude_json.natvis
 )
 
 add_library(imgui_node_editor STATIC
