@@ -16,4 +16,4 @@ if (UNIX AND (NOT APPLE))
     target_link_libraries(gl3w PRIVATE GL dl)
 endif()
 
-set_property(TARGET gl3w PROPERTY FOLDER "ThirdParty")
+set_property(TARGET gl3w PROPERTY FOLDER "external")

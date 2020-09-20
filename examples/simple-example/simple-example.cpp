@@ -1,60 +1,63 @@
 ﻿# include <imgui.h>
-# define IMGUI_DEFINE_MATH_OPERATORS
-# include <imgui_internal.h>
 # include <imgui_node_editor.h>
 # include <application.h>
 
 namespace ed = ax::NodeEditor;
 
-static ed::EditorContext* g_Context = nullptr;
-
-const char* Application_GetName()
+struct Example:
+    public Application
 {
-    return "Simple";
-}
+    using Application::Application;
 
-void Application_Initialize()
+    void OnStart() override
+    {
+        ed::Config config;
+        config.SettingsFile = "Simple.json";
+        m_Context = ed::CreateEditor(&config);
+    }
+
+    void OnStop() override
+    {
+        ed::DestroyEditor(m_Context);
+    }
+
+    void OnFrame(float deltaTime) override
+    {
+        auto& io = ImGui::GetIO();
+
+        ImGui::Text("FPS: %.2f (%.2gms)", io.Framerate, io.Framerate ? 1000.0f / io.Framerate : 0.0f);
+
+        ImGui::Separator();
+
+        ed::SetCurrentEditor(m_Context);
+        ed::Begin("My Editor", ImVec2(0.0, 0.0f));
+        int uniqueId = 1;
+        // Start drawing nodes.
+        ed::BeginNode(uniqueId++);
+            ImGui::Text("Node A");
+            ed::BeginPin(uniqueId++, ed::PinKind::Input);
+                ImGui::Text("-> In");
+            ed::EndPin();
+            ImGui::SameLine();
+            ed::BeginPin(uniqueId++, ed::PinKind::Output);
+                ImGui::Text("Out ->");
+            ed::EndPin();
+        ed::EndNode();
+        ed::End();
+        ed::SetCurrentEditor(nullptr);
+
+	    //ImGui::ShowMetricsWindow();
+    }
+
+    ed::EditorContext* m_Context = nullptr;
+};
+
+int Main(int argc, char** argv)
 {
-    ed::Config config;
-    config.SettingsFile = "Simple.json";
-    g_Context = ed::CreateEditor(&config);
+    Example exampe("Simple", argc, argv);
+
+    if (exampe.Create())
+        return exampe.Run();
+
+    return 0;
 }
-
-void Application_Finalize()
-{
-    ed::DestroyEditor(g_Context);
-}
-
-void Application_Frame()
-{
-    auto& io = ImGui::GetIO();
-
-    ImGui::Text("FPS: %.2f (%.2gms)", io.Framerate, io.Framerate ? 1000.0f / io.Framerate : 0.0f);
-
-    ImGui::Separator();
-
-    ed::SetCurrentEditor(g_Context);
-    ed::Begin("My Editor", ImVec2(0.0, 0.0f));
-    int uniqueId = 1;
-    // Start drawing nodes.
-    ed::BeginNode(uniqueId++);
-        ImGui::Text("Node A");
-        ed::BeginPin(uniqueId++, ed::PinKind::Input);
-            ImGui::Text("-> In");
-        ed::EndPin();
-        ImGui::SameLine();
-        ed::BeginPin(uniqueId++, ed::PinKind::Output);
-            ImGui::Text("Out ->");
-        ed::EndPin();
-    ed::EndNode();
-    ed::End();
-    ed::SetCurrentEditor(nullptr);
-
-	//ImGui::ShowMetricsWindow();
-}
-
-bool Application_Close()
-{
-    return true;
-}
-
