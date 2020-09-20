@@ -5,10 +5,14 @@
 #include "imgui_extras.h"
 #include <inttypes.h>
 
-# define PRI_pin_fmt      "Pin %" PRIu32 "%s%*s%s"
-# define PRI_node_fmt     "Node %" PRIu32 "%s%*s%s"
-# define LOG_pin(pin)     (pin)->m_Id, (pin)->m_Name.empty() ? "" : " \"", static_cast<int>((pin)->m_Name.size()), (pin)->m_Name.data(), (pin)->m_Name.empty() ? "" : "\""
-# define LOG_node(node)   (node)->m_Id, (node)->GetName().empty() ? "" : " \"", static_cast<int>((node)->GetName().size()), (node)->GetName().data(), (node)->GetName().empty() ? "" : "\""
+# define PRI_sv     "%*s"
+# define LOG_sv(sv) static_cast<int>((sv).size()), (sv).data()
+
+# define PRI_pin_fmt      "Pin %" PRIu32 "%s" PRI_sv "%s"
+# define PRI_node_fmt     "Node %" PRIu32 "%s" PRI_sv "%s"
+# define LOG_pin(pin)     (pin)->m_Id, (pin)->m_Name.empty() ? "" : " \"", LOG_sv((pin)->m_Name), (pin)->m_Name.empty() ? "" : "\""
+# define LOG_node(node)   (node)->m_Id, (node)->GetName().empty() ? "" : " \"", LOG_sv((node)->GetName()), (node)->GetName().empty() ? "" : "\""
+
 
 namespace crude_blueprint_utilities {
 
