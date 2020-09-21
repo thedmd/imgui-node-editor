@@ -18,6 +18,17 @@ namespace crude_blueprint_utilities {
 
 using namespace crude_blueprint;
 
+# if CRUDE_BP_MSVC2015 // Unable to pull symbols from using namespace
+using crude_blueprint::string_view;
+
+using crude_blueprint::Pin;
+using crude_blueprint::PinType;
+using crude_blueprint::PinValue;
+using crude_blueprint::Node;
+using crude_blueprint::Context;
+using crude_blueprint::Blueprint;
+# endif
+
 ImEx::IconType PinTypeToIconType(PinType pinType); // Returns icon for corresponding pin type.
 ImVec4 PinTypeToColor(PinType pinType); // Returns color for corresponding pin type.
 bool DrawPinValue(const PinValue& value); // Draw widget representing pin value.
@@ -93,6 +104,16 @@ private:
         int     m_Start = 0;
         int     m_Size  = 0;
         ImColor m_Color;
+
+# if CRUDE_BP_MSVC2015 // No aggregate initialization
+        Range() = default;
+        Range(int start, int size, ImColor color)
+            : m_Start(start)
+            , m_Size(size)
+            , m_Color(color)
+        {
+        }
+# endif
     };
 
     struct Entry

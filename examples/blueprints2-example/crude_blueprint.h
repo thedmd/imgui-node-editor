@@ -15,6 +15,12 @@
 # include <memory>
 # include <map>
 
+# if defined(_MSC_VER) && (_MSC_VER == 1900)
+#     define CRUDE_BP_MSVC2015 1
+# else
+#     define CRUDE_BP_MSVC2015 0
+# endif
+
 namespace crude_json {
 struct value;
 } // crude_json
@@ -505,6 +511,23 @@ inline auto Context::GetPinValue(const Pin& pin) const
 
 namespace detail {
 
+# if CRUDE_BP_MSVC2015 // C++11 constexpr
+struct fnv_1a
+{
+    constexpr static uint32_t c_offset_basis = 2166136261U;
+    constexpr static uint32_t c_prime        = 16777619U;
+
+    constexpr static inline uint32_t hash(const char* const string, size_t size, const uint32_t value = c_offset_basis)
+    {
+        return (size == 0) ? value : hash(&string[1], size - 1, (value ^ static_cast<uint32_t>(string[0])) * c_prime);
+    }
+};
+
+constexpr inline uint32_t fnv_1a_hash(const char string[], size_t size)
+{
+    return fnv_1a::hash(string, size);
+}
+# else
 constexpr inline uint32_t fnv_1a_hash(const char string[], size_t size)
 {
     constexpr uint32_t c_offset_basis = 2166136261U;
@@ -521,6 +544,7 @@ constexpr inline uint32_t fnv_1a_hash(const char string[], size_t size)
 
     return value;
 }
+# endif
 
 template <size_t N>
 constexpr inline uint32_t fnv_1a_hash(const char (&string)[N])
