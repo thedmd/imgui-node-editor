@@ -55,7 +55,8 @@ struct Event
         m_Delegates.clear();
     }
 
-    void Invoke(Args&&... args)
+    template <typename... CallArgs>
+    void Invoke(CallArgs&&... args)
     {
         vector<Delegate> delegates;
         delegates.reserve(m_Delegates.size());
@@ -68,7 +69,8 @@ struct Event
 
     EventHandle operator += (Delegate delegate)       { return Add(std::move(delegate)); }
     bool        operator -= (EventHandle eventHandle) { return Remove(eventHandle);      }
-    void        operator () (Args&&... args)          { Invoke(std::forward<Args>(args)...); }
+    template <typename... CallArgs>
+    void        operator () (CallArgs&&... args)      { Invoke(std::forward<CallArgs>(args)...); }
 
 private:
     using EventHandleType = std::underlying_type_t<EventHandle>;
@@ -229,13 +231,17 @@ struct Document
         bool                m_IsDone = false;
     };
 
+# if !CRUDE_BP_MSVC2015 // [[nodiscard]] is unrecognized attribute
     [[nodiscard]]
+# endif
     UndoTransaction BeginUndoTransaction(string_view name = "")
     {
         return UndoTransaction(*this, name);
     }
 
+# if !CRUDE_BP_MSVC2015 // [[nodiscard]] is unrecognized attribute
     [[nodiscard]]
+# endif
     UndoTransaction GetDeferredUndoTransaction()
     {
         return UndoTransaction(*this);

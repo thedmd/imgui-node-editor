@@ -459,7 +459,10 @@ void crude_blueprint_utilities::OverlayLogger::Log(LogLevel level, const char* f
 
     auto formattedMessage = string("[") + formattedTimeStamp + "] [" + levelSymbol + "] " + textBuffer.c_str();
 
-    auto entry = Entry{ level, timeStamp, std::move(formattedMessage) };
+    Entry entry;
+    entry.m_Level     = level;
+    entry.m_Timestamp = timeStamp;
+    entry.m_Text      = std::move(formattedMessage);
 
     // Parse log message to get ranges for text coloring
     entry.m_ColorRanges = ParseMessage(entry.m_Level, entry.m_Text.c_str());

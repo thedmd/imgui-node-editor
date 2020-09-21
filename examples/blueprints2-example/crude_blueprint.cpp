@@ -38,6 +38,16 @@ inline bool GetPtrTo(const crude_json::value& value, string_view key, const T*& 
     return true;
 };
 
+# if CRUDE_BP_MSVC2015 // Cast from double to PinType (enum) is invalid
+template <typename T, bool>
+struct IntermediateCastTypeImpl { using Type = T; };
+template <typename T>
+struct IntermediateCastTypeImpl<T, true> { using Type = std::underlying_type_t<T>; };
+
+template <typename T>
+using IntermediateCastType = typename IntermediateCastTypeImpl<T, std::is_enum_v<T>>::Type;
+# endif
+
 template <typename T, typename V>
 inline bool GetTo(const crude_json::value& value, string_view key, V& result)
 {
@@ -45,7 +55,13 @@ inline bool GetTo(const crude_json::value& value, string_view key, V& result)
     if (!GetPtrTo(value, key, valuePtr))
         return false;
 
+# if CRUDE_BP_MSVC2015 // Cast from double to PinType (enum) is invalid
+    auto intermediate = static_cast<IntermediateCastType<V>>(*valuePtr);
+
+    result = static_cast<V>(intermediate);
+# else
     result = static_cast<V>(*valuePtr);
+# endif
 
     return true;
 };
