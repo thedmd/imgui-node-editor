@@ -4,9 +4,11 @@
 # include <tinyfiledialogs.h>
 # include <inttypes.h>
 
+# include "crude_logger.h"
 # include "crude_blueprint.h"
 # include "crude_blueprint_library.h"
-# include "crude_blueprint_utilities.h"
+# include "blueprint_editor_utilities.h"
+# include "blueprint_editor_icons.h"
 # include "crude_layout.h"
 # include "imgui_extras.h"
 # include "imgui_node_editor.h"
@@ -27,7 +29,7 @@
 namespace ed = ax::NodeEditor;
 
 using namespace crude_blueprint;
-using namespace crude_blueprint_utilities;
+using namespace blueprint_editor_utilities;
 
 using std::function;
 
@@ -79,15 +81,11 @@ private:
     EventHandleType            m_LastHandleId = 0;
 };
 
-static ed::EditorContext* g_Editor = nullptr;
-
-# define LOGV(...)      g_OverlayLogger.Log(LogLevel::Verbose, __VA_ARGS__)
-# define LOGI(...)      g_OverlayLogger.Log(LogLevel::Info, __VA_ARGS__)
-# define LOGW(...)      g_OverlayLogger.Log(LogLevel::Warning, __VA_ARGS__)
-# define LOGE(...)      g_OverlayLogger.Log(LogLevel::Error, __VA_ARGS__)
-static OverlayLogger    g_OverlayLogger;
+static ed::EditorContext* m_Editor = nullptr;
 
 
+
+# pragma region Action
 
 struct Action
 {
@@ -155,7 +153,7 @@ void Action::Execute()
     LOGV("Action: %s", m_Name.c_str());
     OnTriggered();
 }
-
+# pragma endregion
 
 struct Document
 {
@@ -179,12 +177,12 @@ struct Document
     struct UndoTransaction
     {
         UndoTransaction(Document& document)
-            : m_Document(document)
+            : m_Document(&document)
         {
         }
 
         UndoTransaction(Document& document, string_view name)
-            : m_Document(document)
+            : m_Document(&document)
         {
             Begin(name);
         }
@@ -199,8 +197,18 @@ struct Document
             if (m_HasBegun)
                 return;
 
-            m_State  = {m_Document, name};
             m_HasBegun = true;
+
+            if (!name.empty())
+                AddAction(name);
+        }
+
+        void AddAction(string_view name)
+        {
+            if (!m_HasBegun || name.empty())
+                return;
+
+            m_Actions.appendf("%" PRI_sv "\n", FMT_sv(name));
         }
 
         void Commit()
@@ -208,10 +216,17 @@ struct Document
             if (!m_HasBegun && m_IsDone)
                 return;
 
-            LOGV("[UndoTransaction] Commit \"%s\"", m_State.m_Name.c_str());
+            if (!m_Actions.empty())
+            {
+                auto name = string_view(m_Actions.c_str(), m_Actions.size() - 1);
 
-            m_Document.m_Undo.emplace_back(std::move(m_State));
-            m_Document.m_Redo.clear();
+                LOGV("[UndoTransaction] Commit \"%" PRI_sv "\"", FMT_sv(name));
+
+                auto state = DocumentState{ *m_Document, name };
+
+                m_Document->m_Undo.emplace_back(std::move(state));
+                m_Document->m_Redo.clear();
+            }
 
             m_IsDone = true;
         }
@@ -225,8 +240,8 @@ struct Document
         }
 
     private:
-        Document&           m_Document;
-        DocumentState       m_State;
+        Document*           m_Document = nullptr;
+        ImGuiTextBuffer     m_Actions;
         bool                m_HasBegun = false;
         bool                m_IsDone = false;
     };
@@ -352,7 +367,11 @@ struct Document
     bool                    m_IsModified = false;
     vector<DocumentState>   m_Undo;
     vector<DocumentState>   m_Redo;
-    crude_json::value       m_EditorState;
+
+    crude_json::value                   m_EditorState;
+    map<uint32_t, crude_json::value>    m_NodeStateMap;
+
+    UndoTransaction         m_EditorSaveTransaction = BeginUndoTransaction();
 
     Blueprint               m_Blueprint;
 };
@@ -373,15 +392,15 @@ static string SaveReasonFlagsToString(ed::SaveReasonFlags flags, string_view sep
     };
 
     if (testFlag(ed::SaveReasonFlags::Navigation))
-        builder.appendf("Navigation" PRI_sv, LOG_sv(separator));
+        builder.appendf("Navigation%" PRI_sv, FMT_sv(separator));
     if (testFlag(ed::SaveReasonFlags::Position))
-        builder.appendf("Position" PRI_sv, LOG_sv(separator));
+        builder.appendf("Position%" PRI_sv, FMT_sv(separator));
     if (testFlag(ed::SaveReasonFlags::Size))
-        builder.appendf("Size" PRI_sv, LOG_sv(separator));
+        builder.appendf("Size%" PRI_sv, FMT_sv(separator));
     if (testFlag(ed::SaveReasonFlags::Selection))
-        builder.appendf("Selection" PRI_sv, LOG_sv(separator));
+        builder.appendf("Selection%" PRI_sv, FMT_sv(separator));
     if (testFlag(ed::SaveReasonFlags::User))
-        builder.appendf("User" PRI_sv, LOG_sv(separator));
+        builder.appendf("User%" PRI_sv, FMT_sv(separator));
 
     if (builder.empty())
         return "None";
@@ -408,23 +427,33 @@ struct BlueprintEditorExample
 {
     using Application::Application;
 
-    void OnStart() override
+    void InstallDocumentCallbacks(ed::Config& config)
     {
-        ImEx::MostRecentlyUsedList::Install(ImGui::GetCurrentContext());
-
-        ed::Config config;
         config.UserPointer = this;
-        //config.SettingsFile = "blueprint2-example.cfg";
+        config.BeginSaveSession = [](void* userPointer)
+        {
+            auto self = reinterpret_cast<BlueprintEditorExample*>(userPointer);
+
+            if (self->m_Document)
+                self->m_Document->m_EditorSaveTransaction = self->m_Document->BeginUndoTransaction();
+        };
+        config.EndSaveSession = [](void* userPointer)
+        {
+            auto self = reinterpret_cast<BlueprintEditorExample*>(userPointer);
+
+            if (self->m_Document)
+                self->m_Document->m_EditorSaveTransaction.Commit();
+        };
         config.SaveSettingsJson = [](const crude_json::value& state, ed::SaveReasonFlags reason, void* userPointer) -> bool
         {
             auto self = reinterpret_cast<BlueprintEditorExample*>(userPointer);
 
-            if (self->g_Document)
+            if (self->m_Document)
             {
-                auto transaction = self->g_Document->BeginUndoTransaction(SaveReasonFlagsToString(reason));
-                if (reason == ed::SaveReasonFlags::Size || reason == ed::SaveReasonFlags::Navigation)
-                    transaction.Discard();
-                self->g_Document->m_EditorState = state;
+                //auto transaction = self->m_Document->BeginUndoTransaction(SaveReasonFlagsToString(reason));
+                //if (reason == ed::SaveReasonFlags::Size || reason == ed::SaveReasonFlags::Navigation)
+                //    transaction.Discard();
+                self->m_Document->m_EditorState = state;
                 return true;
             }
             else
@@ -434,44 +463,61 @@ struct BlueprintEditorExample
         {
             auto self = reinterpret_cast<BlueprintEditorExample*>(userPointer);
 
-            if (self->g_Document)
-                return self->g_Document->m_EditorState;
+            if (self->m_Document)
+                return self->m_Document->m_EditorState;
             else
                 return {};
         };
+        config.SaveNodeSettingsJson = [](ed::NodeId nodeId, const crude_json::value& value, ed::SaveReasonFlags reason, void* userPointer) -> bool
+        {
+            auto self = reinterpret_cast<BlueprintEditorExample*>(userPointer);
 
-        g_Editor = ed::CreateEditor(&config);
-        ed::SetCurrentEditor(g_Editor);
+            if (self->m_Document)
+            {
+                auto localNodeId = static_cast<uint32_t>(nodeId.Get());
+                self->m_Document->m_NodeStateMap[localNodeId] = value;
 
+                auto node = self->m_Document->m_Blueprint.FindNode(localNodeId);
 
+                ImGuiTextBuffer buffer;
+                buffer.appendf("%" PRI_node " %s", FMT_node(node), SaveReasonFlagsToString(reason).c_str());
+                self->m_Document->m_EditorSaveTransaction.AddAction(buffer.c_str());
+
+                return true;
+            }
+            else
+                return false;
+        };
+        config.LoadNodeSettingsJson = [](ed::NodeId nodeId, void* userPointer) -> crude_json::value
+        {
+            auto self = reinterpret_cast<BlueprintEditorExample*>(userPointer);
+
+            if (self->m_Document)
+            {
+                auto localNodeId = static_cast<uint32_t>(nodeId.Get());
+                auto it = self->m_Document->m_NodeStateMap.find(localNodeId);
+                if (it != self->m_Document->m_NodeStateMap.end())
+                    return it->second;
+            }
+
+            return {};
+        };
+    }
+
+    void CreateExampleDocument()
+    {
         using namespace crude_blueprint;
 
-        g_Document = make_unique<Document>();
-        g_Blueprint = &g_Document->m_Blueprint;
+        m_Document = make_unique<Document>();
+        m_Blueprint = &m_Document->m_Blueprint;
 
-        g_OverlayLogger.AddKeyword("Node");
-        g_OverlayLogger.AddKeyword("Pin");
-        g_OverlayLogger.AddKeyword("Link");
-        g_OverlayLogger.AddKeyword("CreateNodeDialog");
-        g_OverlayLogger.AddKeyword("NodeContextMenu");
-        g_OverlayLogger.AddKeyword("PinContextMenu");
-        g_OverlayLogger.AddKeyword("LinkContextMenu");
-
-        for (auto nodeTypeInfo : g_Blueprint->GetNodeRegistry()->GetTypes())
-            g_OverlayLogger.AddKeyword(nodeTypeInfo->m_Name);
-
-        PrintNode::s_PrintFunction = [](const PrintNode& node, string_view message)
-        {
-            LOGI("PrintNode(%" PRIu32 "): \"%*s\"", node.m_Id, static_cast<int>(message.size()), message.data());
-        };
-
-        auto printNode2Node = g_Blueprint->CreateNode<PrintNode>();         ed::SetNodePosition(printNode2Node->m_Id, ImVec2(828, 111));
-        auto entryPointNode = g_Blueprint->CreateNode<EntryPointNode>();    ed::SetNodePosition(entryPointNode->m_Id, ImVec2(-20, 95));
-        auto printNode1Node = g_Blueprint->CreateNode<PrintNode>();         ed::SetNodePosition(printNode1Node->m_Id, ImVec2(828, -1));
-        auto flipFlopNode = g_Blueprint->CreateNode<FlipFlopNode>();      ed::SetNodePosition(flipFlopNode->m_Id, ImVec2(408, -1));
-        auto toStringNode = g_Blueprint->CreateNode<ToStringNode>();      ed::SetNodePosition(toStringNode->m_Id, ImVec2(617, 111));
-        auto doNNode = g_Blueprint->CreateNode<DoNNode>();           ed::SetNodePosition(doNNode->m_Id, ImVec2(168, 95));
-        auto addNode = g_Blueprint->CreateNode<AddNode>();           ed::SetNodePosition(addNode->m_Id, ImVec2(404, 159));
+        auto printNode2Node = m_Blueprint->CreateNode<PrintNode>();         ed::SetNodePosition(printNode2Node->m_Id, ImVec2(828, 111));
+        auto entryPointNode = m_Blueprint->CreateNode<EntryPointNode>();    ed::SetNodePosition(entryPointNode->m_Id, ImVec2(-20, 95));
+        auto printNode1Node = m_Blueprint->CreateNode<PrintNode>();         ed::SetNodePosition(printNode1Node->m_Id, ImVec2(828, -1));
+        auto flipFlopNode = m_Blueprint->CreateNode<FlipFlopNode>();      ed::SetNodePosition(flipFlopNode->m_Id, ImVec2(408, -1));
+        auto toStringNode = m_Blueprint->CreateNode<ToStringNode>();      ed::SetNodePosition(toStringNode->m_Id, ImVec2(617, 111));
+        auto doNNode = m_Blueprint->CreateNode<DoNNode>();           ed::SetNodePosition(doNNode->m_Id, ImVec2(168, 95));
+        auto addNode = m_Blueprint->CreateNode<AddNode>();           ed::SetNodePosition(addNode->m_Id, ImVec2(404, 159));
 
         entryPointNode->m_Exit.LinkTo(doNNode->m_Enter);
 
@@ -495,15 +541,15 @@ struct BlueprintEditorExample
         flipFlopNode->m_B.LinkTo(toStringNode->m_Enter);
 
 
-        //auto constBoolNode  = g_Blueprint->CreateNode<ConstBoolNode>();
-        //auto toStringNode   = g_Blueprint->CreateNode<ToStringNode>();
-        //auto printNodeNode  = g_Blueprint->CreateNode<PrintNode>();
+        //auto constBoolNode  = m_Blueprint->CreateNode<ConstBoolNode>();
+        //auto toStringNode   = m_Blueprint->CreateNode<ToStringNode>();
+        //auto printNodeNode  = m_Blueprint->CreateNode<PrintNode>();
 
         //crude_json::value value;
-        //g_Blueprint->Save(value);
+        //m_Blueprint->Save(value);
         //auto yyy = value.dump();
 
-        //g_Blueprint->Execute(*entryPointNode);
+        //m_Blueprint->Execute(*entryPointNode);
 
         //Blueprint b2;
 
@@ -517,34 +563,64 @@ struct BlueprintEditorExample
 
         //auto b3 = b2;
 
-        //g_Blueprint->CreateNode<BranchNode>();
-        //g_Blueprint->CreateNode<DoNNode>();
-        //g_Blueprint->CreateNode<DoOnceNode>();
-        //g_Blueprint->CreateNode<FlipFlopNode>();
-        //g_Blueprint->CreateNode<ForLoopNode>();
-        //g_Blueprint->CreateNode<GateNode>();
-        //g_Blueprint->CreateNode<AddNode>();
-        //g_Blueprint->CreateNode<PrintNode>();
-        //g_Blueprint->CreateNode<ConstBoolNode>();
-        //g_Blueprint->CreateNode<ConstInt32Node>();
-        //g_Blueprint->CreateNode<ConstFloatNode>();
-        //g_Blueprint->CreateNode<ConstStringNode>();
-        //g_Blueprint->CreateNode<ToStringNode>();
-        //g_Blueprint->CreateNode<AddNode>();
+        //m_Blueprint->CreateNode<BranchNode>();
+        //m_Blueprint->CreateNode<DoNNode>();
+        //m_Blueprint->CreateNode<DoOnceNode>();
+        //m_Blueprint->CreateNode<FlipFlopNode>();
+        //m_Blueprint->CreateNode<ForLoopNode>();
+        //m_Blueprint->CreateNode<GateNode>();
+        //m_Blueprint->CreateNode<AddNode>();
+        //m_Blueprint->CreateNode<PrintNode>();
+        //m_Blueprint->CreateNode<ConstBoolNode>();
+        //m_Blueprint->CreateNode<ConstInt32Node>();
+        //m_Blueprint->CreateNode<ConstFloatNode>();
+        //m_Blueprint->CreateNode<ConstStringNode>();
+        //m_Blueprint->CreateNode<ToStringNode>();
+        //m_Blueprint->CreateNode<AddNode>();
 
-        //g_Blueprint->Start(*FindEntryPointNode());
+        //m_Blueprint->Start(*FindEntryPointNode());
+    }
+
+    void OnStart() override
+    {
+        crude_logger::OverlayLogger::SetCurrent(&m_OverlayLogger);
+
+        m_OverlayLogger.AddKeyword("Node");
+        m_OverlayLogger.AddKeyword("Pin");
+        m_OverlayLogger.AddKeyword("Link");
+        m_OverlayLogger.AddKeyword("CreateNodeDialog");
+        m_OverlayLogger.AddKeyword("NodeContextMenu");
+        m_OverlayLogger.AddKeyword("PinContextMenu");
+        m_OverlayLogger.AddKeyword("LinkContextMenu");
+
+        ImEx::MostRecentlyUsedList::Install(ImGui::GetCurrentContext());
+
+        PrintNode::s_PrintFunction = [](const PrintNode& node, string_view message)
+        {
+            LOGI("PrintNode(%" PRIu32 "): \"%" PRI_sv "\"", node.m_Id, FMT_sv(message));
+        };
+
+        ed::Config config;
+        InstallDocumentCallbacks(config);
+        m_Editor = ed::CreateEditor(&config);
+        ed::SetCurrentEditor(m_Editor);
+
+        CreateExampleDocument();
+
+        for (auto nodeTypeInfo : m_Blueprint->GetNodeRegistry()->GetTypes())
+            m_OverlayLogger.AddKeyword(nodeTypeInfo->m_Name);
 
         ed::SetCurrentEditor(nullptr);
     }
 
     void OnStop() override
     {
-        ed::DestroyEditor(g_Editor);
+        ed::DestroyEditor(m_Editor);
     }
 
     void OnFrame(float deltaTime) override
     {
-        ed::SetCurrentEditor(g_Editor);
+        ed::SetCurrentEditor(m_Editor);
 
         UpdateActions();
 
@@ -553,21 +629,21 @@ struct BlueprintEditorExample
 
         ImGui::Separator();
 
-        if (g_Blueprint)
+        if (m_Blueprint)
         {
-            DebugOverlay debugOverlay(*g_Blueprint);
+            DebugOverlay debugOverlay(*m_Blueprint);
 
             ed::Begin("###main_editor");
 
-            CommitBlueprintNodes(*g_Blueprint, debugOverlay);
+            CommitBlueprintNodes(*m_Blueprint, debugOverlay);
 
-            HandleCreateAction(*g_Document);
-            HandleDestroyAction(*g_Document);
-            HandleContextMenuAction(*g_Blueprint);
+            HandleCreateAction(*m_Document);
+            HandleDestroyAction(*m_Document);
+            HandleContextMenuAction(*m_Blueprint);
 
-            ShowDialogs(*g_Document);
+            ShowDialogs(*m_Document);
 
-            ShowInfoTooltip(*g_Blueprint);
+            ShowInfoTooltip(*m_Blueprint);
 
             ed::End();
         }
@@ -576,8 +652,8 @@ struct BlueprintEditorExample
             ImGui::Dummy(ImGui::GetContentRegionAvail());
         }
 
-        g_OverlayLogger.Update(ImGui::GetIO().DeltaTime);
-        g_OverlayLogger.Draw(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
+        m_OverlayLogger.Update(ImGui::GetIO().DeltaTime);
+        m_OverlayLogger.Draw(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
 
         ed::SetCurrentEditor(nullptr);
 
@@ -605,7 +681,7 @@ private:
         if (File_IsOpen())
         {
             title += " - ";
-            title += g_Document->m_Name.c_str();
+            title += m_Document->m_Name.c_str();
 
             if (File_IsModified())
                 title += "*";
@@ -617,33 +693,33 @@ private:
     void UpdateActions()
     {
         auto hasDocument = File_IsOpen();
-        auto hasUndo     = hasDocument && !g_Document->m_Undo.empty();
-        auto hasRedo     = hasDocument && !g_Document->m_Redo.empty();
+        auto hasUndo     = hasDocument && !m_Document->m_Undo.empty();
+        auto hasRedo     = hasDocument && !m_Document->m_Redo.empty();
         //auto isModified  = hasDocument && File_IsModified();
 
-        g_File_Close.SetEnabled(hasDocument);
-        g_File_SaveAs.SetEnabled(hasDocument);
-        g_File_Save.SetEnabled(hasDocument);
+        m_File_Close.SetEnabled(hasDocument);
+        m_File_SaveAs.SetEnabled(hasDocument);
+        m_File_Save.SetEnabled(hasDocument);
 
-        g_Edit_Undo.SetEnabled(hasUndo);
-        g_Edit_Redo.SetEnabled(hasRedo);
-        g_Edit_Cut.SetEnabled(hasDocument && false);
-        g_Edit_Copy.SetEnabled(hasDocument && false);
-        g_Edit_Paste.SetEnabled(hasDocument && false);
-        g_Edit_Duplicate.SetEnabled(hasDocument && false);
-        g_Edit_Delete.SetEnabled(hasDocument && false);
-        g_Edit_SelectAll.SetEnabled(hasDocument && false);
+        m_Edit_Undo.SetEnabled(hasUndo);
+        m_Edit_Redo.SetEnabled(hasRedo);
+        m_Edit_Cut.SetEnabled(hasDocument && false);
+        m_Edit_Copy.SetEnabled(hasDocument && false);
+        m_Edit_Paste.SetEnabled(hasDocument && false);
+        m_Edit_Duplicate.SetEnabled(hasDocument && false);
+        m_Edit_Delete.SetEnabled(hasDocument && false);
+        m_Edit_SelectAll.SetEnabled(hasDocument && false);
 
-        auto entryNode = g_Blueprint ? FindEntryPointNode(*g_Blueprint) : nullptr;
+        auto entryNode = m_Blueprint ? FindEntryPointNode(*m_Blueprint) : nullptr;
 
-        bool hasBlueprint  = (g_Blueprint != nullptr);
+        bool hasBlueprint  = (m_Blueprint != nullptr);
         bool hasEntryPoint = (entryNode != nullptr);
-        bool isExecuting   = hasBlueprint && (g_Blueprint->CurrentNode() != nullptr);
+        bool isExecuting   = hasBlueprint && (m_Blueprint->CurrentNode() != nullptr);
 
-        g_Blueprint_Start.SetEnabled(hasBlueprint && hasEntryPoint);
-        g_Blueprint_Step.SetEnabled(hasBlueprint && isExecuting);
-        g_Blueprint_Stop.SetEnabled(hasBlueprint && isExecuting);
-        g_Blueprint_Run.SetEnabled(hasBlueprint && hasEntryPoint);
+        m_Blueprint_Start.SetEnabled(hasBlueprint && hasEntryPoint);
+        m_Blueprint_Step.SetEnabled(hasBlueprint && isExecuting);
+        m_Blueprint_Stop.SetEnabled(hasBlueprint && isExecuting);
+        m_Blueprint_Run.SetEnabled(hasBlueprint && hasEntryPoint);
     }
 
     void ShowMainMenu()
@@ -662,9 +738,9 @@ private:
             {
                 auto mostRecentlyOpenFiles = Application_GetMostRecentlyOpenFileList();
 
-                menuAction(g_File_New);
+                menuAction(m_File_New);
                 ImGui::Separator();
-                menuAction(g_File_Open);
+                menuAction(m_File_Open);
                 if (ImGui::BeginMenu("Open Recent", !mostRecentlyOpenFiles.GetList().empty()))
                 {
                     for (auto& entry : mostRecentlyOpenFiles.GetList())
@@ -676,39 +752,39 @@ private:
                     ImGui::EndMenu();
                 }
                 ImGui::Separator();
-                menuAction(g_File_SaveAs);
-                menuAction(g_File_Save);
+                menuAction(m_File_SaveAs);
+                menuAction(m_File_Save);
                 ImGui::Separator();
-                menuAction(g_File_Close);
+                menuAction(m_File_Close);
                 ImGui::Separator();
-                menuAction(g_File_Exit);
+                menuAction(m_File_Exit);
 
                 ImGui::EndMenu();
             }
 
             if (ImGui::BeginMenu("Edit"))
             {
-                menuAction(g_Edit_Undo);
-                menuAction(g_Edit_Redo);
+                menuAction(m_Edit_Undo);
+                menuAction(m_Edit_Redo);
                 ImGui::Separator();
-                menuAction(g_Edit_Cut);
-                menuAction(g_Edit_Copy);
-                menuAction(g_Edit_Paste);
-                menuAction(g_Edit_Duplicate);
-                menuAction(g_Edit_Delete);
+                menuAction(m_Edit_Cut);
+                menuAction(m_Edit_Copy);
+                menuAction(m_Edit_Paste);
+                menuAction(m_Edit_Duplicate);
+                menuAction(m_Edit_Delete);
                 ImGui::Separator();
-                menuAction(g_Edit_SelectAll);
+                menuAction(m_Edit_SelectAll);
 
                 ImGui::EndMenu();
             }
 
             if (ImGui::BeginMenu("Blueprint"))
             {
-                menuAction(g_Blueprint_Start);
-                menuAction(g_Blueprint_Step);
-                menuAction(g_Blueprint_Stop);
+                menuAction(m_Blueprint_Start);
+                menuAction(m_Blueprint_Step);
+                menuAction(m_Blueprint_Stop);
                 ImGui::Separator();
-                menuAction(g_Blueprint_Run);
+                menuAction(m_Blueprint_Run);
 
                 ImGui::EndMenu();
             }
@@ -728,39 +804,39 @@ private:
             }
         };
 
-        toolbarAction(g_File_Open);
+        toolbarAction(m_File_Open);
         ImGui::SameLine();
-        toolbarAction(g_File_Save);
-        ImGui::SameLine();
-        ImGui::SeparatorEx(ImGuiSeparatorFlags_Vertical);
-        ImGui::SameLine();
-        toolbarAction(g_Edit_Undo);
-        ImGui::SameLine();
-        toolbarAction(g_Edit_Redo);
+        toolbarAction(m_File_Save);
         ImGui::SameLine();
         ImGui::SeparatorEx(ImGuiSeparatorFlags_Vertical);
         ImGui::SameLine();
-        toolbarAction(g_Blueprint_Start);
+        toolbarAction(m_Edit_Undo);
         ImGui::SameLine();
-        toolbarAction(g_Blueprint_Step);
+        toolbarAction(m_Edit_Redo);
         ImGui::SameLine();
-        toolbarAction(g_Blueprint_Stop);
+        ImGui::SeparatorEx(ImGuiSeparatorFlags_Vertical);
         ImGui::SameLine();
-        toolbarAction(g_Blueprint_Run);
+        toolbarAction(m_Blueprint_Start);
+        ImGui::SameLine();
+        toolbarAction(m_Blueprint_Step);
+        ImGui::SameLine();
+        toolbarAction(m_Blueprint_Stop);
+        ImGui::SameLine();
+        toolbarAction(m_Blueprint_Run);
 
         ImGui::SameLine();
-        ImGui::Text("Status: %s", g_Blueprint ? StepResultToString(g_Blueprint->LastStepResult()) : "-");
+        ImGui::Text("Status: %s", m_Blueprint ? StepResultToString(m_Blueprint->LastStepResult()) : "-");
 
-        if (auto currentNode = g_Blueprint ? g_Blueprint->CurrentNode() : nullptr)
+        if (auto currentNode = m_Blueprint ? m_Blueprint->CurrentNode() : nullptr)
         {
             ImGui::SameLine(); ImGui::Spacing();
-            ImGui::SameLine(); ImGui::Text("Current: " PRI_node_fmt, LOG_node(currentNode));
+            ImGui::SameLine(); ImGui::Text("Current: %" PRI_node, FMT_node(currentNode));
 
-            auto nextNode = g_Blueprint->NextNode();
+            auto nextNode = m_Blueprint->NextNode();
             ImGui::SameLine(); ImGui::Spacing();
             ImGui::SameLine();
             if (nextNode)
-                ImGui::Text("Next: " PRI_node_fmt, LOG_node(nextNode));
+                ImGui::Text("Next: %" PRI_node, FMT_node(nextNode));
             else
                 ImGui::Text("Next: -");
         }
@@ -829,7 +905,7 @@ private:
                 ed::PinPivotAlignment(ImVec2(0.0f, 0.5f));
 
                 // [1] - Icon
-                ImEx::Icon(iconSize,
+                Icon(iconSize,
                     PinTypeToIconType(pin->GetType()),
                     blueprint.HasPinAnyLink(*pin),
                     PinTypeToColor(pin->GetValueType()));
@@ -891,7 +967,7 @@ private:
                 }
 
                 // [2] - Show icon
-                ImEx::Icon(iconSize,
+                Icon(iconSize,
                     PinTypeToIconType(pin->GetType()),
                     blueprint.HasPinAnyLink(*pin),
                     PinTypeToColor(pin->GetValueType()));
@@ -955,11 +1031,11 @@ private:
                     canLinkResult.Reason().empty() ? "" : canLinkResult.Reason().c_str());
                 ImGui::Separator();
                 ImGui::TextUnformatted("From:");
-                ImGui::Bullet(); ImGui::Text(PRI_pin_fmt, LOG_pin(startPin));
-                ImGui::Bullet(); ImGui::Text(PRI_node_fmt, LOG_node(startPin->m_Node));
+                ImGui::Bullet(); ImGui::Text("%" PRI_pin, FMT_pin(startPin));
+                ImGui::Bullet(); ImGui::Text("%" PRI_node, FMT_node(startPin->m_Node));
                 ImGui::TextUnformatted("To:");
-                ImGui::Bullet(); ImGui::Text(PRI_pin_fmt, LOG_pin(endPin));
-                ImGui::Bullet(); ImGui::Text(PRI_node_fmt, LOG_node(endPin->m_Node));
+                ImGui::Bullet(); ImGui::Text("%" PRI_pin, FMT_pin(endPin));
+                ImGui::Bullet(); ImGui::Text("%" PRI_node, FMT_node(endPin->m_Node));
                 ImGui::EndTooltip();
                 ed::Resume();
 
@@ -968,7 +1044,7 @@ private:
                     auto transaction = document.BeginUndoTransaction("Create Link");
 
                     if (startPin->LinkTo(*endPin))
-                        LOGV("[HandleCreateAction] " PRI_pin_fmt " linked with " PRI_pin_fmt, LOG_pin(startPin), LOG_pin(endPin));
+                        LOGV("[HandleCreateAction] %" PRI_pin " linked with %" PRI_pin, FMT_pin(startPin), FMT_pin(endPin));
                     else
                         transaction.Discard();
                 }
@@ -1002,7 +1078,7 @@ private:
 
                 ed::Suspend();
                 LOGV("[HandleCreateAction] Open CreateNodeDialog");
-                g_CreateNodeDailog.Open(pin);
+                m_CreateNodeDailog.Open(pin);
                 ed::Resume();
             }
         }
@@ -1047,7 +1123,7 @@ private:
                 auto startPin = blueprint.FindPin(static_cast<uint32_t>(linkDeleter->m_StartPinId.Get()));
                 if (startPin != nullptr && startPin->IsLinked())
                 {
-                    LOGV("[HandleDestroyAction] " PRI_pin_fmt " unlinked from " PRI_pin_fmt, LOG_pin(startPin), LOG_pin(startPin->GetLink()));
+                    LOGV("[HandleDestroyAction] %" PRI_pin " unlinked from %" PRI_pin, FMT_pin(startPin), FMT_pin(startPin->GetLink()));
                     startPin->Unlink();
                     ++brokenLinkCount;
                 }
@@ -1057,7 +1133,7 @@ private:
         // After links was removed, now it is safe to delete nodes.
         for (auto node : nodesToDelete)
         {
-            LOGV("[HandleDestroyAction] " PRI_node_fmt, LOG_node(node));
+            LOGV("[HandleDestroyAction] %" PRI_node, FMT_node(node));
             blueprint.DeleteNode(node);
         }
 
@@ -1075,7 +1151,7 @@ private:
         {
             ed::Suspend();
             LOGV("[HandleContextMenuAction] Open CreateNodeDialog");
-            g_CreateNodeDailog.Open();
+            m_CreateNodeDailog.Open();
             ed::Resume();
         }
 
@@ -1085,8 +1161,8 @@ private:
             auto node = blueprint.FindNode(static_cast<uint32_t>(contextNodeId.Get()));
 
             ed::Suspend();
-            LOGV("[HandleContextMenuAction] Open NodeContextMenu for " PRI_node_fmt, LOG_node(node));
-            g_NodeContextMenu.Open(node);
+            LOGV("[HandleContextMenuAction] Open NodeContextMenu for %" PRI_node, FMT_node(node));
+            m_NodeContextMenu.Open(node);
             ed::Resume();
         }
 
@@ -1096,8 +1172,8 @@ private:
             auto pin = blueprint.FindPin(static_cast<uint32_t>(contextPinId.Get()));
 
             ed::Suspend();
-            LOGV("[HandleContextMenuAction] Open PinContextMenu for " PRI_pin_fmt, LOG_pin(pin));
-            g_PinContextMenu.Open(pin);
+            LOGV("[HandleContextMenuAction] Open PinContextMenu for %" PRI_pin, FMT_pin(pin));
+            m_PinContextMenu.Open(pin);
             ed::Resume();
         }
 
@@ -1107,8 +1183,8 @@ private:
             auto pin = blueprint.FindPin(static_cast<uint32_t>(contextLinkId.Get()));
 
             ed::Suspend();
-            LOGV("[HandleContextMenuAction] Open LinkContextMenu for " PRI_pin_fmt, LOG_pin(pin));
-            g_LinkContextMenu.Open(pin);
+            LOGV("[HandleContextMenuAction] Open LinkContextMenu for %" PRI_pin, FMT_pin(pin));
+            m_LinkContextMenu.Open(pin);
             ed::Resume();
         }
     }
@@ -1119,19 +1195,19 @@ private:
 
         ed::Suspend();
 
-        if (g_CreateNodeDailog.Show(blueprint))
+        if (m_CreateNodeDailog.Show(blueprint))
         {
-            auto createdNode = g_CreateNodeDailog.GetCreatedNode();
+            auto createdNode = m_CreateNodeDailog.GetCreatedNode();
             auto nodeName    = createdNode->GetName();
 
-            LOGV("[CreateNodeDailog] " PRI_node_fmt" created", LOG_node(createdNode));
+            LOGV("[CreateNodeDailog] %" PRI_node" created", FMT_node(createdNode));
 
-            for (auto startPin : g_CreateNodeDailog.GetCreatedLinks())
-                LOGV("[CreateNodeDailog] " PRI_pin_fmt "  linked with " PRI_pin_fmt, LOG_pin(startPin), LOG_pin(startPin->GetLink()));
+            for (auto startPin : m_CreateNodeDailog.GetCreatedLinks())
+                LOGV("[CreateNodeDailog] %" PRI_pin "  linked with %" PRI_pin, FMT_pin(startPin), FMT_pin(startPin->GetLink()));
         }
-        g_NodeContextMenu.Show(blueprint);
-        g_PinContextMenu.Show(blueprint);
-        g_LinkContextMenu.Show(blueprint);
+        m_NodeContextMenu.Show(blueprint);
+        m_PinContextMenu.Show(blueprint);
+        m_LinkContextMenu.Show(blueprint);
 
         ed::Resume();
     }
@@ -1152,12 +1228,12 @@ private:
             ImGui::Bullet(); ImGui::Text("ID: %" PRIu32, pin.m_Id);
             if (!pin.m_Name.empty())
             {
-                ImGui::Bullet(); ImGui::Text("Name: %*s", static_cast<int>(pin.m_Name.size()), pin.m_Name.data());
+                ImGui::Bullet(); ImGui::Text("Name: %" PRI_sv, FMT_sv(pin.m_Name));
             }
             if (showNode && pin.m_Node)
             {
                 auto nodeName = pin.m_Node->GetName();
-                ImGui::Bullet(); ImGui::Text("Node: %*s", static_cast<int>(nodeName.size()), nodeName.data());
+                ImGui::Bullet(); ImGui::Text("Node: %" PRI_sv, FMT_sv(nodeName));
             }
             ImGui::Bullet(); ImGui::Text("Type: %s", PinTypeToString(pin.GetType()));
             ImGui::Bullet(); ImGui::Text("Value Type: %s", PinTypeToString(pin.GetValueType()));
@@ -1187,11 +1263,11 @@ private:
             ImGui::BeginTooltip();
 
             ImGui::Text("Node ID: %" PRIu32, hoveredNode->m_Id);
-            ImGui::Text("Name: %*s", static_cast<int>(nodeName.size()), nodeName.data());
+            ImGui::Text("Name: %" PRI_sv, FMT_sv(nodeName));
             ImGui::Separator();
             ImGui::TextUnformatted("Type:");
             ImGui::Bullet(); ImGui::Text("ID: 0x%08" PRIX32, nodeTypeInfo.m_Id);
-            ImGui::Bullet(); ImGui::Text("Name: %*s", static_cast<int>(nodeTypeInfo.m_Name.size()), nodeTypeInfo.m_Name.data());
+            ImGui::Bullet(); ImGui::Text("Name: %" PRI_sv, FMT_sv(nodeTypeInfo.m_Name));
 
             if (hoveredPin)
             {
@@ -1227,20 +1303,20 @@ private:
 
     bool File_IsOpen()
     {
-        return g_Document != nullptr;
+        return m_Document != nullptr;
     }
 
     bool File_IsModified()
     {
-        return g_Document->m_IsModified;
+        return m_Document->m_IsModified;
     }
 
     void File_MarkModified()
     {
-        if (g_Document->m_IsModified)
+        if (m_Document->m_IsModified)
             return;
 
-        g_Document->m_IsModified = true;
+        m_Document->m_IsModified = true;
 
         UpdateTitle();
     }
@@ -1252,8 +1328,8 @@ private:
 
         LOGI("[File] New");
 
-        g_Document = make_unique<Document>();
-        g_Blueprint = &g_Document->m_Blueprint;
+        m_Document = make_unique<Document>();
+        m_Blueprint = &m_Document->m_Blueprint;
     }
 
     bool File_Open(string_view path, string* error = nullptr)
@@ -1264,26 +1340,26 @@ private:
             if (error)
             {
                 ImGuiTextBuffer buffer;
-                buffer.appendf("Failed to load blueprint from file \"%*s\".", static_cast<int>(path.size()), path.data());
+                buffer.appendf("Failed to load blueprint from file \"%" PRI_sv "\".", FMT_sv(path));
                 *error = buffer.c_str();
             }
             else
-                LOGE("Failed to load blueprint from file \"%*s\".", static_cast<int>(path.size()), path.data());
+                LOGE("Failed to load blueprint from file \"%" PRI_sv "\".", FMT_sv(path));
             return false;
         }
 
         if (!File_Close())
             return false;
 
-        LOGI("[File] Open \"%*s\"", static_cast<int>(path.size()), path.data());
+        LOGI("[File] Open \"%" PRI_sv "\"", FMT_sv(path));
 
         auto mostRecentlyOpenFiles = Application_GetMostRecentlyOpenFileList();
         mostRecentlyOpenFiles.Add(path.to_string());
 
         document->SetPath(path);
 
-        g_Document = std::move(document);
-        g_Blueprint = &g_Document->m_Blueprint;
+        m_Document = std::move(document);
+        m_Blueprint = &m_Document->m_Blueprint;
 
         UpdateTitle();
 
@@ -1297,7 +1373,7 @@ private:
         const char* filterPatterns[1] = { "*.bp" };
         auto path = tinyfd_openFileDialog(
             "Open Blueprint...",
-            g_Document ? g_Document->m_Path.c_str() : nullptr,
+            m_Document ? m_Document->m_Path.c_str() : nullptr,
             1, filterPatterns,
             "Blueprint Files (*.bp)", 0);
         if (!path)
@@ -1343,8 +1419,8 @@ private:
 
         LOGI("[File] Close");
 
-        g_Blueprint = nullptr;
-        g_Document = nullptr;
+        m_Blueprint = nullptr;
+        m_Document = nullptr;
 
         UpdateTitle();
 
@@ -1358,15 +1434,15 @@ private:
 
         ed::SaveState();
 
-        if (!g_Document->Save(path))
+        if (!m_Document->Save(path))
         {
-            LOGE("Failed to save blueprint to file \"%*s\".", static_cast<int>(path.size()), path.data());
+            LOGE("Failed to save blueprint to file \"%" PRI_sv "\".", FMT_sv(path));
             return false;
         }
 
-        g_Document->m_IsModified = false;
+        m_Document->m_IsModified = false;
 
-        LOGI("[File] Save \"%*s\".", static_cast<int>(path.size()), path.data());
+        LOGI("[File] Save \"%" PRI_sv "\".", FMT_sv(path));
 
         return true;
     }
@@ -1376,7 +1452,7 @@ private:
         const char* filterPatterns[1] = { "*.bp" };
         auto path = tinyfd_saveFileDialog(
             "Save Blueprint...",
-            g_Document->m_Path.c_str(),
+            m_Document->m_Path.c_str(),
             1, filterPatterns,
             "Blueprint Files (*.bp)");
         if (!path)
@@ -1385,7 +1461,7 @@ private:
         if (!File_SaveAsEx(path))
             return false;
 
-        g_Document->SetPath(path);
+        m_Document->SetPath(path);
 
         UpdateTitle();
 
@@ -1394,8 +1470,8 @@ private:
 
     bool File_Save()
     {
-        if (!g_Document->m_Path.empty())
-            return File_SaveAsEx(g_Document->m_Path);
+        if (!m_Document->m_Path.empty())
+            return File_SaveAsEx(m_Document->m_Path);
         else
             return File_SaveAs();
     }
@@ -1412,12 +1488,12 @@ private:
 
     void Edit_Undo()
     {
-        g_Document->Undo();
+        m_Document->Undo();
     }
 
     void Edit_Redo()
     {
-        g_Document->Redo();
+        m_Document->Redo();
     }
 
     void Edit_Cut()
@@ -1446,68 +1522,70 @@ private:
 
     void Blueprint_Start()
     {
-        auto entryNode = FindEntryPointNode(*g_Blueprint);
+        auto entryNode = FindEntryPointNode(*m_Blueprint);
 
         LOGI("Execution: Start");
-        g_Blueprint->Start(*entryNode);
+        m_Blueprint->Start(*entryNode);
     }
 
     void Blueprint_Step()
     {
-        LOGI("Execution: Step %" PRIu32, g_Blueprint->StepCount());
-        auto result = g_Blueprint->Step();
+        LOGI("Execution: Step %" PRIu32, m_Blueprint->StepCount());
+        auto result = m_Blueprint->Step();
         if (result == StepResult::Done)
-            LOGI("Execution: Done (%" PRIu32 " steps)", g_Blueprint->StepCount());
+            LOGI("Execution: Done (%" PRIu32 " steps)", m_Blueprint->StepCount());
         else if (result == StepResult::Error)
-            LOGI("Execution: Failed at step %" PRIu32, g_Blueprint->StepCount());
+            LOGI("Execution: Failed at step %" PRIu32, m_Blueprint->StepCount());
     }
 
     void Blueprint_Stop()
     {
         LOGI("Execution: Stop");
-        g_Blueprint->Stop();
+        m_Blueprint->Stop();
     }
 
     void Blueprint_Run()
     {
-        auto entryNode = FindEntryPointNode(*g_Blueprint);
+        auto entryNode = FindEntryPointNode(*m_Blueprint);
 
         LOGI("Execution: Run");
-        auto result = g_Blueprint->Execute(*entryNode);
+        auto result = m_Blueprint->Execute(*entryNode);
         if (result == StepResult::Done)
-            LOGI("Execution: Done (%" PRIu32 " steps)", g_Blueprint->StepCount());
+            LOGI("Execution: Done (%" PRIu32 " steps)", m_Blueprint->StepCount());
         else if (result == StepResult::Error)
-            LOGI("Execution: Failed at step %" PRIu32, g_Blueprint->StepCount());
+            LOGI("Execution: Failed at step %" PRIu32, m_Blueprint->StepCount());
     }
 
-    unique_ptr<Document> g_Document;
-    Blueprint*           g_Blueprint = nullptr;
+    crude_logger::OverlayLogger m_OverlayLogger;
 
-    CreateNodeDialog g_CreateNodeDailog;
-    NodeContextMenu  g_NodeContextMenu;
-    PinContextMenu   g_PinContextMenu;
-    LinkContextMenu  g_LinkContextMenu;
+    unique_ptr<Document> m_Document;
+    Blueprint*           m_Blueprint = nullptr;
 
-    Action g_File_New        = { "New",          [this] { File_New();    } };
-    Action g_File_Open       = { "Open...",      [this] { File_Open();   } };
-    Action g_File_SaveAs     = { "Save As...",   [this] { File_SaveAs(); } };
-    Action g_File_Save       = { "Save",         [this] { File_Save();   } };
-    Action g_File_Close      = { "Close",        [this] { File_Close();  } };
-    Action g_File_Exit       = { "Exit",         [this] { File_Exit();   } };
+    CreateNodeDialog m_CreateNodeDailog;
+    NodeContextMenu  m_NodeContextMenu;
+    PinContextMenu   m_PinContextMenu;
+    LinkContextMenu  m_LinkContextMenu;
 
-    Action g_Edit_Undo       = { "Undo",         [this] { Edit_Undo();      } };
-    Action g_Edit_Redo       = { "Redo",         [this] { Edit_Redo();      } };
-    Action g_Edit_Cut        = { "Cut",          [this] { Edit_Cut();       } };
-    Action g_Edit_Copy       = { "Copy",         [this] { Edit_Copy();      } };
-    Action g_Edit_Paste      = { "Paste",        [this] { Edit_Paste();     } };
-    Action g_Edit_Duplicate  = { "Duplicate",    [this] { Edit_Duplicate(); } };
-    Action g_Edit_Delete     = { "Delete",       [this] { Edit_Delete();    } };
-    Action g_Edit_SelectAll  = { "Select All",   [this] { Edit_SelectAll(); } };
+    Action m_File_New        = { "New",          [this] { File_New();    } };
+    Action m_File_Open       = { "Open...",      [this] { File_Open();   } };
+    Action m_File_SaveAs     = { "Save As...",   [this] { File_SaveAs(); } };
+    Action m_File_Save       = { "Save",         [this] { File_Save();   } };
+    Action m_File_Close      = { "Close",        [this] { File_Close();  } };
+    Action m_File_Exit       = { "Exit",         [this] { File_Exit();   } };
 
-    Action g_Blueprint_Start = { "Start",        [this] { Blueprint_Start(); } };
-    Action g_Blueprint_Step  = { "Step",         [this] { Blueprint_Step();  } };
-    Action g_Blueprint_Stop  = { "Stop",         [this] { Blueprint_Stop();  } };
-    Action g_Blueprint_Run   = { "Run",          [this] { Blueprint_Run();   } };
+    Action m_Edit_Undo       = { "Undo",         [this] { Edit_Undo();      } };
+    Action m_Edit_Redo       = { "Redo",         [this] { Edit_Redo();      } };
+    Action m_Edit_Cut        = { "Cut",          [this] { Edit_Cut();       } };
+    Action m_Edit_Copy       = { "Copy",         [this] { Edit_Copy();      } };
+    Action m_Edit_Paste      = { "Paste",        [this] { Edit_Paste();     } };
+    Action m_Edit_Duplicate  = { "Duplicate",    [this] { Edit_Duplicate(); } };
+    Action m_Edit_Delete     = { "Delete",       [this] { Edit_Delete();    } };
+    Action m_Edit_SelectAll  = { "Select All",   [this] { Edit_SelectAll(); } };
+
+    Action m_Blueprint_Start = { "Start",        [this] { Blueprint_Start(); } };
+    Action m_Blueprint_Step  = { "Step",         [this] { Blueprint_Step();  } };
+    Action m_Blueprint_Stop  = { "Stop",         [this] { Blueprint_Stop();  } };
+    Action m_Blueprint_Run   = { "Run",          [this] { Blueprint_Run();   } };
 };
 
 

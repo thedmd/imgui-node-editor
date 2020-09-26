@@ -1,13 +1,17 @@
 add_example_executable(blueprints2-example
     blueprints2-example.cpp
+    blueprint_editor_icons.cpp
+    blueprint_editor_icons.h
+    blueprint_editor_utilities.cpp
+    blueprint_editor_utilities.h
     crude_blueprint.cpp
     crude_blueprint.h
     crude_blueprint_library.cpp
     crude_blueprint_library.h
-    crude_blueprint_utilities.cpp
-    crude_blueprint_utilities.h
     crude_layout.cpp
     crude_layout.h
+    crude_logger.cpp
+    crude_logger.h
     imgui_extras.cpp
     imgui_extras.h
     external/nonstd/include/nonstd/span.hpp
