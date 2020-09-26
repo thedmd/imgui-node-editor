@@ -10,13 +10,6 @@
 
 namespace ImEx {
 
-enum class IconType: ImU32 { Flow, FlowDown, Circle, Square, Grid, RoundSquare, Diamond };
-
-// Draws an icon into specified draw list.
-void DrawIcon(ImDrawList* drawList, const ImVec2& a, const ImVec2& b, IconType type, bool filled, ImU32 color, ImU32 innerColor);
-
-// Icon widget
-void Icon(const ImVec2& size, IconType type, bool filled, const ImVec4& color = ImVec4(1, 1, 1, 1), const ImVec4& innerColor = ImVec4(0, 0, 0, 0));
 
 // Drawn an rectangle around last ImGui widget.
 void Debug_DrawItemRect(const ImVec4& col = ImVec4(1.0f, 0.0f, 0.0f, 1.0f));

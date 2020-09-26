@@ -2,19 +2,20 @@
 #include <imgui.h>
 #include <imgui_node_editor.h>
 #include "crude_blueprint.h"
-#include "imgui_extras.h"
+#include "blueprint_editor_icons.h"
 #include <inttypes.h>
 
-# define PRI_sv     "%*s"
-# define LOG_sv(sv) static_cast<int>((sv).size()), (sv).data()
+# define PRI_sv             ".*s"
+# define FMT_sv(sv)         static_cast<int>((sv).size()), (sv).data()
 
-# define PRI_pin_fmt      "Pin %" PRIu32 "%s" PRI_sv "%s"
-# define PRI_node_fmt     "Node %" PRIu32 "%s" PRI_sv "%s"
-# define LOG_pin(pin)     (pin)->m_Id, (pin)->m_Name.empty() ? "" : " \"", LOG_sv((pin)->m_Name), (pin)->m_Name.empty() ? "" : "\""
-# define LOG_node(node)   (node)->m_Id, (node)->GetName().empty() ? "" : " \"", LOG_sv((node)->GetName()), (node)->GetName().empty() ? "" : "\""
+# define PRI_pin            "s %" PRIu32 "%s%" PRI_sv "%s"
+# define FMT_pin(pin)       "Pin", (pin)->m_Id, (pin)->m_Name.empty() ? "" : " \"", FMT_sv((pin)->m_Name), (pin)->m_Name.empty() ? "" : "\""
+
+# define PRI_node           "s %" PRIu32 "%s%" PRI_sv "%s"
+# define FMT_node(node)     "Node", (node)->m_Id, (node)->GetName().empty() ? "" : " \"", FMT_sv((node)->GetName()), (node)->GetName().empty() ? "" : "\""
 
 
-namespace crude_blueprint_utilities {
+namespace blueprint_editor_utilities {
 
 using namespace crude_blueprint;
 
@@ -29,7 +30,7 @@ using crude_blueprint::Context;
 using crude_blueprint::Blueprint;
 # endif
 
-ImEx::IconType PinTypeToIconType(PinType pinType); // Returns icon for corresponding pin type.
+IconType PinTypeToIconType(PinType pinType); // Returns icon for corresponding pin type.
 ImVec4 PinTypeToColor(PinType pinType); // Returns color for corresponding pin type.
 bool DrawPinValue(const PinValue& value); // Draw widget representing pin value.
 bool EditPinValue(Pin& pin); // Show editor for pin. Returns true if edit is complete.
@@ -78,87 +79,6 @@ private:
     FlowPin m_CurrentFlowPin;
     ImDrawList* m_DrawList = nullptr;
     ImDrawListSplitter m_Splitter;
-};
-
-enum class LogLevel: int32_t
-{
-    Verbose,
-    Info,
-    Warning,
-    Error,
-};
-
-struct OverlayLogger
-{
-    void Log(LogLevel level, const char* format, ...) IM_FMTARGS(3);
-
-    void Update(float dt);
-    void Draw(const ImVec2& a, const ImVec2& b);
-
-    void AddKeyword(string_view keyword);
-    void RemoveKeyword(string_view keyword);
-
-private:
-    struct Range
-    {
-        int     m_Start = 0;
-        int     m_Size  = 0;
-        ImColor m_Color;
-
-# if CRUDE_BP_MSVC2015 // No aggregate initialization
-        Range() = default;
-        Range(int start, int size, ImColor color)
-            : m_Start(start)
-            , m_Size(size)
-            , m_Color(color)
-        {
-        }
-# endif
-    };
-
-    struct Entry
-    {
-        LogLevel        m_Level     = LogLevel::Verbose;
-        time_t          m_Timestamp = 0;
-        string          m_Text;
-        float           m_Timer     = 0.0f;
-        bool            m_IsPinned  = false;
-        vector<Range>   m_ColorRanges;
-    };
-
-    ImColor GetLevelColor(LogLevel level) const;
-
-    void TintVertices(ImDrawList* drawList, int firstVertexIndex, ImColor color, float alpha, int rangeStart, int rangeSize);
-
-    vector<Range> ParseMessage(LogLevel level, string_view message) const;
-
-
-    float           m_OutlineSize                 = 0.5f;
-    float           m_Padding                     = 10.0f;
-    float           m_MessagePresentationDuration = 5.0f;
-    float           m_MessageFadeOutDuration      = 0.5f;
-    float           m_MessageLifeDuration         = m_MessagePresentationDuration + m_MessageFadeOutDuration;
-    bool            m_HoldTimer                   = false;
-    vector<Entry>   m_Entries;
-    vector<string>  m_Keywords;
-    ImColor         m_HighlightBorder             = ImColor(  5, 130, 255, 128);
-    ImColor         m_HighlightFill               = ImColor(  5, 130, 255,  64);
-    ImColor         m_PinBorder                   = ImColor(255, 176,  50,   0);
-    ImColor         m_PinFill                     = ImColor(  0,  75, 150, 128);
-
-    ImColor         m_LogTimeColor                = ImColor(150, 209,   0, 255);
-    ImColor         m_LogSymbolColor              = ImColor(192, 192, 192, 255);
-    ImColor         m_LogStringColor              = ImColor(255, 174, 133, 255);
-    ImColor         m_LogTagColor                 = ImColor(255, 214, 143, 255);
-    ImColor         m_LogKeywordColor             = ImColor(255, 255, 255, 255);
-    ImColor         m_LogTextColor                = ImColor(192, 192, 192, 255);
-    ImColor         m_LogOutlineColor             = ImColor(  0,   0,   0, 255);
-    ImColor         m_LogNumberColor              = ImColor(255, 255, 128, 255);
-    ImColor         m_LogVerboseColor             = ImColor(128, 255, 128, 255);
-    ImColor         m_LogWarningColor             = ImColor(255, 255, 192, 255);
-    ImColor         m_LogErrorColor               = ImColor(255, 152, 152, 255);
-    ImColor         m_LogInfoColor                = ImColor(138, 197, 255, 255);
-    ImColor         m_LogAssertColor              = ImColor(255,  61,  68, 255);
 };
 
 // Wrapper over flat API for item construction
@@ -269,4 +189,4 @@ struct LinkContextMenu
     void Show(Blueprint& blueprint);
 };
 
-} // namespace crude_blueprint_utilities {
+} // namespace blueprint_editor_utilities {
