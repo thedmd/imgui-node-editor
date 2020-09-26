@@ -1979,7 +1979,7 @@ void ed::EditorContext::SaveSettings()
         if (IsGroup(node))
             settings->m_GroupSize = node->m_GroupBounds.GetSize();
 
-        if (!node->m_RestoreState && settings->m_IsDirty && m_Config.SaveNodeSettings)
+        if (!node->m_RestoreState && settings->m_IsDirty && (m_Config.SaveNodeSettings || m_Config.SaveNodeSettingsJson))
         {
             if (m_Config.SaveNode(node->m_ID, settings->Serialize().dump(), settings->m_DirtyReason))
                 settings->ClearDirty();
