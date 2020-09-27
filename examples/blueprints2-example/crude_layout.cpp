@@ -25,6 +25,8 @@ void crude_layout::Grid::Begin(ImU32 id, int columns, float width)
     m_ColumnAlignment = 0.0f;
     m_MinimumWidth = width;
 
+    ImGui::BeginGroup();
+
     EnterCell(0, 0);
 }
 
@@ -128,6 +130,8 @@ void crude_layout::Grid::SetColumnAlignment(float alignment)
 void crude_layout::Grid::End()
 {
     LeaveCell();
+
+    ImGui::EndGroup();
 
     float totalWidth = 0.0f;
     for (int i = 0; i < m_Columns; ++i)

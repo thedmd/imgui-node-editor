@@ -31,6 +31,53 @@ namespace ed = ax::NodeEditor;
 using namespace crude_blueprint;
 using namespace blueprint_editor_utilities;
 
+
+static ImEx::MostRecentlyUsedList Application_GetMostRecentlyOpenFileList()
+{
+    return ImEx::MostRecentlyUsedList("MostRecentlyOpenList");
+}
+
+static string SaveReasonFlagsToString(ed::SaveReasonFlags flags, string_view separator = ", ")
+{
+    ImGuiTextBuffer builder;
+
+    auto testFlag = [flags](ed::SaveReasonFlags flag)
+    {
+        return (flags & flag) == flag;
+    };
+
+    if (testFlag(ed::SaveReasonFlags::Navigation))
+        builder.appendf("Navigation%" PRI_sv, FMT_sv(separator));
+    if (testFlag(ed::SaveReasonFlags::Position))
+        builder.appendf("Position%" PRI_sv, FMT_sv(separator));
+    if (testFlag(ed::SaveReasonFlags::Size))
+        builder.appendf("Size%" PRI_sv, FMT_sv(separator));
+    if (testFlag(ed::SaveReasonFlags::Selection))
+        builder.appendf("Selection%" PRI_sv, FMT_sv(separator));
+    if (testFlag(ed::SaveReasonFlags::User))
+        builder.appendf("User%" PRI_sv, FMT_sv(separator));
+
+    if (builder.empty())
+        return "None";
+    else
+        return string(builder.c_str(), builder.size() - separator.size());
+}
+
+static EntryPointNode* FindEntryPointNode(Blueprint& blueprint)
+{
+    for (auto& node : blueprint.GetNodes())
+    {
+        if (node->GetTypeInfo().m_Id == EntryPointNode::GetStaticTypeInfo().m_Id)
+        {
+            return static_cast<EntryPointNode*>(node);
+        }
+    }
+
+    return nullptr;
+}
+
+
+
 using std::function;
 
 enum class EventHandle : uint64_t { Invalid };
@@ -362,6 +409,14 @@ struct Document
         return true;
     }
 
+    void OnSaveBegin();
+    bool OnSaveNodeState(uint32_t nodeId, const crude_json::value& value, ed::SaveReasonFlags reason);
+    bool OnSaveState(const crude_json::value& value, ed::SaveReasonFlags reason);
+    void OnSaveEnd();
+
+    crude_json::value OnLoadNodeState(uint32_t nodeId) const;
+    crude_json::value OnLoadState() const;
+
     string                  m_Path;
     string                  m_Name;
     bool                    m_IsModified = false;
@@ -376,49 +431,47 @@ struct Document
     Blueprint               m_Blueprint;
 };
 
-static ImEx::MostRecentlyUsedList Application_GetMostRecentlyOpenFileList()
+void Document::OnSaveBegin()
 {
-    return ImEx::MostRecentlyUsedList("MostRecentlyOpenList");
+    m_EditorSaveTransaction = BeginUndoTransaction();
 }
 
-
-static string SaveReasonFlagsToString(ed::SaveReasonFlags flags, string_view separator = ", ")
+bool Document::OnSaveNodeState(uint32_t nodeId, const crude_json::value& value, ed::SaveReasonFlags reason)
 {
-    ImGuiTextBuffer builder;
+    m_NodeStateMap[nodeId] = value;
 
-    auto testFlag = [flags](ed::SaveReasonFlags flag)
-    {
-        return (flags & flag) == flag;
-    };
+    auto node = m_Blueprint.FindNode(nodeId);
 
-    if (testFlag(ed::SaveReasonFlags::Navigation))
-        builder.appendf("Navigation%" PRI_sv, FMT_sv(separator));
-    if (testFlag(ed::SaveReasonFlags::Position))
-        builder.appendf("Position%" PRI_sv, FMT_sv(separator));
-    if (testFlag(ed::SaveReasonFlags::Size))
-        builder.appendf("Size%" PRI_sv, FMT_sv(separator));
-    if (testFlag(ed::SaveReasonFlags::Selection))
-        builder.appendf("Selection%" PRI_sv, FMT_sv(separator));
-    if (testFlag(ed::SaveReasonFlags::User))
-        builder.appendf("User%" PRI_sv, FMT_sv(separator));
+    ImGuiTextBuffer buffer;
+    buffer.appendf("%" PRI_node " %s", FMT_node(node), SaveReasonFlagsToString(reason).c_str());
+    m_EditorSaveTransaction.AddAction(buffer.c_str());
 
-    if (builder.empty())
-        return "None";
+    return true;
+}
+
+bool Document::OnSaveState(const crude_json::value& value, ed::SaveReasonFlags reason)
+{
+    m_EditorState = value;
+    return true;
+}
+
+void Document::OnSaveEnd()
+{
+    m_EditorSaveTransaction.Commit();
+}
+
+crude_json::value Document::OnLoadNodeState(uint32_t nodeId) const
+{
+    auto it = m_NodeStateMap.find(nodeId);
+    if (it != m_NodeStateMap.end())
+        return it->second;
     else
-        return string(builder.c_str(), builder.size() - separator.size());
+        return {};
 }
 
-static EntryPointNode* FindEntryPointNode(Blueprint& blueprint)
+crude_json::value Document::OnLoadState() const
 {
-    for (auto& node : blueprint.GetNodes())
-    {
-        if (node->GetTypeInfo().m_Id == EntryPointNode::GetStaticTypeInfo().m_Id)
-        {
-            return static_cast<EntryPointNode*>(node);
-        }
-    }
-
-    return nullptr;
+    return m_EditorState;
 }
 
 
@@ -435,27 +488,21 @@ struct BlueprintEditorExample
             auto self = reinterpret_cast<BlueprintEditorExample*>(userPointer);
 
             if (self->m_Document)
-                self->m_Document->m_EditorSaveTransaction = self->m_Document->BeginUndoTransaction();
+                self->m_Document->OnSaveBegin();
         };
         config.EndSaveSession = [](void* userPointer)
         {
             auto self = reinterpret_cast<BlueprintEditorExample*>(userPointer);
 
             if (self->m_Document)
-                self->m_Document->m_EditorSaveTransaction.Commit();
+                self->m_Document->OnSaveEnd();
         };
         config.SaveSettingsJson = [](const crude_json::value& state, ed::SaveReasonFlags reason, void* userPointer) -> bool
         {
             auto self = reinterpret_cast<BlueprintEditorExample*>(userPointer);
 
             if (self->m_Document)
-            {
-                //auto transaction = self->m_Document->BeginUndoTransaction(SaveReasonFlagsToString(reason));
-                //if (reason == ed::SaveReasonFlags::Size || reason == ed::SaveReasonFlags::Navigation)
-                //    transaction.Discard();
-                self->m_Document->m_EditorState = state;
-                return true;
-            }
+                return self->m_Document->OnSaveState(state, reason);
             else
                 return false;
         };
@@ -464,7 +511,7 @@ struct BlueprintEditorExample
             auto self = reinterpret_cast<BlueprintEditorExample*>(userPointer);
 
             if (self->m_Document)
-                return self->m_Document->m_EditorState;
+                return self->m_Document->OnLoadState();
             else
                 return {};
         };
@@ -473,18 +520,7 @@ struct BlueprintEditorExample
             auto self = reinterpret_cast<BlueprintEditorExample*>(userPointer);
 
             if (self->m_Document)
-            {
-                auto localNodeId = static_cast<uint32_t>(nodeId.Get());
-                self->m_Document->m_NodeStateMap[localNodeId] = value;
-
-                auto node = self->m_Document->m_Blueprint.FindNode(localNodeId);
-
-                ImGuiTextBuffer buffer;
-                buffer.appendf("%" PRI_node " %s", FMT_node(node), SaveReasonFlagsToString(reason).c_str());
-                self->m_Document->m_EditorSaveTransaction.AddAction(buffer.c_str());
-
-                return true;
-            }
+                return self->m_Document->OnSaveNodeState(static_cast<uint32_t>(nodeId.Get()), value, reason);
             else
                 return false;
         };
@@ -493,14 +529,9 @@ struct BlueprintEditorExample
             auto self = reinterpret_cast<BlueprintEditorExample*>(userPointer);
 
             if (self->m_Document)
-            {
-                auto localNodeId = static_cast<uint32_t>(nodeId.Get());
-                auto it = self->m_Document->m_NodeStateMap.find(localNodeId);
-                if (it != self->m_Document->m_NodeStateMap.end())
-                    return it->second;
-            }
-
-            return {};
+                return self->m_Document->OnLoadNodeState(static_cast<uint32_t>(nodeId.Get()));
+            else
+                return {};
         };
     }
 
@@ -514,10 +545,10 @@ struct BlueprintEditorExample
         auto printNode2Node = m_Blueprint->CreateNode<PrintNode>();         ed::SetNodePosition(printNode2Node->m_Id, ImVec2(828, 111));
         auto entryPointNode = m_Blueprint->CreateNode<EntryPointNode>();    ed::SetNodePosition(entryPointNode->m_Id, ImVec2(-20, 95));
         auto printNode1Node = m_Blueprint->CreateNode<PrintNode>();         ed::SetNodePosition(printNode1Node->m_Id, ImVec2(828, -1));
-        auto flipFlopNode = m_Blueprint->CreateNode<FlipFlopNode>();      ed::SetNodePosition(flipFlopNode->m_Id, ImVec2(408, -1));
-        auto toStringNode = m_Blueprint->CreateNode<ToStringNode>();      ed::SetNodePosition(toStringNode->m_Id, ImVec2(617, 111));
-        auto doNNode = m_Blueprint->CreateNode<DoNNode>();           ed::SetNodePosition(doNNode->m_Id, ImVec2(168, 95));
-        auto addNode = m_Blueprint->CreateNode<AddNode>();           ed::SetNodePosition(addNode->m_Id, ImVec2(404, 159));
+        auto flipFlopNode   = m_Blueprint->CreateNode<FlipFlopNode>();      ed::SetNodePosition(flipFlopNode->m_Id, ImVec2(408, -1));
+        auto toStringNode   = m_Blueprint->CreateNode<ToStringNode>();      ed::SetNodePosition(toStringNode->m_Id, ImVec2(617, 111));
+        auto doNNode        = m_Blueprint->CreateNode<DoNNode>();           ed::SetNodePosition(doNNode->m_Id, ImVec2(168, 95));
+        auto addNode        = m_Blueprint->CreateNode<AddNode>();           ed::SetNodePosition(addNode->m_Id, ImVec2(404, 159));
 
         entryPointNode->m_Exit.LinkTo(doNNode->m_Enter);
 
@@ -535,50 +566,8 @@ struct BlueprintEditorExample
         printNode2Node->m_String.SetValue("FlipFlop slot B!");
         printNode2Node->m_String.LinkTo(toStringNode->m_String);
 
-        //printNode2Node->m_String.m_Link = &toStringNode.m_Enter;
-
         flipFlopNode->m_A.LinkTo(printNode1Node->m_Enter);
         flipFlopNode->m_B.LinkTo(toStringNode->m_Enter);
-
-
-        //auto constBoolNode  = m_Blueprint->CreateNode<ConstBoolNode>();
-        //auto toStringNode   = m_Blueprint->CreateNode<ToStringNode>();
-        //auto printNodeNode  = m_Blueprint->CreateNode<PrintNode>();
-
-        //crude_json::value value;
-        //m_Blueprint->Save(value);
-        //auto yyy = value.dump();
-
-        //m_Blueprint->Execute(*entryPointNode);
-
-        //Blueprint b2;
-
-        //b2.Load(value);
-
-        //crude_json::value value2;
-        //b2.Save(value2);
-        //auto zzz = value2.dump();
-
-        //bool ok = yyy == zzz;
-
-        //auto b3 = b2;
-
-        //m_Blueprint->CreateNode<BranchNode>();
-        //m_Blueprint->CreateNode<DoNNode>();
-        //m_Blueprint->CreateNode<DoOnceNode>();
-        //m_Blueprint->CreateNode<FlipFlopNode>();
-        //m_Blueprint->CreateNode<ForLoopNode>();
-        //m_Blueprint->CreateNode<GateNode>();
-        //m_Blueprint->CreateNode<AddNode>();
-        //m_Blueprint->CreateNode<PrintNode>();
-        //m_Blueprint->CreateNode<ConstBoolNode>();
-        //m_Blueprint->CreateNode<ConstInt32Node>();
-        //m_Blueprint->CreateNode<ConstFloatNode>();
-        //m_Blueprint->CreateNode<ConstStringNode>();
-        //m_Blueprint->CreateNode<ToStringNode>();
-        //m_Blueprint->CreateNode<AddNode>();
-
-        //m_Blueprint->Start(*FindEntryPointNode());
     }
 
     void OnStart() override
@@ -870,9 +859,34 @@ private:
             auto nodeName = node->GetName();
             if (!nodeName.empty())
             {
+                auto headerBackgroundRenderer = ImEx::ItemBackgroundRenderer([node](ImDrawList* drawList)
+                {
+                    auto border   = ed::GetStyle().NodeBorderWidth;
+                    auto rounding = ed::GetStyle().NodeRounding;
+
+                    auto itemMin = ImGui::GetItemRectMin();
+                    auto itemMax = ImGui::GetItemRectMax();
+
+                    auto nodeStart = ed::GetNodePosition(node->m_Id);
+                    auto nodeSize  = ed::GetNodeSize(node->m_Id);
+
+                    itemMin   = nodeStart;
+                    itemMin.x = itemMin.x + border - 0.5f;
+                    itemMin.y = itemMin.y + border - 0.5f;
+                    itemMax.x = nodeStart.x + nodeSize.x - border + 0.5f;
+                    itemMax.y = itemMax.y + ImGui::GetStyle().ItemSpacing.y + 0.5f;
+
+                    drawList->AddRectFilled(itemMin, itemMax, IM_COL32(255, 255, 255, 64), rounding, ImDrawCornerFlags_Top);
+
+                    //drawList->AddRectFilledMultiColor(itemMin, itemMax, IM_COL32(255, 0, 0, 64), rounding, ImDrawCornerFlags_Top);
+                });
+
                 ImGui::PushFont(HeaderFont());
                 ImGui::TextUnformatted(nodeName.data(), nodeName.data() + nodeName.size());
                 ImGui::PopFont();
+
+                //ImEx::Debug_DrawItemRect();
+                ImGui::Spacing();
             }
 
             ImGui::Dummy(ImVec2(100.0f, 0.0f)); // For minimum node width
@@ -982,7 +996,11 @@ private:
 
             layout.End();
 
+            //ImEx::Debug_DrawItemRect();
+
             ed::EndNode();
+
+            //ImEx::Debug_DrawItemRect();
 
             // [Debug Overlay] Show cursor over node
             debugOverlay.DrawNode(*node);

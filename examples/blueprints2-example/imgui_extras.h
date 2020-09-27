@@ -59,6 +59,23 @@ private:
 };
 
 
+struct ItemBackgroundRenderer
+{
+    using OnDrawCallback = std::function<void(ImDrawList* drawList)>;
+
+    ItemBackgroundRenderer(OnDrawCallback onDrawBackground);
+    ~ItemBackgroundRenderer();
+
+    void Commit();
+    void Discard();
+
+private:
+    ImDrawList*         m_DrawList = nullptr;
+    ImDrawListSplitter  m_Splitter;
+    OnDrawCallback      m_OnDrawBackground;
+};
+
+
 template <typename Settings>
 struct StorageHandler
 {
