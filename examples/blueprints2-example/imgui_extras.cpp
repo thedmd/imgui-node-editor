@@ -118,6 +118,41 @@ void ImEx::ScopedSuspendLayout::Release()
 
 
 
+ImEx::ItemBackgroundRenderer::ItemBackgroundRenderer(OnDrawCallback onDrawBackground)
+    : m_OnDrawBackground(std::move(onDrawBackground))
+{
+    m_DrawList = ImGui::GetWindowDrawList();
+    m_Splitter.Split(m_DrawList, 2);
+    m_Splitter.SetCurrentChannel(m_DrawList, 1);
+}
+
+ImEx::ItemBackgroundRenderer::~ItemBackgroundRenderer()
+{
+    Commit();
+}
+
+void ImEx::ItemBackgroundRenderer::Commit()
+{
+    if (m_Splitter._Current == 0)
+        return;
+
+    m_Splitter.SetCurrentChannel(m_DrawList, 0);
+
+    if (m_OnDrawBackground)
+        m_OnDrawBackground(m_DrawList);
+
+    m_Splitter.Merge(m_DrawList);
+}
+
+void ImEx::ItemBackgroundRenderer::Discard()
+{
+    if (m_Splitter._Current == 1)
+        m_Splitter.Merge(m_DrawList);
+}
+
+
+
+
 ImEx::StorageHandler<ImEx::MostRecentlyUsedList::Settings> ImEx::MostRecentlyUsedList::s_Storage;
 
 void ImEx::MostRecentlyUsedList::Install(ImGuiContext* context)
