@@ -515,12 +515,14 @@ struct Settings
     vector<ObjectId>     m_Selection;
     ImVec2               m_ViewScroll;
     float                m_ViewZoom;
+    ImRect               m_VisibleRect;
 
     Settings()
         : m_IsDirty(false)
         , m_DirtyReason(SaveReasonFlags::None)
         , m_ViewScroll(0, 0)
         , m_ViewZoom(1.0f)
+        , m_VisibleRect()
     {
     }
 
@@ -786,6 +788,13 @@ struct EditorAction
 
 struct NavigateAction final: EditorAction
 {
+    enum class ZoomMode
+    {
+        None,
+        Exact,
+        WithMargin
+    };
+
     enum class NavigationReason
     {
         Unknown,
@@ -798,6 +807,7 @@ struct NavigateAction final: EditorAction
 
     bool            m_IsActive;
     float           m_Zoom;
+    ImRect          m_VisibleRect;
     ImVec2          m_Scroll;
     ImVec2          m_ScrollStart;
     ImVec2          m_ScrollDelta;
@@ -813,7 +823,7 @@ struct NavigateAction final: EditorAction
 
     virtual NavigateAction* AsNavigate() override final { return this; }
 
-    void NavigateTo(const ImRect& bounds, bool zoomIn, float duration = -1.0f, NavigationReason reason = NavigationReason::Unknown);
+    void NavigateTo(const ImRect& bounds, ZoomMode zoomMode, float duration = -1.0f, NavigationReason reason = NavigationReason::Unknown);
     void StopNavigation();
     void FinishNavigation();
 
@@ -823,6 +833,8 @@ struct NavigateAction final: EditorAction
     ImVec2 GetMoveOffset() const { return m_MoveOffset; }
 
     void SetWindow(ImVec2 position, ImVec2 size);
+    ImVec2 GetWindowScreenPos() const { return m_WindowScreenPos; };
+    ImVec2 GetWindowScreenSize() const { return m_WindowScreenSize; };
 
     ImGuiEx::CanvasView GetView() const;
     ImVec2 GetViewOrigin() const;
@@ -833,8 +845,8 @@ struct NavigateAction final: EditorAction
 
 private:
     ImGuiEx::Canvas&   m_Canvas;
-    ImVec2 m_WindowScreenPos;
-    ImVec2 m_WindowScreenSize;
+    ImVec2             m_WindowScreenPos;
+    ImVec2             m_WindowScreenSize;
 
     NavigateAnimation  m_Animation;
     NavigationReason   m_Reason;
@@ -1371,7 +1383,7 @@ struct EditorContext
     ImU32 GetColor(StyleColor colorIndex) const;
     ImU32 GetColor(StyleColor colorIndex, float alpha) const;
 
-    void NavigateTo(const ImRect& bounds, bool zoomIn = false, float duration = -1) { m_NavigateAction.NavigateTo(bounds, zoomIn, duration); }
+    void NavigateTo(const ImRect& bounds, bool zoomIn = false, float duration = -1) { m_NavigateAction.NavigateTo(bounds, NavigateAction::ZoomMode::WithMargin, duration); }
 
     void RegisterAnimation(Animation* animation);
     void UnregisterAnimation(Animation* animation);

@@ -1089,6 +1089,8 @@ void ed::EditorContext::Begin(const char* id, const ImVec2& size)
     if (canvasSize.y <= 0.0f)
         canvasSize.y = ImMax(4.0f, availableContentSize.y);
 
+    auto previousSize        = m_Canvas.Rect().GetSize();
+    auto previousVisibleRect = m_Canvas.ViewRect();
     m_IsCanvasVisible = m_Canvas.Begin(id, canvasSize);
 
     //ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0, 0, 0, 0));
@@ -1102,7 +1104,7 @@ void ed::EditorContext::Begin(const char* id, const ImVec2& size)
     m_IsWindowActive = ImGui::IsWindowFocused();
 
     //
-	m_NavigateAction.SetWindow(m_Canvas.ViewRect().Min, m_Canvas.ViewRect().GetSize());
+    m_NavigateAction.SetWindow(m_Canvas.ViewRect().Min, m_Canvas.ViewRect().GetSize());
 
     if (m_CurrentAction && m_CurrentAction->IsDragging() && m_NavigateAction.MoveOverEdge())
     {
@@ -1113,6 +1115,24 @@ void ed::EditorContext::Begin(const char* id, const ImVec2& size)
     }
     else
         m_NavigateAction.StopMoveOverEdge();
+
+    // Handle canvas size change. Scale to Y axis, center on X.
+    if (!ImRect_IsEmpty(previousVisibleRect) && previousSize != canvasSize)
+    {
+        m_NavigateAction.FinishNavigation();
+
+        auto currentVisibleRect = m_Canvas.ViewRect();
+        auto currentAspectRatio = currentVisibleRect.GetHeight() ? (currentVisibleRect.GetWidth() / currentVisibleRect.GetHeight()) : 0.0f;
+
+        auto centerX = (previousVisibleRect.Max.x + previousVisibleRect.Min.x) * 0.5f;
+        auto height  = previousVisibleRect.GetHeight();
+        auto width   = currentAspectRatio * height;
+
+        previousVisibleRect.Min.x = centerX - 0.5f * width;
+        previousVisibleRect.Max.x = centerX + 0.5f * width;
+
+        m_NavigateAction.NavigateTo(previousVisibleRect, Detail::NavigateAction::ZoomMode::Exact, 0.0f);
+    }
 
     m_Canvas.SetView(m_NavigateAction.GetView());
 
@@ -1921,8 +1941,15 @@ void ed::EditorContext::LoadSettings()
 {
     ed::Settings::Parse(m_Config.Load(), m_Settings);
 
-    m_NavigateAction.m_Scroll = m_Settings.m_ViewScroll;
-    m_NavigateAction.m_Zoom   = m_Settings.m_ViewZoom;
+    if (ImRect_IsEmpty(m_Settings.m_VisibleRect))
+    {
+        m_NavigateAction.m_Scroll = m_Settings.m_ViewScroll;
+        m_NavigateAction.m_Zoom   = m_Settings.m_ViewZoom;
+    }
+    else
+    {
+        m_NavigateAction.NavigateTo(m_Settings.m_VisibleRect, NavigateAction::ZoomMode::Exact, 0.0f);
+    }
 }
 
 void ed::EditorContext::SaveSettings()
@@ -1948,8 +1975,9 @@ void ed::EditorContext::SaveSettings()
     for (auto& object : m_SelectedObjects)
         m_Settings.m_Selection.push_back(object->ID());
 
-    m_Settings.m_ViewScroll = m_NavigateAction.m_Scroll;
-    m_Settings.m_ViewZoom   = m_NavigateAction.m_Zoom;
+    m_Settings.m_ViewScroll  = m_NavigateAction.m_Scroll;
+    m_Settings.m_ViewZoom    = m_NavigateAction.m_Zoom;
+    m_Settings.m_VisibleRect = m_NavigateAction.m_VisibleRect;
 
     if (m_Config.Save(m_Settings.Serialize(), m_Settings.m_DirtyReason))
         m_Settings.ClearDirty();
@@ -2452,6 +2480,10 @@ std::string ed::Settings::Serialize()
     view["scroll"]["x"] = m_ViewScroll.x;
     view["scroll"]["y"] = m_ViewScroll.y;
     view["zoom"]   = m_ViewZoom;
+    view["visible_rect"]["min"]["x"] = m_VisibleRect.Min.x;
+    view["visible_rect"]["min"]["y"] = m_VisibleRect.Min.y;
+    view["visible_rect"]["max"]["x"] = m_VisibleRect.Max.x;
+    view["visible_rect"]["max"]["y"] = m_VisibleRect.Max.y;
 
     return result.dump();
 }
@@ -2543,6 +2575,9 @@ bool ed::Settings::Parse(const std::string& string, Settings& settings)
             result.m_ViewScroll = ImVec2(0, 0);
 
         result.m_ViewZoom = viewZoomValue.is_number() ? static_cast<float>(viewZoomValue.get<double>()) : 1.0f;
+
+        if (!viewValue.contains("visible_rect") || !tryParseVector(viewValue["visible_rect"]["min"], result.m_VisibleRect.Min) || !tryParseVector(viewValue["visible_rect"]["max"], result.m_VisibleRect.Max))
+            result.m_VisibleRect = {};
     }
 
     settings = std::move(result);
@@ -2587,7 +2622,7 @@ void ed::Animation::Play(float duration)
     Editor->RegisterAnimation(this);
 
     if (duration == 0.0f)
-        Stop();
+        Finish();
 }
 
 void ed::Animation::Stop()
@@ -2911,6 +2946,7 @@ ed::NavigateAction::NavigateAction(EditorContext* editor, ImGuiEx::Canvas& canva
     EditorAction(editor),
     m_IsActive(false),
     m_Zoom(1),
+    m_VisibleRect(),
     m_Scroll(0, 0),
     m_ScrollStart(0, 0),
     m_ScrollDelta(0, 0),
@@ -2945,7 +2981,7 @@ ed::EditorAction::AcceptResult ed::NavigateAction::Accept(const Control& control
 
     if (ImGui::IsWindowFocused() && ImGui::IsKeyPressed(GetKeyIndexForF()) && Editor->AreShortcutsEnabled())
     {
-        const auto allowZoomIn = io.KeyShift;
+        const auto zoomMode = io.KeyShift ? NavigateAction::ZoomMode::WithMargin : NavigateAction::ZoomMode::None;
 
         auto findHotObjectToZoom = [this, &control, &io]() -> Object*
         {
@@ -2969,21 +3005,21 @@ ed::EditorAction::AcceptResult ed::NavigateAction::Accept(const Control& control
         bool navigateToContent = false;
         if (!Editor->GetSelectedObjects().empty())
         {
-            if (m_Reason != NavigationReason::Selection || m_LastSelectionId != Editor->GetSelectionId() || allowZoomIn)
+            if (m_Reason != NavigationReason::Selection || m_LastSelectionId != Editor->GetSelectionId() || (zoomMode != NavigateAction::ZoomMode::None))
             {
                 m_LastSelectionId = Editor->GetSelectionId();
-                NavigateTo(Editor->GetSelectionBounds(), allowZoomIn, -1.0f, NavigationReason::Selection);
+                NavigateTo(Editor->GetSelectionBounds(), zoomMode, -1.0f, NavigationReason::Selection);
             }
             else
                 navigateToContent = true;
         }
         else if(auto hotObject = findHotObjectToZoom())
         {
-            if (m_Reason != NavigationReason::Object || m_LastObject != hotObject || allowZoomIn)
+            if (m_Reason != NavigationReason::Object || m_LastObject != hotObject || (zoomMode != NavigateAction::ZoomMode::None))
             {
                 m_LastObject = hotObject;
                 auto bounds = hotObject->GetBounds();
-                NavigateTo(bounds, allowZoomIn, -1.0f, NavigationReason::Object);
+                NavigateTo(bounds, zoomMode, -1.0f, NavigationReason::Object);
             }
             else
                 navigateToContent = true;
@@ -2992,7 +3028,14 @@ ed::EditorAction::AcceptResult ed::NavigateAction::Accept(const Control& control
             navigateToContent = true;
 
         if (navigateToContent)
-            NavigateTo(Editor->GetContentBounds(), true, -1.0f, NavigationReason::Content);
+            NavigateTo(Editor->GetContentBounds(), NavigateAction::ZoomMode::WithMargin, -1.0f, NavigationReason::Content);
+    }
+
+    auto visibleRect = GetViewRect();
+    if (m_VisibleRect.Min != visibleRect.Min || m_VisibleRect.Max != visibleRect.Max)
+    {
+        m_VisibleRect = visibleRect;
+        Editor->MakeDirty(SaveReasonFlags::Navigation);
     }
 
     // // #debug
@@ -3016,7 +3059,7 @@ bool ed::NavigateAction::Process(const Control& control)
     {
         m_ScrollDelta = ImGui::GetMouseDragDelta(c_ScrollButtonIndex);
         m_Scroll      = m_ScrollStart - m_ScrollDelta * m_Zoom;
-
+        m_VisibleRect = GetViewRect();
 //         if (IsActive && Animation.IsPlaying())
 //             Animation.Target = Animation.Target - ScrollDelta * Animation.TargetZoom;
     }
@@ -3065,10 +3108,13 @@ bool ed::NavigateAction::HandleZoom(const Control& control)
     auto offset       = (canvasPos - mousePos) * m_Zoom;
     auto targetScroll = m_Scroll - offset;
 
-    if (m_Scroll != savedScroll || m_Zoom != savedZoom)
+    auto visibleRect = GetViewRect();
+
+    if (m_Scroll != savedScroll || m_Zoom != savedZoom || m_VisibleRect.Min != visibleRect.Min || m_VisibleRect.Max != visibleRect.Max)
     {
-        m_Scroll = savedScroll;
-        m_Zoom = savedZoom;
+        m_Scroll      = savedScroll;
+        m_Zoom        = savedZoom;
+        m_VisibleRect = visibleRect;
 
         Editor->MakeDirty(SaveReasonFlags::Navigation);
     }
@@ -3088,9 +3134,14 @@ void ed::NavigateAction::ShowMetrics()
     ImGui::Text("    Active: %s", m_IsActive ? "yes" : "no");
     ImGui::Text("    Scroll: { x=%g y=%g }", m_Scroll.x, m_Scroll.y);
     ImGui::Text("    Zoom: %g", m_Zoom);
+    ImGui::Text("    Visible Rect: { l=%g t=%g, r=%g b=%g w=%g h=%g }",
+        m_VisibleRect.Min.x, m_VisibleRect.Min.y,
+        m_VisibleRect.Max.x, m_VisibleRect.Max.y,
+        m_VisibleRect.Max.x - m_VisibleRect.Min.x,
+        m_VisibleRect.Max.y - m_VisibleRect.Min.y);
 }
 
-void ed::NavigateAction::NavigateTo(const ImRect& bounds, bool zoomIn, float duration, NavigationReason reason)
+void ed::NavigateAction::NavigateTo(const ImRect& bounds, ZoomMode zoomMode, float duration, NavigationReason reason)
 {
     if (ImRect_IsEmpty(bounds))
         return;
@@ -3098,7 +3149,7 @@ void ed::NavigateAction::NavigateTo(const ImRect& bounds, bool zoomIn, float dur
     if (duration < 0.0f)
         duration = GetStyle().ScrollDuration;
 
-    if (!zoomIn)
+    if (zoomMode == ZoomMode::None)
     {
         auto viewRect       = m_Canvas.ViewRect();
         auto viewRectCenter = viewRect.GetCenter();
@@ -3113,8 +3164,12 @@ void ed::NavigateAction::NavigateTo(const ImRect& bounds, bool zoomIn, float dur
         // Grow rect by 5% to leave some reasonable margin
         // from the edges of the canvas.
         auto rect   = bounds;
-        auto extend = ImMax(rect.GetWidth(), rect.GetHeight());
-        rect.Expand(extend * c_NavigationZoomMargin * 0.5f);
+
+        if (zoomMode == ZoomMode::WithMargin)
+        {
+            auto extend = ImMax(rect.GetWidth(), rect.GetHeight());
+            rect.Expand(extend * c_NavigationZoomMargin * 0.5f);
+        }
 
         NavigateTo(rect, duration, reason);
     }
