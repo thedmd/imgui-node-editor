@@ -4887,7 +4887,9 @@ void ed::NodeBuilder::End()
     {
         ImGui::EndGroup();
         ImGui::SameLine(0, editorStyle.NodePadding.z);
+        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.0f, 0.0f));
         ImGui::Dummy(ImVec2(0, 0));
+        ImGui::PopStyleVar();
         ImGui::SetCursorPosY(ImGui::GetCursorPosY() + editorStyle.NodePadding.w);
     }
 
