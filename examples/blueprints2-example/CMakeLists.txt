@@ -1,9 +1,11 @@
 add_example_executable(blueprints2-example
-    blueprints2-example.cpp
+    blueprint_editor_document.cpp
+    blueprint_editor_document.h
     blueprint_editor_icons.cpp
     blueprint_editor_icons.h
     blueprint_editor_utilities.cpp
     blueprint_editor_utilities.h
+    blueprints2-example.cpp
     crude_blueprint.cpp
     crude_blueprint.h
     crude_blueprint_library.cpp
