@@ -1937,7 +1937,7 @@ bool ed::EditorContext::ApplyState(Node* node, const NodeState& state)
 
     ImRect newBounds;
     newBounds.Min = state.m_Location;
-    newBounds.Max = state.m_Location + state.m_Size;
+    newBounds.Max = state.m_Location + node->m_Bounds.GetSize();//state.m_Size;
 
     modified |= (node->m_Bounds.Min != newBounds.Min || node->m_Bounds.Max != newBounds.Max);
 
