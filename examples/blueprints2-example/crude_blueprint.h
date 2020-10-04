@@ -52,6 +52,7 @@ struct Blueprint;
 enum class PinType: int32_t { Void = -1, Any, Flow, Bool, Int32, Float, String };
 
 const char* PinTypeToString(PinType pinType);
+bool PinTypeFromString(const char* str, PinType& pinType);
 
 struct PinValue
 {
