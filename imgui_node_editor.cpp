@@ -1042,6 +1042,7 @@ ed::EditorContext::EditorContext(const ax::NodeEditor::Config* config)
     , m_BackgroundDoubleClicked(false)
     , m_IsInitialized(false)
     , m_Settings()
+    , m_State()
     , m_Config(config)
     , m_DrawList(nullptr)
     , m_ExternalChannel(0)
@@ -1464,10 +1465,10 @@ void ed::EditorContext::End()
 
     ImGui::PopID();
 
-    if (!m_CurrentAction && m_IsFirstFrame && !m_Settings.m_Selection.empty())
+    if (!m_CurrentAction && m_IsFirstFrame && !m_State.m_SelectionState.m_Selection.empty())
     {
         ClearSelection();
-        for (auto id : m_Settings.m_Selection)
+        for (auto id : m_State.m_SelectionState.m_Selection)
             if (auto object = FindObject(id))
                 SelectObject(object);
     }
@@ -1549,21 +1550,20 @@ void ed::EditorContext::MarkNodeToRestoreState(Node* node)
 
 void ed::EditorContext::RestoreNodeState(Node* node)
 {
-    auto settings = m_Settings.FindNode(node->m_ID);
-    if (!settings)
-        return;
-
     // Load state from config (if possible)
     auto state = m_Config.LoadNode(node->m_ID);
-    if (!state.is_null() && !NodeSettings::Parse(state, *settings))
-        return;
 
-    node->m_Bounds.Min      = settings->m_Location;
-    node->m_Bounds.Max      = node->m_Bounds.Min + settings->m_Size;
-    node->m_Bounds.Floor();
-    node->m_GroupBounds.Min = settings->m_Location;
-    node->m_GroupBounds.Max = node->m_GroupBounds.Min + settings->m_GroupSize;
-    node->m_GroupBounds.Floor();
+    NodeState nodeState;
+    if (state.is_null() || !Serialization::Parse(state, nodeState))
+    {
+        auto it = m_State.m_NodesState.m_Nodes.find(node->m_ID);
+        if (it == m_State.m_NodesState.m_Nodes.end())
+            return;
+
+        nodeState = it->second;
+    }
+
+    ApplyState(node, nodeState);
 }
 
 void ed::EditorContext::ClearSelection()
@@ -1815,18 +1815,6 @@ ed::Node* ed::EditorContext::CreateNode(NodeId id)
         RestoreNodeState(node);
     }
 
-    node->m_Bounds.Min  = settings->m_Location;
-    node->m_Bounds.Max  = node->m_Bounds.Min;
-    node->m_Bounds.Floor();
-
-    if (settings->m_GroupSize.x > 0 || settings->m_GroupSize.y > 0)
-    {
-        node->m_Type            = NodeType::Group;
-        node->m_GroupBounds.Min = settings->m_Location;
-        node->m_GroupBounds.Max = node->m_GroupBounds.Min + settings->m_GroupSize;
-        node->m_GroupBounds.Floor();
-    }
-
     node->m_IsLive = false;
 
     return node;
@@ -1938,6 +1926,170 @@ ed::Link* ed::EditorContext::GetLink(LinkId id)
         return CreateLink(id);
 }
 
+bool ed::EditorContext::ApplyState(Node* node, const NodeState& state)
+{
+    if (!node)
+        return false;
+
+    bool modified = false;
+
+    const auto lastNodeLocation = node->m_Bounds.Min;
+
+    ImRect newBounds;
+    newBounds.Min = state.m_Location;
+    newBounds.Max = state.m_Location + state.m_Size;
+
+    modified |= (node->m_Bounds.Min != newBounds.Min || node->m_Bounds.Max != newBounds.Max);
+
+    node->m_Bounds = newBounds;
+    node->m_Bounds.Floor();
+
+    if (IsGroup(node))
+    {
+        auto groupLocation = node->m_GroupBounds.Min + state.m_Location - lastNodeLocation;
+
+        ImRect newGroupBounds;
+        newGroupBounds.Min = groupLocation;
+        newGroupBounds.Max = groupLocation + state.m_GroupSize;
+
+        modified |= (node->m_GroupBounds.Min != newGroupBounds.Min || node->m_GroupBounds.Max != newGroupBounds.Max);
+
+        node->m_GroupBounds = newGroupBounds;
+        node->m_GroupBounds.Floor();
+    }
+
+    return modified;
+}
+
+void ed::EditorContext::RecordState(const Node* node, NodeState& state)
+{
+    if (!node)
+        return;
+
+    NodeState result;
+
+    result.m_Location = node->m_Bounds.Min;
+    result.m_Size     = node->m_Bounds.GetSize();
+    if (IsGroup(node))
+        result.m_GroupSize = node->m_GroupBounds.GetSize();
+
+    state = std::move(result);
+}
+
+bool ed::EditorContext::ApplyState(const NodesState& state)
+{
+    bool modified = false;
+
+    for (const auto& entry : state.m_Nodes)
+    {
+        auto& nodeState = entry.second;
+
+        if (auto node = FindNode(entry.first))
+            modified |= ApplyState(node, nodeState);
+    }
+
+    m_State.m_NodesState = state;
+
+    return true;
+}
+
+void ed::EditorContext::RecordState(NodesState& state)
+{
+    NodesState result;
+
+    for (const auto& node : m_Nodes)
+    {
+        if (!node->m_IsLive)
+            continue;
+
+        RecordState(node, result.m_Nodes[node->m_ID]);
+    }
+
+    state = std::move(result);
+}
+
+bool ed::EditorContext::ApplyState(const SelectionState& state)
+{
+    if (m_State.m_SelectionState.m_Selection == state.m_Selection)
+        return false;
+
+    m_State.m_SelectionState = state;
+
+    ClearSelection();
+    for (auto id : state.m_Selection)
+        if (auto object = FindObject(id))
+            SelectObject(object);
+
+    return true;
+}
+
+void ed::EditorContext::RecordState(SelectionState& state)
+{
+    SelectionState result;
+
+    result.m_Selection.reserve(m_SelectedObjects.size());
+    for (auto object : m_SelectedObjects)
+        result.m_Selection.push_back(object->ID());
+
+    state = std::move(result);
+}
+
+bool ed::EditorContext::ApplyState(const ViewState& state)
+{
+    auto lastSatete = m_State.m_ViewState;
+
+    m_State.m_ViewState = state;
+
+    if (ImRect_IsEmpty(state.m_VisibleRect))
+    {
+        m_NavigateAction.m_Scroll = state.m_ViewScroll;
+        m_NavigateAction.m_Zoom   = state.m_ViewZoom;
+
+        return
+            lastSatete.m_ViewScroll != state.m_ViewScroll ||
+            lastSatete.m_ViewZoom != state.m_ViewZoom;
+    }
+    else
+    {
+        m_NavigateAction.NavigateTo(state.m_VisibleRect, NavigateAction::ZoomMode::Exact, 0.0f);
+
+        return
+            lastSatete.m_VisibleRect.Min != state.m_VisibleRect.Min ||
+            lastSatete.m_VisibleRect.Max != state.m_VisibleRect.Max;
+    }
+}
+
+void ed::EditorContext::RecordState(ViewState& state)
+{
+    ViewState result;
+
+    result.m_ViewScroll  = m_NavigateAction.m_Scroll;
+    result.m_ViewZoom    = m_NavigateAction.m_Zoom;
+    result.m_VisibleRect = m_NavigateAction.m_VisibleRect;
+
+    state = std::move(result);
+}
+
+bool ed::EditorContext::ApplyState(const EditorState& state)
+{
+    bool result = false;
+    result |= ApplyState(state.m_NodesState);
+    result |= ApplyState(state.m_SelectionState);
+    result |= ApplyState(state.m_ViewState);
+    return result;
+}
+
+void ed::EditorContext::RecordState(EditorState& state)
+{
+    EditorState result;
+
+    RecordState(result.m_NodesState);
+    RecordState(result.m_SelectionState);
+    RecordState(result.m_ViewState);
+
+    state = std::move(result);
+}
+
 void ed::EditorContext::SaveState()
 {
     SaveSettings();
@@ -1954,47 +2106,38 @@ void ed::EditorContext::RestoreState()
 
 void ed::EditorContext::LoadSettings()
 {
-    ed::Settings::Parse(m_Config.Load(), m_Settings);
+    EditorState state;
 
-    if (ImRect_IsEmpty(m_Settings.m_VisibleRect))
-    {
-        m_NavigateAction.m_Scroll = m_Settings.m_ViewScroll;
-        m_NavigateAction.m_Zoom   = m_Settings.m_ViewZoom;
-    }
-    else
-    {
-        m_NavigateAction.NavigateTo(m_Settings.m_VisibleRect, NavigateAction::ZoomMode::Exact, 0.0f);
-    }
+    string error;
+    if (!Serialization::Parse(m_Config.Load(), state, &error))
+        return;
+
+    ApplyState(state);
 }
 
 void ed::EditorContext::SaveSettings()
 {
+    RecordState(m_State);
+
     m_Config.BeginSave();
 
     for (auto& node : m_Nodes)
     {
         auto settings = m_Settings.FindNode(node->m_ID);
-        settings->m_Location = node->m_Bounds.Min;
-        settings->m_Size     = node->m_Bounds.GetSize();
-        if (IsGroup(node))
-            settings->m_GroupSize = node->m_GroupBounds.GetSize();
 
         if (!node->m_RestoreState && settings->m_IsDirty && (m_Config.SaveNodeSettings || m_Config.SaveNodeSettingsJson))
         {
-            if (m_Config.SaveNode(node->m_ID, settings->Serialize().dump(), settings->m_DirtyReason))
+            NodeState nodeState;
+            RecordState(node, nodeState);
+
+            if (m_Config.SaveNode(node->m_ID, Serialization::ToJson(nodeState), settings->m_DirtyReason))
                 settings->ClearDirty();
         }
     }
 
-    m_Settings.m_Selection.resize(0);
-    for (auto& object : m_SelectedObjects)
-        m_Settings.m_Selection.push_back(object->ID());
+    auto serializedState = Serialization::ToJson(m_State);
 
-    m_Settings.m_ViewScroll  = m_NavigateAction.m_Scroll;
-    m_Settings.m_ViewZoom    = m_NavigateAction.m_Zoom;
-    m_Settings.m_VisibleRect = m_NavigateAction.m_VisibleRect;
-
-    if (m_Config.Save(m_Settings.Serialize(), m_Settings.m_DirtyReason))
+    if (m_Config.Save(serializedState, m_Settings.m_DirtyReason))
         m_Settings.ClearDirty();
 
     m_Config.EndSave();
@@ -2351,63 +2494,6 @@ void ed::NodeSettings::MakeDirty(SaveReasonFlags reason)
     m_DirtyReason = m_DirtyReason | reason;
 }
 
-ed::json::value ed::NodeSettings::Serialize() const
-{
-    json::value result;
-    result["location"]["x"] = m_Location.x;
-    result["location"]["y"] = m_Location.y;
-
-    if (m_GroupSize.x > 0 || m_GroupSize.y > 0)
-    {
-        result["group_size"]["x"] = m_GroupSize.x;
-        result["group_size"]["y"] = m_GroupSize.y;
-    }
-
-    return result;
-}
-
-bool ed::NodeSettings::Parse(const std::string& string, NodeSettings& settings)
-{
-    auto settingsValue = json::value::parse(string);
-    if (settingsValue.is_discarded())
-        return false;
-
-    return Parse(settingsValue, settings);
-}
-
-bool ed::NodeSettings::Parse(const json::value& data, NodeSettings& result)
-{
-    if (!data.is_object())
-        return false;
-
-    auto tryParseVector = [](const json::value& v, ImVec2& result) -> bool
-    {
-        if (v.is_object())
-        {
-            auto xValue = v["x"];
-            auto yValue = v["y"];
-
-            if (xValue.is_number() && yValue.is_number())
-            {
-                result.x = static_cast<float>(xValue.get<double>());
-                result.y = static_cast<float>(yValue.get<double>());
-
-                return true;
-            }
-        }
-
-        return false;
-    };
-
-    if (!tryParseVector(data["location"], result.m_Location))
-        return false;
-
-    if (data.contains("group_size") && !tryParseVector(data["group_size"], result.m_GroupSize))
-        return false;
-
-    return true;
-}
-
 
 
 
@@ -2418,17 +2504,16 @@ bool ed::NodeSettings::Parse(const json::value& data, NodeSettings& result)
 //------------------------------------------------------------------------------
 ed::NodeSettings* ed::Settings::AddNode(NodeId id)
 {
-    m_Nodes.push_back(NodeSettings(id));
-    return &m_Nodes.back();
+   return &m_Nodes[id];
 }
 
 ed::NodeSettings* ed::Settings::FindNode(NodeId id)
 {
-    for (auto& settings : m_Nodes)
-        if (settings.m_ID == id)
-            return &settings;
+    auto it = m_Nodes.find(id);
+    if (it == m_Nodes.end())
+        return nullptr;
 
-    return nullptr;
+    return &it->second;
 }
 
 void ed::Settings::ClearDirty(Node* node)
@@ -2445,7 +2530,7 @@ void ed::Settings::ClearDirty(Node* node)
         m_DirtyReason = SaveReasonFlags::None;
 
         for (auto& knownNode : m_Nodes)
-            knownNode.ClearDirty();
+            knownNode.second.ClearDirty();
     }
 }
 
@@ -2463,149 +2548,6 @@ void ed::Settings::MakeDirty(SaveReasonFlags reason, Node* node)
     }
 }
 
-ed::json::value ed::Settings::Serialize() const
-{
-    json::value result;
-
-    auto serializeObjectId = [](ObjectId id)
-    {
-        auto value = std::to_string(reinterpret_cast<uintptr_t>(id.AsPointer()));
-        switch (id.Type())
-        {
-            default:
-            case NodeEditor::Detail::ObjectType::None: return value;
-            case NodeEditor::Detail::ObjectType::Node: return "node:" + value;
-            case NodeEditor::Detail::ObjectType::Link: return "link:" + value;
-            case NodeEditor::Detail::ObjectType::Pin:  return "pin:"  + value;
-        }
-    };
-
-    auto& nodes = result["nodes"];
-    nodes = json::object();
-    for (auto& node : m_Nodes)
-    {
-        if (node.m_WasUsed)
-            nodes[serializeObjectId(node.m_ID)] = node.Serialize();
-    }
-
-    auto& selection = result["selection"];
-    selection = json::array();
-    for (auto& id : m_Selection)
-        selection.push_back(serializeObjectId(id));
-
-    auto& view = result["view"];
-    view["scroll"]["x"] = m_ViewScroll.x;
-    view["scroll"]["y"] = m_ViewScroll.y;
-    view["zoom"]   = m_ViewZoom;
-    view["visible_rect"]["min"]["x"] = m_VisibleRect.Min.x;
-    view["visible_rect"]["min"]["y"] = m_VisibleRect.Min.y;
-    view["visible_rect"]["max"]["x"] = m_VisibleRect.Max.x;
-    view["visible_rect"]["max"]["y"] = m_VisibleRect.Max.y;
-
-    return result;
-}
-
-bool ed::Settings::Parse(const std::string& string, Settings& settings)
-{
-    auto settingsValue = json::value::parse(string);
-    if (settingsValue.is_discarded())
-        return false;
-
-    return Parse(settingsValue, settings);
-}
-
-bool ed::Settings::Parse(const json::value& settingsValue, Settings& settings)
-{
-    Settings result = settings;
-
-    if (!settingsValue.is_object())
-        return false;
-
-    auto tryParseVector = [](const json::value& v, ImVec2& result) -> bool
-    {
-        if (v.is_object() && v.contains("x") && v.contains("y"))
-        {
-            auto xValue = v["x"];
-            auto yValue = v["y"];
-
-            if (xValue.is_number() && yValue.is_number())
-            {
-                result.x = static_cast<float>(xValue.get<double>());
-                result.y = static_cast<float>(yValue.get<double>());
-
-                return true;
-            }
-        }
-
-        return false;
-    };
-
-    auto deserializeObjectId = [](const std::string& str)
-    {
-        auto separator = str.find_first_of(':');
-        auto idStart   = str.c_str() + ((separator != std::string::npos) ? separator + 1 : 0);
-        auto id        = reinterpret_cast<void*>(strtoull(idStart, nullptr, 10));
-        if (str.compare(0, separator, "node") == 0)
-            return ObjectId(NodeId(id));
-        else if (str.compare(0, separator, "link") == 0)
-            return ObjectId(LinkId(id));
-        else if (str.compare(0, separator, "pin") == 0)
-            return ObjectId(PinId(id));
-        else
-            // fallback to old format
-            return ObjectId(NodeId(id)); //return ObjectId();
-    };
-
-    //auto& settingsObject = settingsValue.get<json::object>();
-
-    auto& nodesValue = settingsValue["nodes"];
-    if (nodesValue.is_object())
-    {
-        for (auto& node : nodesValue.get<json::object>())
-        {
-            auto id = deserializeObjectId(node.first.c_str()).AsNodeId();
-
-            auto nodeSettings = result.FindNode(id);
-            if (!nodeSettings)
-                nodeSettings = result.AddNode(id);
-
-            NodeSettings::Parse(node.second, *nodeSettings);
-        }
-    }
-
-    auto& selectionValue = settingsValue["selection"];
-    if (selectionValue.is_array())
-    {
-        const auto selectionArray = selectionValue.get<json::array>();
-
-        result.m_Selection.reserve(selectionArray.size());
-        result.m_Selection.resize(0);
-        for (auto& selection : selectionArray)
-        {
-            if (selection.is_string())
-                result.m_Selection.push_back(deserializeObjectId(selection.get<json::string>()));
-        }
-    }
-
-    auto& viewValue = settingsValue["view"];
-    if (viewValue.is_object())
-    {
-        auto& viewScrollValue = viewValue["scroll"];
-        auto& viewZoomValue   = viewValue["zoom"];
-
-        if (!tryParseVector(viewScrollValue, result.m_ViewScroll))
-            result.m_ViewScroll = ImVec2(0, 0);
-
-        result.m_ViewZoom = viewZoomValue.is_number() ? static_cast<float>(viewZoomValue.get<double>()) : 1.0f;
-
-        if (!viewValue.contains("visible_rect") || !tryParseVector(viewValue["visible_rect"]["min"], result.m_VisibleRect.Min) || !tryParseVector(viewValue["visible_rect"]["max"], result.m_VisibleRect.Max))
-            result.m_VisibleRect = {};
-    }
-
-    settings = std::move(result);
-
-    return true;
-}
 
 
 
