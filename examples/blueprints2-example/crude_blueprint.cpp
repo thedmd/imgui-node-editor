@@ -90,6 +90,28 @@ const char* crude_blueprint::PinTypeToString(PinType pinType)
     }
 }
 
+bool crude_blueprint::PinTypeFromString(const char* str, PinType& pinType)
+{
+    if (strcmp(str, "Void") == 0)
+        pinType = PinType::Void;
+    else if (strcmp(str, "Any") == 0)
+        pinType = PinType::Any;
+    else if (strcmp(str, "Flow") == 0)
+        pinType = PinType::Flow;
+    else if (strcmp(str, "Bool") == 0)
+        pinType = PinType::Bool;
+    else if (strcmp(str, "Int32") == 0)
+        pinType = PinType::Int32;
+    else if (strcmp(str, "Float") == 0)
+        pinType = PinType::Float;
+    else if (strcmp(str, "String") == 0)
+        pinType = PinType::String;
+    else
+        return false;
+
+    return true;
+}
+
 
 
 
@@ -931,6 +953,8 @@ crude_blueprint::Blueprint::Blueprint(Blueprint&& other)
     , m_Pins(std::move(other.m_Pins))
     , m_Context(std::move(other.m_Context))
 {
+    for (auto& node : m_Nodes)
+        node->m_Blueprint = this;
 }
 
 crude_blueprint::Blueprint::~Blueprint()
@@ -966,6 +990,9 @@ crude_blueprint::Blueprint& crude_blueprint::Blueprint::operator=(Blueprint&& ot
     m_Nodes        = std::move(other.m_Nodes);
     m_Pins         = std::move(other.m_Pins);
     m_Context      = std::move(other.m_Context);
+
+    for (auto& node : m_Nodes)
+        node->m_Blueprint = this;
 
     return *this;
 }

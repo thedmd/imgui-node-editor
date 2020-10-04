@@ -206,19 +206,63 @@ struct Document
 {
     struct DocumentState
     {
-        DocumentState() = default;
-        DocumentState(Document& document, string_view name = "")
-            : m_State(document.SerializeState())
-            , m_Name(name.to_string())
-        {
-        }
-        DocumentState(const DocumentState&) = default;
-        DocumentState(DocumentState&&) = default;
-        DocumentState& operator=(const DocumentState&) = default;
-        DocumentState& operator=(DocumentState&&) = default;
+        map<uint32_t, crude_json::value>    m_NodeStateMap;
+        crude_json::value                   m_SelectionState;
+        crude_json::value                   m_BlueprintState;
 
-        crude_json::value   m_State;
-        string              m_Name;
+        crude_json::value Serialize() const
+        {
+            crude_json::value result;
+            auto& nodesValue = result["nodes"];
+            for (auto& entry : m_NodeStateMap)
+                nodesValue[std::to_string(entry.first)] = entry.second;
+            result["selection"] = m_SelectionState;
+            result["blueprint"] = m_BlueprintState;
+            return result;
+        }
+
+        static bool Deserialize(const crude_json::value& value, DocumentState& result)
+        {
+            DocumentState state;
+
+            if (!value.is_object())
+                return false;
+
+            if (!value.contains("nodes") || !value.contains("selection") || !value.contains("blueprint"))
+                return false;
+
+            auto& nodesValue     = value["nodes"];
+            auto& selectionValue = value["selection"];
+            auto&  dataValue     = value["blueprint"];
+
+            if (!nodesValue.is_object())
+                return false;
+
+            state.m_SelectionState = selectionValue;
+            state.m_BlueprintState = dataValue;
+
+            auto& nodesObject = nodesValue.get<crude_json::object>();
+            for (auto& entry : nodesObject)
+            {
+                auto nodeId = static_cast<uint32_t>(strtoul(entry.first.c_str(), nullptr, 10)); // C sends its regards
+                state.m_NodeStateMap[nodeId] = entry.second;
+            }
+
+            result = std::move(state);
+
+            return true;
+        }
+    };
+
+    struct NavigationState
+    {
+        crude_json::value                   m_ViewState;
+    };
+
+    struct UndoState
+    {
+        string          m_Name;
+        DocumentState   m_State;
     };
 
     struct UndoTransaction
@@ -246,6 +290,8 @@ struct Document
 
             m_HasBegun = true;
 
+            m_State.m_State = m_Document->m_DocumentState;
+
             if (!name.empty())
                 AddAction(name);
         }
@@ -269,9 +315,9 @@ struct Document
 
                 LOGV("[UndoTransaction] Commit \"%" PRI_sv "\"", FMT_sv(name));
 
-                auto state = DocumentState{ *m_Document, name };
+                m_State.m_Name = name.to_string();
 
-                m_Document->m_Undo.emplace_back(std::move(state));
+                m_Document->m_Undo.emplace_back(std::move(m_State));
                 m_Document->m_Redo.clear();
             }
 
@@ -288,6 +334,7 @@ struct Document
 
     private:
         Document*           m_Document = nullptr;
+        UndoState           m_State;
         ImGuiTextBuffer     m_Actions;
         bool                m_HasBegun = false;
         bool                m_IsDone = false;
@@ -320,32 +367,35 @@ struct Document
             m_Name = path.to_string();
     }
 
-    crude_json::value SerializeState() const
+    crude_json::value Serialize() const
     {
         crude_json::value result;
-        result["state"] = m_EditorState;
-        m_Blueprint.Save(result["data"]);
+        result["document"]  = m_DocumentState.Serialize();
+        result["view"]      = m_NavigationState.m_ViewState;
         return result;
     }
 
-    bool DeserializeState(const crude_json::value& value)
+    static bool Deserialize(const crude_json::value& value, Document& result)
     {
         if (!value.is_object())
             return false;
 
-        if (!value.contains("state") || !value.contains("data"))
+        if (!value.contains("document") || !value.contains("view"))
             return false;
 
-        auto& stateValue = value["state"];
-        auto&  dataValue = value["data"];
+        auto& documentValue = value["document"];
+        auto&     viewValue = value["view"];
 
-        if (!stateValue.is_object())
+        Document document;
+        if (!DocumentState::Deserialize(documentValue, document.m_DocumentState))
             return false;
 
-        if (!m_Blueprint.Load(dataValue))
+        document.m_NavigationState.m_ViewState = viewValue;
+
+        if (!document.m_Blueprint.Load(document.m_DocumentState.m_BlueprintState))
             return false;
 
-        m_EditorState = stateValue;
+        result = std::move(document);
 
         return true;
     }
@@ -356,14 +406,18 @@ struct Document
         if (!loadResult.second)
             return false;
 
-        auto& value = loadResult.first;
+        Document document;
+        if (!Deserialize(loadResult.first, document))
+            return false;
 
-        return DeserializeState(value);
+        *this = std::move(document);
+
+        return true;
     }
 
     bool Save(string_view path) const
     {
-        auto result = SerializeState();
+        auto result = Serialize();
         return result.save(path.to_string());
     }
 
@@ -377,13 +431,13 @@ struct Document
 
         LOGI("[Document] Undo \"%s\"", state.m_Name.c_str());
 
-        DocumentState currentState(*this, state.m_Name);
+        UndoState undoState;
+        undoState.m_Name  = state.m_Name;
+        undoState.m_State = m_DocumentState;
 
-        DeserializeState(state.m_State);
+        ApplyState(state.m_State);
 
-        m_Redo.push_back(std::move(currentState));
-
-        ed::RestoreState();
+        m_Redo.push_back(std::move(undoState));
 
         return true;
     }
@@ -398,15 +452,37 @@ struct Document
 
         LOGI("[Document] Redo \"%s\"", state.m_Name.c_str());
 
-        DocumentState currentState(*this, state.m_Name);
+        UndoState undoState;
+        undoState.m_Name  = state.m_Name;
+        undoState.m_State = m_DocumentState;
 
-        DeserializeState(state.m_State);
+        ApplyState(state.m_State);
 
-        m_Undo.push_back(std::move(currentState));
-
-        ed::RestoreState();
+        m_Undo.push_back(std::move(undoState));
 
         return true;
+    }
+
+    void ApplyState(const DocumentState& state)
+    {
+        m_Blueprint.Load(state.m_BlueprintState);
+
+        m_DocumentState = state;
+        ed::ApplyState(m_DocumentState.m_SelectionState, ed::StateType::Selection);
+        for (auto& entry : m_DocumentState.m_NodeStateMap)
+            ed::ApplyState(entry.first, entry.second, ed::StateType::Node);
+    }
+
+    void ApplyState(const NavigationState& state)
+    {
+        m_NavigationState = state;
+        ed::ApplyState(m_NavigationState.m_ViewState, ed::StateType::View);
+    }
+
+    void OnMakeCurrent()
+    {
+        ApplyState(m_DocumentState);
+        ApplyState(m_NavigationState);
     }
 
     void OnSaveBegin();
@@ -420,11 +496,11 @@ struct Document
     string                  m_Path;
     string                  m_Name;
     bool                    m_IsModified = false;
-    vector<DocumentState>   m_Undo;
-    vector<DocumentState>   m_Redo;
+    vector<UndoState>       m_Undo;
+    vector<UndoState>       m_Redo;
 
-    crude_json::value                   m_EditorState;
-    map<uint32_t, crude_json::value>    m_NodeStateMap;
+    DocumentState           m_DocumentState;
+    NavigationState         m_NavigationState;
 
     UndoTransaction         m_EditorSaveTransaction = BeginUndoTransaction();
 
@@ -438,40 +514,53 @@ void Document::OnSaveBegin()
 
 bool Document::OnSaveNodeState(uint32_t nodeId, const crude_json::value& value, ed::SaveReasonFlags reason)
 {
-    m_NodeStateMap[nodeId] = value;
+    m_DocumentState.m_NodeStateMap[nodeId] = value;
 
-    auto node = m_Blueprint.FindNode(nodeId);
+    if (reason != ed::SaveReasonFlags::Size)
+    {
+        auto node = m_Blueprint.FindNode(nodeId);
 
-    ImGuiTextBuffer buffer;
-    buffer.appendf("%" PRI_node " %s", FMT_node(node), SaveReasonFlagsToString(reason).c_str());
-    m_EditorSaveTransaction.AddAction(buffer.c_str());
+        ImGuiTextBuffer buffer;
+        buffer.appendf("%" PRI_node " %s", FMT_node(node), SaveReasonFlagsToString(reason).c_str());
+        m_EditorSaveTransaction.AddAction(buffer.c_str());
+    }
 
     return true;
 }
 
 bool Document::OnSaveState(const crude_json::value& value, ed::SaveReasonFlags reason)
 {
-    m_EditorState = value;
+    if ((reason & ed::SaveReasonFlags::Selection) == ed::SaveReasonFlags::Selection)
+    {
+        m_DocumentState.m_SelectionState = ed::GetState(ed::StateType::Selection);
+    }
+
+    if ((reason & ed::SaveReasonFlags::Navigation) == ed::SaveReasonFlags::Navigation)
+    {
+        m_NavigationState.m_ViewState = ed::GetState(ed::StateType::View);
+    }
+
     return true;
 }
 
 void Document::OnSaveEnd()
 {
+    m_Blueprint.Save(m_DocumentState.m_BlueprintState);
+
+    if (m_DocumentState.m_SelectionState.is_null())
+        m_DocumentState.m_SelectionState = ed::GetState(ed::StateType::Selection);
+
     m_EditorSaveTransaction.Commit();
 }
 
 crude_json::value Document::OnLoadNodeState(uint32_t nodeId) const
 {
-    auto it = m_NodeStateMap.find(nodeId);
-    if (it != m_NodeStateMap.end())
-        return it->second;
-    else
-        return {};
+    return {};
 }
 
 crude_json::value Document::OnLoadState() const
 {
-    return m_EditorState;
+    return {};
 }
 
 
@@ -699,6 +788,9 @@ private:
         m_Edit_Delete.SetEnabled(hasDocument && false);
         m_Edit_SelectAll.SetEnabled(hasDocument && false);
 
+        m_View_NavigateBackward.SetEnabled(hasDocument && false);
+        m_View_NavigateForward.SetEnabled(hasDocument && false);
+
         auto entryNode = m_Blueprint ? FindEntryPointNode(*m_Blueprint) : nullptr;
 
         bool hasBlueprint  = (m_Blueprint != nullptr);
@@ -763,6 +855,14 @@ private:
                 menuAction(m_Edit_Delete);
                 ImGui::Separator();
                 menuAction(m_Edit_SelectAll);
+
+                ImGui::EndMenu();
+            }
+
+            if (ImGui::BeginMenu("View"))
+            {
+                menuAction(m_View_NavigateBackward);
+                menuAction(m_View_NavigateForward);
 
                 ImGui::EndMenu();
             }
@@ -1381,7 +1481,7 @@ private:
 
         UpdateTitle();
 
-        ed::RestoreState();
+        m_Document->OnMakeCurrent();
 
         return true;
     }
@@ -1538,6 +1638,14 @@ private:
     {
     }
 
+    void View_NavigateBackward()
+    {
+    }
+
+    void View_NavigateForward()
+    {
+    }
+
     void Blueprint_Start()
     {
         auto entryNode = FindEntryPointNode(*m_Blueprint);
@@ -1599,6 +1707,9 @@ private:
     Action m_Edit_Duplicate  = { "Duplicate",    [this] { Edit_Duplicate(); } };
     Action m_Edit_Delete     = { "Delete",       [this] { Edit_Delete();    } };
     Action m_Edit_SelectAll  = { "Select All",   [this] { Edit_SelectAll(); } };
+
+    Action m_View_NavigateBackward = { "Navigate Backward", [this] { View_NavigateBackward(); } };
+    Action m_View_NavigateForward  = { "Navigate Forward",  [this] { View_NavigateForward();  } };
 
     Action m_Blueprint_Start = { "Start",        [this] { Blueprint_Start(); } };
     Action m_Blueprint_Step  = { "Step",         [this] { Blueprint_Step();  } };

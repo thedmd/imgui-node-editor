@@ -384,6 +384,9 @@ struct ToStringNode final : Node
             SetType(PinType::Any);
     }
 
+    bool Load(const crude_json::value& value) override;
+    void Save(crude_json::value& value) const override;
+
     span<Pin*> GetInputPins() override { return m_InputPins; }
     span<Pin*> GetOutputPins() override { return m_OutputPins; }
 
@@ -547,6 +550,9 @@ struct AddNode final : Node
     void WasUnlinked(const Pin& receiver, const Pin& provider) override
     {
     }
+
+    bool Load(const crude_json::value& value) override;
+    void Save(crude_json::value& value) const override;
 
     void SetType(PinType type)
     {
