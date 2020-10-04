@@ -2199,6 +2199,23 @@ void ed::EditorContext::RecordState(const Node* node, NodeState& state)
     state = std::move(result);
 }
 
+bool ed::EditorContext::ApplyState(NodeId nodeId, const NodeState& state)
+{
+    auto node = FindNode(nodeId);
+    if (!node)
+    {
+        node = CreateNode(nodeId);
+        node->m_IsLive = false;
+    }
+
+    return ApplyState(node, state);
+}
+
+void ed::EditorContext::RecordState(NodeId nodeId, NodeState& state)
+{
+    RecordState(FindNode(nodeId), state);
+}
+
 bool ed::EditorContext::ApplyState(const NodesState& state)
 {
     bool modified = false;

@@ -1542,6 +1542,8 @@ struct EditorContext
 
     bool ApplyState(Node* node, const NodeState& state);
     void RecordState(const Node* node, NodeState& state);
+    bool ApplyState(NodeId nodeId, const NodeState& state);
+    void RecordState(NodeId nodeId, NodeState& state);
     bool ApplyState(const NodesState& state);
     void RecordState(NodesState& state);
     bool ApplyState(const SelectionState& state);
@@ -1551,10 +1553,10 @@ struct EditorContext
     bool ApplyState(const EditorState& state);
     void RecordState(EditorState& state);
 
-
-
     void SaveState();
     void RestoreState();
+
+    string              m_CachedStateStringForPublicAPI;
 
 private:
     void LoadSettings();

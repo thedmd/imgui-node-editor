@@ -362,6 +362,25 @@ void RestoreState();
 
 void RestoreNodeState(NodeId nodeId);
 
+enum class StateType: int32_t
+{
+    All,
+    Node,
+    Nodes,
+    Selection,
+    View
+};
+
+crude_json::value GetState(StateType stateType); // Return state serialized to json value.
+crude_json::value GetState(NodeId nodeId, StateType stateType);
+bool ApplyState(const crude_json::value& state, StateType stateType); // Applies state serialized to json value.
+bool ApplyState(NodeId nodeId, const crude_json::value& state, StateType stateType);
+
+const char* GetStateString(StateType stateType); // Returns state serialized to string. String is valid until next call to GetStateString()
+const char* GetStateString(NodeId nodeId, StateType stateType);
+bool ApplyStateString(const char* state, StateType stateType); // Applies serialized state string to the editor.
+bool ApplyStateString(NodeId nodeId, const char* state, StateType stateType);
+
 void Suspend();
 void Resume();
 bool IsSuspended();
