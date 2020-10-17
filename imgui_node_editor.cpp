@@ -2100,6 +2100,11 @@ ed::Node* ed::EditorContext::FindNode(NodeId id)
     return FindItemInLinear(m_Nodes, id);
 }
 
+const ed::Node* ed::EditorContext::FindNode(NodeId id) const
+{
+    return FindItemInLinear(m_Nodes, id);
+}
+
 ed::Pin* ed::EditorContext::FindPin(PinId id)
 {
     return FindItemIn(m_Pins, id);
@@ -2149,6 +2154,17 @@ ed::Link* ed::EditorContext::GetLink(LinkId id)
         return CreateLink(id);
 }
 
+bool ed::EditorContext::HasStateChanged(const Node* node, const NodeState& state) const
+{
+    if (!node)
+        return false;
+
+    NodeState currentState;
+    RecordState(node, currentState);
+
+    return currentState != state;
+}
+
 bool ed::EditorContext::ApplyState(Node* node, const NodeState& state)
 {
     if (!node)
@@ -2184,7 +2200,7 @@ bool ed::EditorContext::ApplyState(Node* node, const NodeState& state)
     return modified;
 }
 
-void ed::EditorContext::RecordState(const Node* node, NodeState& state)
+void ed::EditorContext::RecordState(const Node* node, NodeState& state) const
 {
     if (!node)
         return;
@@ -2199,6 +2215,15 @@ void ed::EditorContext::RecordState(const Node* node, NodeState& state)
     state = std::move(result);
 }
 
+bool ed::EditorContext::HasStateChanged(NodeId nodeId, const NodeState& state) const
+{
+    auto node = FindNode(nodeId);
+    if (!node)
+        return false;
+
+    return HasStateChanged(node, state);
+}
+
 bool ed::EditorContext::ApplyState(NodeId nodeId, const NodeState& state)
 {
     auto node = FindNode(nodeId);
@@ -2211,9 +2236,17 @@ bool ed::EditorContext::ApplyState(NodeId nodeId, const NodeState& state)
     return ApplyState(node, state);
 }
 
-void ed::EditorContext::RecordState(NodeId nodeId, NodeState& state)
+void ed::EditorContext::RecordState(NodeId nodeId, NodeState& state) const
 {
     RecordState(FindNode(nodeId), state);
+}
+
+bool ed::EditorContext::HasStateChanged(const NodesState& state) const
+{
+    NodesState currentState;
+    RecordState(currentState);
+
+    return currentState != state;
 }
 
 bool ed::EditorContext::ApplyState(const NodesState& state)
@@ -2233,7 +2266,7 @@ bool ed::EditorContext::ApplyState(const NodesState& state)
     return true;
 }
 
-void ed::EditorContext::RecordState(NodesState& state)
+void ed::EditorContext::RecordState(NodesState& state) const
 {
     NodesState result;
 
@@ -2246,6 +2279,14 @@ void ed::EditorContext::RecordState(NodesState& state)
     }
 
     state = std::move(result);
+}
+
+bool ed::EditorContext::HasStateChanged(const SelectionState& state) const
+{
+    SelectionState currentState;
+    RecordState(currentState);
+
+    return currentState != state;
 }
 
 bool ed::EditorContext::ApplyState(const SelectionState& state)
@@ -2263,7 +2304,7 @@ bool ed::EditorContext::ApplyState(const SelectionState& state)
     return true;
 }
 
-void ed::EditorContext::RecordState(SelectionState& state)
+void ed::EditorContext::RecordState(SelectionState& state) const
 {
     SelectionState result;
 
@@ -2272,6 +2313,14 @@ void ed::EditorContext::RecordState(SelectionState& state)
         result.m_Selection.push_back(object->ID());
 
     state = std::move(result);
+}
+
+bool ed::EditorContext::HasStateChanged(const ViewState& state) const
+{
+    ViewState currentState;
+    RecordState(currentState);
+
+    return currentState != state;
 }
 
 bool ed::EditorContext::ApplyState(const ViewState& state)
@@ -2299,7 +2348,7 @@ bool ed::EditorContext::ApplyState(const ViewState& state)
     }
 }
 
-void ed::EditorContext::RecordState(ViewState& state)
+void ed::EditorContext::RecordState(ViewState& state) const
 {
     ViewState result;
 
@@ -2308,6 +2357,14 @@ void ed::EditorContext::RecordState(ViewState& state)
     result.m_VisibleRect = m_NavigateAction.m_VisibleRect;
 
     state = std::move(result);
+}
+
+bool ed::EditorContext::HasStateChanged(const EditorState& state) const
+{
+    EditorState currentState;
+    RecordState(currentState);
+
+    return currentState != state;
 }
 
 bool ed::EditorContext::ApplyState(const EditorState& state)
@@ -2319,7 +2376,7 @@ bool ed::EditorContext::ApplyState(const EditorState& state)
     return result;
 }
 
-void ed::EditorContext::RecordState(EditorState& state)
+void ed::EditorContext::RecordState(EditorState& state) const
 {
     EditorState result;
 

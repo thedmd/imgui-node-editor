@@ -439,6 +439,68 @@ void ax::NodeEditor::RestoreNodeState(NodeId nodeId)
         s_Editor->MarkNodeToRestoreState(node);
 }
 
+bool ax::NodeEditor::HasStateChanged(StateType stateType, const crude_json::value& state)
+{
+    switch (stateType)
+    {
+        case StateType::All:
+            {
+                Detail::EditorState value;
+                return Detail::Serialization::Parse(state, value) && s_Editor->HasStateChanged(value);
+            }
+
+        case StateType::Node:
+            break;
+
+        case StateType::Nodes:
+            {
+                Detail::NodesState value;
+                return Detail::Serialization::Parse(state, value) && s_Editor->HasStateChanged(value);
+            }
+
+        case StateType::Selection:
+            {
+                Detail::SelectionState value;
+                return Detail::Serialization::Parse(state, value) && s_Editor->HasStateChanged(value);
+            }
+
+        case StateType::View:
+            {
+                Detail::ViewState value;
+                return Detail::Serialization::Parse(state, value) && s_Editor->HasStateChanged(value);
+            }
+    }
+
+    return false;
+}
+
+bool ax::NodeEditor::HasStateChanged(StateType stateType, NodeId nodeId, const crude_json::value& state)
+{
+    switch (stateType)
+    {
+        case StateType::All:
+            break;
+
+        case StateType::Node:
+            {
+                Detail::NodeState value;
+                return Detail::Serialization::Parse(state, value) && s_Editor->ApplyState(nodeId, value);
+            }
+
+        case StateType::Nodes:
+            break;
+
+        case StateType::Selection:
+            break;
+
+        case StateType::View:
+            break;
+    }
+
+    return false;
+}
+
+
 crude_json::value ax::NodeEditor::GetState(StateType stateType)
 {
     switch (stateType)
@@ -478,7 +540,7 @@ crude_json::value ax::NodeEditor::GetState(StateType stateType)
     return {};
 }
 
-crude_json::value ax::NodeEditor::GetState(NodeId nodeId, StateType stateType)
+crude_json::value ax::NodeEditor::GetState(StateType stateType, NodeId nodeId)
 {
     switch (stateType)
     {
@@ -505,14 +567,14 @@ crude_json::value ax::NodeEditor::GetState(NodeId nodeId, StateType stateType)
     return {};
 }
 
-bool ax::NodeEditor::ApplyState(const crude_json::value& value, StateType stateType)
+bool ax::NodeEditor::ApplyState(StateType stateType, const crude_json::value& state)
 {
     switch (stateType)
     {
         case StateType::All:
             {
-                Detail::EditorState state;
-                return Detail::Serialization::Parse(value, state) && s_Editor->ApplyState(state);
+                Detail::EditorState value;
+                return Detail::Serialization::Parse(state, value) && s_Editor->ApplyState(value);
             }
 
         case StateType::Node:
@@ -520,27 +582,27 @@ bool ax::NodeEditor::ApplyState(const crude_json::value& value, StateType stateT
 
         case StateType::Nodes:
             {
-                Detail::NodesState state;
-                return Detail::Serialization::Parse(value, state) && s_Editor->ApplyState(state);
+                Detail::NodesState value;
+                return Detail::Serialization::Parse(state, value) && s_Editor->ApplyState(value);
             }
 
         case StateType::Selection:
             {
-                Detail::SelectionState state;
-                return Detail::Serialization::Parse(value, state) && s_Editor->ApplyState(state);
+                Detail::SelectionState value;
+                return Detail::Serialization::Parse(state, value) && s_Editor->ApplyState(value);
             }
 
         case StateType::View:
             {
-                Detail::ViewState state;
-                return Detail::Serialization::Parse(value, state) && s_Editor->ApplyState(state);
+                Detail::ViewState value;
+                return Detail::Serialization::Parse(state, value) && s_Editor->ApplyState(value);
             }
     }
 
     return false;
 }
 
-bool ax::NodeEditor::ApplyState(NodeId nodeId, const crude_json::value& value, StateType stateType)
+bool ax::NodeEditor::ApplyState(StateType stateType, NodeId nodeId, const crude_json::value& state)
 {
     switch (stateType)
     {
@@ -549,8 +611,8 @@ bool ax::NodeEditor::ApplyState(NodeId nodeId, const crude_json::value& value, S
 
         case StateType::Node:
             {
-                Detail::NodeState state;
-                return Detail::Serialization::Parse(value, state) && s_Editor->ApplyState(nodeId, state);
+                Detail::NodeState value;
+                return Detail::Serialization::Parse(state, value) && s_Editor->ApplyState(nodeId, value);
             }
 
         case StateType::Nodes:
@@ -564,6 +626,18 @@ bool ax::NodeEditor::ApplyState(NodeId nodeId, const crude_json::value& value, S
     }
 
     return false;
+}
+
+bool ax::NodeEditor::HasStateChangedString(StateType stateType, const char* state)
+{
+    crude_json::value value;
+    return Detail::Serialization::Parse(state, value) && HasStateChanged(stateType, value);
+}
+
+bool ax::NodeEditor::HasStateChangedString(StateType stateType, NodeId nodeId, const char* state)
+{
+    crude_json::value value;
+    return Detail::Serialization::Parse(state, value) && HasStateChanged(stateType, nodeId, value);
 }
 
 const char* ax::NodeEditor::GetStateString(StateType stateType)
@@ -572,22 +646,22 @@ const char* ax::NodeEditor::GetStateString(StateType stateType)
     return s_Editor->m_CachedStateStringForPublicAPI.c_str();
 }
 
-const char* ax::NodeEditor::GetStateString(NodeId nodeId, StateType stateType)
+const char* ax::NodeEditor::GetStateString(StateType stateType, NodeId nodeId)
 {
-    s_Editor->m_CachedStateStringForPublicAPI = Detail::Serialization::ToString(GetState(nodeId, stateType));
+    s_Editor->m_CachedStateStringForPublicAPI = Detail::Serialization::ToString(GetState(stateType, nodeId));
     return s_Editor->m_CachedStateStringForPublicAPI.c_str();
 }
 
-bool ax::NodeEditor::ApplyStateString(const char* state, StateType stateType)
+bool ax::NodeEditor::ApplyStateString(StateType stateType, const char* state)
 {
     crude_json::value value;
-    return Detail::Serialization::Parse(state, value) && ApplyState(value, stateType);
+    return Detail::Serialization::Parse(state, value) && ApplyState(stateType, value);
 }
 
-bool ax::NodeEditor::ApplyStateString(NodeId nodeId, const char* state, StateType stateType)
+bool ax::NodeEditor::ApplyStateString(StateType stateType, NodeId nodeId, const char* state)
 {
     crude_json::value value;
-    return Detail::Serialization::Parse(state, value) && ApplyState(nodeId, value, stateType);
+    return Detail::Serialization::Parse(state, value) && ApplyState(stateType, nodeId, value);
 }
 
 

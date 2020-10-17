@@ -54,6 +54,16 @@ inline ImVec2 ImGui_GetMouseClickPos(ImGuiMouseButton buttonIndex)
         return ImGui::GetMousePos();
 }
 
+inline bool operator==(const ImRect& lhs, const ImRect& rhs)
+{
+    return lhs.Min == rhs.Min && lhs.Max == rhs.Max;
+}
+
+inline bool operator!=(const ImRect& lhs, const ImRect& rhs)
+{
+    return !(lhs == rhs);
+}
+
 
 //------------------------------------------------------------------------------
 # define CHECK(condition, message) if (condition) {} else { if (error) { if (!error->empty()) *error += '\n'; *error += string() + message; } return false; }

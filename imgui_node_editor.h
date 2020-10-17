@@ -371,15 +371,19 @@ enum class StateType: int32_t
     View
 };
 
+bool              HasStateChanged(StateType stateType, const crude_json::value& state); // Returns true if state changed since last call to GetState()/GetStateString()
+bool              HasStateChanged(StateType stateType, NodeId nodeId, const crude_json::value& state);
 crude_json::value GetState(StateType stateType); // Return state serialized to json value.
-crude_json::value GetState(NodeId nodeId, StateType stateType);
-bool ApplyState(const crude_json::value& state, StateType stateType); // Applies state serialized to json value.
-bool ApplyState(NodeId nodeId, const crude_json::value& state, StateType stateType);
+crude_json::value GetState(StateType stateType, NodeId nodeId);
+bool              ApplyState(StateType stateType, const crude_json::value& state); // Applies state serialized to json value.
+bool              ApplyState(StateType stateType, NodeId nodeId, const crude_json::value& state);
 
+bool        HasStateChangedString(StateType stateType, const char* state); // Returns true if state changed since last call to GetState()/GetStateString()
+bool        HasStateChangedString(StateType stateType, NodeId nodeId, const char* state);
 const char* GetStateString(StateType stateType); // Returns state serialized to string. String is valid until next call to GetStateString()
-const char* GetStateString(NodeId nodeId, StateType stateType);
-bool ApplyStateString(const char* state, StateType stateType); // Applies serialized state string to the editor.
-bool ApplyStateString(NodeId nodeId, const char* state, StateType stateType);
+const char* GetStateString(StateType stateType, NodeId nodeId);
+bool        ApplyStateString(StateType stateType, const char* state); // Applies serialized state string to the editor.
+bool        ApplyStateString(StateType stateType, NodeId nodeId, const char* state);
 
 void Suspend();
 void Resume();
