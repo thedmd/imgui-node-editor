@@ -63,6 +63,9 @@ void Log(const char* fmt, ...);
 //inline ImRect ToRect(const ax::rect& rect);
 inline ImRect ImGui_GetItemRect();
 
+inline bool operator==(const ImRect& lhs, const ImRect& rhs);
+inline bool operator!=(const ImRect& lhs, const ImRect& rhs);
+
 
 //------------------------------------------------------------------------------
 // https://stackoverflow.com/a/36079786
@@ -539,16 +542,39 @@ struct NodeState
     ImVec2 m_Location;
     ImVec2 m_Size;
     ImVec2 m_GroupSize;
+
+    friend bool operator==(const NodeState& lhs, const NodeState& rhs)
+    {
+        return lhs.m_Location  == rhs.m_Location
+            && lhs.m_Size      == rhs.m_Size
+            && lhs.m_GroupSize == rhs.m_GroupSize;
+    }
+
+    friend bool operator!=(const NodeState& lhs, const NodeState& rhs) { return !(lhs == rhs); }
 };
 
 struct NodesState
 {
     map<NodeId, NodeState> m_Nodes;
+
+    friend bool operator==(const NodesState& lhs, const NodesState& rhs)
+    {
+        return lhs.m_Nodes == rhs.m_Nodes;
+    }
+
+    friend bool operator!=(const NodesState& lhs, const NodesState& rhs) { return !(lhs == rhs); }
 };
 
 struct SelectionState
 {
     vector<ObjectId> m_Selection;
+
+    friend bool operator==(const SelectionState& lhs, const SelectionState& rhs)
+    {
+        return lhs.m_Selection == rhs.m_Selection;
+    }
+
+    friend bool operator!=(const SelectionState& lhs, const SelectionState& rhs) { return !(lhs == rhs); }
 };
 
 struct ViewState
@@ -556,6 +582,15 @@ struct ViewState
     ImVec2 m_ViewScroll;
     float  m_ViewZoom;
     ImRect m_VisibleRect;
+
+    friend bool operator==(const ViewState& lhs, const ViewState& rhs)
+    {
+        return lhs.m_ViewScroll  == rhs.m_ViewScroll
+            && lhs.m_ViewZoom    == rhs.m_ViewZoom
+            && lhs.m_VisibleRect == rhs.m_VisibleRect;
+    }
+
+    friend bool operator!=(const ViewState& lhs, const ViewState& rhs) { return !(lhs == rhs); }
 };
 
 struct EditorState
@@ -563,6 +598,15 @@ struct EditorState
     NodesState      m_NodesState;
     SelectionState  m_SelectionState;
     ViewState       m_ViewState;
+
+    friend bool operator==(const EditorState& lhs, const EditorState& rhs)
+    {
+        return lhs.m_NodesState     == rhs.m_NodesState
+            && lhs.m_SelectionState == rhs.m_SelectionState
+            && lhs.m_ViewState      == rhs.m_ViewState;
+    }
+
+    friend bool operator!=(const EditorState& lhs, const EditorState& rhs) { return !(lhs == rhs); }
 };
 
 struct NodeSettings
@@ -1405,6 +1449,7 @@ struct EditorContext
     Link*   CreateLink(LinkId id);
 
     Node*   FindNode(NodeId id);
+    const Node* FindNode(NodeId id) const;
     Pin*    FindPin(PinId id);
     Link*   FindLink(LinkId id);
     Object* FindObject(ObjectId id);
@@ -1490,18 +1535,24 @@ struct EditorContext
           EditorState& GetState()       { return m_State; }
     const EditorState& GetState() const { return m_State; }
 
+    bool HasStateChanged(const Node* node, const NodeState& state) const;
     bool ApplyState(Node* node, const NodeState& state);
-    void RecordState(const Node* node, NodeState& state);
+    void RecordState(const Node* node, NodeState& state) const;
+    bool HasStateChanged(NodeId nodeId, const NodeState& state) const;
     bool ApplyState(NodeId nodeId, const NodeState& state);
-    void RecordState(NodeId nodeId, NodeState& state);
+    void RecordState(NodeId nodeId, NodeState& state) const;
+    bool HasStateChanged(const NodesState& state) const;
     bool ApplyState(const NodesState& state);
-    void RecordState(NodesState& state);
+    void RecordState(NodesState& state) const;
+    bool HasStateChanged(const SelectionState& state) const;
     bool ApplyState(const SelectionState& state);
-    void RecordState(SelectionState& state);
+    void RecordState(SelectionState& state) const;
+    bool HasStateChanged(const ViewState& state) const;
     bool ApplyState(const ViewState& state);
-    void RecordState(ViewState& state);
+    void RecordState(ViewState& state) const;
+    bool HasStateChanged(const EditorState& state) const;
     bool ApplyState(const EditorState& state);
-    void RecordState(EditorState& state);
+    void RecordState(EditorState& state) const;
 
     void SaveState();
     void RestoreState();

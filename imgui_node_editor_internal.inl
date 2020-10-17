@@ -44,6 +44,17 @@ inline ImRect ImGui_GetItemRect()
     return ImRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
 }
 
+inline bool operator==(const ImRect& lhs, const ImRect& rhs)
+{
+    return lhs.Min == rhs.Min && lhs.Max == rhs.Max;
+}
+
+inline bool operator!=(const ImRect& lhs, const ImRect& rhs)
+{
+    return !(lhs == rhs);
+}
+
+
 
 //------------------------------------------------------------------------------
 # define CHECK(condition, message) if (condition) {} else { if (error) { if (!error->empty()) *error += '\n'; *error += string() + message; } return false; }
