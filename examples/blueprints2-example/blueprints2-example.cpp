@@ -780,7 +780,7 @@ private:
                     if (startPin->LinkTo(*endPin))
                         LOGV("[HandleCreateAction] %" PRI_pin " linked with %" PRI_pin, FMT_pin(startPin), FMT_pin(endPin));
                     else
-                        transaction.Discard();
+                        transaction->Discard();
                 }
             }
             else
@@ -835,7 +835,7 @@ private:
         // Process all nodes marked for deletion
         while (auto nodeDeleter = itemDeleter.QueryDeletedNode())
         {
-            deferredTransaction.Begin("Delete Item");
+            deferredTransaction->Begin("Delete Item");
 
             // Remove node, pass 'true' so links attached to node will also be queued for deletion.
             if (nodeDeleter->Accept(true))
@@ -850,7 +850,7 @@ private:
         // Process all links marked for deletion
         while (auto linkDeleter = itemDeleter.QueryDeleteLink())
         {
-            deferredTransaction.Begin("Delete Item");
+            deferredTransaction->Begin("Delete Item");
 
             if (linkDeleter->Accept())
             {
@@ -929,16 +929,7 @@ private:
 
         ed::Suspend();
 
-        if (m_CreateNodeDailog.Show(blueprint))
-        {
-            auto createdNode = m_CreateNodeDailog.GetCreatedNode();
-            auto nodeName    = createdNode->GetName();
-
-            LOGV("[CreateNodeDailog] %" PRI_node" created", FMT_node(createdNode));
-
-            for (auto startPin : m_CreateNodeDailog.GetCreatedLinks())
-                LOGV("[CreateNodeDailog] %" PRI_pin "  linked with %" PRI_pin, FMT_pin(startPin), FMT_pin(startPin->GetLink()));
-        }
+        m_CreateNodeDailog.Show(document);
         m_NodeContextMenu.Show(blueprint);
         m_PinContextMenu.Show(blueprint);
         m_LinkContextMenu.Show(blueprint);

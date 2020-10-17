@@ -2,6 +2,12 @@
 # define IMGUI_DEFINE_MATH_OPERATORS
 # include <imgui_internal.h>
 
+# ifdef _WIN32
+#     define CRUDE_LOGGER_HAS_OUTPUT_DEBUG_STRING 1
+extern "C" __declspec(dllimport) void __stdcall OutputDebugStringA(const char* string);
+# else
+#     define CRUDE_LOGGER_HAS_OUTPUT_DEBUG_STRING 0
+# endif
 
 crude_logger::OverlayLogger* crude_logger::OverlayLogger::s_Instance = nullptr;
 
@@ -46,6 +52,11 @@ void crude_logger::OverlayLogger::Log(LogLevel level, const char* format, ...)
 
     // Parse log message to get ranges for text coloring
     entry.m_ColorRanges = ParseMessage(entry.m_Level, entry.m_Text.c_str());
+
+# if CRUDE_LOGGER_HAS_OUTPUT_DEBUG_STRING
+    OutputDebugStringA(entry.m_Text.c_str());
+    OutputDebugStringA("\n");
+# endif
 
     m_Entries.push_back(std::move(entry));
 }

@@ -1,4 +1,6 @@
 # include "blueprint_editor_utilities.h"
+# include "blueprint_editor_document.h"
+# include "crude_logger.h"
 # define IMGUI_DEFINE_MATH_OPERATORS
 # include <imgui_internal.h>
 # include "imgui_extras.h"
@@ -555,23 +557,23 @@ void blueprint_editor_utilities::CreateNodeDialog::Open(Pin* fromPin)
     m_SortedNodes.clear();
 }
 
-bool blueprint_editor_utilities::CreateNodeDialog::Show(Blueprint& blueprint)
+void blueprint_editor_utilities::CreateNodeDialog::Show(Document& document)
 {
     if (!ImGui::IsPopupOpen("##create_node"))
-        return false;
+        return;
 
     auto storage = ImGui::GetStateStorage();
     auto fromPin = reinterpret_cast<Pin*>(storage->GetVoidPtr(ImGui::GetID("##create_node_pin")));
 
     if (!ImGui::BeginPopup("##create_node"))
-        return false;
+        return;
 
     auto popupPosition = ImGui::GetMousePosOnOpeningCurrentPopup();
 
-    auto nodeRegistry = blueprint.GetNodeRegistry();
-
     if (m_SortedNodes.empty())
     {
+        auto nodeRegistry = document.GetBlueprint().GetNodeRegistry();
+
         auto types = nodeRegistry->GetTypes();
 
         m_SortedNodes.assign(types.begin(), types.end());
@@ -583,14 +585,18 @@ bool blueprint_editor_utilities::CreateNodeDialog::Show(Blueprint& blueprint)
         });
     }
 
-    bool wasNodeCreated = false;
-
     for (auto nodeTypeInfo : m_SortedNodes)
     {
         bool selected = false;
         if (ImGui::Selectable(nodeTypeInfo->m_DisplayName.to_string().c_str(), &selected))
         {
+            auto transaction = document.BeginUndoTransaction();
+
+            auto& blueprint = document.GetBlueprint();
+
             auto node = blueprint.CreateNode(nodeTypeInfo->m_Id);
+
+            LOGV("[CreateNodeDailog] %" PRI_node " created", FMT_node(node));
 
             auto nodePosition = ax::NodeEditor::ScreenToCanvas(popupPosition);
 
@@ -602,50 +608,41 @@ bool blueprint_editor_utilities::CreateNodeDialog::Show(Blueprint& blueprint)
             m_CreatedLinks.clear();
 
             if (fromPin)
-                CreateLinkToFirstMatchingPin(*node, *fromPin);
+            {
+                auto newLinks = CreateLinkToFirstMatchingPin(*node, *fromPin);
 
-            wasNodeCreated = true;
+                for (auto startPin : newLinks)
+                    LOGV("[CreateNodeDailog] %" PRI_pin "  linked with %" PRI_pin, FMT_pin(startPin), FMT_pin(startPin->GetLink()));
+            }
+
+            transaction->AddAction("%" PRI_node " created", FMT_node(node));
         }
     }
 
     ImGui::EndPopup();
-
-    return wasNodeCreated;
 }
 
-bool blueprint_editor_utilities::CreateNodeDialog::CreateLinkToFirstMatchingPin(Node& node, Pin& fromPin)
+blueprint_editor_utilities::vector<blueprint_editor_utilities::Pin*> blueprint_editor_utilities::CreateNodeDialog::CreateLinkToFirstMatchingPin(Node& node, Pin& fromPin)
 {
     for (auto nodePin : node.GetInputPins())
     {
         if (nodePin->LinkTo(fromPin))
-        {
-            m_CreatedLinks.push_back(nodePin);
-            return true;
-        }
+            return { nodePin };
 
         if (fromPin.LinkTo(*nodePin))
-        {
-            m_CreatedLinks.push_back(&fromPin);
-            return true;
-        }
+            return { &fromPin };
     }
 
     for (auto nodePin : node.GetOutputPins())
     {
         if (nodePin->LinkTo(fromPin))
-        {
-            m_CreatedLinks.push_back(nodePin);
-            return true;
-        }
+            return { nodePin };
 
         if (fromPin.LinkTo(*nodePin))
-        {
-            m_CreatedLinks.push_back(&fromPin);
-            return true;
-        }
+            return { &fromPin };
     }
 
-    return false;
+    return {};
 }
 
 
