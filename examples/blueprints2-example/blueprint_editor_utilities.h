@@ -14,8 +14,13 @@
 # define PRI_node           "s %" PRIu32 "%s%" PRI_sv "%s"
 # define FMT_node(node)     "Node", (node)->m_Id, (node)->GetName().empty() ? "" : " \"", FMT_sv((node)->GetName()), (node)->GetName().empty() ? "" : "\""
 
+namespace blueprint_editor {
+struct Document;
+} // namespace blueprint_editor {
 
 namespace blueprint_editor_utilities {
+
+using namespace blueprint_editor;
 
 using namespace crude_blueprint;
 
@@ -154,7 +159,7 @@ private:
 struct CreateNodeDialog
 {
     void Open(Pin* fromPin = nullptr);
-    bool Show(Blueprint& blueprint);
+    void Show(Document& document);
 
           Node* GetCreatedNode()       { return m_CreatedNode; }
     const Node* GetCreatedNode() const { return m_CreatedNode; }
@@ -163,7 +168,7 @@ struct CreateNodeDialog
     span<const Pin* const> GetCreatedLinks() const { return make_span(const_cast<const Pin* const*>(m_CreatedLinks.data()), m_CreatedLinks.size()); }
 
 private:
-    bool CreateLinkToFirstMatchingPin(Node& node, Pin& fromPin);
+    vector<Pin*> CreateLinkToFirstMatchingPin(Node& node, Pin& fromPin);
 
     Node*           m_CreatedNode = nullptr;
     vector<Pin*>    m_CreatedLinks;
