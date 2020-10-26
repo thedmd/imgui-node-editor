@@ -128,6 +128,7 @@ bool ImGuiEx::Canvas::Begin(ImGuiID id, const ImVec2& size)
     ImGui::Dummy(m_ViewRect.GetSize());
 
     ImGui::SetCursorScreenPos(ImVec2(0.0f, 0.0f));
+	ImGui::BeginGroup();
 
     m_InBeginEnd = true;
 
@@ -149,6 +150,8 @@ void ImGuiEx::Canvas::End()
 
     // Check: Unmatched calls to Suspend() / Resume(). Please check your code.
     IM_ASSERT(m_SuspendCounter == 0);
+
+	ImGui::EndGroup();
 
     LeaveLocalSpace();
 
