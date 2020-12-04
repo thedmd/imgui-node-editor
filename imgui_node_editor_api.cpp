@@ -50,12 +50,18 @@ ax::NodeEditor::EditorContext* ax::NodeEditor::CreateEditor(const Config* config
 
 void ax::NodeEditor::DestroyEditor(EditorContext* ctx)
 {
-    if (GetCurrentEditor() == ctx)
-        SetCurrentEditor(nullptr);
+    auto lastContext = GetCurrentEditor();
+
+    // Set context we're about to destroy as current, to give callback valid context
+    if (lastContext != ctx)
+        SetCurrentEditor(ctx);
 
     auto editor = reinterpret_cast<ax::NodeEditor::Detail::EditorContext*>(ctx);
 
     delete editor;
+
+    if (lastContext != ctx)
+        SetCurrentEditor(lastContext);
 }
 
 void ax::NodeEditor::SetCurrentEditor(EditorContext* ctx)
