@@ -16,6 +16,7 @@ namespace ed = ax::NodeEditor;
 
 using nonstd::string_view;
 using std::shared_ptr;
+using std::weak_ptr;
 using std::map;
 using std::vector;
 using std::string;
@@ -26,9 +27,9 @@ struct Document
 {
     struct DocumentState
     {
-        map<uint32_t, crude_json::value>    m_NodeStateMap;
-        crude_json::value                   m_SelectionState;
-        crude_json::value                   m_BlueprintState;
+        crude_json::value m_NodesState;
+        crude_json::value m_SelectionState;
+        crude_json::value m_BlueprintState;
 
         crude_json::value Serialize() const;
 
@@ -49,7 +50,7 @@ struct Document
     struct UndoTransaction
         : std::enable_shared_from_this<UndoTransaction>
     {
-        UndoTransaction(Document& document);
+        UndoTransaction(Document& document, string_view name);
         UndoTransaction(UndoTransaction&&) = delete;
         UndoTransaction(const UndoTransaction&) = delete;
         ~UndoTransaction();
@@ -60,27 +61,30 @@ struct Document
         void Begin(string_view name = "");
         void AddAction(string_view name);
         void AddAction(const char* format, ...) IM_FMTARGS(2);
-        void Commit();
+        void Commit(string_view name = "");
         void Discard();
 
+        const Document* GetDocument() const { return m_Document; }
+
     private:
+        string                      m_Name;
         Document*                   m_Document = nullptr;
         UndoState                   m_State;
         ImGuiTextBuffer             m_Actions;
         bool                        m_HasBegan = false;
         bool                        m_IsDone = false;
-        shared_ptr<UndoTransaction> m_ParentTransaction;
+        shared_ptr<UndoTransaction> m_MasterTransaction;
     };
 
 # if !CRUDE_BP_MSVC2015 // [[nodiscard]] is unrecognized attribute
     [[nodiscard]]
 # endif
-    shared_ptr<UndoTransaction> BeginUndoTransaction(string_view name = "");
+    shared_ptr<UndoTransaction> BeginUndoTransaction(string_view name, string_view action = "");
 
 # if !CRUDE_BP_MSVC2015 // [[nodiscard]] is unrecognized attribute
     [[nodiscard]]
 # endif
-    shared_ptr<UndoTransaction> GetDeferredUndoTransaction();
+    shared_ptr<UndoTransaction> GetDeferredUndoTransaction(string_view name);
 
     void SetPath(string_view path);
 
@@ -94,6 +98,7 @@ struct Document
     bool Undo();
     bool Redo();
 
+    DocumentState BuildDocumentState();
     void ApplyState(const DocumentState& state);
     void ApplyState(const NavigationState& state);
 
@@ -119,7 +124,7 @@ struct Document
     DocumentState           m_DocumentState;
     NavigationState         m_NavigationState;
 
-    shared_ptr<UndoTransaction> m_CurrentTransaction = nullptr;
+    UndoTransaction* m_MasterTransaction = nullptr;
 
     shared_ptr<UndoTransaction> m_SaveTransaction = nullptr;
 

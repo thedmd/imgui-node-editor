@@ -40,16 +40,11 @@ static string SaveReasonFlagsToString(ed::SaveReasonFlags flags, string_view sep
 crude_json::value blueprint_editor::Document::DocumentState::Serialize() const
 {
     crude_json::value result;
-    auto& nodesValue = result["nodes"];
-    for (auto& entry : m_NodeStateMap)
-        nodesValue[std::to_string(entry.first)] = entry.second;
+    result["nodes"] = m_NodesState;
     result["selection"] = m_SelectionState;
     result["blueprint"] = m_BlueprintState;
     return result;
 }
-
-//# define IMGUI_DEFINE_MATH_OPERATORS
-//# include <imgui_internal.h>
 
 bool blueprint_editor::Document::DocumentState::Deserialize(const crude_json::value& value, DocumentState& result)
 {
@@ -68,15 +63,9 @@ bool blueprint_editor::Document::DocumentState::Deserialize(const crude_json::va
     if (!nodesValue.is_object())
         return false;
 
+    state.m_NodesState     = nodesValue;
     state.m_SelectionState = selectionValue;
     state.m_BlueprintState = dataValue;
-
-    auto& nodesObject = nodesValue.get<crude_json::object>();
-    for (auto& entry : nodesObject)
-    {
-        auto nodeId = static_cast<uint32_t>(strtoul(entry.first.c_str(), nullptr, 10)); // C sends its regards
-        state.m_NodeStateMap[nodeId] = entry.second;
-    }
 
     result = std::move(state);
 
@@ -87,8 +76,9 @@ bool blueprint_editor::Document::DocumentState::Deserialize(const crude_json::va
 
 
 
-blueprint_editor::Document::UndoTransaction::UndoTransaction(Document& document)
-    : m_Document(&document)
+blueprint_editor::Document::UndoTransaction::UndoTransaction(Document& document, string_view name)
+    : m_Name(name.to_string())
+    , m_Document(&document)
 {
 }
 
@@ -102,8 +92,18 @@ void blueprint_editor::Document::UndoTransaction::Begin(string_view name /*= ""*
     if (m_HasBegan)
         return;
 
-    m_ParentTransaction = m_Document->m_CurrentTransaction;
-    m_Document->m_CurrentTransaction = this->shared_from_this();
+    if (m_Document->m_MasterTransaction)
+    {
+        m_MasterTransaction = m_Document->m_MasterTransaction->shared_from_this();
+    }
+    else
+    {
+        // Spawn master transaction which commit on destruction
+        m_MasterTransaction = m_Document->GetDeferredUndoTransaction(m_Name);
+        m_Document->m_MasterTransaction = m_MasterTransaction.get();
+        m_MasterTransaction->Begin();
+        m_MasterTransaction->m_MasterTransaction = nullptr;
+    }
 
     m_HasBegan = true;
 
@@ -132,31 +132,45 @@ void blueprint_editor::Document::UndoTransaction::AddAction(const char* format, 
     AddAction(string_view(buffer.Buf.Data, buffer.Buf.Size));
 }
 
-void blueprint_editor::Document::UndoTransaction::Commit()
+void blueprint_editor::Document::UndoTransaction::Commit(string_view name)
 {
-    if (!m_HasBegan && m_IsDone)
+    if (!m_HasBegan || m_IsDone)
         return;
 
-    if (m_ParentTransaction)
+    if (m_MasterTransaction)
     {
-        m_ParentTransaction->m_Actions.append(m_Actions.c_str());
+        if (!name.empty())
+        {
+            m_MasterTransaction->m_Actions.append(name.data(), name.data() + name.size());
+            m_MasterTransaction->m_Actions.append("\n");
+        }
+        else
+        {
+            m_MasterTransaction->m_Actions.append(m_Actions.c_str());
+        }
 
-        IM_ASSERT(this == m_Document->m_CurrentTransaction.get());
-
-        m_Document->m_CurrentTransaction = m_ParentTransaction;
+        IM_ASSERT(m_MasterTransaction->m_IsDone == false);
     }
-    else if (!m_Actions.empty())
+    else
     {
-        auto name = string_view(m_Actions.c_str(), m_Actions.size() - 1);
+        IM_ASSERT(m_Document->m_MasterTransaction == this);
 
-        LOGV("[UndoTransaction] Commit: %" PRI_sv, FMT_sv(name));
+        if (!m_Actions.empty())
+        {
+            if (name.empty())
+                name = string_view(m_Actions.c_str(), m_Actions.size() - 1);
 
-        m_State.m_Name = name.to_string();
+            LOGV("[UndoTransaction] Commit: %" PRI_sv, FMT_sv(name));
 
-        m_Document->m_Undo.emplace_back(std::move(m_State));
-        m_Document->m_Redo.clear();
+            m_State.m_Name = name.to_string();
 
-        m_Document->m_CurrentTransaction = nullptr;
+            m_Document->m_Undo.emplace_back(std::move(m_State));
+            m_Document->m_Redo.clear();
+
+            m_Document->m_DocumentState = m_Document->BuildDocumentState();
+        }
+
+        m_Document->m_MasterTransaction = nullptr;
     }
 
     m_IsDone = true;
@@ -164,8 +178,15 @@ void blueprint_editor::Document::UndoTransaction::Commit()
 
 void blueprint_editor::Document::UndoTransaction::Discard()
 {
-    if (!m_HasBegan)
+    if (!m_HasBegan || m_IsDone)
         return;
+
+    if (!m_MasterTransaction)
+    {
+        IM_ASSERT(m_Document->m_MasterTransaction == this);
+
+        m_Document->m_MasterTransaction = nullptr;
+    }
 
     m_IsDone = true;
 }
@@ -176,12 +197,12 @@ void blueprint_editor::Document::UndoTransaction::Discard()
 
 void blueprint_editor::Document::OnSaveBegin()
 {
-    m_SaveTransaction = BeginUndoTransaction();
+    m_SaveTransaction = BeginUndoTransaction("Save");
 }
 
 bool blueprint_editor::Document::OnSaveNodeState(uint32_t nodeId, const crude_json::value& value, ed::SaveReasonFlags reason)
 {
-    m_DocumentState.m_NodeStateMap[nodeId] = value;
+    //m_DocumentState.m_NodeStateMap[nodeId] = value;
 
     if (reason != ed::SaveReasonFlags::Size)
     {
@@ -200,6 +221,7 @@ bool blueprint_editor::Document::OnSaveState(const crude_json::value& value, ed:
     if ((reason & ed::SaveReasonFlags::Selection) == ed::SaveReasonFlags::Selection)
     {
         m_DocumentState.m_SelectionState = ed::GetState(ed::StateType::Selection);
+        m_SaveTransaction->AddAction("Selection Changed");
     }
 
     if ((reason & ed::SaveReasonFlags::Navigation) == ed::SaveReasonFlags::Navigation)
@@ -212,12 +234,9 @@ bool blueprint_editor::Document::OnSaveState(const crude_json::value& value, ed:
 
 void blueprint_editor::Document::OnSaveEnd()
 {
-    m_Blueprint.Save(m_DocumentState.m_BlueprintState);
-
-    if (m_DocumentState.m_SelectionState.is_null())
-        m_DocumentState.m_SelectionState = ed::GetState(ed::StateType::Selection);
-
     m_SaveTransaction = nullptr;
+
+    m_DocumentState = BuildDocumentState();
 }
 
 crude_json::value blueprint_editor::Document::OnLoadNodeState(uint32_t nodeId) const
@@ -230,16 +249,16 @@ crude_json::value blueprint_editor::Document::OnLoadState() const
     return {};
 }
 
-blueprint_editor::shared_ptr<blueprint_editor::Document::UndoTransaction> blueprint_editor::Document::BeginUndoTransaction(string_view name /*= ""*/)
+blueprint_editor::shared_ptr<blueprint_editor::Document::UndoTransaction> blueprint_editor::Document::BeginUndoTransaction(string_view name, string_view action /*= ""*/)
 {
-    auto transaction = std::make_shared<UndoTransaction>(*this);
-    transaction->Begin(name);
+    auto transaction = std::make_shared<UndoTransaction>(*this, name);
+    transaction->Begin(action);
     return transaction;
 }
 
-blueprint_editor::shared_ptr<blueprint_editor::Document::UndoTransaction> blueprint_editor::Document::GetDeferredUndoTransaction()
+blueprint_editor::shared_ptr<blueprint_editor::Document::UndoTransaction> blueprint_editor::Document::GetDeferredUndoTransaction(string_view name)
 {
-    return std::make_shared<UndoTransaction>(*this);
+    return std::make_shared<UndoTransaction>(*this, name);
 }
 
 void blueprint_editor::Document::SetPath(string_view path)
@@ -315,7 +334,7 @@ bool blueprint_editor::Document::Undo()
     auto state = std::move(m_Undo.back());
     m_Undo.pop_back();
 
-    LOGI("[Document] Undo \"%s\"", state.m_Name.c_str());
+    LOGI("[Document] Undo: %s", state.m_Name.c_str());
 
     UndoState undoState;
     undoState.m_Name = state.m_Name;
@@ -336,7 +355,7 @@ bool blueprint_editor::Document::Redo()
     auto state = std::move(m_Redo.back());
     m_Redo.pop_back();
 
-    LOGI("[Document] Redo \"%s\"", state.m_Name.c_str());
+    LOGI("[Document] Redo: %s", state.m_Name.c_str());
 
     UndoState undoState;
     undoState.m_Name = state.m_Name;
@@ -347,6 +366,15 @@ bool blueprint_editor::Document::Redo()
     m_Undo.push_back(std::move(undoState));
 
     return true;
+}
+
+blueprint_editor::Document::DocumentState blueprint_editor::Document::BuildDocumentState()
+{
+    DocumentState result;
+    m_Blueprint.Save(result.m_BlueprintState);
+    result.m_SelectionState = ed::GetState(ed::StateType::Selection);
+    result.m_NodesState = ed::GetState(ed::StateType::Nodes);
+    return result;
 }
 
 void blueprint_editor::Document::ApplyState(const NavigationState& state)
@@ -360,9 +388,8 @@ void blueprint_editor::Document::ApplyState(const DocumentState& state)
     m_Blueprint.Load(state.m_BlueprintState);
 
     m_DocumentState = state;
+    ed::ApplyState(ed::StateType::Nodes, m_DocumentState.m_NodesState);
     ed::ApplyState(ed::StateType::Selection, m_DocumentState.m_SelectionState);
-    for (auto& entry : m_DocumentState.m_NodeStateMap)
-        ed::ApplyState(ed::StateType::Node, entry.first, entry.second);
 }
 
 void blueprint_editor::Document::OnMakeCurrent()

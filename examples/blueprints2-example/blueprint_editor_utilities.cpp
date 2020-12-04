@@ -590,7 +590,7 @@ void blueprint_editor_utilities::CreateNodeDialog::Show(Document& document)
         bool selected = false;
         if (ImGui::Selectable(nodeTypeInfo->m_DisplayName.to_string().c_str(), &selected))
         {
-            auto transaction = document.BeginUndoTransaction();
+            auto transaction = document.BeginUndoTransaction("CreateNodeDialog");
 
             auto& blueprint = document.GetBlueprint();
 
