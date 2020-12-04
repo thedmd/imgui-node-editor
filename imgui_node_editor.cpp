@@ -1524,6 +1524,26 @@ void ed::EditorContext::SetNodePosition(NodeId nodeId, const ImVec2& position)
     }
 }
 
+void ed::EditorContext::SetGroupSize(NodeId nodeId, const ImVec2& size)
+{
+    auto node = FindNode(nodeId);
+    if (!node)
+    {
+        node = CreateNode(nodeId);
+        node->m_IsLive = false;
+    }
+
+    node->m_Type = NodeType::Group;
+
+    if (node->m_GroupBounds.GetSize() != size)
+    {
+        node->m_GroupBounds.Min = node->m_Bounds.Min;
+        node->m_GroupBounds.Max = node->m_Bounds.Min + size;
+        node->m_GroupBounds.Floor();
+        MakeDirty(NodeEditor::SaveReasonFlags::Size, node);
+    }
+}
+
 ImVec2 ed::EditorContext::GetNodePosition(NodeId nodeId)
 {
     auto node = FindNode(nodeId);

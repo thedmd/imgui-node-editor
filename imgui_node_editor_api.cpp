@@ -373,6 +373,11 @@ void ax::NodeEditor::SetNodePosition(NodeId nodeId, const ImVec2& position)
     s_Editor->SetNodePosition(nodeId, position);
 }
 
+void ax::NodeEditor::SetGroupSize(NodeId nodeId, const ImVec2& size)
+{
+    s_Editor->SetGroupSize(nodeId, size);
+}
+
 ImVec2 ax::NodeEditor::GetNodePosition(NodeId nodeId)
 {
     return s_Editor->GetNodePosition(nodeId);

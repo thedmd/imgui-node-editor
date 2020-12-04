@@ -281,6 +281,7 @@ void RejectDeletedItem();
 void EndDelete();
 
 void SetNodePosition(NodeId nodeId, const ImVec2& editorPosition);
+void SetGroupSize(NodeId nodeId, const ImVec2& size);
 ImVec2 GetNodePosition(NodeId nodeId);
 ImVec2 GetNodeSize(NodeId nodeId);
 void CenterNodeOnScreen(NodeId nodeId);

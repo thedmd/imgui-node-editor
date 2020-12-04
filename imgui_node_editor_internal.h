@@ -1286,6 +1286,7 @@ struct EditorContext
     const ImRect& GetRect() const { return m_Canvas.Rect(); }
 
     void SetNodePosition(NodeId nodeId, const ImVec2& screenPosition);
+    void SetGroupSize(NodeId nodeId, const ImVec2& size);
     ImVec2 GetNodePosition(NodeId nodeId);
     ImVec2 GetNodeSize(NodeId nodeId);
 
