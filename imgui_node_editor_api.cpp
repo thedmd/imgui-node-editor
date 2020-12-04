@@ -1,4 +1,6 @@
 //------------------------------------------------------------------------------
+// VERSION 0.9.1
+//
 // LICENSE
 //   This software is dual-licensed to the public domain and under the following
 //   license: you are granted a perpetual, irrevocable license to copy, modify,
@@ -31,8 +33,7 @@ static int BuildIdList(C& container, I* list, int listSize, F&& accept)
             {
                 list[count] = I(object->ID().AsPointer());
                 ++count;
-                --listSize;
-            }
+                --listSize;}
         }
 
         return count;

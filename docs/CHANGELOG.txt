@@ -13,6 +13,8 @@ VERSION 0.9.1:
 
     CHANGE: Natvis: Show readable NodeId/PinId/LinkId
 
+    NEW: All source components are now versioned
+
     NEW: Make view state independent of window resolution.
 
     NEW: Editor can now break links connected specified node or pin

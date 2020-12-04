@@ -1,4 +1,6 @@
 //------------------------------------------------------------------------------
+// VERSION 0.1
+//
 // LICENSE
 //   This software is dual-licensed to the public domain and under the following
 //   license: you are granted a perpetual, irrevocable license to copy, modify,

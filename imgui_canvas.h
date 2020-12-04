@@ -5,7 +5,7 @@
 //
 // When you enter a canvas ImGui is moved to virtual space which mean:
 //   - ImGui::GetCursorScreenPos() return (0, 0) and which correspond to top left corner
-//     of the canvas on the screen (this can be changed usign CanvasView()).
+//     of the canvas on the screen (this can be changed using CanvasView()).
 //   - Mouse input is brought to canvas space, so widgets works as usual.
 //   - Everything you draw with ImDrawList will be in virtual space.
 //
@@ -23,7 +23,7 @@
 // as usual in ImGui.
 //
 // While drawing inside canvas you can translate position from world (usual ImGui space)
-// to virtual space and back usign CanvasFromWorld()/CanvasToWorld().
+// to virtual space and back using CanvasFromWorld()/CanvasToWorld().
 //
 // Canvas can be nested in each other (they are regular widgets after all). There
 // is a way to transform position between current and parent canvas with
@@ -34,6 +34,8 @@
 //
 // Note:
 //     It is not valid to call canvas API outside of BeginCanvas() / EndCanvas() scope.
+//
+// VERSION 0.1
 //
 // LICENSE
 //   This software is dual-licensed to the public domain and under the following
