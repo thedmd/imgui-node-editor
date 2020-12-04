@@ -156,6 +156,42 @@ void ed::Log(const char* fmt, ...)
 
 
 //------------------------------------------------------------------------------
+const char* ax::NodeEditor::ToString(TransactionAction action)
+{
+    switch (action)
+    {
+        case TransactionAction::Unknown:        return "Unknown";
+        case TransactionAction::Navigation:     return "Navigation";
+        case TransactionAction::Drag:           return "Drag";
+        case TransactionAction::ClearSelection: return "ClearSelection";
+        case TransactionAction::Select:         return "Select";
+        case TransactionAction::Deselect:       return "Deselect";
+        case TransactionAction::ToggleSelect:   return "ToggleSelect";
+    }
+
+    return "";
+}
+
+
+//------------------------------------------------------------------------------
+void ax::NodeEditor::ITransaction::AddAction(TransactionAction action, LinkId linkId, const char* name)
+{
+    if (strlen(name) == 0)
+        AddAction(action, (std::string(ToString(action)) + " " + ed::Serialization::ToString(linkId)).c_str());
+    else
+        AddAction(action, name);
+}
+
+void ax::NodeEditor::ITransaction::AddAction(TransactionAction action, NodeId nodeId, const char* name)
+{
+    if (strlen(name) == 0)
+        AddAction(action, (std::string(ToString(action)) + " " + ed::Serialization::ToString(nodeId)).c_str());
+    else
+        AddAction(action, name);
+}
+
+
+//------------------------------------------------------------------------------
 static bool IsGroup(const ed::Node* node)
 {
     if (node && node->m_Type == ed::NodeType::Group)
@@ -1753,6 +1789,9 @@ void ed::EditorContext::RemoveSettings(Object* object)
 
 void ed::EditorContext::ClearSelection()
 {
+    if (m_Transaction)
+        m_Transaction->AddAction(TransactionAction::ClearSelection);
+
     for (auto& object : m_SelectedObjects)
         object->m_IsSelected = false;
 
@@ -1761,6 +1800,9 @@ void ed::EditorContext::ClearSelection()
 
 void ed::EditorContext::SelectObject(Object* object)
 {
+    if (m_Transaction)
+        m_Transaction->AddAction(TransactionAction::Select, object->ID());
+
     m_SelectedObjects.push_back(object);
     object->m_IsSelected = true;
 }
@@ -1770,6 +1812,9 @@ void ed::EditorContext::DeselectObject(Object* object)
     auto objectIt = std::find(m_SelectedObjects.begin(), m_SelectedObjects.end(), object);
     if (objectIt == m_SelectedObjects.end())
         return;
+
+    if (m_Transaction)
+        m_Transaction->AddAction(TransactionAction::Deselect, object->ID());
 
     object->m_IsSelected = false;
     m_SelectedObjects.erase(objectIt);
@@ -2387,18 +2432,34 @@ void ed::EditorContext::RecordState(EditorState& state) const
     state = std::move(result);
 }
 
-void ed::EditorContext::SaveState()
+//void ed::EditorContext::SaveState()
+//{
+//    SaveSettings();
+//}
+//
+//void ed::EditorContext::RestoreState()
+//{
+//    m_Settings.ClearDirty();
+//    //m_Settings.m_Nodes.clear();
+//    LoadSettings();
+//    for (auto& node : m_Nodes)
+//        RestoreNodeState(node);
+//}
+
+ed::Transaction ed::EditorContext::MakeTransaction(const char* name)
 {
-    SaveSettings();
+    ITransaction* transactionInterface = nullptr;
+
+    if (m_Config.TransactionInterface.Constructor)
+        transactionInterface = m_Config.TransactionInterface.Constructor(name, m_Config.TransactionInterface.UserPointer);
+
+    return Transaction(this, transactionInterface);
 }
 
-void ed::EditorContext::RestoreState()
+void ed::EditorContext::DestroyTransaction(ITransaction* transaction)
 {
-    m_Settings.ClearDirty();
-    //m_Settings.m_Nodes.clear();
-    LoadSettings();
-    for (auto& node : m_Nodes)
-        UpdateNodeState(node);
+    if (m_Config.TransactionInterface.Destructor)
+        m_Config.TransactionInterface.Destructor(transaction, m_Config.TransactionInterface.UserPointer);
 }
 
 void ed::EditorContext::LoadSettings()
@@ -3090,6 +3151,16 @@ void ed::NavigateAnimation::OnUpdate(float progress)
 
 void ed::NavigateAnimation::OnStop()
 {
+    auto currentState = Action.GetViewRect();
+
+    Action.SetViewRect(m_Start);
+
+    auto transaction = Editor->MakeTransaction("Navigate To");
+
+    Action.SetViewRect(currentState);
+    transaction.AddAction(TransactionAction::Navigation, Action.Describe());
+    transaction.Commit();
+
     Editor->MakeDirty(SaveReasonFlags::Navigation);
 }
 
@@ -3455,7 +3526,21 @@ bool ed::NavigateAction::Process(const Control& control)
     else
     {
         if (m_Scroll != m_ScrollStart)
+        {
+            auto target = m_Scroll;
+
+            m_Scroll      = m_ScrollStart;
+            m_VisibleRect = GetViewRect();
+
+            auto transaction = Editor->MakeTransaction("Navigate To");
+
+            transaction.AddAction(TransactionAction::Navigation, "Scroll View");
+
+            m_Scroll      = target;
+            m_VisibleRect = GetViewRect();
+
             Editor->MakeDirty(SaveReasonFlags::Navigation);
+        }
 
         m_IsActive = false;
     }
@@ -3609,6 +3694,9 @@ bool ed::NavigateAction::MoveOverEdge(const ImVec2& canvasSize)
     const auto offset             = ImMin(ImMax(screenPointOnEdge - screenMousePos, minDistance), maxDistance);
     const auto relativeOffset     = -offset * io.DeltaTime * c_MaxMoveOverEdgeSpeed;
 
+    if (!m_MovingOverEdge)
+        m_ScrollStart = m_Scroll;
+
     m_Scroll = m_Scroll + relativeOffset;
 
     m_MoveScreenOffset  = relativeOffset;
@@ -3621,6 +3709,18 @@ void ed::NavigateAction::StopMoveOverEdge()
 {
     if (m_MovingOverEdge)
     {
+        auto target = m_Scroll;
+
+        m_Scroll      = m_ScrollStart;
+        m_VisibleRect = GetViewRect();
+
+        auto transaction = Editor->MakeTransaction("Navigate To");
+
+        transaction.AddAction(TransactionAction::Navigation, "Scroll View On Edge");
+
+        m_Scroll      = target;
+        m_VisibleRect = GetViewRect();
+
         Editor->MakeDirty(SaveReasonFlags::Navigation);
 
         m_MoveScreenOffset  = ImVec2(0, 0);
@@ -3659,6 +3759,35 @@ void ed::NavigateAction::SetViewRect(const ImRect& rect)
 ImRect ed::NavigateAction::GetViewRect() const
 {
     return m_Canvas.CalcViewRect(GetView());
+}
+
+const char* ed::NavigateAction::Describe() const
+{
+    switch (m_Reason)
+    {
+        default:
+        case NavigateAction::NavigationReason::Unknown:
+            return "Navigate";
+        case NavigateAction::NavigationReason::MouseZoom:
+            {
+                auto startArea = ImRect_Area(m_Animation.m_Start);
+                auto targetArea = ImRect_Area(m_Animation.m_Target);
+                if (startArea > targetArea)
+                    return "Zoom In";
+                else if (startArea < targetArea)
+                    return "Zoom Out";
+                else
+                    return "Zoom";
+            }
+        case NavigateAction::NavigationReason::Selection:
+            return "Navigate To Selection";
+        case NavigateAction::NavigationReason::Object:
+            return "Navigate To Object";
+        case NavigateAction::NavigationReason::Content:
+            return "Navigate To Content";
+        case NavigateAction::NavigationReason::Edge:
+            return "Scroll On Edge";
+    }
 }
 
 float ed::NavigateAction::MatchZoom(int steps, float fallbackZoom)
@@ -3963,10 +4092,16 @@ bool ed::DragAction::Process(const Control& control)
     {
         m_Clear = false;
 
+        auto transaction = Editor->MakeTransaction("DragAction");
+
         for (auto object : m_Objects)
         {
             if (object->EndDrag())
+            {
                 Editor->MakeDirty(SaveReasonFlags::Position | SaveReasonFlags::User, object->AsNode());
+
+                transaction.AddAction(TransactionAction::Drag, object->AsNode()->m_ID, ("Drag " + Serialization::ToString(object->ID())).c_str());
+            }
         }
 
         m_Objects.resize(0);
@@ -4104,6 +4239,10 @@ ed::EditorAction::AcceptResult ed::SelectAction::Accept(const Control& control)
     }
     else if (control.BackgroundClickButtonIndex == Editor->GetConfig().SelectButtonIndex)
     {
+        auto transaction = Editor->MakeTransaction("SelectAction");
+        if (!Editor->GetSelectedObjects().empty())
+            transaction.AddAction(TransactionAction::ClearSelection, "Clear Selection");
+
         Editor->ClearSelection();
     }
     else
@@ -4112,6 +4251,8 @@ ed::EditorAction::AcceptResult ed::SelectAction::Accept(const Control& control)
 
         if (clickedObject)
         {
+            auto transaction = Editor->MakeTransaction("SelectAction");
+
             // Links and nodes cannot be selected together
             if ((clickedObject->AsLink() && Editor->IsAnyNodeSelected()) ||
                 (clickedObject->AsNode() && Editor->IsAnyLinkSelected()))

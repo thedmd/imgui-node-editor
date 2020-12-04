@@ -43,6 +43,44 @@ struct PinId;
 
 
 //------------------------------------------------------------------------------
+enum class TransactionAction: int32_t
+{
+    Unknown,
+    Navigation,
+    Drag,
+    ClearSelection,
+    Select,
+    Deselect,
+    ToggleSelect
+};
+
+const char* ToString(TransactionAction action);
+
+struct ITransaction
+{
+    virtual ~ITransaction() { }
+
+    virtual void AddAction(TransactionAction action, const char* name) {}
+    virtual void Commit() {}
+    virtual void Discard() {}
+
+    // Adds action that act on specific node
+    virtual void AddAction(TransactionAction action, LinkId linkId, const char* name); // implemented defaults to 'AddAction(action, name)'
+    virtual void AddAction(TransactionAction action, NodeId nodeId, const char* name); // implemented defaults to 'AddAction(action, name)'
+};
+
+using TransactionConstructor = ITransaction*(*)(const char* name, void* userPointer);  // Create new instance of the transaction
+using TransactionDestructor  = void(*)(ITransaction*, void* userPointer);              // Destroys instance if the transaction
+
+struct TransactionInterface
+{
+    TransactionConstructor  Constructor = nullptr;
+    TransactionDestructor   Destructor  = nullptr;
+    void*                   UserPointer = nullptr;
+};
+
+
+//------------------------------------------------------------------------------
 enum class PinKind
 {
     Input,
@@ -109,6 +147,7 @@ struct Config
     ConfigSaveNodeSettingsJson  SaveNodeSettingsJson;
     ConfigLoadNodeSettingsJson  LoadNodeSettingsJson;
     void*                   UserPointer;
+    TransactionInterface        TransactionInterface;
     ImVector<float>         CustomZoomLevels;
     CanvasSizeModeAlias     CanvasSizeMode;
     int                     DragButtonIndex;        // Mouse button index drag action will react to (0-left, 1-right, 2-middle)
@@ -357,8 +396,8 @@ void CenterNodeOnScreen(NodeId nodeId);
 void SetNodeZPosition(NodeId nodeId, float z); // Sets node z position, nodes with higher value are drawn over nodes with lower value
 float GetNodeZPosition(NodeId nodeId); // Returns node z position, defaults is 0.0f
 
-void SaveState();
-void RestoreState();
+//void SaveState();
+//void RestoreState();
 
 void RestoreNodeState(NodeId nodeId);
 

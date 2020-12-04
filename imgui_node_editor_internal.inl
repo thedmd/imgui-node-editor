@@ -423,6 +423,115 @@ inline json::value Serialization::ToJson(const map<K, V>& value)
 # undef CHECK_AND_PARSE_OPT
 
 
+
+
+//------------------------------------------------------------------------------
+inline Transaction::Transaction(EditorContext* editor, ITransaction* transaction)
+    : m_Editor(editor)
+    , m_Transaction(transaction)
+{
+    IM_ASSERT(m_Editor->GetCurrentTransaction() == nullptr);
+    m_Editor->SetCurrentTransaction(this);
+}
+
+inline Transaction::Transaction(Transaction&& other)
+    : m_Editor(other.m_Editor)
+    , m_Transaction(other.m_Transaction)
+    , m_IsDone(other.m_IsDone)
+{
+    other.m_Transaction = nullptr;
+    other.m_IsDone      = true;
+
+    IM_ASSERT(m_Editor->GetCurrentTransaction() == &other);
+    m_Editor->SetCurrentTransaction(this);
+}
+
+inline Transaction::~Transaction()
+{
+    Commit();
+
+    IM_ASSERT(m_Editor->GetCurrentTransaction() == this);
+    m_Editor->SetCurrentTransaction(nullptr);
+
+    if (m_Transaction)
+        m_Editor->DestroyTransaction(m_Transaction);
+}
+
+inline Transaction& Transaction::operator=(Transaction&& other)
+{
+    if (this == &other)
+        return *this;
+
+    auto newState = Transaction(std::move(other));
+
+    using std::swap;
+
+    swap(m_Editor,      newState.m_Editor);
+    swap(m_Transaction, newState.m_Transaction);
+    swap(m_IsDone,      newState.m_IsDone);
+
+    IM_ASSERT(m_Editor->GetCurrentTransaction() == &other);
+    m_Editor->SetCurrentTransaction(this);
+
+    return *this;
+}
+
+inline void Transaction::AddAction(TransactionAction action, const char* name)
+{
+    if (m_IsDone)
+        return;
+
+    if (m_Transaction)
+    {
+        if (strlen(name) == 0)
+            name = ToString(action);
+
+        m_Transaction->AddAction(action, name);
+    }
+}
+
+inline void Transaction::AddAction(TransactionAction action, ObjectId objectId, const char* name)
+{
+    if (m_IsDone)
+        return;
+
+    if (m_Transaction)
+    {
+        if (strlen(name) == 0)
+            name = ToString(action);
+
+        if (auto nodeId = objectId.AsNodeId())
+            m_Transaction->AddAction(action, nodeId, name);
+        else if (auto linkId = objectId.AsLinkId())
+            m_Transaction->AddAction(action, linkId, name);
+        else
+            m_Transaction->AddAction(action, name);
+    }
+}
+
+inline void Transaction::Commit()
+{
+    if (m_IsDone)
+        return;
+
+    m_IsDone = true;
+
+    if (m_Transaction)
+        m_Transaction->Commit();
+}
+
+inline void Transaction::Discard()
+{
+    if (m_IsDone)
+        return;
+
+    m_IsDone = true;
+
+    if (m_Transaction)
+        m_Transaction->Discard();
+}
+
+
 //------------------------------------------------------------------------------
 } // namespace Detail
 } // namespace Editor
