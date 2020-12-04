@@ -190,6 +190,36 @@ json::value ToJson(const map<K, V>& value);
 
 } // namespace Serialization {
 
+
+//------------------------------------------------------------------------------
+struct EditorContext;
+
+
+//------------------------------------------------------------------------------
+struct Transaction
+{
+    Transaction() = default;
+    Transaction(EditorContext* editor, ITransaction* transaction);
+    Transaction(Transaction&& other);
+    Transaction(const Transaction&) = delete;
+    ~Transaction();
+
+    Transaction& operator=(Transaction&& other);
+    Transaction& operator=(const Transaction&) = delete;
+
+    void AddAction(TransactionAction action, const char* name = "");
+    void AddAction(TransactionAction action, ObjectId nodeId, const char* name = "");
+    void Commit();
+    void Discard();
+
+private:
+    EditorContext*  m_Editor = nullptr;
+    ITransaction*   m_Transaction = nullptr;
+    bool            m_IsDone = false;
+};
+
+
+
 //------------------------------------------------------------------------------
 enum class ObjectType
 {
@@ -235,8 +265,6 @@ struct ObjectId final: Details::SafePointerType<ObjectId>
 private:
     ObjectType m_Type;
 };
-
-struct EditorContext;
 
 struct Node;
 struct Pin;
@@ -955,6 +983,8 @@ struct NavigateAction final: EditorAction
     void SetViewRect(const ImRect& rect);
     ImRect GetViewRect() const;
 
+    const char* Describe() const;
+
 private:
     ImGuiEx::Canvas&   m_Canvas;
     ImVec2             m_WindowScreenPos;
@@ -1554,8 +1584,14 @@ struct EditorContext
     bool ApplyState(const EditorState& state);
     void RecordState(EditorState& state) const;
 
-    void SaveState();
-    void RestoreState();
+    //void SaveState();
+    //void RestoreState();
+
+    Transaction MakeTransaction(const char* name);
+    void DestroyTransaction(ITransaction* transaction);
+
+    void SetCurrentTransaction(Transaction* transaction) { m_Transaction = transaction; }
+    Transaction* GetCurrentTransaction() { return m_Transaction; }
 
     string              m_CachedStateStringForPublicAPI;
 
@@ -1621,6 +1657,8 @@ private:
     bool                m_IsInitialized;
     Settings            m_Settings;
     EditorState         m_State;
+
+    Transaction*        m_Transaction = nullptr;
 
     Config              m_Config;
 
