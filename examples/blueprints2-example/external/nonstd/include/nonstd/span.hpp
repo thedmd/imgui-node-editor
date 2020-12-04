@@ -1292,26 +1292,40 @@ inline span_constexpr bool operator>=( span<T1,E1> const & l, span<T2,E2> const 
 
 #if span_HAVE( BYTE ) || span_HAVE( NONSTD_BYTE )
 
+// Avoid MSVC 14.1 (1910), VS 2017: warning C4307: '*': integral constant overflow:
+
+template< typename T, extent_t Extent >
+struct BytesExtent
+{
+    enum ET : extent_t { value = span_sizeof(T) * Extent };
+};
+
+template< typename T >
+struct BytesExtent< T, dynamic_extent >
+{
+    enum ET : extent_t { value = dynamic_extent };
+};
+
 template< class T, extent_t Extent >
-inline span_constexpr span< const std17::byte, ( (Extent == dynamic_extent) ? dynamic_extent : (span_sizeof(T) * Extent) ) >
+inline span_constexpr span< const std17::byte, BytesExtent<T, Extent>::value >
 as_bytes( span<T,Extent> spn ) span_noexcept
 {
 #if 0
     return { reinterpret_cast< std17::byte const * >( spn.data() ), spn.size_bytes() };
 #else
-    return span< const std17::byte, ( (Extent == dynamic_extent) ? dynamic_extent : (span_sizeof(T) * Extent) ) >(
+    return span< const std17::byte, BytesExtent<T, Extent>::value >(
         reinterpret_cast< std17::byte const * >( spn.data() ), spn.size_bytes() );  // NOLINT
 #endif
 }
 
 template< class T, extent_t Extent >
-inline span_constexpr span< std17::byte, ( (Extent == dynamic_extent) ? dynamic_extent : (span_sizeof(T) * Extent) ) >
+inline span_constexpr span< std17::byte, BytesExtent<T, Extent>::value >
 as_writable_bytes( span<T,Extent> spn ) span_noexcept
 {
 #if 0
     return { reinterpret_cast< std17::byte * >( spn.data() ), spn.size_bytes() };
 #else
-    return span< std17::byte, ( (Extent == dynamic_extent) ? dynamic_extent : (span_sizeof(T) * Extent) ) >(
+    return span< std17::byte, BytesExtent<T, Extent>::value >(
         reinterpret_cast< std17::byte * >( spn.data() ), spn.size_bytes() );  // NOLINT
 #endif
 }
