@@ -188,56 +188,134 @@ struct BlueprintEditorExample
     void InstallDocumentCallbacks(ed::Config& config)
     {
         config.UserPointer = this;
-        config.BeginSaveSession = [](void* userPointer)
+        //config.BeginSaveSession = [](void* userPointer)
+        //{
+        //    auto self = reinterpret_cast<BlueprintEditorExample*>(userPointer);
+
+        //    if (self->m_Document)
+        //        self->m_Document->OnSaveBegin();
+        //};
+        //config.EndSaveSession = [](void* userPointer)
+        //{
+        //    auto self = reinterpret_cast<BlueprintEditorExample*>(userPointer);
+
+        //    if (self->m_Document)
+        //        self->m_Document->OnSaveEnd();
+        //};
+        //config.SaveSettingsJson = [](const crude_json::value& state, ed::SaveReasonFlags reason, void* userPointer) -> bool
+        //{
+        //    auto self = reinterpret_cast<BlueprintEditorExample*>(userPointer);
+
+        //    if (self->m_Document)
+        //        return self->m_Document->OnSaveState(state, reason);
+        //    else
+        //        return false;
+        //};
+        //config.LoadSettingsJson = [](void* userPointer) -> crude_json::value
+        //{
+        //    auto self = reinterpret_cast<BlueprintEditorExample*>(userPointer);
+
+        //    if (self->m_Document)
+        //        return self->m_Document->OnLoadState();
+        //    else
+        //        return {};
+        //};
+        //config.SaveNodeSettingsJson = [](ed::NodeId nodeId, const crude_json::value& value, ed::SaveReasonFlags reason, void* userPointer) -> bool
+        //{
+        //    auto self = reinterpret_cast<BlueprintEditorExample*>(userPointer);
+
+        //    if (self->m_Document)
+        //        return self->m_Document->OnSaveNodeState(static_cast<uint32_t>(nodeId.Get()), value, reason);
+        //    else
+        //        return false;
+        //};
+        //config.LoadNodeSettingsJson = [](ed::NodeId nodeId, void* userPointer) -> crude_json::value
+        //{
+        //    auto self = reinterpret_cast<BlueprintEditorExample*>(userPointer);
+
+        //    if (self->m_Document)
+        //        return self->m_Document->OnLoadNodeState(static_cast<uint32_t>(nodeId.Get()));
+        //    else
+        //        return {};
+        //};
+
+        struct TransactionWrapper final: ed::ITransaction
+        {
+            static const char* ActionToString(ed::TransactionAction action)
+            {
+                switch (action)
+                {
+                    case ed::TransactionAction::Unknown:    return "Unknown";
+                    case ed::TransactionAction::Navigation: return "Navigation";
+                    case ed::TransactionAction::Drag:       return "Drag";
+                }
+
+                return "";
+            }
+
+            TransactionWrapper(shared_ptr<Document::UndoTransaction> transaction)
+                : m_Transaction(std::move(transaction))
+            {
+            }
+
+            void AddAction(ed::TransactionAction action, const char* name) override
+            {
+                ++m_ActionCount;
+
+                m_Transaction->AddAction(name);
+            }
+
+            void Commit() override
+            {
+                ImGuiTextBuffer name;
+                 if (m_ActionCount == m_DragActionCount && m_DragActionCount > 1)
+                    name.appendf("Drag %d nodes", static_cast<int>(m_DragActionCount));
+
+                m_Transaction->Commit(name.c_str());
+            }
+
+            void Discard() override
+            {
+                m_Transaction->Discard();
+            }
+
+            void AddAction(ed::TransactionAction action, ed::NodeId nodeId, const char* name) override
+            {
+                ++m_ActionCount;
+
+                m_NodeIds.push_back(nodeId);
+
+                if (action == ed::TransactionAction::Drag)
+                {
+                    ++m_DragActionCount;
+
+                    auto& blueprint = m_Transaction->GetDocument()->GetBlueprint();
+                    auto  node      = blueprint.FindNode(static_cast<uint32_t>(nodeId.Get()));
+
+                    m_Transaction->AddAction("Drag %" PRI_node, FMT_node(node));
+                }
+                else
+                    m_Transaction->AddAction(name);
+            }
+
+            shared_ptr<Document::UndoTransaction> m_Transaction;
+            size_t m_ActionCount = 0;
+            size_t m_DragActionCount = 0;
+            vector<ed::NodeId> m_NodeIds;
+        };
+
+        config.TransactionInterface.Constructor = [](const char* name, void* userPointer) -> ed::ITransaction*
         {
             auto self = reinterpret_cast<BlueprintEditorExample*>(userPointer);
-
-            if (self->m_Document)
-                self->m_Document->OnSaveBegin();
+            return new TransactionWrapper(self->m_Document->BeginUndoTransaction(name));
         };
-        config.EndSaveSession = [](void* userPointer)
+
+        config.TransactionInterface.Destructor = [](ed::ITransaction* transaction, void* userPointer)
         {
-            auto self = reinterpret_cast<BlueprintEditorExample*>(userPointer);
-
-            if (self->m_Document)
-                self->m_Document->OnSaveEnd();
+            delete transaction;
         };
-        config.SaveSettingsJson = [](const crude_json::value& state, ed::SaveReasonFlags reason, void* userPointer) -> bool
-        {
-            auto self = reinterpret_cast<BlueprintEditorExample*>(userPointer);
 
-            if (self->m_Document)
-                return self->m_Document->OnSaveState(state, reason);
-            else
-                return false;
-        };
-        config.LoadSettingsJson = [](void* userPointer) -> crude_json::value
-        {
-            auto self = reinterpret_cast<BlueprintEditorExample*>(userPointer);
-
-            if (self->m_Document)
-                return self->m_Document->OnLoadState();
-            else
-                return {};
-        };
-        config.SaveNodeSettingsJson = [](ed::NodeId nodeId, const crude_json::value& value, ed::SaveReasonFlags reason, void* userPointer) -> bool
-        {
-            auto self = reinterpret_cast<BlueprintEditorExample*>(userPointer);
-
-            if (self->m_Document)
-                return self->m_Document->OnSaveNodeState(static_cast<uint32_t>(nodeId.Get()), value, reason);
-            else
-                return false;
-        };
-        config.LoadNodeSettingsJson = [](ed::NodeId nodeId, void* userPointer) -> crude_json::value
-        {
-            auto self = reinterpret_cast<BlueprintEditorExample*>(userPointer);
-
-            if (self->m_Document)
-                return self->m_Document->OnLoadNodeState(static_cast<uint32_t>(nodeId.Get()));
-            else
-                return {};
-        };
+        config.TransactionInterface.UserPointer = this;
     }
 
     void CreateExampleDocument()
@@ -827,7 +905,7 @@ private:
         if (!itemDeleter)
             return;
 
-        auto deferredTransaction = document.GetDeferredUndoTransaction();
+        auto deferredTransaction = document.GetDeferredUndoTransaction("Destroy Action");
 
         vector<Node*> nodesToDelete;
         uint32_t brokenLinkCount = 0;
@@ -1156,8 +1234,6 @@ private:
     {
         if (!File_IsOpen())
             return true;
-
-        ed::SaveState();
 
         if (!m_Document->Save(path))
         {
