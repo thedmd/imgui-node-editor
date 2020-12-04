@@ -229,7 +229,7 @@ static void ImGui_ImplOpenGL3_SetupRenderState(ImDrawData* draw_data, int fb_wid
     // Setup render state: alpha-blending enabled, no face culling, no depth testing, scissor enabled, polygon fill
     glEnable(GL_BLEND);
     glBlendEquation(GL_FUNC_ADD);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
     glDisable(GL_CULL_FACE);
     glDisable(GL_DEPTH_TEST);
     glEnable(GL_SCISSOR_TEST);
@@ -569,7 +569,9 @@ bool    ImGui_ImplOpenGL3_CreateDeviceObjects()
         "varying vec4 Frag_Color;\n"
         "void main()\n"
         "{\n"
-        "    gl_FragColor = Frag_Color * texture2D(Texture, Frag_UV.st);\n"
+        "    vec4 col = Frag_Color * texture2D(Texture, Frag_UV.st);\n"
+        "    col.xyz *= col.w;"
+        "    gl_FragColor = col;\n"
         "}\n";
 
     const GLchar* fragment_shader_glsl_130 =
@@ -579,7 +581,9 @@ bool    ImGui_ImplOpenGL3_CreateDeviceObjects()
         "out vec4 Out_Color;\n"
         "void main()\n"
         "{\n"
-        "    Out_Color = Frag_Color * texture(Texture, Frag_UV.st);\n"
+        "    vec4 col = Frag_Color * texture2D(Texture, Frag_UV.st);\n"
+        "    col.xyz *= col.w;"
+        "    gl_FragColor = col;\n"
         "}\n";
 
     const GLchar* fragment_shader_glsl_300_es =
@@ -590,7 +594,9 @@ bool    ImGui_ImplOpenGL3_CreateDeviceObjects()
         "layout (location = 0) out vec4 Out_Color;\n"
         "void main()\n"
         "{\n"
-        "    Out_Color = Frag_Color * texture(Texture, Frag_UV.st);\n"
+        "    vec4 col = Frag_Color * texture2D(Texture, Frag_UV.st);\n"
+        "    col.xyz *= col.w;"
+        "    gl_FragColor = col;\n"
         "}\n";
 
     const GLchar* fragment_shader_glsl_410_core =
@@ -600,7 +606,9 @@ bool    ImGui_ImplOpenGL3_CreateDeviceObjects()
         "layout (location = 0) out vec4 Out_Color;\n"
         "void main()\n"
         "{\n"
-        "    Out_Color = Frag_Color * texture(Texture, Frag_UV.st);\n"
+        "    vec4 col = Frag_Color * texture2D(Texture, Frag_UV.st);\n"
+        "    col.xyz *= col.w;"
+        "    gl_FragColor = col;\n"
         "}\n";
 
     // Select shaders matching our GLSL versions
