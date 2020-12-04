@@ -538,8 +538,8 @@ struct Example:
         node = SpawnTreeTaskNode();         ed::SetNodePosition(node->ID, ImVec2(1204, 458));
         node = SpawnTreeTask2Node();        ed::SetNodePosition(node->ID, ImVec2(868, 538));
 
-        node = SpawnComment();              ed::SetNodePosition(node->ID, ImVec2(112, 576));
-        node = SpawnComment();              ed::SetNodePosition(node->ID, ImVec2(800, 224));
+        node = SpawnComment();              ed::SetNodePosition(node->ID, ImVec2(112, 576)); ed::SetGroupSize(node->ID, ImVec2(384, 154));
+        node = SpawnComment();              ed::SetNodePosition(node->ID, ImVec2(800, 224)); ed::SetGroupSize(node->ID, ImVec2(640, 400));
 
         node = SpawnLessNode();             ed::SetNodePosition(node->ID, ImVec2(366, 652));
         node = SpawnWeirdNode();            ed::SetNodePosition(node->ID, ImVec2(144, 652));
