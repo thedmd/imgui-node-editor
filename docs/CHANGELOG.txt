@@ -1,0 +1,72 @@
+VERSION 0.9.1:
+
+    CHANGE: Remove unwanted extra frame height from node bottom
+
+    CHANGE: Allow to specify if links of deleted node should also be automatically deleted
+        Now it is possible to delete only node without automatically serving links,
+        application can choose to do this operation by itself and for example
+        short circuit flow links ot do any other special operation.
+
+    CHANGE: Canvas: Allow to overlap canvas widget
+
+    CHANGE: Natvis: Move crude_json natvis to separate file
+
+    CHANGE: Natvis: Show readable NodeId/PinId/LinkId
+
+    NEW: Make view state independent of window resolution.
+
+    NEW: Editor can now break links connected specified node or pin
+        New API:
+        int BreakLinks(NodeId nodeId);
+        int BreakLinks(PinId pinId);
+
+    NEW: Editor can now tell if node or pin has any links attached
+        New API:
+        bool HasAnyLinks(NodeId nodeId);
+        bool HasAnyLinks(PinId pinId);
+
+    NEW: Editor can be queried if particular node or link is selected
+        New API:
+        bool IsNodeSelected(NodeId nodeId);
+        bool IsLinkSelected(LinkId linkId);
+
+    NEW: Editor now can return pins of the link
+        New API:
+        bool GetLinkPins(LinkId linkId, PinId* startPinId, PinId* endPinId);
+
+        `startPinId` and `endPinId` may be null if caller is not interested
+        in particular id.
+
+    NEW: Editor now return ids of hovered node/pin/link
+        New API:
+        NodeId GetHoveredNode();
+        PinId GetHoveredPin();
+        LinkId GetHoveredLink();
+
+    NEW: Add SetGroupSize() to explicitly set group size
+        New API:
+        void SetGroupSize(NodeId nodeId, const ImVec2& size);
+
+    NEW: crude_json: Add save() and load()
+
+        When CRUDE_JSON_IO == 1 value will have load() and save()
+        function implemented using stdio.h FILE.
+
+    NEW: crude_json: Add erase() and get_ptr()
+
+    NEW: Application overhaul
+        - Convert from function based to inheritable class
+        - Add ability to close app and change title from code
+        - Add ability to control main window flags (ex. show menubar)
+        - Save ImGui state to ini file
+        - Render using pre-multiplied alpha textures
+        - Add extra fonts to examples.
+
+    BUGFIX: Avoid crash while destroying editor.
+
+    BUGFIX: Save draw list used by editor between Begin() and End()
+        There is a chance ImGui::GetWindowDrawList() will return different draw list
+        while nodes are being composed. To avoid troubles of manipulating incorrect
+        draw list one obtained in Begin() is remembered and used.
+
+    BUGFIX: Avoid division by zero in ImCubicBezierBoundingRect
