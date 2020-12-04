@@ -45,6 +45,7 @@ inline ImVec2 ImNormalized(const ImVec2& v);
 
 //------------------------------------------------------------------------------
 inline bool   ImRect_IsEmpty(const ImRect& rect);
+inline float  ImRect_Area(const ImRect& rect);
 inline ImVec2 ImRect_ClosestPoint(const ImRect& rect, const ImVec2& p, bool snap_to_edge);
 inline ImVec2 ImRect_ClosestPoint(const ImRect& rect, const ImVec2& p, bool snap_to_edge, float radius);
 inline ImVec2 ImRect_ClosestPoint(const ImRect& rect, const ImRect& b);

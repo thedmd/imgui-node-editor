@@ -71,6 +71,14 @@ inline bool ImRect_IsEmpty(const ImRect& rect)
         || rect.Min.y >= rect.Max.y;
 }
 
+inline float ImRect_Area(const ImRect& rect)
+{
+    if (ImRect_IsEmpty(rect))
+        return 0.0f;
+    else
+        return rect.GetWidth() * rect.GetHeight();
+}
+
 inline ImVec2 ImRect_ClosestPoint(const ImRect& rect, const ImVec2& p, bool snap_to_edge)
 {
     if (!snap_to_edge && rect.Contains(p))
