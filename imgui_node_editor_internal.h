@@ -1386,7 +1386,11 @@ struct EditorContext
     ImU32 GetColor(StyleColor colorIndex) const;
     ImU32 GetColor(StyleColor colorIndex, float alpha) const;
 
-    void NavigateTo(const ImRect& bounds, bool zoomIn = false, float duration = -1) { m_NavigateAction.NavigateTo(bounds, NavigateAction::ZoomMode::WithMargin, duration); }
+    void NavigateTo(const ImRect& bounds, bool zoomIn = false, float duration = -1)
+    {
+        auto zoomMode = zoomIn ? NavigateAction::ZoomMode::WithMargin : NavigateAction::ZoomMode::None;
+        m_NavigateAction.NavigateTo(bounds, zoomMode, duration);
+    }
 
     void RegisterAnimation(Animation* animation);
     void UnregisterAnimation(Animation* animation);
