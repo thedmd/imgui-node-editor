@@ -88,3 +88,5 @@ v0.9.1 (WIP):
     BUGFIX: Fix ObjectId serialization
 
     BUGFIX: GroupNode resize instead of move on low zoom #87
+
+    BUGFIX: Make Canvas work with Viewports (#91, #90)

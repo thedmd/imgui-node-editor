@@ -250,8 +250,11 @@ private:
     ImVec2 m_WindowCursorMaxBackup;
 
 # if defined(IMGUI_HAS_VIEWPORT)
+    ImVec2 m_WindowPosBackup;
     ImVec2 m_ViewportPosBackup;
     ImVec2 m_ViewportSizeBackup;
+    ImVec2 m_ViewportWorkOffsetMinBackup;
+    ImVec2 m_ViewportWorkOffsetMaxBackup;
 # endif
 };
 
