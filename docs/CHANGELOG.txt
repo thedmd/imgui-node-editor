@@ -15,6 +15,8 @@ v0.9.1 (WIP):
 
     CHANGE: Make Navigate action to honor duration
 
+    CHANGE: Travis: Use Ubuntu Bionic (18.04) for CI, to get newer version of GLFW3
+
     NEW: All source components are now versioned
 
     NEW: Make view state independent of window resolution.
