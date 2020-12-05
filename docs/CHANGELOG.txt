@@ -66,6 +66,8 @@ v0.9.1 (WIP):
         - Render using pre-multiplied alpha textures
         - Add extra fonts to examples.
 
+    NEW: Reintegrate Widgets example from @crolando (#77)
+
     BUGFIX: Avoid crash while destroying editor.
 
     BUGFIX: Save draw list used by editor between Begin() and End()
