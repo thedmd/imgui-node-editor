@@ -24,6 +24,12 @@
 
 namespace ed = ax::NodeEditor;
 
+# ifdef _MSC_VER
+# define portable_strcpy    strcpy_s
+# else
+# define portable_strcpy    strcpy
+# endif
+
 struct Example:
     public Application
 {
@@ -272,19 +278,19 @@ struct Example:
                 ImGui::TextDisabled("Pick One:");
                 ImGui::BeginChild("popup_scroller", ImVec2(100, 100), true, ImGuiWindowFlags_AlwaysVerticalScrollbar);
                 if (ImGui::Button("Option 1")) {
-                    strcpy_s(popup_text, "Option 1");
+                    portable_strcpy(popup_text, "Option 1");
                     ImGui::CloseCurrentPopup();  // These calls revoke the popup open state, which was set by OpenPopup above.
                 }
                 if (ImGui::Button("Option 2")) {
-                    strcpy_s(popup_text, "Option 2");
+                    portable_strcpy(popup_text, "Option 2");
                     ImGui::CloseCurrentPopup();
                 }
                 if (ImGui::Button("Option 3")) {
-                    strcpy_s(popup_text, "Option 3");
+                    portable_strcpy(popup_text, "Option 3");
                     ImGui::CloseCurrentPopup();
                 }
                 if (ImGui::Button("Option 4")) {
-                    strcpy_s(popup_text, "Option 4");
+                    portable_strcpy(popup_text, "Option 4");
                     ImGui::CloseCurrentPopup();
                 }
                 ImGui::EndChild();
