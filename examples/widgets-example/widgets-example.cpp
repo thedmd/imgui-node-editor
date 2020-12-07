@@ -26,8 +26,10 @@ namespace ed = ax::NodeEditor;
 
 # ifdef _MSC_VER
 # define portable_strcpy    strcpy_s
+# define portable_sprintf   sprintf_s
 # else
 # define portable_strcpy    strcpy
+# define portable_sprintf   sprintf
 # endif
 
 struct Example:
@@ -349,7 +351,7 @@ struct Example:
 
                 float progress_saturated = (progress < 0.0f) ? 0.0f : (progress > 1.0f) ? 1.0f : progress;
                 char buf[32];
-                sprintf_s(buf, "%d/%d", (int)(progress_saturated * 1753), 1753);
+                portable_sprintf(buf, "%d/%d", (int)(progress_saturated * 1753), 1753);
                 ImGui::ProgressBar(progress, ImVec2(0.f, 0.f), buf);
 
                 ImGui::PopItemWidth();
