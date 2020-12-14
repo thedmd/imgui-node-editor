@@ -55,6 +55,7 @@ if (WIN32)
 else()
     find_package(OpenGL REQUIRED)
     find_package(glfw3 3 REQUIRED)
+    find_package(GLEW REQUIRED)
 
     if (APPLE)
         target_link_libraries(application PRIVATE
@@ -87,6 +88,12 @@ if (glfw3_FOUND)
     )
     target_link_libraries(application PRIVATE
         glfw
+    )
+endif()
+
+if (GLEW_FOUND)
+    target_link_libraries(application PRIVATE
+        GLEW
     )
 endif()
 
