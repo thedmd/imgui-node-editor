@@ -558,9 +558,9 @@ struct Example:
 
         m_Links.push_back(Link(GetNextLinkId(), m_Nodes[14].Outputs[0].ID, m_Nodes[15].Inputs[0].ID));
 
-        m_HeaderBackground = LoadTexture("Data/BlueprintBackground.png");
-        m_SaveIcon         = LoadTexture("Data/ic_save_white_24dp.png");
-        m_RestoreIcon      = LoadTexture("Data/ic_restore_white_24dp.png");
+        m_HeaderBackground = LoadTexture("data/BlueprintBackground.png");
+        m_SaveIcon         = LoadTexture("data/ic_save_white_24dp.png");
+        m_RestoreIcon      = LoadTexture("data/ic_restore_white_24dp.png");
 
 
         //auto& io = ImGui::GetIO();
