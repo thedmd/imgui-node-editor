@@ -17,6 +17,8 @@ v0.9.1 (WIP):
 
     CHANGE: Travis: Use Ubuntu Bionic (18.04) for CI, to get newer version of GLFW3
 
+    CHANGE: Editor: Make action button internally configurable
+
     NEW: All source components are now versioned
 
     NEW: Make view state independent of window resolution.
