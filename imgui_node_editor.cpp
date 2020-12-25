@@ -1014,6 +1014,7 @@ ImRect ed::Link::GetBounds() const
 ed::EditorContext::EditorContext(const ax::NodeEditor::Config* config)
     : m_IsFirstFrame(true)
     , m_IsWindowActive(false)
+    , m_IsHovered(false)
     , m_ShortcutsEnabled(true)
     , m_Style()
     , m_Nodes()
@@ -1812,6 +1813,11 @@ bool ed::EditorContext::IsActive()
     return m_IsWindowActive;
 }
 
+bool ed::EditorContext::IsHovered() const
+{
+    return m_IsHovered;
+}
+
 ed::Pin* ed::EditorContext::CreatePin(PinId id, PinKind kind)
 {
     IM_ASSERT(nullptr == FindObject(id));
@@ -2103,7 +2109,9 @@ bool ed::EditorContext::AreShortcutsEnabled()
 
 ed::Control ed::EditorContext::BuildControl(bool allowOffscreen)
 {
-    if (!allowOffscreen && !ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem))
+    m_IsHovered = false;
+
+    if (!allowOffscreen && !ImGui::IsMouseHoveringRect(m_Canvas.ViewRect().Min, m_Canvas.ViewRect().Max, true))
         return Control(nullptr, nullptr, nullptr, nullptr, false, false, false, false);
 
     const auto mousePos = ImGui::GetMousePos();
@@ -2288,6 +2296,12 @@ ed::Control ed::EditorContext::BuildControl(bool allowOffscreen)
         doubleClickedObject = hotLink;
         backgroundDoubleClicked = false;
     }
+
+    m_IsHovered = ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenOverlapped);
+
+# if IMGUI_VERSION_NUM >= 17909
+    ImGui::SetItemUsingMouseWheel();
+# endif
 
     return Control(hotObject, activeObject, clickedObject, doubleClickedObject,
         isBackgroundHot, isBackgroundActive, backgroundClicked, backgroundDoubleClicked);
@@ -3022,7 +3036,7 @@ ed::EditorAction::AcceptResult ed::NavigateAction::Accept(const Control& control
     if (m_IsActive)
         return False;
 
-    if (ImGui::IsWindowHovered() /*&& !ImGui::IsAnyItemActive()*/ && ImGui::IsMouseDragging(Editor->GetConfig().NavigateButtonIndex, 0.0f))
+    if (Editor->IsHovered() /*&& !ImGui::IsAnyItemActive()*/ && ImGui::IsMouseDragging(Editor->GetConfig().NavigateButtonIndex, 0.0f))
     {
         m_IsActive    = true;
         m_ScrollStart = m_Scroll;
@@ -3139,7 +3153,7 @@ bool ed::NavigateAction::HandleZoom(const Control& control)
 
     auto& io = ImGui::GetIO();
 
-    if (!io.MouseWheel || (!allowOffscreen && !ImGui::IsWindowHovered()))// && !ImGui::IsAnyItemActive())
+    if (!io.MouseWheel || (!allowOffscreen && !Editor->IsHovered()))// && !ImGui::IsAnyItemActive())
         return false;
 
     auto savedScroll = m_Scroll;
@@ -4344,7 +4358,7 @@ bool ed::CreateItemAction::Process(const Control& control)
     }
     else if (m_CurrentStage == Possible || !control.ActivePin)
     {
-        if (!ImGui::IsWindowHovered())
+        if (!Editor->IsHovered())
         {
             m_DraggedPin = nullptr;
             DropNothing();

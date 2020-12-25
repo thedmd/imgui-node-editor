@@ -105,3 +105,5 @@ v0.9.1 (WIP):
     BUGFIX: Application: Don't apply HiDPI logic for (-FLT_MAX,-FLT_MAX) mouse position
 
     BUGFIX: Editor: Clamp over-the-edge drag distance to prevent scrolling to infinity on focus lost
+
+    BUGFIX: Editor: Consume scroll event (#73) (require ImGui 17909 or later)

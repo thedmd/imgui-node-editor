@@ -1333,6 +1333,7 @@ struct EditorContext
     bool IsSuspended();
 
     bool IsActive();
+    bool IsHovered() const;
 
     void MakeDirty(SaveReasonFlags reason);
     void MakeDirty(SaveReasonFlags reason, Node* node);
@@ -1440,6 +1441,7 @@ private:
 
     bool                m_IsFirstFrame;
     bool                m_IsWindowActive;
+    bool                m_IsHovered;
 
     bool                m_ShortcutsEnabled;
 
