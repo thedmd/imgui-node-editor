@@ -118,6 +118,9 @@ static const auto  c_SelectButtonIndex          = 0;
 static const auto  c_ScrollButtonIndex          = 1;
 static const auto  c_ContextMenuButtonIndex     = 1;
 
+static const auto  c_MaxMoveOverEdgeSpeed       = 10.0f;
+static const auto  c_MaxMoveOverEdgeDistance    = 300.0f;
+
 
 //------------------------------------------------------------------------------
 # if defined(_DEBUG) && defined(_WIN32)
@@ -3260,13 +3263,22 @@ bool ed::NavigateAction::MoveOverEdge()
     if (screenRect.Contains(screenMousePos))
         return false;
 
+    // Several backend move mouse position to -FLT_MAX to indicate
+    // uninitialized/unknown state. To prevent all sorts
+    // of math problems, we just ignore such state.
+    if (io.MousePos.x <= -FLT_MAX || io.MousePos.y <= -FLT_MAX)
+        return false;
+
+    const auto minDistance       = ImVec2(-c_MaxMoveOverEdgeDistance, -c_MaxMoveOverEdgeDistance);
+    const auto maxDistance       = ImVec2( c_MaxMoveOverEdgeDistance,  c_MaxMoveOverEdgeDistance);
+
     const auto screenPointOnEdge = ImRect_ClosestPoint(screenRect, screenMousePos, true);
-    const auto direction         = screenPointOnEdge - screenMousePos;
-    const auto offset            = -direction * io.DeltaTime * 10.0f;
+    const auto offset            = ImMin(ImMax(screenPointOnEdge - screenMousePos, minDistance), maxDistance);
+    const auto relativeOffset    = -offset * io.DeltaTime * c_MaxMoveOverEdgeSpeed;
 
-    m_Scroll = m_Scroll + offset;
+    m_Scroll = m_Scroll + relativeOffset;
 
-    m_MoveOffset     = offset;
+    m_MoveOffset     = relativeOffset;
     m_MovingOverEdge = true;
 
     return true;

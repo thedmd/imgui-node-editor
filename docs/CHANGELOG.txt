@@ -96,3 +96,5 @@ v0.9.1 (WIP):
     BUGFIX: Explicitly choose embedded GL3W as OpenGL extension loader (#96)
 
     BUGFIX: Application: Don't apply HiDPI logic for (-FLT_MAX,-FLT_MAX) mouse position
+
+    BUGFIX: Editor: Clamp over-the-edge drag distance to prevent scrolling to infinity on focus lost
