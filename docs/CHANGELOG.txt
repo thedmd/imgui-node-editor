@@ -92,3 +92,5 @@ v0.9.1 (WIP):
     BUGFIX: Make Canvas work with Viewports (#91, #90)
 
     BUGFIX: Explicitly choose embedded GL3W as OpenGL extension loader (#96)
+
+    BUGFIX: Application: Don't apply HiDPI logic for (-FLT_MAX,-FLT_MAX) mouse position
