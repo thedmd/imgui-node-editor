@@ -70,6 +70,8 @@ Node Editor sources are located in root project directory. To use it, simply cop
 ```
 Windows:
     cmake -Hexamples -Bbuild -G "Visual Studio 15 2017 Win64"
+      or
+    cmake -Hexamples -Bbuild -G "Visual Studio 16 2019" -A x64
 
 macOS:
     cmake -Hexamples -Bbuild -G "Xcode"
