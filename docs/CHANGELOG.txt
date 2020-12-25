@@ -72,6 +72,13 @@ v0.9.1 (WIP):
 
     NEW: Reintegrate Widgets example from @crolando (#77)
 
+    NEW: User can now override button indices for various actions (#88)
+        New API in Config:
+            int                     DragButtonIndex;        // Mouse button index drag action will react to (0-left, 1-right, 2-middle)
+            int                     SelectButtonIndex;      // Mouse button index select action will react to (0-left, 1-right, 2-middle)
+            int                     NavigateButtonIndex;    // Mouse button index navigate action will react to (0-left, 1-right, 2-middle)
+            int                     ContextMenuButtonIndex; // Mouse button index context menu action will react to (0-left, 1-right, 2-middle)
+
     BUGFIX: Avoid crash while destroying editor.
 
     BUGFIX: Save draw list used by editor between Begin() and End()

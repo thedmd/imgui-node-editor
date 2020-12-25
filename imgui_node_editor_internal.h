@@ -1265,6 +1265,8 @@ struct EditorContext
     EditorContext(const ax::NodeEditor::Config* config = nullptr);
     ~EditorContext();
 
+    const Config& GetConfig() const { return m_Config; }
+
     Style& GetStyle() { return m_Style; }
 
     void Begin(const char* id, const ImVec2& size = ImVec2(0, 0));

@@ -113,10 +113,6 @@ static const float c_LinkSelectThickness        = 5.0f;  // canvas pixels
 static const float c_NavigationZoomMargin       = 0.1f;  // percentage of visible bounds
 static const float c_MouseZoomDuration          = 0.15f; // seconds
 static const float c_SelectionFadeOutDuration   = 0.15f; // seconds
-static const auto  c_DragButtonIndex            = 0;
-static const auto  c_SelectButtonIndex          = 0;
-static const auto  c_ScrollButtonIndex          = 1;
-static const auto  c_ContextMenuButtonIndex     = 1;
 
 static const auto  c_MaxMoveOverEdgeSpeed       = 10.0f;
 static const auto  c_MaxMoveOverEdgeDistance    = 300.0f;
@@ -2177,11 +2173,11 @@ ed::Control ed::EditorContext::BuildControl(bool allowOffscreen)
     };
 
     // Check input interactions over area.
-    auto checkInteractionsInArea = [&emitInteractiveArea, &hotObject, &activeObject, &clickedObject, &doubleClickedObject](ObjectId id, const ImRect& rect, Object* object)
+    auto checkInteractionsInArea = [this, &emitInteractiveArea, &hotObject, &activeObject, &clickedObject, &doubleClickedObject](ObjectId id, const ImRect& rect, Object* object)
     {
         if (emitInteractiveArea(id, rect))
             clickedObject = object;
-        if (!doubleClickedObject && ImGui::IsMouseDoubleClicked(c_DragButtonIndex) && ImGui::IsItemHovered())
+        if (!doubleClickedObject && ImGui::IsMouseDoubleClicked(m_Config.DragButtonIndex) && ImGui::IsItemHovered())
             doubleClickedObject = object;
 
         if (!hotObject && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem))
@@ -2253,7 +2249,7 @@ ed::Control ed::EditorContext::BuildControl(bool allowOffscreen)
 
     // Check for interaction with background.
     auto backgroundClicked       = emitInteractiveArea(NodeId(0), editorRect);
-    auto backgroundDoubleClicked = !doubleClickedObject && ImGui::IsItemHovered() ? ImGui::IsMouseDoubleClicked(c_DragButtonIndex) : false;
+    auto backgroundDoubleClicked = !doubleClickedObject && ImGui::IsItemHovered() ? ImGui::IsMouseDoubleClicked(m_Config.DragButtonIndex) : false;
     auto isBackgroundActive      = ImGui::IsItemActive();
     auto isBackgroundHot         = !hotObject;
     auto isDragging              = ImGui::IsMouseDragging(0, 1) || ImGui::IsMouseDragging(1, 1) || ImGui::IsMouseDragging(2, 1);
@@ -3026,11 +3022,11 @@ ed::EditorAction::AcceptResult ed::NavigateAction::Accept(const Control& control
     if (m_IsActive)
         return False;
 
-    if (ImGui::IsWindowHovered() /*&& !ImGui::IsAnyItemActive()*/ && ImGui::IsMouseDragging(c_ScrollButtonIndex, 0.0f))
+    if (ImGui::IsWindowHovered() /*&& !ImGui::IsAnyItemActive()*/ && ImGui::IsMouseDragging(Editor->GetConfig().NavigateButtonIndex, 0.0f))
     {
         m_IsActive    = true;
         m_ScrollStart = m_Scroll;
-        m_ScrollDelta = ImGui::GetMouseDragDelta(c_ScrollButtonIndex);
+        m_ScrollDelta = ImGui::GetMouseDragDelta(Editor->GetConfig().NavigateButtonIndex);
         m_Scroll      = m_ScrollStart - m_ScrollDelta * m_Zoom;
     }
 
@@ -3112,9 +3108,9 @@ bool ed::NavigateAction::Process(const Control& control)
     if (!m_IsActive)
         return false;
 
-    if (ImGui::IsMouseDragging(c_ScrollButtonIndex, 0.0f))
+    if (ImGui::IsMouseDragging(Editor->GetConfig().NavigateButtonIndex, 0.0f))
     {
-        m_ScrollDelta = ImGui::GetMouseDragDelta(c_ScrollButtonIndex);
+        m_ScrollDelta = ImGui::GetMouseDragDelta(Editor->GetConfig().NavigateButtonIndex);
         m_Scroll      = m_ScrollStart - m_ScrollDelta * m_Zoom;
         m_VisibleRect = GetViewRect();
 //         if (IsActive && Animation.IsPlaying())
@@ -3578,7 +3574,7 @@ ed::EditorAction::AcceptResult ed::DragAction::Accept(const Control& control)
     if (m_IsActive)
         return False;
 
-    if (control.ActiveObject && ImGui::IsMouseDragging(c_DragButtonIndex))
+    if (control.ActiveObject && ImGui::IsMouseDragging(Editor->GetConfig().DragButtonIndex))
     {
         if (!control.ActiveObject->AcceptDrag())
             return False;
@@ -3646,7 +3642,7 @@ bool ed::DragAction::Process(const Control& control)
 
     if (control.ActiveObject == m_DraggedObject)
     {
-        auto dragOffset = ImGui::GetMouseDragDelta(c_DragButtonIndex, 0.0f);
+        auto dragOffset = ImGui::GetMouseDragDelta(Editor->GetConfig().DragButtonIndex, 0.0f);
 
         auto draggedOrigin  = m_DraggedObject->DragStartLocation();
         auto alignPivot     = ImVec2(0, 0);
@@ -3753,7 +3749,7 @@ ed::EditorAction::AcceptResult ed::SelectAction::Accept(const Control& control)
 
     m_SelectedObjectsAtStart.clear();
 
-    if (control.BackgroundHot && ImGui::IsMouseDragging(c_SelectButtonIndex, 1))
+    if (control.BackgroundHot && ImGui::IsMouseDragging(Editor->GetConfig().SelectButtonIndex, 1))
     {
         m_IsActive = true;
         m_StartPoint = ImGui::GetMousePos();
@@ -3817,7 +3813,7 @@ bool ed::SelectAction::Process(const Control& control)
     if (!m_IsActive)
         return false;
 
-    if (ImGui::IsMouseDragging(c_SelectButtonIndex, 0))
+    if (ImGui::IsMouseDragging(Editor->GetConfig().SelectButtonIndex, 0))
     {
         m_EndPoint = ImGui::GetMousePos();
 
@@ -3918,9 +3914,9 @@ ed::ContextMenuAction::ContextMenuAction(EditorContext* editor):
 
 ed::EditorAction::AcceptResult ed::ContextMenuAction::Accept(const Control& control)
 {
-    const auto isPressed  = ImGui::IsMouseClicked(c_ContextMenuButtonIndex);
-    const auto isReleased = ImGui::IsMouseReleased(c_ContextMenuButtonIndex);
-    const auto isDragging = ImGui::IsMouseDragging(c_ContextMenuButtonIndex);
+    const auto isPressed  = ImGui::IsMouseClicked(Editor->GetConfig().ContextMenuButtonIndex);
+    const auto isReleased = ImGui::IsMouseReleased(Editor->GetConfig().ContextMenuButtonIndex);
+    const auto isDragging = ImGui::IsMouseDragging(Editor->GetConfig().ContextMenuButtonIndex);
 
     if (isPressed || isReleased || isDragging)
     {
@@ -4286,7 +4282,7 @@ ed::EditorAction::AcceptResult ed::CreateItemAction::Accept(const Control& contr
     if (m_IsActive)
         return EditorAction::False;
 
-    if (control.ActivePin && ImGui::IsMouseDragging(c_DragButtonIndex))
+    if (control.ActivePin && ImGui::IsMouseDragging(Editor->GetConfig().DragButtonIndex))
     {
         m_DraggedPin = control.ActivePin;
         DragStart(m_DraggedPin);
