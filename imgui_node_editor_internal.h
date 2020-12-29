@@ -562,6 +562,11 @@ struct Control
     bool    BackgroundClicked;
     bool    BackgroundDoubleClicked;
 
+    Control()
+        : Control(nullptr, nullptr, nullptr, nullptr, false, false, false, false)
+    {
+    }
+
     Control(Object* hotObject, Object* activeObject, Object* clickedObject, Object* doubleClickedObject,
         bool backgroundHot, bool backgroundActive, bool backgroundClicked, bool backgroundDoubleClicked)
         : HotObject(hotObject)
@@ -1332,8 +1337,10 @@ struct EditorContext
     void Resume(SuspendFlags flags = SuspendFlags::None);
     bool IsSuspended();
 
-    bool IsActive();
+    bool IsFocused();
     bool IsHovered() const;
+    bool IsHoveredWithoutOverlapp() const;
+    bool CanAcceptUserInput() const;
 
     void MakeDirty(SaveReasonFlags reason);
     void MakeDirty(SaveReasonFlags reason, Node* node);
@@ -1440,8 +1447,9 @@ private:
     void UpdateAnimations();
 
     bool                m_IsFirstFrame;
-    bool                m_IsWindowActive;
+    bool                m_IsFocused;
     bool                m_IsHovered;
+    bool                m_IsHoveredWithoutOverlapp;
 
     bool                m_ShortcutsEnabled;
 

@@ -1013,8 +1013,9 @@ ImRect ed::Link::GetBounds() const
 //------------------------------------------------------------------------------
 ed::EditorContext::EditorContext(const ax::NodeEditor::Config* config)
     : m_IsFirstFrame(true)
-    , m_IsWindowActive(false)
+    , m_IsFocused(false)
     , m_IsHovered(false)
+    , m_IsHoveredWithoutOverlapp(false)
     , m_ShortcutsEnabled(true)
     , m_Style()
     , m_Nodes()
@@ -1106,7 +1107,7 @@ void ed::EditorContext::Begin(const char* id, const ImVec2& size)
 
     ImGui::CaptureKeyboardFromApp();
 
-    m_IsWindowActive = ImGui::IsWindowFocused();
+    m_IsFocused = ImGui::IsWindowFocused();
 
     //
     m_NavigateAction.SetWindow(m_Canvas.ViewRect().Min, m_Canvas.ViewRect().GetSize());
@@ -1465,6 +1466,7 @@ void ed::EditorContext::End()
         m_DrawList->AddRect(m_Canvas.Rect().Min, m_Canvas.Rect().Max, ImColor(borderColor));
     }
 
+    // #metrics
     // ShowMetrics(control);
 
     ImGui::PopID();
@@ -1808,14 +1810,24 @@ bool ed::EditorContext::IsSuspended()
 	return m_Canvas.IsSuspended();
 }
 
-bool ed::EditorContext::IsActive()
+bool ed::EditorContext::IsFocused()
 {
-    return m_IsWindowActive;
+    return m_IsFocused;
 }
 
 bool ed::EditorContext::IsHovered() const
 {
     return m_IsHovered;
+}
+
+bool ed::EditorContext::IsHoveredWithoutOverlapp() const
+{
+    return m_IsHoveredWithoutOverlapp;
+}
+
+bool ed::EditorContext::CanAcceptUserInput() const
+{
+    return m_IsFocused && m_IsHovered;
 }
 
 ed::Pin* ed::EditorContext::CreatePin(PinId id, PinKind kind)
@@ -2110,9 +2122,13 @@ bool ed::EditorContext::AreShortcutsEnabled()
 ed::Control ed::EditorContext::BuildControl(bool allowOffscreen)
 {
     m_IsHovered = false;
+    m_IsHoveredWithoutOverlapp = false;
 
-    if (!allowOffscreen && !ImGui::IsMouseHoveringRect(m_Canvas.ViewRect().Min, m_Canvas.ViewRect().Max, true))
-        return Control(nullptr, nullptr, nullptr, nullptr, false, false, false, false);
+    const auto windowHovered = ImGui::IsWindowHovered();
+    const auto widgetHovered = ImGui::IsMouseHoveringRect(m_Canvas.ViewRect().Min, m_Canvas.ViewRect().Max, true);
+
+    if (!allowOffscreen && !windowHovered && !widgetHovered)
+        return Control();
 
     const auto mousePos = ImGui::GetMousePos();
 
@@ -2297,10 +2313,14 @@ ed::Control ed::EditorContext::BuildControl(bool allowOffscreen)
         backgroundDoubleClicked = false;
     }
 
-    m_IsHovered = ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenOverlapped);
+    m_IsHovered = ImGui::IsItemHovered(ImGuiHoveredFlags_RectOnly);
+    m_IsHoveredWithoutOverlapp = ImGui::IsItemHovered();
+    if (!allowOffscreen && !m_IsHovered)
+        return Control();
 
 # if IMGUI_VERSION_NUM >= 17909
-    ImGui::SetItemUsingMouseWheel();
+    if (m_IsHoveredWithoutOverlapp)
+        ImGui::SetItemUsingMouseWheel();
 # endif
 
     return Control(hotObject, activeObject, clickedObject, doubleClickedObject,
@@ -2351,7 +2371,10 @@ void ed::EditorContext::ShowMetrics(const Control& control)
 
     ImGui::SetCursorScreenPos(canvasRect.Min + ImVec2(5, 5));
     ImGui::BeginGroup();
-    ImGui::Text("Is Editor Active: %s", ImGui::IsWindowHovered() ? "true" : "false");
+    ImGui::Text("Is Focused: %s", m_IsFocused ? "true" : "false");
+    ImGui::Text("Is Hovered: %s", m_IsHovered ? "true" : "false");
+    ImGui::Text("Is Hovered (without overlapp): %s", m_IsHoveredWithoutOverlapp ? "true" : "false");
+    ImGui::Text("Accept Input: %s", CanAcceptUserInput() ? "true" : "false");
     ImGui::Text("View Position: { x=%g y=%g }", viewRect.Min.x, viewRect.Min.y);
     ImGui::Text("View Size: { w=%g h=%g }", viewRect.GetWidth(), viewRect.GetHeight());
     ImGui::Text("Canvas Size: { w=%g h=%g }", canvasRect.GetWidth(), canvasRect.GetHeight());
@@ -3036,7 +3059,7 @@ ed::EditorAction::AcceptResult ed::NavigateAction::Accept(const Control& control
     if (m_IsActive)
         return False;
 
-    if (Editor->IsHovered() /*&& !ImGui::IsAnyItemActive()*/ && ImGui::IsMouseDragging(Editor->GetConfig().NavigateButtonIndex, 0.0f))
+    if (Editor->CanAcceptUserInput() /*&& !ImGui::IsAnyItemActive()*/ && ImGui::IsMouseDragging(Editor->GetConfig().NavigateButtonIndex, 0.0f))
     {
         m_IsActive    = true;
         m_ScrollStart = m_Scroll;
@@ -3046,7 +3069,7 @@ ed::EditorAction::AcceptResult ed::NavigateAction::Accept(const Control& control
 
     auto& io = ImGui::GetIO();
 
-    if (ImGui::IsWindowFocused() && ImGui::IsKeyPressed(GetKeyIndexForF()) && Editor->AreShortcutsEnabled())
+    if (Editor->CanAcceptUserInput() && ImGui::IsKeyPressed(GetKeyIndexForF()) && Editor->AreShortcutsEnabled())
     {
         const auto zoomMode = io.KeyShift ? NavigateAction::ZoomMode::WithMargin : NavigateAction::ZoomMode::None;
 
@@ -3153,7 +3176,7 @@ bool ed::NavigateAction::HandleZoom(const Control& control)
 
     auto& io = ImGui::GetIO();
 
-    if (!io.MouseWheel || (!allowOffscreen && !Editor->IsHovered()))// && !ImGui::IsAnyItemActive())
+    if (!io.MouseWheel || (!allowOffscreen && !Editor->IsHoveredWithoutOverlapp()))// && !ImGui::IsAnyItemActive())
         return false;
 
     auto savedScroll = m_Scroll;
@@ -3588,7 +3611,7 @@ ed::EditorAction::AcceptResult ed::DragAction::Accept(const Control& control)
     if (m_IsActive)
         return False;
 
-    if (control.ActiveObject && ImGui::IsMouseDragging(Editor->GetConfig().DragButtonIndex))
+    if (Editor->CanAcceptUserInput() && control.ActiveObject && ImGui::IsMouseDragging(Editor->GetConfig().DragButtonIndex))
     {
         if (!control.ActiveObject->AcceptDrag())
             return False;
@@ -3763,7 +3786,7 @@ ed::EditorAction::AcceptResult ed::SelectAction::Accept(const Control& control)
 
     m_SelectedObjectsAtStart.clear();
 
-    if (control.BackgroundHot && ImGui::IsMouseDragging(Editor->GetConfig().SelectButtonIndex, 1))
+    if (Editor->CanAcceptUserInput() && control.BackgroundHot && ImGui::IsMouseDragging(Editor->GetConfig().SelectButtonIndex, 1))
     {
         m_IsActive = true;
         m_StartPoint = ImGui::GetMousePos();
@@ -4073,7 +4096,7 @@ ed::ShortcutAction::ShortcutAction(EditorContext* editor):
 
 ed::EditorAction::AcceptResult ed::ShortcutAction::Accept(const Control& control)
 {
-    if (!Editor->IsActive() || !Editor->AreShortcutsEnabled())
+    if (!Editor->IsFocused() || !Editor->AreShortcutsEnabled())
         return False;
 
     Action candidateAction = None;
@@ -4358,7 +4381,7 @@ bool ed::CreateItemAction::Process(const Control& control)
     }
     else if (m_CurrentStage == Possible || !control.ActivePin)
     {
-        if (!Editor->IsHovered())
+        if (!Editor->CanAcceptUserInput())
         {
             m_DraggedPin = nullptr;
             DropNothing();
@@ -4629,7 +4652,7 @@ ed::EditorAction::AcceptResult ed::DeleteItemsAction::Accept(const Control& cont
         return False;
 
     auto& io = ImGui::GetIO();
-    if (ImGui::IsWindowFocused() && ImGui::IsKeyPressed(ImGui::GetKeyIndex(ImGuiKey_Delete)) && Editor->AreShortcutsEnabled())
+    if (Editor->CanAcceptUserInput() && ImGui::IsKeyPressed(ImGui::GetKeyIndex(ImGuiKey_Delete)) && Editor->AreShortcutsEnabled())
     {
         auto& selection = Editor->GetSelectedObjects();
         if (!selection.empty())

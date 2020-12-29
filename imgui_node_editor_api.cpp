@@ -418,7 +418,7 @@ bool ax::NodeEditor::IsSuspended()
 
 bool ax::NodeEditor::IsActive()
 {
-    return s_Editor->IsActive();
+    return s_Editor->IsFocused();
 }
 
 bool ax::NodeEditor::HasSelectionChanged()
