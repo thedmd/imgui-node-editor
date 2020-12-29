@@ -69,15 +69,15 @@ Node Editor sources are located in root project directory. To use it, simply cop
 [Examples](../examples) can be build with CMake:
 ```
 Windows:
-    cmake -Hexamples -Bbuild -G "Visual Studio 15 2017 Win64"
+    cmake -S examples -B build -G "Visual Studio 15 2017 Win64"
       or
-    cmake -Hexamples -Bbuild -G "Visual Studio 16 2019" -A x64
+    cmake -S examples -B build -G "Visual Studio 16 2019" -A x64
 
 macOS:
-    cmake -Hexamples -Bbuild -G "Xcode"
+    cmake -S examples -B build -G "Xcode"
 
 Linux:
-    cmake -Hexamples -Bbuild -G "Unix Makefiles"
+    cmake -S examples -B build -G "Unix Makefiles"
 
 Build:
     cmake --build build --config Release
