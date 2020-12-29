@@ -109,3 +109,5 @@ v0.9.1 (WIP):
     BUGFIX: Editor: Consume scroll event (#73) (require ImGui 17909 or later)
 
     BUGFIX: Editor: Respect window focus while handling actions (#99)
+
+    BUGFIX: Examples: Correct case of `data` directory (#97)
