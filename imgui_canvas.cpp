@@ -121,6 +121,9 @@ bool ImGuiEx::Canvas::Begin(ImGuiID id, const ImVec2& size)
     SaveInputState();
     SaveViewportState();
 
+    // Record cursor max to prevent scrollbars from appearing.
+    m_WindowCursorMaxBackup = ImGui::GetCurrentWindow()->DC.CursorMaxPos;
+
     EnterLocalSpace();
 
     // Emit dummy widget matching bounds of the canvas.
@@ -151,6 +154,8 @@ void ImGuiEx::Canvas::End()
     IM_ASSERT(m_SuspendCounter == 0);
 
     LeaveLocalSpace();
+
+    ImGui::GetCurrentWindow()->DC.CursorMaxPos = m_WindowCursorMaxBackup;
 
     ImGui::SetItemAllowOverlap();
 
@@ -332,9 +337,6 @@ void ImGuiEx::Canvas::SaveInputState()
     m_MousePosPrevBackup = io.MousePosPrev;
     for (auto i = 0; i < IM_ARRAYSIZE(m_MouseClickedPosBackup); ++i)
         m_MouseClickedPosBackup[i] = io.MouseClickedPos[i];
-
-    // Record cursor max to prevent scrollbars from appearing.
-    m_WindowCursorMaxBackup = ImGui::GetCurrentWindow()->DC.CursorMaxPos;
 }
 
 void ImGuiEx::Canvas::RestoreInputState()
@@ -344,7 +346,6 @@ void ImGuiEx::Canvas::RestoreInputState()
     io.MousePosPrev = m_MousePosPrevBackup;
     for (auto i = 0; i < IM_ARRAYSIZE(m_MouseClickedPosBackup); ++i)
         io.MouseClickedPos[i] = m_MouseClickedPosBackup[i];
-    ImGui::GetCurrentWindow()->DC.CursorMaxPos = m_WindowCursorMaxBackup;
 }
 
 void ImGuiEx::Canvas::SaveViewportState()
