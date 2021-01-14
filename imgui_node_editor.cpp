@@ -1105,8 +1105,6 @@ void ed::EditorContext::Begin(const char* id, const ImVec2& size)
     //    ImGuiWindowFlags_NoScrollbar |
     //    ImGuiWindowFlags_NoScrollWithMouse);
 
-    ImGui::CaptureKeyboardFromApp();
-
     m_IsFocused = ImGui::IsWindowFocused();
 
     //
