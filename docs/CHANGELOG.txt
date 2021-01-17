@@ -115,3 +115,5 @@ v0.9.1 (WIP):
     BUGFIX: Canvas: Save/Restore CursorMaxPos only in Begin/End (#101)
     
     BUGFIX: Editor: Don't implicitly capture keyboard (#83)
+    
+    BUGFIX: Application: Reset key down state after loosing keyboard focus

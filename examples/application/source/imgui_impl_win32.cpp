@@ -344,6 +344,10 @@ IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hwnd, UINT msg, WPARA
         if ((UINT)wParam == DBT_DEVNODES_CHANGED)
             g_WantUpdateHasGamepad = true;
         return 0;
+    case WM_KILLFOCUS:
+        for (int n = 0; n < IM_ARRAYSIZE(io.KeysDown); n++)
+            io.KeysDown[n] = false;
+        break;
     }
     return 0;
 }
