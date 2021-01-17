@@ -113,3 +113,5 @@ v0.9.1 (WIP):
     BUGFIX: Examples: Correct case of `data` directory (#97)
     
     BUGFIX: Canvas: Save/Restore CursorMaxPos only in Begin/End (#101)
+    
+    BUGFIX: Editor: Don't implicitly capture keyboard (#83)
