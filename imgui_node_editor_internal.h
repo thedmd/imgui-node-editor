@@ -834,10 +834,10 @@ struct NavigateAction final: EditorAction
     void StopNavigation();
     void FinishNavigation();
 
-    bool MoveOverEdge();
+    bool MoveOverEdge(const ImVec2& canvasSize);
     void StopMoveOverEdge();
     bool IsMovingOverEdge() const { return m_MovingOverEdge; }
-    ImVec2 GetMoveOffset() const { return m_MoveOffset; }
+    ImVec2 GetMoveScreenOffset() const { return m_MoveScreenOffset; }
 
     void SetWindow(ImVec2 position, ImVec2 size);
     ImVec2 GetWindowScreenPos() const { return m_WindowScreenPos; };
@@ -860,7 +860,7 @@ private:
     uint64_t           m_LastSelectionId;
     Object*            m_LastObject;
     bool               m_MovingOverEdge;
-    ImVec2             m_MoveOffset;
+    ImVec2             m_MoveScreenOffset;
 
     bool HandleZoom(const Control& control);
 

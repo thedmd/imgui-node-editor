@@ -1095,6 +1095,16 @@ void ed::EditorContext::Begin(const char* id, const ImVec2& size)
     if (canvasSize.y <= 0.0f)
         canvasSize.y = ImMax(4.0f, availableContentSize.y);
 
+    if (m_CurrentAction && m_CurrentAction->IsDragging() && m_NavigateAction.MoveOverEdge(canvasSize))
+    {
+        auto& io = ImGui::GetIO();
+        auto offset = m_NavigateAction.GetMoveScreenOffset();
+        for (int i = 0; i < 5; ++i)
+            io.MouseClickedPos[i] = io.MouseClickedPos[i] - offset;
+    }
+    else
+        m_NavigateAction.StopMoveOverEdge();
+
     auto previousSize        = m_Canvas.Rect().GetSize();
     auto previousVisibleRect = m_Canvas.ViewRect();
     m_IsCanvasVisible = m_Canvas.Begin(id, canvasSize);
@@ -1109,16 +1119,6 @@ void ed::EditorContext::Begin(const char* id, const ImVec2& size)
 
     //
     m_NavigateAction.SetWindow(m_Canvas.ViewRect().Min, m_Canvas.ViewRect().GetSize());
-
-    if (m_CurrentAction && m_CurrentAction->IsDragging() && m_NavigateAction.MoveOverEdge())
-    {
-        auto& io = ImGui::GetIO();
-        auto offset = m_NavigateAction.GetMoveOffset();
-        for (int i = 0; i < 5; ++i)
-            io.MouseClickedPos[i] = io.MouseClickedPos[i] - offset;
-    }
-    else
-        m_NavigateAction.StopMoveOverEdge();
 
     // Handle canvas size change. Scale to Y axis, center on X.
     if (!ImRect_IsEmpty(previousVisibleRect) && previousSize != canvasSize)
@@ -3046,7 +3046,7 @@ ed::NavigateAction::NavigateAction(EditorContext* editor, ImGuiEx::Canvas& canva
     m_LastSelectionId(0),
     m_LastObject(nullptr),
     m_MovingOverEdge(false),
-    m_MoveOffset(0, 0)
+    m_MoveScreenOffset(0, 0)
 {
 }
 
@@ -3280,15 +3280,16 @@ void ed::NavigateAction::FinishNavigation()
     m_Animation.Finish();
 }
 
-bool ed::NavigateAction::MoveOverEdge()
+bool ed::NavigateAction::MoveOverEdge(const ImVec2& canvasSize)
 {
     // Don't interrupt non-edge animations
     if (m_Animation.IsPlaying())
         return false;
 
-          auto& io            = ImGui::GetIO();
-    const auto screenRect     = m_Canvas.ViewRect();
-    const auto screenMousePos = io.MousePos;
+    auto& io = ImGui::GetIO();
+
+    const auto screenMousePos   = io.MousePos;
+    const auto screenRect       = ImRect(ImGui::GetCursorScreenPos(), ImGui::GetCursorScreenPos() + canvasSize);
 
     // Mouse is over screen, do nothing
     if (screenRect.Contains(screenMousePos))
@@ -3297,20 +3298,20 @@ bool ed::NavigateAction::MoveOverEdge()
     // Several backend move mouse position to -FLT_MAX to indicate
     // uninitialized/unknown state. To prevent all sorts
     // of math problems, we just ignore such state.
-    if (io.MousePos.x <= -FLT_MAX || io.MousePos.y <= -FLT_MAX)
+    if (screenMousePos.x <= -FLT_MAX || screenMousePos.y <= -FLT_MAX)
         return false;
 
     const auto minDistance       = ImVec2(-c_MaxMoveOverEdgeDistance, -c_MaxMoveOverEdgeDistance);
     const auto maxDistance       = ImVec2( c_MaxMoveOverEdgeDistance,  c_MaxMoveOverEdgeDistance);
 
-    const auto screenPointOnEdge = ImRect_ClosestPoint(screenRect, screenMousePos, true);
-    const auto offset            = ImMin(ImMax(screenPointOnEdge - screenMousePos, minDistance), maxDistance);
-    const auto relativeOffset    = -offset * io.DeltaTime * c_MaxMoveOverEdgeSpeed;
+    const auto screenPointOnEdge  = ImRect_ClosestPoint(screenRect, screenMousePos, true);
+    const auto offset             = ImMin(ImMax(screenPointOnEdge - screenMousePos, minDistance), maxDistance);
+    const auto relativeOffset     = -offset * io.DeltaTime * c_MaxMoveOverEdgeSpeed;
 
     m_Scroll = m_Scroll + relativeOffset;
 
-    m_MoveOffset     = relativeOffset;
-    m_MovingOverEdge = true;
+    m_MoveScreenOffset  = relativeOffset;
+    m_MovingOverEdge    = true;
 
     return true;
 }
@@ -3321,8 +3322,8 @@ void ed::NavigateAction::StopMoveOverEdge()
     {
         Editor->MakeDirty(SaveReasonFlags::Navigation);
 
-        m_MoveOffset     = ImVec2(0, 0);
-        m_MovingOverEdge = false;
+        m_MoveScreenOffset  = ImVec2(0, 0);
+        m_MovingOverEdge    = false;
     }
 }
 

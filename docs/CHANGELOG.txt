@@ -117,3 +117,5 @@ v0.9.1 (WIP):
     BUGFIX: Editor: Don't implicitly capture keyboard (#83)
     
     BUGFIX: Application: Reset key down state after loosing keyboard focus
+    
+    BUGFIX: Editor: Make off-screen dragging work again
