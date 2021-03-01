@@ -270,7 +270,7 @@ ImDrawList* GetNodeBackgroundDrawList(NodeId nodeId);
 
 bool Link(LinkId id, PinId startPinId, PinId endPinId, const ImVec4& color = ImVec4(1, 1, 1, 1), float thickness = 1.0f);
 
-void Flow(LinkId linkId, bool reverseDirection);
+void Flow(LinkId linkId, bool reverseDirection = false);
 
 bool BeginCreate(const ImVec4& color = ImVec4(1, 1, 1, 1), float thickness = 1.0f);
 bool QueryNewLink(PinId* startId, PinId* endId);
