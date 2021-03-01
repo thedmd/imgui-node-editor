@@ -714,11 +714,13 @@ struct Example:
         if (ImGui::Button("Zoom to Content"))
             ed::NavigateToContent();
         ImGui::Spring(0.0f);
+        static bool reverseFlowDirection = false;
         if (ImGui::Button("Show Flow"))
         {
             for (auto& link : m_Links)
-                ed::Flow(link.ID);
+                ed::Flow(link.ID, reverseFlowDirection);
         }
+        ImGui::Checkbox("Reverse", &reverseFlowDirection);
         ImGui::Spring();
         if (ImGui::Button("Edit Style"))
             showStyleEditor = true;
@@ -865,7 +867,7 @@ struct Example:
 
         if (ImGui::IsKeyPressed(ImGui::GetKeyIndex(ImGuiKey_Z)))
             for (auto& link : m_Links)
-                ed::Flow(link.ID);
+                ed::Flow(link.ID, reverseFlowDirection);
 
         if (ed::HasSelectionChanged())
             ++changeCount;

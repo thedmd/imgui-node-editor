@@ -691,10 +691,11 @@ struct FlowAnimation final: Animation
     float m_Speed;
     float m_MarkerDistance;
     float m_Offset;
+    bool  m_ReverseDirection;
 
     FlowAnimation(FlowAnimationController* controller);
 
-    void Flow(Link* link, float markerDistance, float speed, float duration);
+    void Flow(Link* link, float markerDistance, float speed, float duration, bool reverseDirection);
 
     void Draw(ImDrawList* drawList);
 
@@ -745,7 +746,7 @@ struct FlowAnimationController final : AnimationController
     FlowAnimationController(EditorContext* editor);
     virtual ~FlowAnimationController();
 
-    void Flow(Link* link);
+    void Flow(Link* link, bool reverseDirection);
 
     virtual void Draw(ImDrawList* drawList) override final;
 
@@ -1405,7 +1406,7 @@ struct EditorContext
     void RegisterAnimation(Animation* animation);
     void UnregisterAnimation(Animation* animation);
 
-    void Flow(Link* link);
+    void Flow(Link* link, bool reverseDirection);
 
     void SetUserContext(bool globalSpace = false);
 

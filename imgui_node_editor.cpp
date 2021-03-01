@@ -2080,9 +2080,9 @@ void ed::EditorContext::UpdateAnimations()
     }
 }
 
-void ed::EditorContext::Flow(Link* link)
+void ed::EditorContext::Flow(Link* link, bool reverseDirection)
 {
-    m_FlowAnimationController.Flow(link);
+    m_FlowAnimationController.Flow(link, reverseDirection);
 }
 
 void ed::EditorContext::SetUserContext(bool globalSpace)
@@ -2824,7 +2824,7 @@ ed::FlowAnimation::FlowAnimation(FlowAnimationController* controller):
 {
 }
 
-void ed::FlowAnimation::Flow(ed::Link* link, float markerDistance, float speed, float duration)
+void ed::FlowAnimation::Flow(ed::Link* link, float markerDistance, float speed, float duration, bool reverseDirection)
 {
     Stop();
 
@@ -2837,9 +2837,13 @@ void ed::FlowAnimation::Flow(ed::Link* link, float markerDistance, float speed, 
     if (m_MarkerDistance != markerDistance)
         ClearPath();
 
-    m_MarkerDistance = markerDistance;
-    m_Speed          = speed;
-    m_Link           = link;
+    if (m_ReverseDirection != reverseDirection)
+        ClearPath();
+
+    m_MarkerDistance   = markerDistance;
+    m_Speed            = speed;
+    m_Link             = link;
+    m_ReverseDirection = reverseDirection;
 
     Play(duration);
 }
@@ -2893,7 +2897,12 @@ void ed::FlowAnimation::UpdatePath()
         return;
     }
 
-    const auto curve  = m_Link->GetCurve();
+    auto curve  = m_Link->GetCurve();
+    if (m_ReverseDirection)
+    {
+        std::swap(curve.P0, curve.P3);
+        std::swap(curve.P1, curve.P2);
+    }
 
     m_LastStart  = m_Link->m_Start;
     m_LastEnd    = m_Link->m_End;
@@ -2964,7 +2973,7 @@ ed::FlowAnimationController::~FlowAnimationController()
         delete animation;
 }
 
-void ed::FlowAnimationController::Flow(Link* link)
+void ed::FlowAnimationController::Flow(Link* link, bool reverseDirection)
 {
     if (!link || !link->m_IsLive)
         return;
@@ -2973,7 +2982,7 @@ void ed::FlowAnimationController::Flow(Link* link)
 
     auto animation = GetOrCreate(link);
 
-    animation->Flow(link, editorStyle.FlowMarkerDistance, editorStyle.FlowSpeed, editorStyle.FlowDuration);
+    animation->Flow(link, editorStyle.FlowMarkerDistance, editorStyle.FlowSpeed, editorStyle.FlowDuration, reverseDirection);
 }
 
 void ed::FlowAnimationController::Draw(ImDrawList* drawList)
