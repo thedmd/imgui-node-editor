@@ -79,6 +79,16 @@ v0.9.1 (WIP):
             int                     NavigateButtonIndex;    // Mouse button index navigate action will react to (0-left, 1-right, 2-middle)
             int                     ContextMenuButtonIndex; // Mouse button index context menu action will react to (0-left, 1-right, 2-middle)
 
+    NEW: Flow direction can now be picked per flow (#104)
+        New API:
+            enum class FlowDirection
+            {
+                Forward,
+                Backward
+            };
+
+            void Flow(LinkId linkId, FlowDirection direction = FlowDirection::Forward);
+
     BUGFIX: Avoid crash while destroying editor.
 
     BUGFIX: Save draw list used by editor between Begin() and End()
