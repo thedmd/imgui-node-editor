@@ -111,11 +111,14 @@ v0.9.1 (WIP):
     BUGFIX: Editor: Respect window focus while handling actions (#99)
 
     BUGFIX: Examples: Correct case of `data` directory (#97)
-    
+
     BUGFIX: Canvas: Save/Restore CursorMaxPos only in Begin/End (#101)
-    
+
     BUGFIX: Editor: Don't implicitly capture keyboard (#83)
-    
+
     BUGFIX: Application: Reset key down state after loosing keyboard focus
-    
+
     BUGFIX: Editor: Make off-screen dragging work again
+
+    BUGFIX: ImGui: Disable obsolete functions (#103)
+

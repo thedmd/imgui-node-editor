@@ -465,7 +465,7 @@ static void ImDrawList_AddBezierWithArrows(ImDrawList* drawList, const ImCubicBe
 
     if (fill)
     {
-        drawList->AddBezierCurve(curve.P0, curve.P1, curve.P2, curve.P3, color, thickness);
+        drawList->AddBezierCubic(curve.P0, curve.P1, curve.P2, curve.P3, color, thickness);
 
         if (startArrowSize > 0.0f)
         {

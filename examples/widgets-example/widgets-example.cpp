@@ -187,10 +187,10 @@ struct Example:
 
                 // Start columns, but use only first one.
                 ImGui::BeginColumns("##TreeColumns", 2,
-                    ImGuiColumnsFlags_NoBorder |
-                    ImGuiColumnsFlags_NoResize |
-                    ImGuiColumnsFlags_NoPreserveWidths |
-                    ImGuiColumnsFlags_NoForceWithinWindow);
+                    ImGuiOldColumnFlags_NoBorder |
+                    ImGuiOldColumnFlags_NoResize |
+                    ImGuiOldColumnFlags_NoPreserveWidths |
+                    ImGuiOldColumnFlags_NoForceWithinWindow);
 
                 // Adjust column width to match requested one.
                 ImGui::SetColumnWidth(0, width

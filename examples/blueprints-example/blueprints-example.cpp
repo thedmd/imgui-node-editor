@@ -634,7 +634,7 @@ struct Example:
             return;
         }
 
-        auto paneWidth = ImGui::GetContentRegionAvailWidth();
+        auto paneWidth = ImGui::GetContentRegionAvail().x;
 
         auto& editorStyle = ed::GetStyle();
         ImGui::BeginHorizontal("Style buttons", ImVec2(paneWidth, 0), 1.0f);
@@ -670,15 +670,15 @@ struct Example:
 
         ImGui::Separator();
 
-        static ImGuiColorEditFlags edit_mode = ImGuiColorEditFlags_RGB;
+        static ImGuiColorEditFlags edit_mode = ImGuiColorEditFlags_DisplayRGB;
         ImGui::BeginHorizontal("Color Mode", ImVec2(paneWidth, 0), 1.0f);
         ImGui::TextUnformatted("Filter Colors");
         ImGui::Spring();
-        ImGui::RadioButton("RGB", &edit_mode, ImGuiColorEditFlags_RGB);
+        ImGui::RadioButton("RGB", &edit_mode, ImGuiColorEditFlags_DisplayRGB);
         ImGui::Spring(0);
-        ImGui::RadioButton("HSV", &edit_mode, ImGuiColorEditFlags_HSV);
+        ImGui::RadioButton("HSV", &edit_mode, ImGuiColorEditFlags_DisplayHSV);
         ImGui::Spring(0);
-        ImGui::RadioButton("HEX", &edit_mode, ImGuiColorEditFlags_HEX);
+        ImGui::RadioButton("HEX", &edit_mode, ImGuiColorEditFlags_DisplayHex);
         ImGui::EndHorizontal();
 
         static ImGuiTextFilter filter;
@@ -706,7 +706,7 @@ struct Example:
 
         ImGui::BeginChild("Selection", ImVec2(paneWidth, 0));
 
-        paneWidth = ImGui::GetContentRegionAvailWidth();
+        paneWidth = ImGui::GetContentRegionAvail().x;
 
         static bool showStyleEditor = false;
         ImGui::BeginHorizontal("Style Editor", ImVec2(paneWidth, 0));
