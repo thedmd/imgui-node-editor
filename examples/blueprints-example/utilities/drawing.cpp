@@ -4,26 +4,26 @@
 
 void ax::Drawing::DrawIcon(ImDrawList* drawList, const ImVec2& a, const ImVec2& b, IconType type, bool filled, ImU32 color, ImU32 innerColor)
 {
-          auto rect           = ImRect(a, b);
-          auto rect_x         = rect.Min.x;
-          auto rect_y         = rect.Min.y;
-          auto rect_w         = rect.Max.x - rect.Min.x;
-          auto rect_h         = rect.Max.y - rect.Min.y;
-          auto rect_center_x  = (rect.Min.x + rect.Max.x) * 0.5f;
-          auto rect_center_y  = (rect.Min.y + rect.Max.y) * 0.5f;
-          auto rect_center    = ImVec2(rect_center_x, rect_center_y);
-    const auto outline_scale  = rect_w / 24.0f;
+    auto rect = ImRect(a, b);
+    auto rect_x = rect.Min.x;
+    auto rect_y = rect.Min.y;
+    auto rect_w = rect.Max.x - rect.Min.x;
+    auto rect_h = rect.Max.y - rect.Min.y;
+    auto rect_center_x = (rect.Min.x + rect.Max.x) * 0.5f;
+    auto rect_center_y = (rect.Min.y + rect.Max.y) * 0.5f;
+    auto rect_center = ImVec2(rect_center_x, rect_center_y);
+    const auto outline_scale = rect_w / 24.0f;
     const auto extra_segments = static_cast<int>(2 * outline_scale); // for full circle
 
     if (type == IconType::Flow)
     {
         const auto origin_scale = rect_w / 24.0f;
 
-        const auto offset_x  = 1.0f * origin_scale;
-        const auto offset_y  = 0.0f * origin_scale;
-        const auto margin     = (filled ? 2.0f : 2.0f) * origin_scale;
-        const auto rounding   = 0.1f * origin_scale;
-        const auto tip_round  = 0.7f; // percentage of triangle edge (for tip)
+        const auto offset_x = 1.0f * origin_scale;
+        const auto offset_y = 0.0f * origin_scale;
+        const auto margin = (filled ? 2.0f : 2.0f) * origin_scale;
+        const auto rounding = 0.1f * origin_scale;
+        const auto tip_round = 0.7f; // percentage of triangle edge (for tip)
         //const auto edge_round = 0.7f; // percentage of triangle edge (for corner)
         const auto canvas = ImRect(
             rect.Min.x + margin + offset_x,
@@ -35,15 +35,15 @@ void ax::Drawing::DrawIcon(ImDrawList* drawList, const ImVec2& a, const ImVec2& 
         const auto canvas_w = canvas.Max.x - canvas.Min.x;
         const auto canvas_h = canvas.Max.y - canvas.Min.y;
 
-        const auto left   = canvas_x + canvas_w            * 0.5f * 0.3f;
-        const auto right  = canvas_x + canvas_w - canvas_w * 0.5f * 0.3f;
-        const auto top    = canvas_y + canvas_h            * 0.5f * 0.2f;
+        const auto left = canvas_x + canvas_w * 0.5f * 0.3f;
+        const auto right = canvas_x + canvas_w - canvas_w * 0.5f * 0.3f;
+        const auto top = canvas_y + canvas_h * 0.5f * 0.2f;
         const auto bottom = canvas_y + canvas_h - canvas_h * 0.5f * 0.2f;
         const auto center_y = (top + bottom) * 0.5f;
         //const auto angle = AX_PI * 0.5f * 0.5f * 0.5f;
 
-        const auto tip_top    = ImVec2(canvas_x + canvas_w * 0.5f, top);
-        const auto tip_right  = ImVec2(right, center_y);
+        const auto tip_top = ImVec2(canvas_x + canvas_w * 0.5f, top);
+        const auto tip_right = ImVec2(right, center_y);
         const auto tip_bottom = ImVec2(canvas_x + canvas_w * 0.5f, bottom);
 
         drawList->PathLineTo(ImVec2(left, top) + ImVec2(0, rounding));
@@ -80,9 +80,9 @@ void ax::Drawing::DrawIcon(ImDrawList* drawList, const ImVec2& a, const ImVec2& 
 
         auto rect_offset = -static_cast<int>(rect_w * 0.25f * 0.25f);
 
-        rect.Min.x    += rect_offset;
-        rect.Max.x    += rect_offset;
-        rect_x        += rect_offset;
+        rect.Min.x += rect_offset;
+        rect.Max.x += rect_offset;
+        rect_x += rect_offset;
         rect_center_x += rect_offset * 0.5f;
         rect_center.x += rect_offset * 0.5f;
 
@@ -95,22 +95,22 @@ void ax::Drawing::DrawIcon(ImDrawList* drawList, const ImVec2& a, const ImVec2& 
                 const auto r = 0.5f * rect_w / 2.0f - 0.5f;
 
                 if (innerColor & 0xFF000000)
-                    drawList->AddCircleFilled(c, r, innerColor, 12 + extra_segments);
-                drawList->AddCircle(c, r, color, 12 + extra_segments, 2.0f * outline_scale);
+                    drawList->AddCircleFilled(c, r, innerColor, (12 + extra_segments) * 16);
+                drawList->AddCircle(c, r, color, (12 + extra_segments) * 16, 2.0f * outline_scale);
             }
             else
-                drawList->AddCircleFilled(c, 0.5f * rect_w / 2.0f, color, 12 + extra_segments);
+                drawList->AddCircleFilled(c, 0.5f * rect_w / 2.0f, color, (12 + extra_segments) * 16);
         }
 
         if (type == IconType::Square)
         {
             if (filled)
             {
-                const auto r  = 0.5f * rect_w / 2.0f;
+                const auto r = 0.5f * rect_w / 2.0f;
                 const auto p0 = rect_center - ImVec2(r, r);
                 const auto p1 = rect_center + ImVec2(r, r);
 
-                drawList->AddRectFilled(p0, p1, color, 0, 15 + extra_segments);
+                drawList->AddRectFilled(p0, p1, color, 0, (15 + extra_segments) * 16);
             }
             else
             {
@@ -119,9 +119,9 @@ void ax::Drawing::DrawIcon(ImDrawList* drawList, const ImVec2& a, const ImVec2& 
                 const auto p1 = rect_center + ImVec2(r, r);
 
                 if (innerColor & 0xFF000000)
-                    drawList->AddRectFilled(p0, p1, innerColor, 0, 15 + extra_segments);
+                    drawList->AddRectFilled(p0, p1, innerColor, 0, (15 + extra_segments) * 16);
 
-                drawList->AddRect(p0, p1, color, 0, 15 + extra_segments, 2.0f * outline_scale);
+                drawList->AddRect(p0, p1, color, 0, (15 + extra_segments) * 16, 2.0f * outline_scale);
             }
         }
 
@@ -159,12 +159,12 @@ void ax::Drawing::DrawIcon(ImDrawList* drawList, const ImVec2& a, const ImVec2& 
         {
             if (filled)
             {
-                const auto r  = 0.5f * rect_w / 2.0f;
+                const auto r = 0.5f * rect_w / 2.0f;
                 const auto cr = r * 0.5f;
                 const auto p0 = rect_center - ImVec2(r, r);
                 const auto p1 = rect_center + ImVec2(r, r);
 
-                drawList->AddRectFilled(p0, p1, color, cr, 15);
+                drawList->AddRectFilled(p0, p1, color, cr, 240);
             }
             else
             {
@@ -174,9 +174,9 @@ void ax::Drawing::DrawIcon(ImDrawList* drawList, const ImVec2& a, const ImVec2& 
                 const auto p1 = rect_center + ImVec2(r, r);
 
                 if (innerColor & 0xFF000000)
-                    drawList->AddRectFilled(p0, p1, innerColor, cr, 15);
+                    drawList->AddRectFilled(p0, p1, innerColor, cr, 240);
 
-                drawList->AddRect(p0, p1, color, cr, 15, 2.0f * outline_scale);
+                drawList->AddRect(p0, p1, color, cr, 240, 2.0f * outline_scale);
             }
         }
         else if (type == IconType::Diamond)
@@ -186,10 +186,10 @@ void ax::Drawing::DrawIcon(ImDrawList* drawList, const ImVec2& a, const ImVec2& 
                 const auto r = 0.607f * rect_w / 2.0f;
                 const auto c = rect_center;
 
-                drawList->PathLineTo(c + ImVec2( 0, -r));
-                drawList->PathLineTo(c + ImVec2( r,  0));
-                drawList->PathLineTo(c + ImVec2( 0,  r));
-                drawList->PathLineTo(c + ImVec2(-r,  0));
+                drawList->PathLineTo(c + ImVec2(0, -r));
+                drawList->PathLineTo(c + ImVec2(r, 0));
+                drawList->PathLineTo(c + ImVec2(0, r));
+                drawList->PathLineTo(c + ImVec2(-r, 0));
                 drawList->PathFillConvex(color);
             }
             else
@@ -197,10 +197,10 @@ void ax::Drawing::DrawIcon(ImDrawList* drawList, const ImVec2& a, const ImVec2& 
                 const auto r = 0.607f * rect_w / 2.0f - 0.5f;
                 const auto c = rect_center;
 
-                drawList->PathLineTo(c + ImVec2( 0, -r));
-                drawList->PathLineTo(c + ImVec2( r,  0));
-                drawList->PathLineTo(c + ImVec2( 0,  r));
-                drawList->PathLineTo(c + ImVec2(-r,  0));
+                drawList->PathLineTo(c + ImVec2(0, -r));
+                drawList->PathLineTo(c + ImVec2(r, 0));
+                drawList->PathLineTo(c + ImVec2(0, r));
+                drawList->PathLineTo(c + ImVec2(-r, 0));
 
                 if (innerColor & 0xFF000000)
                     drawList->AddConvexPolyFilled(drawList->_Path.Data, drawList->_Path.Size, innerColor);
