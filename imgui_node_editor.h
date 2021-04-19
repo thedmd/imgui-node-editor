@@ -200,7 +200,7 @@ struct Style
         PivotAlignment          = ImVec2(0.5f, 0.5f);
         PivotSize               = ImVec2(0.0f, 0.0f);
         PivotScale              = ImVec2(1, 1);
-        PinCorners              = ImDrawCornerFlags_All;
+        PinCorners              = ImDrawFlags_RoundCornersAll;
         PinRadius               = 0.0f;
         PinArrowSize            = 0.0f;
         PinArrowWidth           = 0.0f;
