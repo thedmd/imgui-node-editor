@@ -1093,7 +1093,7 @@ struct Example:
 
                         ed::PushStyleVar(ed::StyleVar_PinArrowSize, 10.0f);
                         ed::PushStyleVar(ed::StyleVar_PinArrowWidth, 10.0f);
-                        ed::PushStyleVar(ed::StyleVar_PinCorners, 12);
+                        ed::PushStyleVar(ed::StyleVar_PinCorners, 192);
                         ed::BeginPin(pin.ID, ed::PinKind::Input);
                         ed::PinPivotRect(inputsRect.GetTL(), inputsRect.GetBR());
                         ed::PinRect(inputsRect.GetTL(), inputsRect.GetBR());
@@ -1135,7 +1135,7 @@ struct Example:
                     ImGui::Spring(1, 0);
                     outputsRect = ImGui_GetItemRect();
 
-                    ed::PushStyleVar(ed::StyleVar_PinCorners, 3);
+                    ed::PushStyleVar(ed::StyleVar_PinCorners, 48);
                     ed::BeginPin(pin.ID, ed::PinKind::Output);
                     ed::PinPivotRect(outputsRect.GetTL(), outputsRect.GetBR());
                     ed::PinRect(outputsRect.GetTL(), outputsRect.GetBR());
@@ -1234,7 +1234,7 @@ struct Example:
 
                         //ed::PushStyleVar(ed::StyleVar_PinArrowSize, 10.0f);
                         //ed::PushStyleVar(ed::StyleVar_PinArrowWidth, 10.0f);
-                        ed::PushStyleVar(ed::StyleVar_PinCorners, 15);
+                        ed::PushStyleVar(ed::StyleVar_PinCorners, 240);
                         ed::BeginPin(pin.ID, ed::PinKind::Input);
                         ed::PinPivotRect(inputsRect.GetCenter(), inputsRect.GetCenter());
                         ed::PinRect(inputsRect.GetTL(), inputsRect.GetBR());
@@ -1287,7 +1287,7 @@ struct Example:
                         outputsRect.Min.y += padding;
                         outputsRect.Max.y += padding;
 
-                        ed::PushStyleVar(ed::StyleVar_PinCorners, 3);
+                        ed::PushStyleVar(ed::StyleVar_PinCorners, 48);
                         ed::BeginPin(pin.ID, ed::PinKind::Output);
                         ed::PinPivotRect(outputsRect.GetCenter(), outputsRect.GetCenter());
                         ed::PinRect(outputsRect.GetTL(), outputsRect.GetBR());
