@@ -95,11 +95,11 @@ void ax::Drawing::DrawIcon(ImDrawList* drawList, const ImVec2& a, const ImVec2& 
                 const auto r = 0.5f * rect_w / 2.0f - 0.5f;
 
                 if (innerColor & 0xFF000000)
-                    drawList->AddCircleFilled(c, r, innerColor, (12 + extra_segments) * 16);
-                drawList->AddCircle(c, r, color, (12 + extra_segments) * 16, 2.0f * outline_scale);
+                    drawList->AddCircleFilled(c, r, innerColor, (12 + extra_segments) << 4);
+                drawList->AddCircle(c, r, color, (12 + extra_segments) << 4, 2.0f * outline_scale);
             }
             else
-                drawList->AddCircleFilled(c, 0.5f * rect_w / 2.0f, color, (12 + extra_segments) * 16);
+                drawList->AddCircleFilled(c, 0.5f * rect_w / 2.0f, color, (12 + extra_segments) << 4);
         }
 
         if (type == IconType::Square)
@@ -110,7 +110,7 @@ void ax::Drawing::DrawIcon(ImDrawList* drawList, const ImVec2& a, const ImVec2& 
                 const auto p0 = rect_center - ImVec2(r, r);
                 const auto p1 = rect_center + ImVec2(r, r);
 
-                drawList->AddRectFilled(p0, p1, color, 0, (15 + extra_segments) * 16);
+                drawList->AddRectFilled(p0, p1, color, 0, (15 + extra_segments) << 4);
             }
             else
             {
@@ -119,9 +119,9 @@ void ax::Drawing::DrawIcon(ImDrawList* drawList, const ImVec2& a, const ImVec2& 
                 const auto p1 = rect_center + ImVec2(r, r);
 
                 if (innerColor & 0xFF000000)
-                    drawList->AddRectFilled(p0, p1, innerColor, 0, (15 + extra_segments) * 16);
+                    drawList->AddRectFilled(p0, p1, innerColor, 0, (15 + extra_segments) << 4);
 
-                drawList->AddRect(p0, p1, color, 0, (15 + extra_segments) * 16, 2.0f * outline_scale);
+                drawList->AddRect(p0, p1, color, 0, (15 + extra_segments) << 4, 2.0f * outline_scale);
             }
         }
 
