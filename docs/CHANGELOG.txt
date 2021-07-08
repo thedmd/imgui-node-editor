@@ -27,6 +27,8 @@ v0.9.1 (WIP):
             https://github.com/thedmd/imgui/tree/feature/layout      - used in blueprints example only
             https://github.com/thedmd/imgui/tree/feature/extra-keys  - optional: used by Node Editor if present
 
+    CHANGE: Use github actions instead of Travis and AppVeyor (#113)
+
     NEW: All source components are now versioned
 
     NEW: Make view state independent of window resolution.
