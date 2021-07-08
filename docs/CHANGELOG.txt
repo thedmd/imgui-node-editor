@@ -22,6 +22,11 @@ v0.9.1 (WIP):
     CHANGE: Make Node Editor forward compatible with ImGui 1.80+ (#112)
         We're keeping backward compatibility with pre 1.8x versions.
 
+    CHANGE: Update internal copy ImGui to 1.84 (WIP) (3512f2c2c283ec86) (#107)
+        Internal copy has two PR's merged:
+            https://github.com/thedmd/imgui/tree/feature/layout      - used in blueprints example only
+            https://github.com/thedmd/imgui/tree/feature/extra-keys  - optional: used by Node Editor if present
+
     NEW: All source components are now versioned
 
     NEW: Make view state independent of window resolution.
