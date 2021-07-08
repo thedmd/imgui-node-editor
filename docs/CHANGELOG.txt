@@ -19,6 +19,9 @@ v0.9.1 (WIP):
 
     CHANGE: Editor: Make action button internally configurable
 
+    CHANGE: Make Node Editor forward compatible with ImGui 1.80+ (#112)
+        We're keeping backward compatibility with pre 1.8x versions.
+
     NEW: All source components are now versioned
 
     NEW: Make view state independent of window resolution.

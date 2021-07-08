@@ -117,6 +117,12 @@ static const float c_SelectionFadeOutDuration   = 0.15f; // seconds
 static const auto  c_MaxMoveOverEdgeSpeed       = 10.0f;
 static const auto  c_MaxMoveOverEdgeDistance    = 300.0f;
 
+#if IMGUI_VERSION_NUM > 18101
+static const auto  c_AllRoundCornersFlags = ImDrawFlags_RoundCornersAll;
+#else
+static const auto  c_AllRoundCornersFlags = 15;
+#endif
+
 
 //------------------------------------------------------------------------------
 # if defined(_DEBUG) && defined(_WIN32)
@@ -621,7 +627,7 @@ void ed::Node::Draw(ImDrawList* drawList, DrawFlags flags)
                 drawList->AddRect(
                     m_GroupBounds.Min,
                     m_GroupBounds.Max,
-                    m_GroupBorderColor, m_GroupRounding, 15, m_GroupBorderWidth);
+                    m_GroupBorderColor, m_GroupRounding, c_AllRoundCornersFlags, m_GroupBorderWidth);
             }
         }
 
@@ -672,7 +678,7 @@ void ed::Node::DrawBorder(ImDrawList* drawList, ImU32 color, float thickness)
     if (thickness > 0.0f)
     {
         drawList->AddRect(m_Bounds.Min, m_Bounds.Max,
-            color, m_Rounding, 15, thickness);
+            color, m_Rounding, c_AllRoundCornersFlags, thickness);
     }
 }
 

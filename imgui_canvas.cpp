@@ -357,8 +357,13 @@ void ImGuiEx::Canvas::SaveViewportState()
     m_WindowPosBackup = window->Pos;
     m_ViewportPosBackup = viewport->Pos;
     m_ViewportSizeBackup = viewport->Size;
+# if IMGUI_VERSION_NUM > 18002
+    m_ViewportWorkPosBackup = viewport->WorkPos;
+    m_ViewportWorkSizeBackup = viewport->WorkSize;
+# else
     m_ViewportWorkOffsetMinBackup = viewport->WorkOffsetMin;
     m_ViewportWorkOffsetMaxBackup = viewport->WorkOffsetMax;
+# endif
 # endif
 }
 
@@ -371,8 +376,13 @@ void ImGuiEx::Canvas::RestoreViewportState()
     window->Pos = m_WindowPosBackup;
     viewport->Pos = m_ViewportPosBackup;
     viewport->Size = m_ViewportSizeBackup;
+# if IMGUI_VERSION_NUM > 18002
+    viewport->WorkPos = m_ViewportWorkPosBackup;
+    viewport->WorkSize = m_ViewportWorkSizeBackup;
+# else
     viewport->WorkOffsetMin = m_ViewportWorkOffsetMinBackup;
     viewport->WorkOffsetMax = m_ViewportWorkOffsetMaxBackup;
+# endif
 # endif
 }
 
@@ -432,8 +442,14 @@ void ImGuiEx::Canvas::EnterLocalSpace()
     auto viewport = ImGui::GetWindowViewport();
     viewport->Pos  = viewport_min;
     viewport->Size = viewport_max - viewport_min;
+
+# if IMGUI_VERSION_NUM > 18002
+    viewport->WorkPos  = m_ViewportWorkPosBackup  * m_View.InvScale;
+    viewport->WorkSize = m_ViewportWorkSizeBackup * m_View.InvScale;
+# else
     viewport->WorkOffsetMin = m_ViewportWorkOffsetMinBackup * m_View.InvScale;
     viewport->WorkOffsetMax = m_ViewportWorkOffsetMaxBackup * m_View.InvScale;
+# endif
 # endif
 
     // Clip rectangle in parent canvas space and move it to local space.

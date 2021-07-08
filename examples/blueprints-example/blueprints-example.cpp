@@ -1170,17 +1170,25 @@ struct Example:
                 //    drawList->PathStroke(col, true, thickness);
                 //};
 
+#if IMGUI_VERSION_NUM > 18101
+                const auto    topRoundCornersFlags = ImDrawFlags_RoundCornersTop;
+                const auto bottomRoundCornersFlags = ImDrawFlags_RoundCornersBottom;
+#else
+                const auto    topRoundCornersFlags = 1 | 2;
+                const auto bottomRoundCornersFlags = 4 | 8;
+#endif
+
                 drawList->AddRectFilled(inputsRect.GetTL() + ImVec2(0, 1), inputsRect.GetBR(),
-                    IM_COL32((int)(255 * pinBackground.x), (int)(255 * pinBackground.y), (int)(255 * pinBackground.z), inputAlpha), 4.0f, 12);
+                    IM_COL32((int)(255 * pinBackground.x), (int)(255 * pinBackground.y), (int)(255 * pinBackground.z), inputAlpha), 4.0f, bottomRoundCornersFlags);
                 //ImGui::PushStyleVar(ImGuiStyleVar_AntiAliasFringeScale, 1.0f);
                 drawList->AddRect(inputsRect.GetTL() + ImVec2(0, 1), inputsRect.GetBR(),
-                    IM_COL32((int)(255 * pinBackground.x), (int)(255 * pinBackground.y), (int)(255 * pinBackground.z), inputAlpha), 4.0f, 12);
+                    IM_COL32((int)(255 * pinBackground.x), (int)(255 * pinBackground.y), (int)(255 * pinBackground.z), inputAlpha), 4.0f, bottomRoundCornersFlags);
                 //ImGui::PopStyleVar();
                 drawList->AddRectFilled(outputsRect.GetTL(), outputsRect.GetBR() - ImVec2(0, 1),
-                    IM_COL32((int)(255 * pinBackground.x), (int)(255 * pinBackground.y), (int)(255 * pinBackground.z), outputAlpha), 4.0f, 3);
+                    IM_COL32((int)(255 * pinBackground.x), (int)(255 * pinBackground.y), (int)(255 * pinBackground.z), outputAlpha), 4.0f, topRoundCornersFlags);
                 //ImGui::PushStyleVar(ImGuiStyleVar_AntiAliasFringeScale, 1.0f);
                 drawList->AddRect(outputsRect.GetTL(), outputsRect.GetBR() - ImVec2(0, 1),
-                    IM_COL32((int)(255 * pinBackground.x), (int)(255 * pinBackground.y), (int)(255 * pinBackground.z), outputAlpha), 4.0f, 3);
+                    IM_COL32((int)(255 * pinBackground.x), (int)(255 * pinBackground.y), (int)(255 * pinBackground.z), outputAlpha), 4.0f, topRoundCornersFlags);
                 //ImGui::PopStyleVar();
                 drawList->AddRectFilled(contentRect.GetTL(), contentRect.GetBR(), IM_COL32(24, 64, 128, 200), 0.0f);
                 //ImGui::PushStyleVar(ImGuiStyleVar_AntiAliasFringeScale, 1.0f);
@@ -1242,11 +1250,17 @@ struct Example:
                         //ed::PopStyleVar(3);
                         ed::PopStyleVar(1);
 
+#if IMGUI_VERSION_NUM > 18101
+                        const auto allRoundCornersFlags = ImDrawFlags_RoundCornersAll;
+#else
+                        const auto allRoundCornersFlags = 15;
+#endif
+
                         auto drawList = ImGui::GetWindowDrawList();
                         drawList->AddRectFilled(inputsRect.GetTL(), inputsRect.GetBR(),
-                            IM_COL32((int)(255 * pinBackground.x), (int)(255 * pinBackground.y), (int)(255 * pinBackground.z), inputAlpha), 4.0f, 15);
+                            IM_COL32((int)(255 * pinBackground.x), (int)(255 * pinBackground.y), (int)(255 * pinBackground.z), inputAlpha), 4.0f, allRoundCornersFlags);
                         drawList->AddRect(inputsRect.GetTL(), inputsRect.GetBR(),
-                            IM_COL32((int)(255 * pinBackground.x), (int)(255 * pinBackground.y), (int)(255 * pinBackground.z), inputAlpha), 4.0f, 15);
+                            IM_COL32((int)(255 * pinBackground.x), (int)(255 * pinBackground.y), (int)(255 * pinBackground.z), inputAlpha), 4.0f, allRoundCornersFlags);
 
                         if (newLinkPin && !CanCreateLink(newLinkPin, &pin) && &pin != newLinkPin)
                             inputAlpha = (int)(255 * ImGui::GetStyle().Alpha * (48.0f / 255.0f));
@@ -1294,11 +1308,17 @@ struct Example:
                         ed::EndPin();
                         ed::PopStyleVar();
 
+#if IMGUI_VERSION_NUM > 18101
+                        const auto allRoundCornersFlags = ImDrawFlags_RoundCornersAll;
+#else
+                        const auto allRoundCornersFlags = 15;
+#endif
+
                         auto drawList = ImGui::GetWindowDrawList();
                         drawList->AddRectFilled(outputsRect.GetTL(), outputsRect.GetBR(),
-                            IM_COL32((int)(255 * pinBackground.x), (int)(255 * pinBackground.y), (int)(255 * pinBackground.z), outputAlpha), 4.0f, 15);
+                            IM_COL32((int)(255 * pinBackground.x), (int)(255 * pinBackground.y), (int)(255 * pinBackground.z), outputAlpha), 4.0f, allRoundCornersFlags);
                         drawList->AddRect(outputsRect.GetTL(), outputsRect.GetBR(),
-                            IM_COL32((int)(255 * pinBackground.x), (int)(255 * pinBackground.y), (int)(255 * pinBackground.z), outputAlpha), 4.0f, 15);
+                            IM_COL32((int)(255 * pinBackground.x), (int)(255 * pinBackground.y), (int)(255 * pinBackground.z), outputAlpha), 4.0f, allRoundCornersFlags);
 
 
                         if (newLinkPin && !CanCreateLink(newLinkPin, &pin) && &pin != newLinkPin)
@@ -1314,7 +1334,7 @@ struct Example:
                 ed::PopStyleVar(7);
                 ed::PopStyleColor(4);
 
-                auto drawList = ed::GetNodeBackgroundDrawList(node.ID);
+                // auto drawList = ed::GetNodeBackgroundDrawList(node.ID);
 
                 //const auto fringeScale = ImGui::GetStyle().AntiAliasFringeScale;
                 //const auto unitSize    = 1.0f / fringeScale;
