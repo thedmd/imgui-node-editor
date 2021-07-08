@@ -58,7 +58,7 @@ Please report issues or questions if something isn't clear.
  * https://github.com/thedmd/imgui/tree/feature/layout (used in blueprints sample only)
 
 ### Optional extension you can pull into your local copy of ImGui node editor can take advantage of:
- * https://github.com/thedmd/imgui/tree/feature/draw-list-fringe-scale (for sharp rendering, while zooming)
+ * ~~https://github.com/thedmd/imgui/tree/feature/draw-list-fringe-scale (for sharp rendering, while zooming)~~ It is part of ImGui since 1.80 release
  * https://github.com/thedmd/imgui/tree/feature/extra-keys (for extra shortcuts)
 
 ## Building / Installing
@@ -139,7 +139,7 @@ struct Example:
         ed::End();
         ed::SetCurrentEditor(nullptr);
 
-	    //ImGui::ShowMetricsWindow();
+        //ImGui::ShowMetricsWindow();
     }
 
     ed::EditorContext* m_Context = nullptr;
