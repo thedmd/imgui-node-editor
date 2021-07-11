@@ -723,6 +723,7 @@ struct Example:
         if (ImGui::Button("Edit Style"))
             showStyleEditor = true;
         ImGui::EndHorizontal();
+        ImGui::Checkbox("Show Ordinals", &m_ShowOrdinals);
 
         if (showStyleEditor)
             ShowStyleEditor(&showStyleEditor);
@@ -1726,6 +1727,7 @@ struct Example:
         ed::Resume();
     # endif
 
+
     /*
         cubic_bezier_t c;
         c.p0 = pointf(100, 600);
@@ -1751,6 +1753,46 @@ struct Example:
 
         ed::End();
 
+        auto editorMin = ImGui::GetItemRectMin();
+        auto editorMax = ImGui::GetItemRectMax();
+
+        if (m_ShowOrdinals)
+        {
+            int nodeCount = ed::GetNodeCount();
+            std::vector<ed::NodeId> orderedNodeIds;
+            orderedNodeIds.resize(static_cast<size_t>(nodeCount));
+            ed::GetOrderedNodeIds(orderedNodeIds.data(), nodeCount);
+
+
+            auto drawList = ImGui::GetWindowDrawList();
+            drawList->PushClipRect(editorMin, editorMax);
+
+            int ordinal = 0;
+            for (auto& nodeId : orderedNodeIds)
+            {
+                auto p0 = ed::GetNodePosition(nodeId);
+                auto p1 = p0 + ed::GetNodeSize(nodeId);
+                p0 = ed::CanvasToScreen(p0);
+                p1 = ed::CanvasToScreen(p1);
+
+
+                ImGuiTextBuffer builder;
+                builder.appendf("#%d", ordinal++);
+
+                auto textSize   = ImGui::CalcTextSize(builder.c_str());
+                auto padding    = ImVec2(2.0f, 2.0f);
+                auto widgetSize = textSize + padding * 2;
+
+                auto widgetPosition = ImVec2(p1.x, p0.y) + ImVec2(0.0f, -widgetSize.y);
+
+                drawList->AddRectFilled(widgetPosition, widgetPosition + widgetSize, IM_COL32(100, 80, 80, 190), 3.0f, ImDrawFlags_RoundCornersAll);
+                drawList->AddRect(widgetPosition, widgetPosition + widgetSize, IM_COL32(200, 160, 160, 190), 3.0f, ImDrawFlags_RoundCornersAll);
+                drawList->AddText(widgetPosition + padding, IM_COL32(255, 255, 255, 255), builder.c_str());
+            }
+
+            drawList->PopClipRect();
+        }
+
 
         //ImGui::ShowTestWindow();
         //ImGui::ShowMetricsWindow();
@@ -1765,6 +1807,7 @@ struct Example:
     ImTextureID          m_RestoreIcon = nullptr;
     const float          m_TouchTime = 1.0f;
     std::map<ed::NodeId, float, NodeIdLess> m_NodeTouchTime;
+    bool                 m_ShowOrdinals = false;
 };
 
 int Main(int argc, char** argv)

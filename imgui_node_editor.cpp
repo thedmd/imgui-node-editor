@@ -2103,6 +2103,26 @@ ImU32 ed::EditorContext::GetColor(StyleColor colorIndex, float alpha) const
     return ImColor(color.x, color.y, color.z, color.w * alpha);
 }
 
+int ed::EditorContext::GetNodeIds(NodeId* nodes, int size) const
+{
+    if (size <= 0)
+        return 0;
+
+    int result = 0;
+    for (auto node : m_Nodes)
+    {
+        if (!node->m_IsLive)
+            continue;
+
+        *nodes++ = node->m_ID;
+        ++result;
+        if (--size == 0)
+            break;
+    }
+
+    return result;
+}
+
 void ed::EditorContext::RegisterAnimation(Animation* animation)
 {
     m_LiveAnimations.push_back(animation);

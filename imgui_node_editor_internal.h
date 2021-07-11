@@ -1405,6 +1405,8 @@ struct EditorContext
     ImU32 GetColor(StyleColor colorIndex) const;
     ImU32 GetColor(StyleColor colorIndex, float alpha) const;
 
+    int GetNodeIds(NodeId* nodes, int size) const;
+
     void NavigateTo(const ImRect& bounds, bool zoomIn = false, float duration = -1)
     {
         auto zoomMode = zoomIn ? NavigateAction::ZoomMode::WithMargin : NavigateAction::ZoomMode::None;
