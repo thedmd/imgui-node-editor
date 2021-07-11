@@ -99,6 +99,14 @@ v0.9.1 (WIP):
 
             void Flow(LinkId linkId, FlowDirection direction = FlowDirection::Forward);
 
+    NEW: Editor now allow to set Z position for nodes (#109)
+
+        Nodes with higher Z position are drawn on top of ones with lower.
+
+        New API:
+            void SetNodeZPosition(NodeId nodeId, float z); // Sets node z position, nodes with higher value are drawn over nodes with lower value
+            float GetNodeZPosition(NodeId nodeId); // Returns node z position, defaults is 0.0f
+
     BUGFIX: Avoid crash while destroying editor.
 
     BUGFIX: Save draw list used by editor between Begin() and End()

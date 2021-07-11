@@ -1317,6 +1317,12 @@ void ed::EditorContext::End()
         });
     }
 
+    // Apply Z order
+    std::stable_sort(m_Nodes.begin(), m_Nodes.end(), [](const auto& lhs, const auto& rhs)
+    {
+        return lhs->m_ZPosition < rhs->m_ZPosition;
+    });
+
 # if 1
     // Every node has few channels assigned. Grow channel list
     // to hold twice as much of channels and place them in
@@ -1571,6 +1577,27 @@ ImVec2 ed::EditorContext::GetNodeSize(NodeId nodeId)
         return ImVec2(0, 0);
 
     return node->m_Bounds.GetSize();
+}
+
+void ed::EditorContext::SetNodeZPosition(NodeId nodeId, float z)
+{
+    auto node = FindNode(nodeId);
+    if (!node)
+    {
+        node = CreateNode(nodeId);
+        node->m_IsLive = false;
+    }
+
+    node->m_ZPosition = z;
+}
+
+float ed::EditorContext::GetNodeZPosition(NodeId nodeId)
+{
+    auto node = FindNode(nodeId);
+    if (!node)
+        return 0.0f;
+
+    return node->m_ZPosition;
 }
 
 void ed::EditorContext::MarkNodeToRestoreState(Node* node)

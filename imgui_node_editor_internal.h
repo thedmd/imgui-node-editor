@@ -374,6 +374,7 @@ struct Node final: Object
     NodeId   m_ID;
     NodeType m_Type;
     ImRect   m_Bounds;
+    float    m_ZPosition;
     int      m_Channel;
     Pin*     m_LastPin;
     ImVec2   m_DragStart;
@@ -397,6 +398,7 @@ struct Node final: Object
         , m_ID(id)
         , m_Type(NodeType::Node)
         , m_Bounds()
+        , m_ZPosition(0.0f)
         , m_Channel(0)
         , m_LastPin(nullptr)
         , m_DragStart()
@@ -1298,6 +1300,9 @@ struct EditorContext
     void SetGroupSize(NodeId nodeId, const ImVec2& size);
     ImVec2 GetNodePosition(NodeId nodeId);
     ImVec2 GetNodeSize(NodeId nodeId);
+
+    void SetNodeZPosition(NodeId nodeId, float z);
+    float GetNodeZPosition(NodeId nodeId);
 
     void MarkNodeToRestoreState(Node* node);
     void RestoreNodeState(Node* node);

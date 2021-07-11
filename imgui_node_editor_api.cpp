@@ -395,6 +395,16 @@ void ax::NodeEditor::CenterNodeOnScreen(NodeId nodeId)
         node->CenterOnScreenInNextFrame();
 }
 
+void ax::NodeEditor::SetNodeZPosition(NodeId nodeId, float z)
+{
+    s_Editor->SetNodeZPosition(nodeId, z);
+}
+
+float ax::NodeEditor::GetNodeZPosition(NodeId nodeId)
+{
+    return s_Editor->GetNodeZPosition(nodeId);
+}
+
 void ax::NodeEditor::RestoreNodeState(NodeId nodeId)
 {
     if (auto node = s_Editor->FindNode(nodeId))

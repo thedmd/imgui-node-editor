@@ -305,6 +305,8 @@ void SetGroupSize(NodeId nodeId, const ImVec2& size);
 ImVec2 GetNodePosition(NodeId nodeId);
 ImVec2 GetNodeSize(NodeId nodeId);
 void CenterNodeOnScreen(NodeId nodeId);
+void SetNodeZPosition(NodeId nodeId, float z); // Sets node z position, nodes with higher value are drawn over nodes with lower value
+float GetNodeZPosition(NodeId nodeId); // Returns node z position, defaults is 0.0f
 
 void RestoreNodeState(NodeId nodeId);
 
