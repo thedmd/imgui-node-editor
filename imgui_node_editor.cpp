@@ -1861,6 +1861,21 @@ bool ed::EditorContext::CanAcceptUserInput() const
     return m_IsFocused && m_IsHovered;
 }
 
+int ed::EditorContext::CountLiveNodes() const
+{
+    return (int)std::count_if(m_Nodes.begin(),  m_Nodes.end(),  [](const Node* node)  { return node->m_IsLive; });
+}
+
+int ed::EditorContext::CountLivePins() const
+{
+    return (int)std::count_if(m_Pins.begin(),   m_Pins.end(),   [](const Pin*  pin)   { return pin->m_IsLive; });
+}
+
+int ed::EditorContext::CountLiveLinks() const
+{
+    return (int)std::count_if(m_Links.begin(),  m_Links.end(),  [](const Link* link)  { return link->m_IsLive; });
+}
+
 ed::Pin* ed::EditorContext::CreatePin(PinId id, PinKind kind)
 {
     IM_ASSERT(nullptr == FindObject(id));
@@ -2391,9 +2406,9 @@ void ed::EditorContext::ShowMetrics(const Control& control)
             return "<unknown>";
     };
 
-    auto liveNodeCount  = (int)std::count_if(m_Nodes.begin(),  m_Nodes.end(),  [](Node*  node)  { return  node->m_IsLive; });
-    auto livePinCount   = (int)std::count_if(m_Pins.begin(),   m_Pins.end(),   [](Pin*   pin)   { return   pin->m_IsLive; });
-    auto liveLinkCount  = (int)std::count_if(m_Links.begin(),  m_Links.end(),  [](Link*  link)  { return  link->m_IsLive; });
+    auto liveNodeCount  = CountLiveNodes();
+    auto livePinCount   = CountLivePins();
+    auto liveLinkCount  = CountLiveLinks();
 
     auto canvasRect     = m_Canvas.Rect();
     auto viewRect       = m_Canvas.ViewRect();

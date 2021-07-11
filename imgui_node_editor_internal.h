@@ -1350,6 +1350,10 @@ struct EditorContext
     void MakeDirty(SaveReasonFlags reason);
     void MakeDirty(SaveReasonFlags reason, Node* node);
 
+    int CountLiveNodes() const;
+    int CountLivePins() const;
+    int CountLiveLinks() const;
+
     Pin*    CreatePin(PinId id, PinKind kind);
     Node*   CreateNode(NodeId id);
     Link*   CreateLink(LinkId id);

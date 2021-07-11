@@ -722,3 +722,12 @@ ImVec2 ax::NodeEditor::CanvasToScreen(const ImVec2& pos)
 {
     return s_Editor->ToScreen(pos);
 }
+
+int ax::NodeEditor::GetNodeCount()
+{
+    return s_Editor->CountLiveNodes();
+}
+
+int ax::NodeEditor::GetOrderedNodeIds(NodeId* nodes, int size)
+{
+}
