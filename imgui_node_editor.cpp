@@ -927,7 +927,7 @@ ed::LinkPathType ed::Link::GetPathType(ImRect& fromRect, ImRect& toRect) const
         toRect.Max = toRect.Min + ImVec2(1, 1);
     }
 
-    if(toRect.Min.x > fromRect.Max.x)
+    if(m_End.x > fromRect.Max.x)
     {
         return ed::LinkPathType_Default;
     }
