@@ -858,12 +858,33 @@ void ed::Link::Draw(ImDrawList* drawList, ImU32 color, float extraThickness) con
 
     const auto curve = GetCurve();
 
-    ImDrawList_AddBezierWithArrows(drawList, curve, m_Thickness + extraThickness,
-        m_StartPin && m_StartPin->m_ArrowSize  > 0.0f ? m_StartPin->m_ArrowSize  + extraThickness : 0.0f,
-        m_StartPin && m_StartPin->m_ArrowWidth > 0.0f ? m_StartPin->m_ArrowWidth + extraThickness : 0.0f,
-          m_EndPin &&   m_EndPin->m_ArrowSize  > 0.0f ?   m_EndPin->m_ArrowSize  + extraThickness : 0.0f,
-          m_EndPin &&   m_EndPin->m_ArrowWidth > 0.0f ?   m_EndPin->m_ArrowWidth + extraThickness : 0.0f,
-        true, color, 1.0f);
+    for(int i = 0; i < curve.m_NumPoint; i += 4)
+    {
+        const bool isStart = i == 0;
+        const bool isEnd = i == curve.m_NumPoint - 4;
+
+        const auto startArrowSize = isStart && m_StartPin && m_StartPin->m_ArrowSize > 0.0f
+                ? m_StartPin->m_ArrowSize + extraThickness : 0.0f;
+        const auto startArrowWidth = isStart &&  m_StartPin && m_StartPin->m_ArrowWidth > 0.0f
+                ? m_StartPin->m_ArrowWidth + extraThickness : 0.0f;
+
+        const auto endArrowSize = isEnd && m_EndPin && m_EndPin->m_ArrowSize  > 0.0f
+                ? m_EndPin->m_ArrowSize  + extraThickness : 0.0f;
+        const auto endArrowWidth = isEnd && m_EndPin && m_EndPin->m_ArrowWidth > 0.0f
+                ? m_EndPin->m_ArrowWidth + extraThickness : 0.0f;
+
+        const auto bezier = ImCubicBezierPoints { curve.m_Points[i], curve.m_Points[i + 1],
+                                                  curve.m_Points[i + 2], curve.m_Points[i + 3] };
+        ImDrawList_AddBezierWithArrows(drawList, bezier, m_Thickness + extraThickness, startArrowSize,
+                                       startArrowWidth, endArrowSize, endArrowWidth, true, color, 1.0f);
+
+        if(!isEnd) {
+            const auto bezier1 = ImCubicBezierPoints { curve.m_Points[i + 3], curve.m_Points[i + 3],
+                                                       curve.m_Points[i + 4], curve.m_Points[i + 4] };
+            ImDrawList_AddBezierWithArrows(drawList, bezier1, m_Thickness + extraThickness,
+                                           0.0f,0.0f, 0.0f, 0.0f,true, color, 1.0f);
+        }
+    }
 }
 
 void ed::Link::UpdateEndpoints()
@@ -873,31 +894,176 @@ void ed::Link::UpdateEndpoints()
     m_End   = line.B;
 }
 
-ImCubicBezierPoints ed::Link::GetCurve() const
+ed::LinkPathType ed::Link::GetPathType(ImRect& fromRect, ImRect& toRect) const
 {
-    auto easeLinkStrength = [](const ImVec2& a, const ImVec2& b, float strength)
+    if(m_StartPin && m_StartPin->m_Dir != ImVec2(1.0f, 0.0f))
     {
-        const auto distanceX    = b.x - a.x;
-        const auto distanceY    = b.y - a.y;
-        const auto distance     = ImSqrt(distanceX * distanceX + distanceY * distanceY);
-        const auto halfDistance = distance * 0.5f;
+        // disable advanced path layout for pins which do not output to the right
+        return LinkPathType_Default;
+    }
 
-        if (halfDistance < strength)
-            strength = strength * ImSin(IM_PI * 0.5f * halfDistance / strength);
+    if(m_EndPin && m_EndPin->m_Dir != ImVec2(-1.0f, 0.0f))
+    {
+        // disable advanced path layout for pins which do not take input from the left
+        return LinkPathType_Default;
+    }
 
-        return strength;
-    };
+    if(m_StartPin && m_StartPin->m_Node)
+    {
+        fromRect = m_StartPin->m_Node->m_Bounds;
+    }
+    else
+    {
+        fromRect.Min = m_Start;
+        fromRect.Max = fromRect.Min + ImVec2(1, 1);
+    }
+    if(m_EndPin && m_EndPin->m_Node)
+    {
+        toRect = m_EndPin->m_Node->m_Bounds;
+    }
+    else
+    {
+        toRect.Min = m_End;
+        toRect.Max = toRect.Min + ImVec2(1, 1);
+    }
 
-    const auto startStrength = easeLinkStrength(m_Start, m_End, m_StartPin->m_Strength);
-    const auto   endStrength = easeLinkStrength(m_Start, m_End,   m_EndPin->m_Strength);
-    const auto           cp0 = m_Start + m_StartPin->m_Dir * startStrength;
-    const auto           cp1 =   m_End +   m_EndPin->m_Dir *   endStrength;
+    if(toRect.Min.x > fromRect.Max.x)
+    {
+        return ed::LinkPathType_Default;
+    }
+    else if(toRect.Min.y > fromRect.Max.y)
+    {
+        return ed::LinkPathType_Under_Over;
+    }
+    else if(toRect.Max.y < fromRect.Min.y)
+    {
+        return ed::LinkPathType_Over_Under;
+    }
 
-    ImCubicBezierPoints result;
-    result.P0 = m_Start;
-    result.P1 = cp0;
-    result.P2 = cp1;
-    result.P3 = m_End;
+    return ed::LinkPathType_Under_Under;
+}
+
+ed::LinkPath ed::Link::GetCurve() const
+{
+    ImRect fromRect, toRect;
+    const auto pathType = GetPathType(fromRect, toRect);
+
+    const float rounding = 10.0f;
+    const float margin = 10.0f;
+    const float xsep = 10.0f;
+    const float ysep = 10.0f;
+
+    LinkPath result;
+    result.m_Type = pathType;
+    result.m_NumPoint = 0;
+
+    if(pathType == ed::LinkPathType_Under_Over)
+    {
+        // top right rounded corner
+        result.m_Points[result.m_NumPoint++] = m_Start;
+        result.m_Points[result.m_NumPoint++] = m_Start + ImVec2(rounding, 0.0f);
+        result.m_Points[result.m_NumPoint++] = m_Start + ImVec2(margin + xsep, margin - rounding);
+        result.m_Points[result.m_NumPoint++] = m_Start + ImVec2(margin + xsep, margin);
+
+        // bottom right rounded corner
+        const float middle = (fromRect.Max.y + toRect.Min.y) / 2.0f;
+        result.m_Points[result.m_NumPoint++] = ImVec2(m_Start.x + margin + xsep, middle - margin + ysep);
+        result.m_Points[result.m_NumPoint++] = ImVec2(m_Start.x + margin + xsep, middle - margin + rounding + ysep);
+        result.m_Points[result.m_NumPoint++] = ImVec2(m_Start.x + rounding + xsep, middle + ysep);
+        result.m_Points[result.m_NumPoint++] = ImVec2(m_Start.x, middle + ysep);
+
+        // bottom left rounded corner
+        result.m_Points[result.m_NumPoint++] = ImVec2(m_End.x - xsep, middle + ysep);
+        result.m_Points[result.m_NumPoint++] = ImVec2(m_End.x - xsep - rounding, middle + ysep);
+        result.m_Points[result.m_NumPoint++] = ImVec2(m_End.x - xsep - margin, middle + margin - rounding + ysep);
+        result.m_Points[result.m_NumPoint++] = ImVec2(m_End.x - xsep - margin, middle + margin + ysep);
+
+        // top left rounded corner
+        result.m_Points[result.m_NumPoint++] = m_End + ImVec2(- xsep - margin, -margin);
+        result.m_Points[result.m_NumPoint++] = m_End + ImVec2(- xsep - margin, -margin + rounding);
+        result.m_Points[result.m_NumPoint++] = m_End + ImVec2(- xsep - rounding, 0.0f);
+        result.m_Points[result.m_NumPoint++] = m_End;
+    }
+    else if(pathType == ed::LinkPathType_Over_Under)
+    {
+        // top right rounded corner
+        result.m_Points[result.m_NumPoint++] = m_Start;
+        result.m_Points[result.m_NumPoint++] = m_Start + ImVec2(rounding, 0.0f);
+        result.m_Points[result.m_NumPoint++] = m_Start + ImVec2(margin + xsep, - margin + rounding);
+        result.m_Points[result.m_NumPoint++] = m_Start + ImVec2(margin + xsep, - margin);
+
+        // bottom right rounded corner
+        const float middle = (fromRect.Min.y + toRect.Max.y) / 2.0f;
+        result.m_Points[result.m_NumPoint++] = ImVec2(m_Start.x + margin + xsep, middle + ysep + margin);
+        result.m_Points[result.m_NumPoint++] = ImVec2(m_Start.x + margin + xsep, middle + ysep + margin - rounding);
+        result.m_Points[result.m_NumPoint++] = ImVec2(m_Start.x + rounding, middle + ysep);
+        result.m_Points[result.m_NumPoint++] = ImVec2(m_Start.x, middle + ysep);
+
+        // bottom left rounded corner
+        result.m_Points[result.m_NumPoint++] = ImVec2(m_End.x, middle + ysep);
+        result.m_Points[result.m_NumPoint++] = ImVec2(m_End.x - rounding, middle + ysep);
+        result.m_Points[result.m_NumPoint++] = ImVec2(m_End.x - margin - xsep, middle + ysep - margin + rounding);
+        result.m_Points[result.m_NumPoint++] = ImVec2(m_End.x - margin - xsep, middle + ysep - margin);
+
+        // top left rounded corner
+        result.m_Points[result.m_NumPoint++] = m_End + ImVec2(-margin - xsep, margin);
+        result.m_Points[result.m_NumPoint++] = m_End + ImVec2(-margin - xsep, margin - rounding);
+        result.m_Points[result.m_NumPoint++] = m_End + ImVec2(-rounding, 0.0f);
+        result.m_Points[result.m_NumPoint++] = m_End;
+    }
+    else if(pathType == ed::LinkPathType_Under_Under)
+    {
+        // top right rounded corner
+        result.m_Points[result.m_NumPoint++] = m_Start;
+        result.m_Points[result.m_NumPoint++] = m_Start + ImVec2(rounding, 0.0f);
+        result.m_Points[result.m_NumPoint++] = m_Start + ImVec2(margin + xsep, margin - rounding);
+        result.m_Points[result.m_NumPoint++] = m_Start + ImVec2(margin + xsep, margin);
+
+        // bottom right rounded corner
+        const float bottom = ImMax(fromRect.Max.y, toRect.Max.y) + margin + xsep;
+        result.m_Points[result.m_NumPoint++] = ImVec2(m_Start.x + margin + xsep, bottom - margin);
+        result.m_Points[result.m_NumPoint++] = ImVec2(m_Start.x + margin + xsep, bottom - margin + rounding);
+        result.m_Points[result.m_NumPoint++] = ImVec2(m_Start.x + rounding, bottom);
+        result.m_Points[result.m_NumPoint++] = ImVec2(m_Start.x, bottom);
+
+        // bottom left rounded corner
+        result.m_Points[result.m_NumPoint++] = ImVec2(m_End.x, bottom);
+        result.m_Points[result.m_NumPoint++] = ImVec2(m_End.x - rounding, bottom);
+        result.m_Points[result.m_NumPoint++] = ImVec2(m_End.x - margin - xsep, bottom - margin + rounding);
+        result.m_Points[result.m_NumPoint++] = ImVec2(m_End.x - margin - xsep, bottom - margin);
+
+        // top left rounded corner
+        result.m_Points[result.m_NumPoint++] = m_End + ImVec2(-margin - xsep, margin);
+        result.m_Points[result.m_NumPoint++] = m_End + ImVec2(-margin - xsep, margin - rounding);
+        result.m_Points[result.m_NumPoint++] = m_End + ImVec2(-rounding, 0.0f);
+        result.m_Points[result.m_NumPoint++] = m_End;
+    }
+    else if(pathType == ed::LinkPathType_Default)
+    {
+        auto easeLinkStrength = [](const ImVec2& a, const ImVec2& b, float strength)
+                    {
+           const auto distanceX    = b.x - a.x;
+           const auto distanceY    = b.y - a.y;
+           const auto distance     = ImSqrt(distanceX * distanceX + distanceY * distanceY);
+           const auto halfDistance = distance * 0.5f;
+
+           if (halfDistance < strength)
+               strength = strength * ImSin(IM_PI * 0.5f * halfDistance / strength);
+
+           return strength;
+        };
+
+        const auto startStrength = easeLinkStrength(m_Start, m_End, m_StartPin->m_Strength);
+        const auto   endStrength = easeLinkStrength(m_Start, m_End,   m_EndPin->m_Strength);
+        const auto           cp0 = m_Start + m_StartPin->m_Dir * startStrength;
+        const auto           cp1 =   m_End +   m_EndPin->m_Dir *   endStrength;
+
+        result.m_NumPoint = 4;
+        result.m_Points[0] = m_Start;
+        result.m_Points[1] = cp0;
+        result.m_Points[2] = cp1;
+        result.m_Points[3] = m_End;
+    }
 
     return result;
 }
@@ -914,10 +1080,32 @@ bool ed::Link::TestHit(const ImVec2& point, float extraThickness) const
     if (!bounds.Contains(point))
         return false;
 
-    const auto bezier = GetCurve();
-    const auto result = ImProjectOnCubicBezier(point, bezier.P0, bezier.P1, bezier.P2, bezier.P3, 50);
+    const auto threshold = m_Thickness + extraThickness;
 
-    return result.Distance <= m_Thickness + extraThickness;
+    auto calcDistance = [point](ImVec2 p0, ImVec2 p1, ImVec2 p2, ImVec2 p3) -> float
+    {
+        return ImProjectOnCubicBezier(point, p0, p1, p2, p3, 50).Distance;
+    };
+
+    const auto curve = GetCurve();
+    auto distance = FLT_MAX;
+
+    for(int i = 0; i < curve.m_NumPoint; i += 4)
+    {
+        distance = ImMin(distance, calcDistance(curve.m_Points[i], curve.m_Points[i + 1],
+                                                curve.m_Points[i + 2], curve.m_Points[i + 3]));
+        if(distance <= threshold)
+            return true;
+
+        if(i != curve.m_NumPoint - 4)
+            distance = ImMin(distance, calcDistance(curve.m_Points[i + 3], curve.m_Points[i + 3],
+                                                    curve.m_Points[i + 4], curve.m_Points[i + 4]));
+
+        if(distance <= threshold)
+            return true;
+    }
+
+    return false;
 }
 
 bool ed::Link::TestHit(const ImRect& rect, bool allowIntersect) const
@@ -933,21 +1121,51 @@ bool ed::Link::TestHit(const ImRect& rect, bool allowIntersect) const
     if (!allowIntersect || !rect.Overlaps(bounds))
         return false;
 
-    const auto bezier = GetCurve();
+    const auto curve = GetCurve();
 
     const auto p0 = rect.GetTL();
     const auto p1 = rect.GetTR();
     const auto p2 = rect.GetBR();
     const auto p3 = rect.GetBL();
 
-    if (ImCubicBezierLineIntersect(bezier.P0, bezier.P1, bezier.P2, bezier.P3, p0, p1).Count > 0)
-        return true;
-    if (ImCubicBezierLineIntersect(bezier.P0, bezier.P1, bezier.P2, bezier.P3, p1, p2).Count > 0)
-        return true;
-    if (ImCubicBezierLineIntersect(bezier.P0, bezier.P1, bezier.P2, bezier.P3, p2, p3).Count > 0)
-        return true;
-    if (ImCubicBezierLineIntersect(bezier.P0, bezier.P1, bezier.P2, bezier.P3, p3, p0).Count > 0)
-        return true;
+    for(int i = 0; i < curve.m_NumPoint; i += 4)
+    {
+        const auto c0 = curve.m_Points[i];
+        const auto c1 = curve.m_Points[i + 1];
+        const auto c2 = curve.m_Points[i + 2];
+        const auto c3 = curve.m_Points[i + 3];
+
+        // test corner lines
+        if (ImCubicBezierLineIntersect(c0, c1, c2, c3, p0, p1).Count > 0)
+            return true;
+
+        if (ImCubicBezierLineIntersect(c0, c1, c2, c3, p1, p2).Count > 0)
+            return true;
+
+        if (ImCubicBezierLineIntersect(c0, c1, c2, c3, p2, p3).Count > 0)
+            return true;
+
+        if (ImCubicBezierLineIntersect(c0, c1, c2, c3, p3, p0).Count > 0)
+            return true;
+
+        if(i != curve.m_NumPoint - 4) {
+            const auto l0 = curve.m_Points[i + 3];
+            const auto l1 = curve.m_Points[i + 4];
+
+            // test direct lines
+            if (ImCubicBezierLineIntersect(l0, l0, l1, l1, p0, p1).Count > 0)
+                return true;
+
+            if (ImCubicBezierLineIntersect(l0, l0, l1, l1, p1, p2).Count > 0)
+                return true;
+
+            if (ImCubicBezierLineIntersect(l0, l0, l1, l1, p2, p3).Count > 0)
+                return true;
+
+            if (ImCubicBezierLineIntersect(l0, l0, l1, l1, p3, p0).Count > 0)
+                return true;
+        }
+    }
 
     return false;
 }
@@ -957,7 +1175,19 @@ ImRect ed::Link::GetBounds() const
     if (m_IsLive)
     {
         const auto curve = GetCurve();
-        auto bounds = ImCubicBezierBoundingRect(curve.P0, curve.P1, curve.P2, curve.P3);
+        auto bounds = ImCubicBezierBoundingRect(curve.m_Points[0], curve.m_Points[1],
+                                                curve.m_Points[2], curve.m_Points[3]);
+
+        for(int i = 4; i < curve.m_NumPoint; i += 4)
+        {
+            // for bounds calculation we can check only corner segments and ignore direct segments,
+            // since they are always in bounds of corner segments
+
+            const auto segmentBounds = ImCubicBezierBoundingRect(curve.m_Points[i], curve.m_Points[i + 1],
+                                                                 curve.m_Points[i + 2], curve.m_Points[i + 3]);
+            bounds.Min = ImMin(bounds.Min, segmentBounds.Min);
+            bounds.Max = ImMax(bounds.Max, segmentBounds.Max);
+        }
 
         if (bounds.GetWidth() == 0.0f)
         {
@@ -973,9 +1203,9 @@ ImRect ed::Link::GetBounds() const
 
         if (m_StartPin->m_ArrowSize)
         {
-            const auto start_dir = ImNormalized(ImCubicBezierTangent(curve.P0, curve.P1, curve.P2, curve.P3, 0.0f));
-            const auto p0 = curve.P0;
-            const auto p1 = curve.P0 - start_dir * m_StartPin->m_ArrowSize;
+            const auto start_dir = ImNormalized(ImCubicBezierTangent(curve.m_Points[0], curve.m_Points[1], curve.m_Points[2], curve.m_Points[3], 0.0f));
+            const auto p0 = curve.m_Points[0];
+            const auto p1 = curve.m_Points[0] - start_dir * m_StartPin->m_ArrowSize;
             const auto min = ImMin(p0, p1);
             const auto max = ImMax(p0, p1);
             auto arrowBounds = ImRect(min, ImMax(max, min + ImVec2(1, 1)));
@@ -984,9 +1214,9 @@ ImRect ed::Link::GetBounds() const
 
         if (m_EndPin->m_ArrowSize)
         {
-            const auto end_dir = ImNormalized(ImCubicBezierTangent(curve.P0, curve.P1, curve.P2, curve.P3, 1.0f));
-            const auto p0 = curve.P3;
-            const auto p1 = curve.P3 + end_dir * m_EndPin->m_ArrowSize;
+            const auto end_dir = ImNormalized(ImCubicBezierTangent(curve.m_Points[0], curve.m_Points[1], curve.m_Points[2], curve.m_Points[3], 1.0f));
+            const auto p0 = curve.m_Points[curve.m_NumPoint - 1];
+            const auto p1 = curve.m_Points[curve.m_NumPoint - 1] + end_dir * m_EndPin->m_ArrowSize;
             const auto min = ImMin(p0, p1);
             const auto max = ImMax(p0, p1);
             auto arrowBounds = ImRect(min, ImMax(max, min + ImVec2(1, 1)));
@@ -2706,17 +2936,31 @@ void ed::FlowAnimation::UpdatePath()
 
     m_LastStart  = m_Link->m_Start;
     m_LastEnd    = m_Link->m_End;
-    m_PathLength = ImCubicBezierLength(curve.P0, curve.P1, curve.P2, curve.P3);
+    m_PathLength = 0.0f;
 
     auto collectPointsCallback = [this](ImCubicBezierFixedStepSample& result)
     {
-        m_Path.push_back(CurvePoint{ result.Length, result.Point });
+        m_Path.push_back(CurvePoint{ m_PathLength + result.Length, result.Point });
     };
 
     const auto step = ImMax(m_MarkerDistance * 0.5f, 15.0f);
 
     m_Path.resize(0);
-    ImCubicBezierFixedStep(collectPointsCallback, curve, step, false, 0.5f, 0.001f);
+
+    for(int i = 0; i < curve.m_NumPoint; i += 4)
+    {
+        const auto cornerBezier = ImCubicBezierPoints { curve.m_Points[i + 0], curve.m_Points[i + 1], curve.m_Points[i + 2], curve.m_Points[i + 3] };
+
+        ImCubicBezierFixedStep(collectPointsCallback, cornerBezier, step, false, 0.5f, 0.001f);
+        m_PathLength += ImCubicBezierLength(cornerBezier.P0, cornerBezier.P1, cornerBezier.P2, cornerBezier.P3);
+
+        if(i != curve.m_NumPoint - 4)
+        {
+            const auto directBezier = ImCubicBezierPoints { curve.m_Points[i + 3], curve.m_Points[i + 3], curve.m_Points[i + 4], curve.m_Points[i + 4] };
+            ImCubicBezierFixedStep(collectPointsCallback, directBezier, step, false, 0.5f, 0.001f);
+            m_PathLength += ImCubicBezierLength(directBezier.P0, directBezier.P1, directBezier.P2, directBezier.P3);
+        }
+    }
 }
 
 void ed::FlowAnimation::ClearPath()
