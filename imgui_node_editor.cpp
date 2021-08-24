@@ -948,14 +948,57 @@ ed::LinkPath ed::Link::GetCurve() const
     ImRect fromRect, toRect;
     const auto pathType = GetPathType(fromRect, toRect);
 
-    const float rounding = 10.0f;
-    const float margin = 10.0f;
-    const float xsep = 10.0f;
-    const float ysep = 10.0f;
-
     LinkPath result;
     result.m_Type = pathType;
     result.m_NumPoint = 0;
+
+    if(pathType == ed::LinkPathType_Default)
+    {
+        auto easeLinkStrength = [](const ImVec2& a, const ImVec2& b, float strength)
+                {
+            const auto distanceX    = b.x - a.x;
+            const auto distanceY    = b.y - a.y;
+            const auto distance     = ImSqrt(distanceX * distanceX + distanceY * distanceY);
+            const auto halfDistance = distance * 0.5f;
+
+            if (halfDistance < strength)
+                strength = strength * ImSin(IM_PI * 0.5f * halfDistance / strength);
+
+            return strength;
+                };
+
+        const auto startStrength = easeLinkStrength(m_Start, m_End, m_StartPin->m_Strength);
+        const auto   endStrength = easeLinkStrength(m_Start, m_End,   m_EndPin->m_Strength);
+        const auto           cp0 = m_Start + m_StartPin->m_Dir * startStrength;
+        const auto           cp1 =   m_End +   m_EndPin->m_Dir *   endStrength;
+
+        result.m_NumPoint = 4;
+        result.m_Points[0] = m_Start;
+        result.m_Points[1] = cp0;
+        result.m_Points[2] = cp1;
+        result.m_Points[3] = m_End;
+        return result;
+    }
+
+    int startNodeOutPinCount = 0;
+    int startPinIndex = 0; // that's actually an inversed index but that doesn't really matter
+
+    Pin* pin = m_StartPin && m_StartPin->m_Node ? m_StartPin->m_Node->m_LastPin : nullptr;
+    while (pin)
+    {
+        if(pin == m_StartPin)
+            startPinIndex = startNodeOutPinCount;
+        if(pin && pin->m_Kind == PinKind::Output)
+            startNodeOutPinCount++;
+        pin = pin->m_PreviousPin;
+    }
+
+    const float rounding = 5.0f;
+    const float margin = 10.0f;
+    const float xsepf = 5.0f;
+    const float ysepf = 5.0f;
+    const float xsep = float(startPinIndex) * xsepf;
+    const float ysep = float(startPinIndex) * ysepf - (float(startNodeOutPinCount - 1)) * ysepf / 2.0f;
 
     if(pathType == ed::LinkPathType_Under_Over)
     {
@@ -967,13 +1010,15 @@ ed::LinkPath ed::Link::GetCurve() const
 
         // bottom right rounded corner
         const float middle = (fromRect.Max.y + toRect.Min.y) / 2.0f;
+        const float xmax = ImMax(m_Start.x, m_End.x);
+        const float xmin = ImMin(m_Start.x, m_End.x);
         result.m_Points[result.m_NumPoint++] = ImVec2(m_Start.x + margin + xsep, middle - margin + ysep);
         result.m_Points[result.m_NumPoint++] = ImVec2(m_Start.x + margin + xsep, middle - margin + rounding + ysep);
         result.m_Points[result.m_NumPoint++] = ImVec2(m_Start.x + rounding + xsep, middle + ysep);
-        result.m_Points[result.m_NumPoint++] = ImVec2(m_Start.x, middle + ysep);
+        result.m_Points[result.m_NumPoint++] = ImVec2(xmax, middle + ysep);
 
         // bottom left rounded corner
-        result.m_Points[result.m_NumPoint++] = ImVec2(m_End.x - xsep, middle + ysep);
+        result.m_Points[result.m_NumPoint++] = ImVec2(xmin - xsep, middle + ysep);
         result.m_Points[result.m_NumPoint++] = ImVec2(m_End.x - xsep - rounding, middle + ysep);
         result.m_Points[result.m_NumPoint++] = ImVec2(m_End.x - xsep - margin, middle + margin - rounding + ysep);
         result.m_Points[result.m_NumPoint++] = ImVec2(m_End.x - xsep - margin, middle + margin + ysep);
@@ -994,13 +1039,15 @@ ed::LinkPath ed::Link::GetCurve() const
 
         // bottom right rounded corner
         const float middle = (fromRect.Min.y + toRect.Max.y) / 2.0f;
+        const float xmax = ImMax(m_Start.x, m_End.x);
+        const float xmin = ImMin(m_Start.x, m_End.x);
         result.m_Points[result.m_NumPoint++] = ImVec2(m_Start.x + margin + xsep, middle + ysep + margin);
         result.m_Points[result.m_NumPoint++] = ImVec2(m_Start.x + margin + xsep, middle + ysep + margin - rounding);
         result.m_Points[result.m_NumPoint++] = ImVec2(m_Start.x + rounding, middle + ysep);
-        result.m_Points[result.m_NumPoint++] = ImVec2(m_Start.x, middle + ysep);
+        result.m_Points[result.m_NumPoint++] = ImVec2(xmax, middle + ysep);
 
         // bottom left rounded corner
-        result.m_Points[result.m_NumPoint++] = ImVec2(m_End.x, middle + ysep);
+        result.m_Points[result.m_NumPoint++] = ImVec2(xmin, middle + ysep);
         result.m_Points[result.m_NumPoint++] = ImVec2(m_End.x - rounding, middle + ysep);
         result.m_Points[result.m_NumPoint++] = ImVec2(m_End.x - margin - xsep, middle + ysep - margin + rounding);
         result.m_Points[result.m_NumPoint++] = ImVec2(m_End.x - margin - xsep, middle + ysep - margin);
@@ -1021,13 +1068,15 @@ ed::LinkPath ed::Link::GetCurve() const
 
         // bottom right rounded corner
         const float bottom = ImMax(fromRect.Max.y, toRect.Max.y) + margin + xsep;
+        const float xmax = ImMax(m_Start.x, m_End.x);
+        const float xmin = ImMin(m_Start.x, m_End.x);
         result.m_Points[result.m_NumPoint++] = ImVec2(m_Start.x + margin + xsep, bottom - margin);
         result.m_Points[result.m_NumPoint++] = ImVec2(m_Start.x + margin + xsep, bottom - margin + rounding);
         result.m_Points[result.m_NumPoint++] = ImVec2(m_Start.x + rounding, bottom);
-        result.m_Points[result.m_NumPoint++] = ImVec2(m_Start.x, bottom);
+        result.m_Points[result.m_NumPoint++] = ImVec2(xmax, bottom);
 
         // bottom left rounded corner
-        result.m_Points[result.m_NumPoint++] = ImVec2(m_End.x, bottom);
+        result.m_Points[result.m_NumPoint++] = ImVec2(xmin, bottom);
         result.m_Points[result.m_NumPoint++] = ImVec2(m_End.x - rounding, bottom);
         result.m_Points[result.m_NumPoint++] = ImVec2(m_End.x - margin - xsep, bottom - margin + rounding);
         result.m_Points[result.m_NumPoint++] = ImVec2(m_End.x - margin - xsep, bottom - margin);
@@ -1038,33 +1087,6 @@ ed::LinkPath ed::Link::GetCurve() const
         result.m_Points[result.m_NumPoint++] = m_End + ImVec2(-rounding, 0.0f);
         result.m_Points[result.m_NumPoint++] = m_End;
     }
-    else if(pathType == ed::LinkPathType_Default)
-    {
-        auto easeLinkStrength = [](const ImVec2& a, const ImVec2& b, float strength)
-                    {
-           const auto distanceX    = b.x - a.x;
-           const auto distanceY    = b.y - a.y;
-           const auto distance     = ImSqrt(distanceX * distanceX + distanceY * distanceY);
-           const auto halfDistance = distance * 0.5f;
-
-           if (halfDistance < strength)
-               strength = strength * ImSin(IM_PI * 0.5f * halfDistance / strength);
-
-           return strength;
-        };
-
-        const auto startStrength = easeLinkStrength(m_Start, m_End, m_StartPin->m_Strength);
-        const auto   endStrength = easeLinkStrength(m_Start, m_End,   m_EndPin->m_Strength);
-        const auto           cp0 = m_Start + m_StartPin->m_Dir * startStrength;
-        const auto           cp1 =   m_End +   m_EndPin->m_Dir *   endStrength;
-
-        result.m_NumPoint = 4;
-        result.m_Points[0] = m_Start;
-        result.m_Points[1] = cp0;
-        result.m_Points[2] = cp1;
-        result.m_Points[3] = m_End;
-    }
-
     return result;
 }
 
