@@ -896,36 +896,17 @@ void ed::Link::UpdateEndpoints()
 
 ed::LinkPathType ed::Link::GetPathType(ImRect& fromRect, ImRect& toRect) const
 {
-    if(m_StartPin && m_StartPin->m_Dir != ImVec2(1.0f, 0.0f))
-    {
-        // disable advanced path layout for pins which do not output to the right
-        return LinkPathType_Default;
-    }
+    const bool isDefault = m_StartPin && m_StartPin->m_Dir != ImVec2(1.0f, 0.0f)
+            || m_EndPin && m_EndPin->m_Dir != ImVec2(-1.0f, 0.0f)
+            || !m_EndPin || !m_EndPin->m_Node
+            || !m_StartPin || !m_StartPin->m_Node;
 
-    if(m_EndPin && m_EndPin->m_Dir != ImVec2(-1.0f, 0.0f))
-    {
-        // disable advanced path layout for pins which do not take input from the left
+    if(isDefault)
         return LinkPathType_Default;
-    }
 
-    if(m_StartPin && m_StartPin->m_Node)
-    {
-        fromRect = m_StartPin->m_Node->m_Bounds;
-    }
-    else
-    {
-        fromRect.Min = m_Start;
-        fromRect.Max = fromRect.Min + ImVec2(1, 1);
-    }
-    if(m_EndPin && m_EndPin->m_Node)
-    {
-        toRect = m_EndPin->m_Node->m_Bounds;
-    }
-    else
-    {
-        toRect.Min = m_End;
-        toRect.Max = toRect.Min + ImVec2(1, 1);
-    }
+
+    fromRect = m_StartPin->m_Node->m_Bounds;
+    toRect = m_EndPin->m_Node->m_Bounds;
 
     if(m_End.x > fromRect.Max.x)
     {
