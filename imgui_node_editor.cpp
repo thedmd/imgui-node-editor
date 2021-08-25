@@ -976,9 +976,9 @@ ed::LinkPath ed::Link::GetCurve() const
 
     const float rounding = 5.0f;
     const float margin = 10.0f;
-    const float xsepf = 5.0f;
-    const float ysepf = 5.0f;
-    const float xsep = float(startPinIndex) * xsepf;
+    const float xsepf = 7.0f;
+    const float ysepf = 7.0f;
+    const float xsep = float(startPinIndex) * xsepf + 2.0f;
     const float ysep = float(startPinIndex) * ysepf - (float(startNodeOutPinCount - 1)) * ysepf / 2.0f;
 
     if(pathType == ed::LinkPathType_Under_Over)
