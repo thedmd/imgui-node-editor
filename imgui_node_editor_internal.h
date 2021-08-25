@@ -432,6 +432,19 @@ struct Node final: Object
     virtual Node* AsNode() override final { return this; }
 };
 
+enum LinkPathType {
+    LinkPathType_Default,
+    LinkPathType_Under_Over,
+    LinkPathType_Over_Under,
+    LinkPathType_Under_Under
+};
+
+struct LinkPath {
+    ImVec2 m_Points[16];
+    int m_NumPoint;
+    LinkPathType m_Type;
+};
+
 struct Link final: Object
 {
     using IdType = LinkId;
@@ -463,7 +476,8 @@ struct Link final: Object
 
     void UpdateEndpoints();
 
-    ImCubicBezierPoints GetCurve() const;
+    LinkPathType GetPathType(ImRect& fromRect, ImRect& toRect) const;
+    LinkPath GetCurve() const;
 
     virtual bool TestHit(const ImVec2& point, float extraThickness = 0.0f) const override final;
     virtual bool TestHit(const ImRect& rect, bool allowIntersect = true) const override final;
