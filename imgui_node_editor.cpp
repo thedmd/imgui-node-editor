@@ -878,7 +878,8 @@ void ed::Link::Draw(ImDrawList* drawList, ImU32 color, float extraThickness) con
         ImDrawList_AddBezierWithArrows(drawList, bezier, m_Thickness + extraThickness, startArrowSize,
                                        startArrowWidth, endArrowSize, endArrowWidth, true, color, 1.0f);
 
-        if(!isEnd) {
+        if(!isEnd)
+        {
             const auto bezier1 = ImCubicBezierPoints { curve.m_Points[i + 3], curve.m_Points[i + 3],
                                                        curve.m_Points[i + 4], curve.m_Points[i + 4] };
             ImDrawList_AddBezierWithArrows(drawList, bezier1, m_Thickness + extraThickness,
@@ -909,17 +910,11 @@ ed::LinkPathType ed::Link::GetPathType(ImRect& fromRect, ImRect& toRect) const
     toRect = m_EndPin->m_Node->m_Bounds;
 
     if(m_End.x > fromRect.Max.x)
-    {
         return ed::LinkPathType_Default;
-    }
     else if(toRect.Min.y > fromRect.Max.y)
-    {
         return ed::LinkPathType_Under_Over;
-    }
     else if(toRect.Max.y < fromRect.Min.y)
-    {
         return ed::LinkPathType_Over_Under;
-    }
 
     return ed::LinkPathType_Under_Under;
 }
@@ -936,7 +931,7 @@ ed::LinkPath ed::Link::GetCurve() const
     if(pathType == ed::LinkPathType_Default)
     {
         auto easeLinkStrength = [](const ImVec2& a, const ImVec2& b, float strength)
-                {
+        {
             const auto distanceX    = b.x - a.x;
             const auto distanceY    = b.y - a.y;
             const auto distance     = ImSqrt(distanceX * distanceX + distanceY * distanceY);
@@ -946,7 +941,7 @@ ed::LinkPath ed::Link::GetCurve() const
                 strength = strength * ImSin(IM_PI * 0.5f * halfDistance / strength);
 
             return strength;
-                };
+        };
 
         const auto startStrength = easeLinkStrength(m_Start, m_End, m_StartPin->m_Strength);
         const auto   endStrength = easeLinkStrength(m_Start, m_End,   m_EndPin->m_Strength);
