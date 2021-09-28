@@ -129,6 +129,7 @@ add_subdirectory(application)
 
 add_subdirectory(canvas-example)
 add_subdirectory(simple-example)
+add_subdirectory(widgets-example)
 add_subdirectory(basic-interaction-example)
 add_subdirectory(blueprints-example)
 add_subdirectory(blueprints2-example)

@@ -1,0 +1,61 @@
+name: build
+
+on:
+  push:
+  pull_request:
+  workflow_run:
+    # Use a workflow as a trigger of scheduled builds. Forked repositories can disable scheduled builds by disabling
+    # "scheduled" workflow, while maintaining ability to perform local CI builds.
+    workflows:
+      - scheduled
+    branches:
+      - master
+      - develop
+    types:
+      - requested
+
+env:
+  # Customize the CMake build type here (Release, Debug, RelWithDebInfo, etc.)
+  BUILD_TYPE: Release
+
+jobs:
+  Windows:
+    runs-on: windows-2019
+    env:
+      VS_PATH: C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\
+      MSBUILD_PATH: C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\MSBuild\Current\Bin\
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: Configure CMake
+      run: cmake -S examples -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}}
+    - name: Build
+      run: cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}}
+      
+  macOS:
+    runs-on: macos-latest
+
+    steps:
+    - name: Install Dependencies
+      run: |
+        brew install glfw3    
+    - uses: actions/checkout@v2
+    - name: Configure CMake
+      run: cmake -S examples -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}}
+    - name: Build
+      run: cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}}
+      
+  Linux:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Install Dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libglfw3-dev    
+    - uses: actions/checkout@v2
+    - name: Configure CMake
+      run: cmake -S examples -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}}
+    - name: Build
+      run: cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}}
+      

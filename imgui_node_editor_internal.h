@@ -1,4 +1,6 @@
 //------------------------------------------------------------------------------
+// VERSION 0.9.1
+//
 // LICENSE
 //   This software is dual-licensed to the public domain and under the following
 //   license: you are granted a perpetual, irrevocable license to copy, modify,
@@ -464,6 +466,7 @@ struct Node final: Object
     NodeId   m_ID;
     NodeType m_Type;
     ImRect   m_Bounds;
+    float    m_ZPosition;
     int      m_Channel;
     Pin*     m_LastPin;
     ImVec2   m_DragStart;
@@ -487,6 +490,7 @@ struct Node final: Object
         , m_ID(id)
         , m_Type(NodeType::Node)
         , m_Bounds()
+        , m_ZPosition(0.0f)
         , m_Channel(0)
         , m_LastPin(nullptr)
         , m_DragStart()
@@ -700,6 +704,11 @@ struct Control
     bool    BackgroundClicked;
     bool    BackgroundDoubleClicked;
 
+    Control()
+        : Control(nullptr, nullptr, nullptr, nullptr, false, false, false, false)
+    {
+    }
+
     Control(Object* hotObject, Object* activeObject, Object* clickedObject, Object* doubleClickedObject,
         bool backgroundHot, bool backgroundActive, bool backgroundClicked, bool backgroundDoubleClicked)
         : HotObject(hotObject)
@@ -848,7 +857,7 @@ private:
     void UpdatePath();
     void ClearPath();
 
-    ImVec2 SamplePath(float distance);
+    ImVec2 SamplePath(float distance) const;
 
     void OnUpdate(float progress) override final;
     void OnStop() override final;
@@ -878,7 +887,7 @@ struct FlowAnimationController final : AnimationController
     FlowAnimationController(EditorContext* editor);
     virtual ~FlowAnimationController();
 
-    void Flow(Link* link);
+    void Flow(Link* link, FlowDirection direction = FlowDirection::Forward);
 
     virtual void Draw(ImDrawList* drawList) override final;
 
@@ -967,10 +976,10 @@ struct NavigateAction final: EditorAction
     void StopNavigation();
     void FinishNavigation();
 
-    bool MoveOverEdge();
+    bool MoveOverEdge(const ImVec2& canvasSize);
     void StopMoveOverEdge();
     bool IsMovingOverEdge() const { return m_MovingOverEdge; }
-    ImVec2 GetMoveOffset() const { return m_MoveOffset; }
+    ImVec2 GetMoveScreenOffset() const { return m_MoveScreenOffset; }
 
     void SetWindow(ImVec2 position, ImVec2 size);
     ImVec2 GetWindowScreenPos() const { return m_WindowScreenPos; };
@@ -995,7 +1004,7 @@ private:
     uint64_t           m_LastSelectionId;
     Object*            m_LastObject;
     bool               m_MovingOverEdge;
-    ImVec2             m_MoveOffset;
+    ImVec2             m_MoveScreenOffset;
 
     bool HandleZoom(const Control& control);
 
@@ -1405,6 +1414,8 @@ struct EditorContext
     EditorContext(const ax::NodeEditor::Config* config = nullptr);
     ~EditorContext();
 
+    const Config& GetConfig() const { return m_Config; }
+
     Style& GetStyle() { return m_Style; }
 
     void Begin(const char* id, const ImVec2& size = ImVec2(0, 0));
@@ -1428,8 +1439,12 @@ struct EditorContext
     const ImRect& GetRect() const { return m_Canvas.Rect(); }
 
     void SetNodePosition(NodeId nodeId, const ImVec2& screenPosition);
+    void SetGroupSize(NodeId nodeId, const ImVec2& size);
     ImVec2 GetNodePosition(NodeId nodeId);
     ImVec2 GetNodeSize(NodeId nodeId);
+
+    void SetNodeZPosition(NodeId nodeId, float z);
+    float GetNodeZPosition(NodeId nodeId);
 
     void MarkNodeToRestoreState(Node* node);
     void RestoreNodeState(Node* node);
@@ -1469,10 +1484,17 @@ struct EditorContext
     void Resume(SuspendFlags flags = SuspendFlags::None);
     bool IsSuspended();
 
-    bool IsActive();
+    bool IsFocused();
+    bool IsHovered() const;
+    bool IsHoveredWithoutOverlapp() const;
+    bool CanAcceptUserInput() const;
 
     void MakeDirty(SaveReasonFlags reason);
     void MakeDirty(SaveReasonFlags reason, Node* node);
+
+    int CountLiveNodes() const;
+    int CountLivePins() const;
+    int CountLiveLinks() const;
 
     Pin*    CreatePin(PinId id, PinKind kind);
     Node*   CreateNode(NodeId id);
@@ -1526,12 +1548,18 @@ struct EditorContext
     ImU32 GetColor(StyleColor colorIndex) const;
     ImU32 GetColor(StyleColor colorIndex, float alpha) const;
 
-    void NavigateTo(const ImRect& bounds, bool zoomIn = false, float duration = -1) { m_NavigateAction.NavigateTo(bounds, NavigateAction::ZoomMode::WithMargin, duration); }
+    int GetNodeIds(NodeId* nodes, int size) const;
+
+    void NavigateTo(const ImRect& bounds, bool zoomIn = false, float duration = -1)
+    {
+        auto zoomMode = zoomIn ? NavigateAction::ZoomMode::WithMargin : NavigateAction::ZoomMode::None;
+        m_NavigateAction.NavigateTo(bounds, zoomMode, duration);
+    }
 
     void RegisterAnimation(Animation* animation);
     void UnregisterAnimation(Animation* animation);
 
-    void Flow(Link* link);
+    void Flow(Link* link, FlowDirection direction);
 
     void SetUserContext(bool globalSpace = false);
 
@@ -1606,7 +1634,9 @@ private:
     void UpdateAnimations();
 
     bool                m_IsFirstFrame;
-    bool                m_IsWindowActive;
+    bool                m_IsFocused;
+    bool                m_IsHovered;
+    bool                m_IsHoveredWithoutOverlapp;
 
     bool                m_ShortcutsEnabled;
 

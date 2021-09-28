@@ -1,4 +1,6 @@
 //------------------------------------------------------------------------------
+// VERSION 0.9.1
+//
 // LICENSE
 //   This software is dual-licensed to the public domain and under the following
 //   license: you are granted a perpetual, irrevocable license to copy, modify,
@@ -31,8 +33,7 @@ static int BuildIdList(C& container, I* list, int listSize, F&& accept)
             {
                 list[count] = I(object->ID().AsPointer());
                 ++count;
-                --listSize;
-            }
+                --listSize;}
         }
 
         return count;
@@ -217,10 +218,10 @@ bool ax::NodeEditor::Link(LinkId id, PinId startPinId, PinId endPinId, const ImV
     return s_Editor->DoLink(id, startPinId, endPinId, ImColor(color), thickness);
 }
 
-void ax::NodeEditor::Flow(LinkId linkId)
+void ax::NodeEditor::Flow(LinkId linkId, FlowDirection direction)
 {
     if (auto link = s_Editor->FindLink(linkId))
-        s_Editor->Flow(link);
+        s_Editor->Flow(link, direction);
 }
 
 bool ax::NodeEditor::BeginCreate(const ImVec4& color, float thickness)
@@ -373,6 +374,11 @@ void ax::NodeEditor::SetNodePosition(NodeId nodeId, const ImVec2& position)
     s_Editor->SetNodePosition(nodeId, position);
 }
 
+void ax::NodeEditor::SetGroupSize(NodeId nodeId, const ImVec2& size)
+{
+    s_Editor->SetGroupSize(nodeId, size);
+}
+
 ImVec2 ax::NodeEditor::GetNodePosition(NodeId nodeId)
 {
     return s_Editor->GetNodePosition(nodeId);
@@ -393,11 +399,21 @@ void ax::NodeEditor::CenterNodeOnScreen(NodeId nodeId)
 //{
 //    s_Editor->SaveState();
 //}
-//
+
 //void ax::NodeEditor::RestoreState()
 //{
 //    s_Editor->RestoreState();
 //}
+
+void ax::NodeEditor::SetNodeZPosition(NodeId nodeId, float z)
+{
+    s_Editor->SetNodeZPosition(nodeId, z);
+}
+
+float ax::NodeEditor::GetNodeZPosition(NodeId nodeId)
+{
+    return s_Editor->GetNodeZPosition(nodeId);
+}
 
 void ax::NodeEditor::RestoreNodeState(NodeId nodeId)
 {
@@ -648,7 +664,7 @@ bool ax::NodeEditor::IsSuspended()
 
 bool ax::NodeEditor::IsActive()
 {
-    return s_Editor->IsActive();
+    return s_Editor->IsFocused();
 }
 
 bool ax::NodeEditor::HasSelectionChanged()
@@ -956,4 +972,13 @@ ImVector<ax::NodeEditor::LinkId> ax::NodeEditor::FindLinksForNode(NodeId nodeId)
         result.push_back(link->m_ID);
 
     return result;
+}
+int ax::NodeEditor::GetNodeCount()
+{
+    return s_Editor->CountLiveNodes();
+}
+
+int ax::NodeEditor::GetOrderedNodeIds(NodeId* nodes, int size)
+{
+    return s_Editor->GetNodeIds(nodes, size);
 }

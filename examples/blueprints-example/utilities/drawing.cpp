@@ -47,19 +47,19 @@ void ax::Drawing::DrawIcon(ImDrawList* drawList, const ImVec2& a, const ImVec2& 
         const auto tip_bottom = ImVec2(canvas_x + canvas_w * 0.5f, bottom);
 
         drawList->PathLineTo(ImVec2(left, top) + ImVec2(0, rounding));
-        drawList->PathBezierCurveTo(
+        drawList->PathBezierCubicCurveTo(
             ImVec2(left, top),
             ImVec2(left, top),
             ImVec2(left, top) + ImVec2(rounding, 0));
         drawList->PathLineTo(tip_top);
         drawList->PathLineTo(tip_top + (tip_right - tip_top) * tip_round);
-        drawList->PathBezierCurveTo(
+        drawList->PathBezierCubicCurveTo(
             tip_right,
             tip_right,
             tip_bottom + (tip_right - tip_bottom) * tip_round);
         drawList->PathLineTo(tip_bottom);
         drawList->PathLineTo(ImVec2(left, bottom) + ImVec2(rounding, 0));
-        drawList->PathBezierCurveTo(
+        drawList->PathBezierCubicCurveTo(
             ImVec2(left, bottom),
             ImVec2(left, bottom),
             ImVec2(left, bottom) - ImVec2(0, rounding));
@@ -99,7 +99,9 @@ void ax::Drawing::DrawIcon(ImDrawList* drawList, const ImVec2& a, const ImVec2& 
                 drawList->AddCircle(c, r, color, 12 + extra_segments, 2.0f * outline_scale);
             }
             else
+            {
                 drawList->AddCircleFilled(c, 0.5f * rect_w / 2.0f, color, 12 + extra_segments);
+            }
         }
 
         if (type == IconType::Square)
@@ -110,7 +112,11 @@ void ax::Drawing::DrawIcon(ImDrawList* drawList, const ImVec2& a, const ImVec2& 
                 const auto p0 = rect_center - ImVec2(r, r);
                 const auto p1 = rect_center + ImVec2(r, r);
 
-                drawList->AddRectFilled(p0, p1, color, 0, 15 + extra_segments);
+#if IMGUI_VERSION_NUM > 18101
+                drawList->AddRectFilled(p0, p1, color, 0, ImDrawFlags_RoundCornersAll);
+#else
+                drawList->AddRectFilled(p0, p1, color, 0, 15);
+#endif
             }
             else
             {
@@ -119,9 +125,19 @@ void ax::Drawing::DrawIcon(ImDrawList* drawList, const ImVec2& a, const ImVec2& 
                 const auto p1 = rect_center + ImVec2(r, r);
 
                 if (innerColor & 0xFF000000)
-                    drawList->AddRectFilled(p0, p1, innerColor, 0, 15 + extra_segments);
+                {
+#if IMGUI_VERSION_NUM > 18101
+                    drawList->AddRectFilled(p0, p1, innerColor, 0, ImDrawFlags_RoundCornersAll);
+#else
+                    drawList->AddRectFilled(p0, p1, innerColor, 0, 15);
+#endif
+                }
 
-                drawList->AddRect(p0, p1, color, 0, 15 + extra_segments, 2.0f * outline_scale);
+#if IMGUI_VERSION_NUM > 18101
+                drawList->AddRect(p0, p1, color, 0, ImDrawFlags_RoundCornersAll, 2.0f * outline_scale);
+#else
+                drawList->AddRect(p0, p1, color, 0, 15, 2.0f * outline_scale);
+#endif
             }
         }
 
@@ -164,7 +180,11 @@ void ax::Drawing::DrawIcon(ImDrawList* drawList, const ImVec2& a, const ImVec2& 
                 const auto p0 = rect_center - ImVec2(r, r);
                 const auto p1 = rect_center + ImVec2(r, r);
 
+#if IMGUI_VERSION_NUM > 18101
+                drawList->AddRectFilled(p0, p1, color, cr, ImDrawFlags_RoundCornersAll);
+#else
                 drawList->AddRectFilled(p0, p1, color, cr, 15);
+#endif
             }
             else
             {
@@ -174,9 +194,19 @@ void ax::Drawing::DrawIcon(ImDrawList* drawList, const ImVec2& a, const ImVec2& 
                 const auto p1 = rect_center + ImVec2(r, r);
 
                 if (innerColor & 0xFF000000)
+                {
+#if IMGUI_VERSION_NUM > 18101
+                    drawList->AddRectFilled(p0, p1, innerColor, cr, ImDrawFlags_RoundCornersAll);
+#else
                     drawList->AddRectFilled(p0, p1, innerColor, cr, 15);
+#endif
+                }
 
+#if IMGUI_VERSION_NUM > 18101
+                drawList->AddRect(p0, p1, color, cr, ImDrawFlags_RoundCornersAll, 2.0f * outline_scale);
+#else
                 drawList->AddRect(p0, p1, color, cr, 15, 2.0f * outline_scale);
+#endif
             }
         }
         else if (type == IconType::Diamond)

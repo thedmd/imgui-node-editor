@@ -1,4 +1,6 @@
 //------------------------------------------------------------------------------
+// VERSION 0.9.1
+//
 // LICENSE
 //   This software is dual-licensed to the public domain and under the following
 //   license: you are granted a perpetual, irrevocable license to copy, modify,
@@ -116,6 +118,10 @@ struct Config
     ConfigLoadNodeSettingsJson  LoadNodeSettingsJson;
     void*                       UserPointer;
     TransactionInterface        TransactionInterface;
+    int                         DragButtonIndex;        // Mouse button index drag action will react to (0-left, 1-right, 2-middle)
+    int                         SelectButtonIndex;      // Mouse button index select action will react to (0-left, 1-right, 2-middle)
+    int                         NavigateButtonIndex;    // Mouse button index navigate action will react to (0-left, 1-right, 2-middle)
+    int                         ContextMenuButtonIndex; // Mouse button index context menu action will react to (0-left, 1-right, 2-middle)
 
     Config()
         : SettingsFile("NodeEditor.json")
@@ -130,6 +136,10 @@ struct Config
         , SaveNodeSettingsJson(nullptr)
         , LoadNodeSettingsJson(nullptr)
         , UserPointer(nullptr)
+        , DragButtonIndex(0)
+        , SelectButtonIndex(0)
+        , NavigateButtonIndex(1)
+        , ContextMenuButtonIndex(1)
     {
     }
 };
@@ -140,6 +150,12 @@ enum class PinKind
 {
     Input,
     Output
+};
+
+enum class FlowDirection
+{
+    Forward,
+    Backward
 };
 
 
@@ -243,7 +259,11 @@ struct Style
         PivotAlignment          = ImVec2(0.5f, 0.5f);
         PivotSize               = ImVec2(0.0f, 0.0f);
         PivotScale              = ImVec2(1, 1);
+#if IMGUI_VERSION_NUM > 18101
+        PinCorners              = ImDrawFlags_RoundCornersAll;
+#else
         PinCorners              = ImDrawCornerFlags_All;
+#endif
         PinRadius               = 0.0f;
         PinArrowSize            = 0.0f;
         PinArrowWidth           = 0.0f;
@@ -319,7 +339,7 @@ ImDrawList* GetNodeBackgroundDrawList(NodeId nodeId);
 
 bool Link(LinkId id, PinId startPinId, PinId endPinId, const ImVec4& color = ImVec4(1, 1, 1, 1), float thickness = 1.0f);
 
-void Flow(LinkId linkId);
+void Flow(LinkId linkId, FlowDirection direction = FlowDirection::Forward);
 
 bool BeginCreate(const ImVec4& color = ImVec4(1, 1, 1, 1), float thickness = 1.0f);
 bool QueryNewLink(PinId* startId, PinId* endId);
@@ -340,9 +360,12 @@ void RejectDeletedItem();
 void EndDelete();
 
 void SetNodePosition(NodeId nodeId, const ImVec2& editorPosition);
+void SetGroupSize(NodeId nodeId, const ImVec2& size);
 ImVec2 GetNodePosition(NodeId nodeId);
 ImVec2 GetNodeSize(NodeId nodeId);
 void CenterNodeOnScreen(NodeId nodeId);
+void SetNodeZPosition(NodeId nodeId, float z); // Sets node z position, nodes with higher value are drawn over nodes with lower value
+float GetNodeZPosition(NodeId nodeId); // Returns node z position, defaults is 0.0f
 
 //void SaveState();
 //void RestoreState();
@@ -441,12 +464,8 @@ ImVec2 CanvasToScreen(const ImVec2& pos);
 
 ImVector<LinkId> FindLinksForNode(NodeId nodeId);
 
-
-
-
-
-
-
+int GetNodeCount();                                // Returns number of submitted nodes since Begin() call
+int GetOrderedNodeIds(NodeId* nodes, int size);    // Fills an array with node id's in order they're drawn; up to 'size` elements are set. Returns actual size of filled id's.
 
 //------------------------------------------------------------------------------
 namespace Details {

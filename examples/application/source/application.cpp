@@ -128,8 +128,12 @@ void Application::Frame()
 
     m_Platform->NewFrame();
 
-    io.MousePos.x    /= windowScale;
-    io.MousePos.y    /= windowScale;
+    // Don't touch "uninitialized" mouse position
+    if (io.MousePos.x > -FLT_MAX && io.MousePos.y > -FLT_MAX)
+    {
+        io.MousePos.x    /= windowScale;
+        io.MousePos.y    /= windowScale;
+    }
     io.DisplaySize.x /= windowScale;
     io.DisplaySize.y /= windowScale;
 

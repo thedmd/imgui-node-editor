@@ -70,6 +70,9 @@ if (OpenGL_FOUND)
     set(HAVE_OPENGL YES)
 
     find_package(gl3w REQUIRED)
+    # Explicitly select embedded GL3W loader
+    target_compile_definitions(application PRIVATE IMGUI_IMPL_OPENGL_LOADER_GL3W)
+
     target_include_directories(application PRIVATE ${OPENGL_INCLUDE_DIR})
     target_link_libraries(application PRIVATE ${OPENGL_gl_LIBRARY} gl3w)
     list(APPEND _Application_Sources

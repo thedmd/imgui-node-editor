@@ -110,7 +110,7 @@ struct Example:
         ImGui::BeginChild("##top", ImVec2(s_LeftPaneSize, -1), false, ImGuiWindowFlags_NoScrollWithMouse);
 
         ImGui::TextUnformatted("Rect:");
-        ImGui::BeginColumns("rect", 2, ImGuiColumnsFlags_NoBorder);
+        ImGui::BeginColumns("rect", 2, ImGuiOldColumnFlags_NoBorder);
         ImGui::SetColumnWidth(0, ImGui::CalcTextSize("\t\tL: 0000.00\t").x);
         ImGui::Text("\tL: %.2f", canvasRect.Min.x);       ImGui::NextColumn();
         ImGui::Text("\tT: %.2f", canvasRect.Min.y);       ImGui::NextColumn();
@@ -121,7 +121,7 @@ struct Example:
         ImGui::EndColumns();
 
         ImGui::TextUnformatted("View Rect:");
-        ImGui::BeginColumns("viewrect", 2, ImGuiColumnsFlags_NoBorder);
+        ImGui::BeginColumns("viewrect", 2, ImGuiOldColumnFlags_NoBorder);
         ImGui::SetColumnWidth(0, ImGui::CalcTextSize("\t\tL: 0000.00\t").x);
         ImGui::Text("\tL: %.2f", viewRect.Min.x);       ImGui::NextColumn();
         ImGui::Text("\tT: %.2f", viewRect.Min.y);       ImGui::NextColumn();
@@ -158,7 +158,7 @@ struct Example:
             canvas.CenterView(panelRect);
 
         ImGui::TextUnformatted("Panel Rect:");
-        ImGui::BeginColumns("panelrect", 2, ImGuiColumnsFlags_NoBorder);
+        ImGui::BeginColumns("panelrect", 2, ImGuiOldColumnFlags_NoBorder);
         ImGui::SetColumnWidth(0, ImGui::CalcTextSize("\t\tL: 0000.00\t").x);
         ImGui::Text("\tL: %.2f", panelRect.Min.x);       ImGui::NextColumn();
         ImGui::Text("\tT: %.2f", panelRect.Min.y);       ImGui::NextColumn();

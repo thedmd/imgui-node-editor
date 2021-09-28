@@ -1,0 +1,160 @@
+v0.9.1 (WIP):
+
+    CHANGE: Remove unwanted extra frame height from node bottom
+
+    CHANGE: Allow to specify if links of deleted node should also be automatically deleted
+        Now it is possible to delete only node without automatically serving links,
+        application can choose to do this operation by itself and for example
+        short circuit flow links ot do any other special operation.
+
+    CHANGE: Canvas: Allow to overlap canvas widget
+
+    CHANGE: Natvis: Move crude_json natvis to separate file
+
+    CHANGE: Natvis: Show readable NodeId/PinId/LinkId
+
+    CHANGE: Make Navigate action to honor duration
+
+    CHANGE: Travis: Use Ubuntu Bionic (18.04) for CI, to get newer version of GLFW3
+
+    CHANGE: Editor: Make action button internally configurable
+
+    CHANGE: Make Node Editor forward compatible with ImGui 1.80+ (#112)
+        We're keeping backward compatibility with pre 1.8x versions.
+
+    CHANGE: Update internal copy ImGui to 1.84 (WIP) (3512f2c2c283ec86) (#107)
+        Internal copy has two PR's merged:
+            https://github.com/thedmd/imgui/tree/feature/layout      - used in blueprints example only
+            https://github.com/thedmd/imgui/tree/feature/extra-keys  - optional: used by Node Editor if present
+
+    CHANGE: Use github actions instead of Travis and AppVeyor (#113)
+
+    NEW: All source components are now versioned
+
+    NEW: Make view state independent of window resolution.
+
+    NEW: Editor can now break links connected specified node or pin
+        New API:
+        int BreakLinks(NodeId nodeId);
+        int BreakLinks(PinId pinId);
+
+    NEW: Editor can now tell if node or pin has any links attached
+        New API:
+        bool HasAnyLinks(NodeId nodeId);
+        bool HasAnyLinks(PinId pinId);
+
+    NEW: Editor can be queried if particular node or link is selected
+        New API:
+        bool IsNodeSelected(NodeId nodeId);
+        bool IsLinkSelected(LinkId linkId);
+
+    NEW: Editor now can return pins of the link
+        New API:
+        bool GetLinkPins(LinkId linkId, PinId* startPinId, PinId* endPinId);
+
+        `startPinId` and `endPinId` may be null if caller is not interested
+        in particular id.
+
+    NEW: Editor now return ids of hovered node/pin/link
+        New API:
+        NodeId GetHoveredNode();
+        PinId GetHoveredPin();
+        LinkId GetHoveredLink();
+
+    NEW: Add SetGroupSize() to explicitly set group size
+        New API:
+        void SetGroupSize(NodeId nodeId, const ImVec2& size);
+
+    NEW: crude_json: Add save() and load()
+
+        When CRUDE_JSON_IO == 1 value will have load() and save()
+        function implemented using stdio.h FILE.
+
+    NEW: crude_json: Add erase() and get_ptr()
+
+    NEW: Application overhaul
+        - Convert from function based to inheritable class
+        - Add ability to close app and change title from code
+        - Add ability to control main window flags (ex. show menubar)
+        - Save ImGui state to ini file
+        - Render using pre-multiplied alpha textures
+        - Add extra fonts to examples.
+
+    NEW: Reintegrate Widgets example from @crolando (#77)
+
+    NEW: User can now override button indices for various actions (#88)
+        New API in Config:
+            int                     DragButtonIndex;        // Mouse button index drag action will react to (0-left, 1-right, 2-middle)
+            int                     SelectButtonIndex;      // Mouse button index select action will react to (0-left, 1-right, 2-middle)
+            int                     NavigateButtonIndex;    // Mouse button index navigate action will react to (0-left, 1-right, 2-middle)
+            int                     ContextMenuButtonIndex; // Mouse button index context menu action will react to (0-left, 1-right, 2-middle)
+
+    NEW: Flow direction can now be picked per flow (#104)
+        New API:
+            enum class FlowDirection
+            {
+                Forward,
+                Backward
+            };
+
+            void Flow(LinkId linkId, FlowDirection direction = FlowDirection::Forward);
+
+    NEW: Editor can now return number of submitted nodes (#81)
+        New API:
+            int GetNodeCount();                                // Returns number of submitted nodes since Begin() call
+
+    NEW: Editor can now return nodes in order they are drawn (#81)
+        New API:
+            int GetOrderedNodeIds(NodeId* nodes, int size);    // Fills an array with node id's in order they're drawn; up to 'size` elements are set. Returns actual size of filled id's.
+
+    NEW: Editor now allow to set Z position for nodes (#109)
+
+        Nodes with higher Z position are drawn on top of ones with lower.
+
+        New API:
+            void SetNodeZPosition(NodeId nodeId, float z); // Sets node z position, nodes with higher value are drawn over nodes with lower value
+            float GetNodeZPosition(NodeId nodeId); // Returns node z position, defaults is 0.0f
+
+    BUGFIX: Avoid crash while destroying editor.
+
+    BUGFIX: Save draw list used by editor between Begin() and End()
+        There is a chance ImGui::GetWindowDrawList() will return different draw list
+        while nodes are being composed. To avoid troubles of manipulating incorrect
+        draw list one obtained in Begin() is remembered and used.
+
+    BUGFIX: Avoid division by zero in ImCubicBezierBoundingRect
+
+    BUGFIX: Don't stuck in delete action if user does not handle it
+
+    BUGFIX: Enable use channel splitter inside Begin/End for node and pin. #28
+
+    BUGFIX: Don't manipulate channels when editor is suspended #28
+
+    BUGFIX: Fix ObjectId serialization
+
+    BUGFIX: GroupNode resize instead of move on low zoom #87
+
+    BUGFIX: Make Canvas work with Viewports (#91, #90)
+
+    BUGFIX: Explicitly choose embedded GL3W as OpenGL extension loader (#96)
+
+    BUGFIX: Application: Don't apply HiDPI logic for (-FLT_MAX,-FLT_MAX) mouse position
+
+    BUGFIX: Editor: Clamp over-the-edge drag distance to prevent scrolling to infinity on focus lost
+
+    BUGFIX: Editor: Consume scroll event (#73) (require ImGui 17909 or later)
+
+    BUGFIX: Editor: Respect window focus while handling actions (#99)
+
+    BUGFIX: Examples: Correct case of `data` directory (#97)
+
+    BUGFIX: Canvas: Save/Restore CursorMaxPos only in Begin/End (#101)
+
+    BUGFIX: Editor: Don't implicitly capture keyboard (#83)
+
+    BUGFIX: Application: Reset key down state after loosing keyboard focus
+
+    BUGFIX: Editor: Make off-screen dragging work again
+
+    BUGFIX: ImGui: Disable obsolete functions (#103)
+
