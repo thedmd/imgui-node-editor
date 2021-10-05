@@ -1555,7 +1555,36 @@ struct Example:
                         {
                             auto id = std::find_if(m_Nodes.begin(), m_Nodes.end(), [nodeId](auto& node) { return node.ID == nodeId; });
                             if (id != m_Nodes.end())
+                            {
+                                for (const auto& inputPin : id->Inputs)
+                                {
+                                    for (size_t i = 0; i < m_Links.size(); i++)
+                                    {
+                                        if (m_Links.at(i).EndPinID == inputPin.ID)
+                                        {
+                                            ed::DeleteLink(m_Links.at(i).ID);
+                                            auto iter = std::find_if(m_Links.begin(), m_Links.end(), [&](const auto& link) { return link.ID == m_Links.at(i).ID; });
+                                            m_Links.erase(iter);
+                                            continue;
+                                        }
+                                    }
+                                }
+                                for (const auto& outputPin : id->Outputs)
+                                {
+                                    for (size_t i = 0; i < m_Links.size(); i++)
+                                    {
+                                        if (m_Links.at(i).StartPinID == outputPin.ID)
+                                        {
+                                            ed::DeleteLink(m_Links.at(i).ID);
+                                            auto iter = std::find_if(m_Links.begin(), m_Links.end(), [&](const auto& link) { return link.ID == m_Links.at(i).ID; });
+                                            m_Links.erase(iter);
+                                            continue;
+                                        }
+                                    }
+                                }
+                                
                                 m_Nodes.erase(id);
+                            }
                         }
                     }
                 }
