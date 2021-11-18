@@ -159,4 +159,6 @@ v0.9.1 (WIP):
     BUGFIX: ImGui: Disable obsolete functions (#103)
     
     BUGFIX: Editor: Allow nodes with zero size (#134)
+    
+    BUGFIX: Canvas: Update call ImGui::IsClippedEx() on ImGui > 18415 (#138)
 
