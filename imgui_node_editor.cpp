@@ -2228,8 +2228,8 @@ ed::Control ed::EditorContext::BuildControl(bool allowOffscreen)
         if (window->SkipItems)
             return false;
 
-        // Cannot use zero-size for InvisibleButton(). Unlike Button() there is not way to fallback using the label size.
-        IM_ASSERT(size_arg.x != 0.0f && size_arg.y != 0.0f);
+        if (size_arg.x == 0.0f || size_arg.y == 0.0f)
+            return false;
 
         const ImGuiID id = window->GetID(str_id);
         ImVec2 size = CalcItemSize(size_arg, 0.0f, 0.0f);
