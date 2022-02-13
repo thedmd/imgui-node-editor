@@ -532,6 +532,7 @@ struct Settings
 
     NodeSettings* AddNode(NodeId id);
     NodeSettings* FindNode(NodeId id);
+    void RemoveNode(NodeId id);
 
     void ClearDirty(Node* node = nullptr);
     void MakeDirty(SaveReasonFlags reason, Node* node = nullptr);
@@ -1305,7 +1306,9 @@ struct EditorContext
     float GetNodeZPosition(NodeId nodeId);
 
     void MarkNodeToRestoreState(Node* node);
-    void RestoreNodeState(Node* node);
+    void UpdateNodeState(Node* node);
+
+    void RemoveSettings(Object* object);
 
     void ClearSelection();
     void SelectObject(Object* object);

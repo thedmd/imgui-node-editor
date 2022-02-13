@@ -1605,15 +1605,28 @@ void ed::EditorContext::MarkNodeToRestoreState(Node* node)
     node->m_RestoreState = true;
 }
 
-void ed::EditorContext::RestoreNodeState(Node* node)
+void ed::EditorContext::UpdateNodeState(Node* node)
 {
+    bool tryLoadState = node->m_RestoreState;
+
+    node->m_RestoreState = false;
+
     auto settings = m_Settings.FindNode(node->m_ID);
     if (!settings)
         return;
 
-    // Load state from config (if possible)
-    if (!NodeSettings::Parse(m_Config.LoadNode(node->m_ID), *settings))
+    if (!tryLoadState && settings->m_WasUsed)
         return;
+
+    settings->m_WasUsed = true;
+
+    // Load state from config (if possible)
+    if (tryLoadState)
+    {
+        NodeSettings newSettings = *settings;
+        if (NodeSettings::Parse(m_Config.LoadNode(node->m_ID), newSettings))
+            *settings = newSettings;
+    }
 
     node->m_Bounds.Min      = settings->m_Location;
     node->m_Bounds.Max      = node->m_Bounds.Min + settings->m_Size;
@@ -1621,6 +1634,12 @@ void ed::EditorContext::RestoreNodeState(Node* node)
     node->m_GroupBounds.Min = settings->m_Location;
     node->m_GroupBounds.Max = node->m_GroupBounds.Min + settings->m_GroupSize;
     node->m_GroupBounds.Floor();
+}
+
+void ed::EditorContext::RemoveSettings(Object* object)
+{
+    if (auto node = object->AsNode())
+        m_Settings.RemoveNode(node->m_ID);
 }
 
 void ed::EditorContext::ClearSelection()
@@ -1896,23 +1915,10 @@ ed::Node* ed::EditorContext::CreateNode(NodeId id)
     if (!settings)
         settings = m_Settings.AddNode(id);
 
-    if (!settings->m_WasUsed)
-    {
-        settings->m_WasUsed = true;
-        RestoreNodeState(node);
-    }
-
-    node->m_Bounds.Min  = settings->m_Location;
-    node->m_Bounds.Max  = node->m_Bounds.Min;
-    node->m_Bounds.Floor();
+    UpdateNodeState(node);
 
     if (settings->m_GroupSize.x > 0 || settings->m_GroupSize.y > 0)
-    {
-        node->m_Type            = NodeType::Group;
-        node->m_GroupBounds.Min = settings->m_Location;
-        node->m_GroupBounds.Max = node->m_GroupBounds.Min + settings->m_GroupSize;
-        node->m_GroupBounds.Floor();
-    }
+        node->m_Type = NodeType::Group;
 
     node->m_IsLive = false;
 
@@ -2570,6 +2576,15 @@ ed::NodeSettings* ed::Settings::FindNode(NodeId id)
             return &settings;
 
     return nullptr;
+}
+
+void ed::Settings::RemoveNode(NodeId id)
+{
+    auto node = FindNode(id);
+    if (!node)
+        return;
+
+    *node = NodeSettings(id);
 }
 
 void ed::Settings::ClearDirty(Node* node)
@@ -4929,6 +4944,8 @@ void ed::DeleteItemsAction::RemoveItem(bool deleteDependencies)
 
     Editor->DeselectObject(item);
 
+    Editor->RemoveSettings(item);
+
     if (deleteDependencies && m_CurrentItemType == Node)
         DeleteDeadLinks(item->ID().AsNodeId());
 
@@ -4963,11 +4980,7 @@ void ed::NodeBuilder::Begin(NodeId nodeId)
 
     m_CurrentNode = Editor->GetNode(nodeId);
 
-    if (m_CurrentNode->m_RestoreState)
-    {
-        Editor->RestoreNodeState(m_CurrentNode);
-        m_CurrentNode->m_RestoreState = false;
-    }
+    Editor->UpdateNodeState(m_CurrentNode);
 
     if (m_CurrentNode->m_CenterOnScreen)
     {
