@@ -115,6 +115,8 @@ v0.9.1 (WIP):
             void SetNodeZPosition(NodeId nodeId, float z); // Sets node z position, nodes with higher value are drawn over nodes with lower value
             float GetNodeZPosition(NodeId nodeId); // Returns node z position, defaults is 0.0f
 
+    NEW: Editor: SaveReasonFlags now inform about node creation/deletion
+
     BUGFIX: Avoid crash while destroying editor.
 
     BUGFIX: Save draw list used by editor between Begin() and End()

@@ -1618,7 +1618,11 @@ void ed::EditorContext::UpdateNodeState(Node* node)
     if (!tryLoadState && settings->m_WasUsed)
         return;
 
-    settings->m_WasUsed = true;
+    if (!settings->m_WasUsed)
+    {
+        MakeDirty(SaveReasonFlags::AddNode, node);
+        settings->m_WasUsed = true;
+    }
 
     // Load state from config (if possible)
     if (tryLoadState)
@@ -1639,7 +1643,10 @@ void ed::EditorContext::UpdateNodeState(Node* node)
 void ed::EditorContext::RemoveSettings(Object* object)
 {
     if (auto node = object->AsNode())
+    {
         m_Settings.RemoveNode(node->m_ID);
+        MakeDirty(SaveReasonFlags::RemoveNode, node);
+    }
 }
 
 void ed::EditorContext::ClearSelection()
