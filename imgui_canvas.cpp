@@ -1,4 +1,4 @@
-﻿# define IMGUI_DEFINE_MATH_OPERATORS
+# define IMGUI_DEFINE_MATH_OPERATORS
 # include "imgui_canvas.h"
 # include <type_traits>
 
@@ -101,7 +101,7 @@ bool ImGuiEx::Canvas::Begin(ImGuiID id, const ImVec2& size)
 
     UpdateViewTransformPosition();
 
-    if (ImGui::IsClippedEx(m_WidgetRect, id, false))
+    if (ImGui::IsClippedEx(m_WidgetRect, id))
         return false;
 
     // Save current channel, so we can assert when user
