@@ -17,6 +17,7 @@
 # include <cstdint> // std::uintXX_t
 # include <utility> // std::move
 
+#define IMGUI_DEFINE_MATH_OPERATORS
 
 //------------------------------------------------------------------------------
 namespace ax {
