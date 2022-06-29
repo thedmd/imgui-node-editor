@@ -1428,10 +1428,15 @@ void ed::EditorContext::End()
     // Draw border
     {
         auto& style = ImGui::GetStyle();
-        auto borderShadoColor = style.Colors[ImGuiCol_BorderShadow];
+        /*auto borderShadoColor = style.Colors[ImGuiCol_BorderShadow];
         auto borderColor = style.Colors[ImGuiCol_Border];
         drawList->AddRect(m_Canvas.Rect().Min + ImVec2(1, 1), m_Canvas.Rect().Max - ImVec2(1, 1), ImColor(borderShadoColor));
-        drawList->AddRect(m_Canvas.Rect().Min, m_Canvas.Rect().Max, ImColor(borderColor));
+        drawList->AddRect(m_Canvas.Rect().Min, m_Canvas.Rect().Max, ImColor(borderColor));*/
+
+        auto borderShadoColor = style.Colors[ImGuiCol_BorderShadow];
+        auto borderColor = style.Colors[ImGuiCol_Border];
+        drawList->AddRect(m_Canvas.Rect().Min + ImVec2(1, 1), m_Canvas.Rect().Max - ImVec2(1, 1), IM_COL32(borderShadoColor.x, borderShadoColor.y, borderShadoColor.z, borderShadoColor.w));
+        drawList->AddRect(m_Canvas.Rect().Min, m_Canvas.Rect().Max, IM_COL32(borderColor.x, borderColor.y, borderColor.z, borderColor.w));
     }
 
     // ShowMetrics(control);
@@ -1909,13 +1914,16 @@ ed::Link* ed::EditorContext::FindLinkAt(const ImVec2& p)
 
 ImU32 ed::EditorContext::GetColor(StyleColor colorIndex) const
 {
-    return ImColor(m_Style.Colors[colorIndex]);
+    //return ImColor(m_Style.Colors[colorIndex]);
+    auto color = m_Style.Colors[colorIndex];
+    return IM_COL32(color.x, color.y, color.z, color.w);
 }
 
 ImU32 ed::EditorContext::GetColor(StyleColor colorIndex, float alpha) const
 {
     auto color = m_Style.Colors[colorIndex];
-    return ImColor(color.x, color.y, color.z, color.w * alpha);
+    return IM_COL32(color.x, color.y, color.z, color.w * alpha);
+    //return ImColor(color.x, color.y, color.z, color.w * alpha);
 }
 
 void ed::EditorContext::RegisterAnimation(Animation* animation)

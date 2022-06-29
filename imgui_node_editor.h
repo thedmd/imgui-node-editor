@@ -192,24 +192,24 @@ struct Style
         GroupRounding           = 6.0f;
         GroupBorderWidth        = 1.0f;
 
-        Colors[StyleColor_Bg]                 = ImColor( 60,  60,  70, 200);
-        Colors[StyleColor_Grid]               = ImColor(120, 120, 120,  40);
-        Colors[StyleColor_NodeBg]             = ImColor( 32,  32,  32, 200);
-        Colors[StyleColor_NodeBorder]         = ImColor(255, 255, 255,  96);
-        Colors[StyleColor_HovNodeBorder]      = ImColor( 50, 176, 255, 255);
-        Colors[StyleColor_SelNodeBorder]      = ImColor(255, 176,  50, 255);
-        Colors[StyleColor_NodeSelRect]        = ImColor(  5, 130, 255,  64);
-        Colors[StyleColor_NodeSelRectBorder]  = ImColor(  5, 130, 255, 128);
-        Colors[StyleColor_HovLinkBorder]      = ImColor( 50, 176, 255, 255);
-        Colors[StyleColor_SelLinkBorder]      = ImColor(255, 176,  50, 255);
-        Colors[StyleColor_LinkSelRect]        = ImColor(  5, 130, 255,  64);
-        Colors[StyleColor_LinkSelRectBorder]  = ImColor(  5, 130, 255, 128);
-        Colors[StyleColor_PinRect]            = ImColor( 60, 180, 255, 100);
-        Colors[StyleColor_PinRectBorder]      = ImColor( 60, 180, 255, 128);
-        Colors[StyleColor_Flow]               = ImColor(255, 128,  64, 255);
-        Colors[StyleColor_FlowMarker]         = ImColor(255, 128,  64, 255);
-        Colors[StyleColor_GroupBg]            = ImColor(  0,   0,   0, 160);
-        Colors[StyleColor_GroupBorder]        = ImColor(255, 255, 255,  32);
+        Colors[StyleColor_Bg]                 = ImVec4(60, 60, 70, 200);
+        Colors[StyleColor_Grid]               = ImVec4(120, 120, 120,  40);
+        Colors[StyleColor_NodeBg]             = ImVec4( 32,  32,  32, 200);
+        Colors[StyleColor_NodeBorder]         = ImVec4(255, 255, 255,  96);
+        Colors[StyleColor_HovNodeBorder]      = ImVec4( 50, 176, 255, 255);
+        Colors[StyleColor_SelNodeBorder]      = ImVec4(255, 176,  50, 255);
+        Colors[StyleColor_NodeSelRect]        = ImVec4(  5, 130, 255,  64);
+        Colors[StyleColor_NodeSelRectBorder]  = ImVec4(  5, 130, 255, 128);
+        Colors[StyleColor_HovLinkBorder]      = ImVec4( 50, 176, 255, 255);
+        Colors[StyleColor_SelLinkBorder]      = ImVec4(255, 176,  50, 255);
+        Colors[StyleColor_LinkSelRect]        = ImVec4(  5, 130, 255,  64);
+        Colors[StyleColor_LinkSelRectBorder]  = ImVec4(  5, 130, 255, 128);
+        Colors[StyleColor_PinRect]            = ImVec4( 60, 180, 255, 100);
+        Colors[StyleColor_PinRectBorder]      = ImVec4( 60, 180, 255, 128);
+        Colors[StyleColor_Flow]               = ImVec4(255, 128,  64, 255);
+        Colors[StyleColor_FlowMarker]         = ImVec4(255, 128,  64, 255);
+        Colors[StyleColor_GroupBg]            = ImVec4(  0,   0,   0, 160);
+        Colors[StyleColor_GroupBorder]        = ImVec4(255, 255, 255,  32);
     }
 };
 
@@ -259,11 +259,11 @@ void EndGroupHint();
 // TODO: Add a way to manage node background channels
 ImDrawList* GetNodeBackgroundDrawList(NodeId nodeId);
 
-bool Link(LinkId id, PinId startPinId, PinId endPinId, const ImVec4& color = ImVec4(1, 1, 1, 1), float thickness = 1.0f);
+bool Link(LinkId id, PinId startPinId, PinId endPinId, const ImVec4& color = ImVec4(255, 255, 255, 255), float thickness = 1.0f);
 
 void Flow(LinkId linkId);
 
-bool BeginCreate(const ImVec4& color = ImVec4(1, 1, 1, 1), float thickness = 1.0f);
+bool BeginCreate(const ImVec4& color = ImVec4(255, 255, 255, 255), float thickness = 1.0f);
 bool QueryNewLink(PinId* startId, PinId* endId);
 bool QueryNewLink(PinId* startId, PinId* endId, const ImVec4& color, float thickness = 1.0f);
 bool QueryNewNode(PinId* pinId);
