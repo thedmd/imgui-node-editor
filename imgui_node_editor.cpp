@@ -875,11 +875,12 @@ void ed::Link::UpdateEndpoints()
 
 ImCubicBezierPoints ed::Link::GetCurve() const
 {
-    auto easeLinkStrength = [](const ImVec2& a, const ImVec2& b, float strength)
-    {
-        const auto distanceX    = b.x - a.x;
-        const auto distanceY    = b.y - a.y;
-        const auto distance     = ImSqrt(distanceX * distanceX + distanceY * distanceY);
+    if (m_SameNode)
+        return GetCurveSameNode();
+    auto easeLinkStrength = [](const ImVec2& a, const ImVec2& b, float strength) {
+        const auto distanceX = b.x - a.x;
+        const auto distanceY = b.y - a.y;
+        const auto distance = ImSqrt(distanceX * distanceX + distanceY * distanceY);
         const auto halfDistance = distance * 0.5f;
 
         if (halfDistance < strength)
@@ -889,15 +890,26 @@ ImCubicBezierPoints ed::Link::GetCurve() const
     };
 
     const auto startStrength = easeLinkStrength(m_Start, m_End, m_StartPin->m_Strength);
-    const auto   endStrength = easeLinkStrength(m_Start, m_End,   m_EndPin->m_Strength);
-    const auto           cp0 = m_Start + m_StartPin->m_Dir * startStrength;
-    const auto           cp1 =   m_End +   m_EndPin->m_Dir *   endStrength;
+    const auto endStrength = easeLinkStrength(m_Start, m_End, m_EndPin->m_Strength);
+    const auto cp0 = m_Start + m_StartPin->m_Dir * startStrength;
+    const auto cp1 = m_End + m_EndPin->m_Dir * endStrength;
 
     ImCubicBezierPoints result;
     result.P0 = m_Start;
     result.P1 = cp0;
     result.P2 = cp1;
     result.P3 = m_End;
+
+    return result;
+}
+
+ImCubicBezierPoints ed::Link::GetCurveSameNode() const
+{
+    ImCubicBezierPoints result;
+    result.P0 = m_Start + ImVec2(60, 10);
+    result.P1 = m_Start + ImVec2(200, 0);
+    result.P2 = m_End + ImVec2(200, 0);
+    result.P3 = m_End - ImVec2(-20, 20);
 
     return result;
 }
@@ -1460,7 +1472,7 @@ void ed::EditorContext::End()
     m_IsFirstFrame = false;
 }
 
-bool ed::EditorContext::DoLink(LinkId id, PinId startPinId, PinId endPinId, ImU32 color, float thickness)
+bool ed::EditorContext::DoLink(LinkId id, PinId startPinId, PinId endPinId, ImU32 color, float thickness, bool isSameNode)
 {
     //auto& editorStyle = GetStyle();
 
@@ -1479,6 +1491,8 @@ bool ed::EditorContext::DoLink(LinkId id, PinId startPinId, PinId endPinId, ImU3
     link->m_Color         = color;
     link->m_Thickness     = thickness;
     link->m_IsLive        = true;
+    if (isSameNode)
+        link->m_SameNode = true;
 
     link->UpdateEndpoints();
 

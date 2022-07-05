@@ -199,10 +199,11 @@ ImDrawList* ax::NodeEditor::GetNodeBackgroundDrawList(NodeId nodeId)
         return nullptr;
 }
 
-bool ax::NodeEditor::Link(LinkId id, PinId startPinId, PinId endPinId, const ImVec4& color /* = ImVec4(1, 1, 1, 1)*/, float thickness /* = 1.0f*/)
+bool ax::NodeEditor::Link(LinkId id, PinId startPinId, PinId endPinId, const ImVec4& color, float thickness, bool sameNode)
 {
-    return s_Editor->DoLink(id, startPinId, endPinId, IM_COL32(color.x, color.y, color.z, color.w), thickness);
+    return s_Editor->DoLink(id, startPinId, endPinId, IM_COL32(color.x, color.y, color.z, color.w), thickness, sameNode);
 }
+
 
 void ax::NodeEditor::Flow(LinkId linkId)
 {
