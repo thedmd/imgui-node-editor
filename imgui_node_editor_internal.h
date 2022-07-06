@@ -465,10 +465,11 @@ struct Link final: Object
 
     void UpdateEndpoints();
 
-    ImCubicBezierPoints GetCurve() const;
-    ImCubicBezierPoints GetCurveSameNode() const;
+    ImLinePoints GetPath() const;
+    ImLinePoints GetPathSameNode() const;
 
     virtual bool TestHit(const ImVec2& point, float extraThickness = 0.0f) const override final;
+    virtual bool TestHitSameNode(const ImLinePoints& path, const ImVec2& point, float extraThickness = 0.0f) const final;
     virtual bool TestHit(const ImRect& rect, bool allowIntersect = true) const override final;
 
     virtual ImRect GetBounds() const override final;

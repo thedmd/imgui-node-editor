@@ -327,8 +327,6 @@ static void ImDrawList_SwapSplitter(ImDrawList* drawList, ImDrawListSplitter& sp
 
 static void ImDrawList_PathBezierOffset(ImDrawList* drawList, float offset, const ImVec2& p0, const ImVec2& p1, const ImVec2& p2, const ImVec2& p3)
 {
-    using namespace ed;
-
     auto acceptPoint = [drawList, offset](const ImCubicBezierSubdivideSample& r)
     {
         drawList->PathLineTo(r.Point + ImNormalized(ImVec2(-r.Tangent.y, r.Tangent.x)) * offset);
@@ -856,14 +854,39 @@ void ed::Link::Draw(ImDrawList* drawList, ImU32 color, float extraThickness) con
     if (!m_IsLive)
         return;
 
-    const auto curve = GetCurve();
+    const auto path = GetPath();
 
-    ImDrawList_AddBezierWithArrows(drawList, curve, m_Thickness + extraThickness,
-        m_StartPin && m_StartPin->m_ArrowSize  > 0.0f ? m_StartPin->m_ArrowSize  + extraThickness : 0.0f,
-        m_StartPin && m_StartPin->m_ArrowWidth > 0.0f ? m_StartPin->m_ArrowWidth + extraThickness : 0.0f,
-          m_EndPin &&   m_EndPin->m_ArrowSize  > 0.0f ?   m_EndPin->m_ArrowSize  + extraThickness : 0.0f,
-          m_EndPin &&   m_EndPin->m_ArrowWidth > 0.0f ?   m_EndPin->m_ArrowWidth + extraThickness : 0.0f,
-        true, color, 1.0f);
+    if (m_SameNode) {
+        const auto half_thickness = (m_Thickness + extraThickness) * 0.5f;
+        drawList->PathLineTo(path.P0);
+        drawList->PathLineTo(path.P1);
+        drawList->PathLineTo(path.P2);
+        drawList->PathLineTo(path.P3);
+        drawList->PathLineTo(path.P4);
+        drawList->PathLineTo(path.P5);
+        drawList->PathStroke(color, 0, m_Thickness + extraThickness);
+        /*drawList->AddLine(path.P0, path.P1, color);
+        drawList->AddLine(path.P1, path.P2, color);
+        drawList->AddLine(path.P2, path.P3, color);
+        drawList->AddLine(path.P3, path.P4, color);
+        drawList->AddLine(path.P4, path.P5, color);*/
+        const auto end_dir = ImVec2(0, 1);
+        const auto end_n = ImVec2(-end_dir.y, end_dir.x);
+        const auto half_width = 10 * 0.5f;
+        const auto tip = path.P5 + end_dir * 10;
+
+        drawList->PathLineTo(path.P5 + end_n * half_width);
+        drawList->PathLineTo(path.P5 - end_n * half_width);
+        drawList->PathLineTo(tip);
+        drawList->PathFillConvex(color);
+    } else {
+        ImDrawList_AddBezierWithArrows(drawList, ImCubicBezierPoints{path.P0, path.P1, path.P2, path.P3}, m_Thickness + extraThickness,
+            m_StartPin && m_StartPin->m_ArrowSize > 0.0f ? m_StartPin->m_ArrowSize + extraThickness : 0.0f,
+            m_StartPin && m_StartPin->m_ArrowWidth > 0.0f ? m_StartPin->m_ArrowWidth + extraThickness : 0.0f,
+            m_EndPin && m_EndPin->m_ArrowSize > 0.0f ? m_EndPin->m_ArrowSize + extraThickness : 0.0f,
+            m_EndPin && m_EndPin->m_ArrowWidth > 0.0f ? m_EndPin->m_ArrowWidth + extraThickness : 0.0f,
+            true, color, 1.0f);
+    }
 }
 
 void ed::Link::UpdateEndpoints()
@@ -873,10 +896,10 @@ void ed::Link::UpdateEndpoints()
     m_End   = line.B;
 }
 
-ImCubicBezierPoints ed::Link::GetCurve() const
+ImLinePoints ed::Link::GetPath() const
 {
     if (m_SameNode)
-        return GetCurveSameNode();
+        return GetPathSameNode();
     auto easeLinkStrength = [](const ImVec2& a, const ImVec2& b, float strength) {
         const auto distanceX = b.x - a.x;
         const auto distanceY = b.y - a.y;
@@ -894,7 +917,7 @@ ImCubicBezierPoints ed::Link::GetCurve() const
     const auto cp0 = m_Start + m_StartPin->m_Dir * startStrength;
     const auto cp1 = m_End + m_EndPin->m_Dir * endStrength;
 
-    ImCubicBezierPoints result;
+    ImLinePoints result;
     result.P0 = m_Start;
     result.P1 = cp0;
     result.P2 = cp1;
@@ -903,15 +926,41 @@ ImCubicBezierPoints ed::Link::GetCurve() const
     return result;
 }
 
-ImCubicBezierPoints ed::Link::GetCurveSameNode() const
+ImLinePoints ed::Link::GetPathSameNode() const
 {
-    ImCubicBezierPoints result;
-    result.P0 = m_Start + ImVec2(60, 10);
-    result.P1 = m_Start + ImVec2(200, 0);
-    result.P2 = m_End + ImVec2(200, 0);
-    result.P3 = m_End - ImVec2(-20, 20);
+    ImLinePoints result;
+
+    result.P0 = m_Start + ImVec2(0, 10);
+    result.P1 = m_Start + ImVec2(0, 30);
+    result.P2 = result.P1 + ImVec2(100, 0);
+    result.P3 = ImVec2(result.P2.x, m_End.y - 50);
+    result.P4 = result.P3 - ImVec2(100, 0);
+    result.P5 = m_End - ImVec2(0, 40);
 
     return result;
+}
+
+bool ed::Link::TestHitSameNode(const ImLinePoints& path, const ImVec2& point, float extraThickness) const
+{
+    auto distance = [](const ImVec2& p1, const ImVec2& p2) {
+        return ImSqrt(ImPow(p1.x - p2.x, 2) + ImPow(p1.y - p2.y, 2));
+    };
+    auto isInlLine = [&distance, &extraThickness](const ImVec2& l1, const ImVec2& l2, const ImVec2& p1) {
+        if (distance(l1, p1) + distance(l2, p1) <= distance(l1, l2) + extraThickness)
+            return true;
+        return false;
+    };
+    if (isInlLine(path.P0, path.P1, point))
+        return true;
+    if (isInlLine(path.P1, path.P2, point))
+        return true;
+    if (isInlLine(path.P2, path.P3, point))
+        return true;
+    if (isInlLine(path.P3, path.P4, point))
+        return true;
+    if (isInlLine(path.P4, path.P5, point))
+        return true;
+    return false;
 }
 
 bool ed::Link::TestHit(const ImVec2& point, float extraThickness) const
@@ -926,7 +975,9 @@ bool ed::Link::TestHit(const ImVec2& point, float extraThickness) const
     if (!bounds.Contains(point))
         return false;
 
-    const auto bezier = GetCurve();
+    const auto bezier = GetPath();
+    if (m_SameNode)
+        return TestHitSameNode(bezier, point, extraThickness);
     const auto result = ImProjectOnCubicBezier(point, bezier.P0, bezier.P1, bezier.P2, bezier.P3, 50);
 
     return result.Distance <= m_Thickness + extraThickness;
@@ -945,7 +996,7 @@ bool ed::Link::TestHit(const ImRect& rect, bool allowIntersect) const
     if (!allowIntersect || !rect.Overlaps(bounds))
         return false;
 
-    const auto bezier = GetCurve();
+    const auto bezier = GetPath();
 
     const auto p0 = rect.GetTL();
     const auto p1 = rect.GetTR();
@@ -968,7 +1019,7 @@ ImRect ed::Link::GetBounds() const
 {
     if (m_IsLive)
     {
-        const auto curve = GetCurve();
+        const auto curve = GetPath();
         auto bounds = ImCubicBezierBoundingRect(curve.P0, curve.P1, curve.P2, curve.P3);
 
         if (bounds.GetWidth() == 0.0f)
@@ -2724,7 +2775,7 @@ void ed::FlowAnimation::UpdatePath()
         return;
     }
 
-    const auto curve  = m_Link->GetCurve();
+    const auto curve  = m_Link->GetPath();
 
     m_LastStart  = m_Link->m_Start;
     m_LastEnd    = m_Link->m_End;
@@ -2738,7 +2789,7 @@ void ed::FlowAnimation::UpdatePath()
     const auto step = ImMax(m_MarkerDistance * 0.5f, 15.0f);
 
     m_Path.resize(0);
-    ImCubicBezierFixedStep(collectPointsCallback, curve, step, false, 0.5f, 0.001f);
+    ImCubicBezierFixedStep(collectPointsCallback, ImCubicBezierPoints{curve.P0, curve.P1, curve.P2, curve.P3}, step, false, 0.5f, 0.001f);
 }
 
 void ed::FlowAnimation::ClearPath()
