@@ -15,6 +15,7 @@
 //------------------------------------------------------------------------------
 # include "imgui_extra_math.h"
 
+//------------------------------------------------------------------------------
 
 //------------------------------------------------------------------------------
 template <typename T>
@@ -25,8 +26,21 @@ struct ImCubicBezierPointsT
     T P2;
     T P3;
 };
-using ImCubicBezierPoints = ImCubicBezierPointsT<ImVec2>;
 
+//------------------------------------------------------------------------------
+template <typename T>
+struct ImLinePointsT
+{
+    T P0;
+    T P1;
+    T P2;
+    T P3;
+    T P4;
+    T P5;
+};
+
+using ImCubicBezierPoints = ImCubicBezierPointsT<ImVec2>;
+using ImLinePoints = ImLinePointsT<ImVec2>;
 
 //------------------------------------------------------------------------------
 // Low-level Bezier curve sampling.

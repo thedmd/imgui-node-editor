@@ -443,6 +443,7 @@ struct Link final: Object
     float  m_Thickness;
     ImVec2 m_Start;
     ImVec2 m_End;
+    bool m_SameNode;
 
     Link(EditorContext* editor, LinkId id)
         : Object(editor)
@@ -451,6 +452,7 @@ struct Link final: Object
         , m_EndPin(nullptr)
         , m_Color(IM_COL32_WHITE)
         , m_Thickness(1.0f)
+        , m_SameNode(false)
     {
     }
 
@@ -463,9 +465,11 @@ struct Link final: Object
 
     void UpdateEndpoints();
 
-    ImCubicBezierPoints GetCurve() const;
+    ImLinePoints GetPath() const;
+    ImLinePoints GetPathSameNode() const;
 
     virtual bool TestHit(const ImVec2& point, float extraThickness = 0.0f) const override final;
+    virtual bool TestHitSameNode(const ImLinePoints& path, const ImVec2& point, float extraThickness = 0.0f) const final;
     virtual bool TestHit(const ImRect& rect, bool allowIntersect = true) const override final;
 
     virtual ImRect GetBounds() const override final;
@@ -1254,8 +1258,7 @@ struct EditorContext
     void Begin(const char* id, const ImVec2& size = ImVec2(0, 0));
     void End();
 
-    bool DoLink(LinkId id, PinId startPinId, PinId endPinId, ImU32 color, float thickness);
-
+    bool DoLink(LinkId id, PinId startPinId, PinId endPinId, ImU32 color, float thickness, bool isSameNode = false);
 
     NodeBuilder& GetNodeBuilder() { return m_NodeBuilder; }
     HintBuilder& GetHintBuilder() { return m_HintBuilder; }
