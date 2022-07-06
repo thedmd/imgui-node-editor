@@ -865,11 +865,6 @@ void ed::Link::Draw(ImDrawList* drawList, ImU32 color, float extraThickness) con
         drawList->PathLineTo(path.P4);
         drawList->PathLineTo(path.P5);
         drawList->PathStroke(color, 0, m_Thickness + extraThickness);
-        /*drawList->AddLine(path.P0, path.P1, color);
-        drawList->AddLine(path.P1, path.P2, color);
-        drawList->AddLine(path.P2, path.P3, color);
-        drawList->AddLine(path.P3, path.P4, color);
-        drawList->AddLine(path.P4, path.P5, color);*/
         const auto end_dir = ImVec2(0, 1);
         const auto end_n = ImVec2(-end_dir.y, end_dir.x);
         const auto half_width = 10 * 0.5f;
@@ -898,8 +893,9 @@ void ed::Link::UpdateEndpoints()
 
 ImLinePoints ed::Link::GetPath() const
 {
-    if (m_SameNode)
+    if (m_SameNode) {
         return GetPathSameNode();
+    }
     auto easeLinkStrength = [](const ImVec2& a, const ImVec2& b, float strength) {
         const auto distanceX = b.x - a.x;
         const auto distanceY = b.y - a.y;
@@ -930,6 +926,7 @@ ImLinePoints ed::Link::GetPathSameNode() const
 {
     ImLinePoints result;
 
+    //TODO(remyg) Replace those values by node length
     result.P0 = m_Start + ImVec2(0, 10);
     result.P1 = m_Start + ImVec2(0, 30);
     result.P2 = result.P1 + ImVec2(100, 0);
@@ -942,24 +939,36 @@ ImLinePoints ed::Link::GetPathSameNode() const
 
 bool ed::Link::TestHitSameNode(const ImLinePoints& path, const ImVec2& point, float extraThickness) const
 {
-    auto distance = [](const ImVec2& p1, const ImVec2& p2) {
-        return ImSqrt(ImPow(p1.x - p2.x, 2) + ImPow(p1.y - p2.y, 2));
+    auto inlineDistance = [](const ImVec2& l1, const ImVec2& l2, const ImVec2& p1) {
+        ImVec2 edge = l1 - l2;
+        ImVec2 a2from = p1 - l1;
+        float dot = ImDot(edge, a2from);
+        if (dot <= 0.0f) {
+            return ImPow(a2from.x, 2) + ImPow(a2from.y, 2);
+        }
+        float edgeLengthSqr = ImPow(edge.x, 2) + ImPow(edge.y, 2);
+        if (dot >= edgeLengthSqr) {
+            ImVec2 sq3 = l2 - p1;
+            return ImPow(sq3.x, 2) + ImPow(sq3.y, 2);
+        }
+        ImVec2 sq = (p1 + edge * dot / edgeLengthSqr - p1);
+        return ImPow(sq.x, 2) + ImPow(sq.y, 2);
     };
-    auto isInlLine = [&distance, &extraThickness](const ImVec2& l1, const ImVec2& l2, const ImVec2& p1) {
-        if (distance(l1, p1) + distance(l2, p1) <= distance(l1, l2) + extraThickness)
-            return true;
-        return false;
-    };
-    if (isInlLine(path.P0, path.P1, point))
+    if (inlineDistance(path.P0, path.P1, point) <= extraThickness + m_Thickness) {
         return true;
-    if (isInlLine(path.P1, path.P2, point))
+    }
+    if (inlineDistance(path.P1, path.P2, point) <= extraThickness + m_Thickness) {
         return true;
-    if (isInlLine(path.P2, path.P3, point))
+    }
+    if (inlineDistance(path.P2, path.P3, point) <= extraThickness + m_Thickness) {
         return true;
-    if (isInlLine(path.P3, path.P4, point))
+    }
+    if (inlineDistance(path.P3, path.P4, point) <= extraThickness + m_Thickness) {
         return true;
-    if (isInlLine(path.P4, path.P5, point))
+    }
+    if (inlineDistance(path.P4, path.P5, point) <= extraThickness + m_Thickness) {
         return true;
+    }
     return false;
 }
 
@@ -976,8 +985,9 @@ bool ed::Link::TestHit(const ImVec2& point, float extraThickness) const
         return false;
 
     const auto bezier = GetPath();
-    if (m_SameNode)
+    if (m_SameNode) {
         return TestHitSameNode(bezier, point, extraThickness);
+    }
     const auto result = ImProjectOnCubicBezier(point, bezier.P0, bezier.P1, bezier.P2, bezier.P3, 50);
 
     return result.Distance <= m_Thickness + extraThickness;

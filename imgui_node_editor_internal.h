@@ -451,8 +451,8 @@ struct Link final: Object
         , m_StartPin(nullptr)
         , m_EndPin(nullptr)
         , m_Color(IM_COL32_WHITE)
-        , m_Thickness(1.0f)
-		, m_SameNode(false)
+		, m_Thickness(1.0f)
+				, m_SameNode(false)
     {
     }
 
