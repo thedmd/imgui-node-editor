@@ -1542,8 +1542,7 @@ bool ed::EditorContext::DoLink(LinkId id, PinId startPinId, PinId endPinId, ImU3
     link->m_Color         = color;
     link->m_Thickness     = thickness;
     link->m_IsLive        = true;
-    if (isSameNode)
-        link->m_SameNode = true;
+    link->m_SameNode      = isSameNode;
 
     link->UpdateEndpoints();
 
