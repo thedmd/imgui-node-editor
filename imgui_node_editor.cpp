@@ -954,19 +954,21 @@ bool ed::Link::TestHitSameNode(const ImLinePoints& path, const ImVec2& point, fl
         ImVec2 sq = (p1 + edge * dot / edgeLengthSqr - p1);
         return ImPow(sq.x, 2) + ImPow(sq.y, 2);
     };
-    if (inlineDistance(path.P0, path.P1, point) <= extraThickness + m_Thickness) {
+    float min_dist_sqr = (extraThickness + m_Thickness);
+    min_dist_sqr *= min_dist_sqr;
+    if (inlineDistance(path.P0, path.P1, point) <= min_dist_sqr) {
         return true;
     }
-    if (inlineDistance(path.P1, path.P2, point) <= extraThickness + m_Thickness) {
+    if (inlineDistance(path.P1, path.P2, point) <= min_dist_sqr) {
         return true;
     }
-    if (inlineDistance(path.P2, path.P3, point) <= extraThickness + m_Thickness) {
+    if (inlineDistance(path.P2, path.P3, point) <= min_dist_sqr) {
         return true;
     }
-    if (inlineDistance(path.P3, path.P4, point) <= extraThickness + m_Thickness) {
+    if (inlineDistance(path.P3, path.P4, point) <= min_dist_sqr) {
         return true;
     }
-    if (inlineDistance(path.P4, path.P5, point) <= extraThickness + m_Thickness) {
+    if (inlineDistance(path.P4, path.P5, point) <= min_dist_sqr) {
         return true;
     }
     return false;
