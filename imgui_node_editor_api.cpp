@@ -212,8 +212,9 @@ bool ax::NodeEditor::LinkDuplicates(const std::vector<uint64_t>& ids, PinId star
     Detail::Pin* endPin = s_Editor->FindPin(endPinId);
     const float startx = startPin->m_Node->GetBounds().GetTR().x;
     const float endx = endPin->m_Node->GetBounds().GetTR().x;
-    // compute if start node and end node are aligned by ~= 10%
-    const bool aligned = startx <= endx * 1.1F && startx >= endx * 0.9F;
+    const float starty = startPin->m_Node->GetBounds().GetTR().y;
+    const float endy = endPin->m_Node->GetBounds().GetTR().y;
+    const bool aligned = fabsf(endx - startx) < 0.05F * fabsf(endy - starty);
 
     if (ids.size() > kmaxRenderLinks || sameNode || !aligned) {
         return s_Editor->DoLink(ids.front(), startPinId, endPinId, IM_COL32(color.x, color.y, color.z, color.w), thickness * static_cast<float>(ids.size()), sameNode);
