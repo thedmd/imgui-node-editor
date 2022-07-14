@@ -16,6 +16,7 @@
 # include <imgui.h>
 # include <cstdint> // std::uintXX_t
 # include <utility> // std::move
+#include <vector>
 
 #define IMGUI_DEFINE_MATH_OPERATORS
 
@@ -260,6 +261,7 @@ void EndGroupHint();
 ImDrawList* GetNodeBackgroundDrawList(NodeId nodeId);
 
 bool Link(LinkId id, PinId startPinId, PinId endPinId, const ImVec4& color = ImVec4(255, 255, 255, 255), float thickness = 1.0f, bool sameNode = false);
+bool LinkDuplicates(const std::vector<uint64_t>& ids, PinId startPinId, PinId endPinId, const ImVec4& color, float thickness, bool sameNode);
 
 void Flow(LinkId linkId);
 

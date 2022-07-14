@@ -204,6 +204,34 @@ bool ax::NodeEditor::Link(LinkId id, PinId startPinId, PinId endPinId, const ImV
     return s_Editor->DoLink(id, startPinId, endPinId, IM_COL32(color.x, color.y, color.z, color.w), thickness, sameNode);
 }
 
+bool ax::NodeEditor::LinkDuplicates(const std::vector<uint64_t>& ids, PinId startPinId, PinId endPinId, const ImVec4& color, float thickness, bool sameNode)
+{
+    float margin = 0.0F;
+    constexpr int kmaxRenderLinks = 8;
+    Detail::Pin* startPin = s_Editor->FindPin(startPinId);
+    Detail::Pin* endPin = s_Editor->FindPin(endPinId);
+    const float startx = startPin->m_Node->GetBounds().GetTR().x;
+    const float endx = endPin->m_Node->GetBounds().GetTR().x;
+    // compute if start node and end node are aligned by ~= 10%
+    const bool aligned = startx <= endx + (endx * 0.10F) && startx >= endx - (endx * 0.10F);
+
+    if (ids.size() > kmaxRenderLinks || sameNode || !aligned) {
+        return s_Editor->DoLink(ids.front(), startPinId, endPinId, IM_COL32(color.x, color.y, color.z, color.w), thickness * static_cast<float>(ids.size()), sameNode);
+    }
+
+    for (auto id : ids) {
+        if (!s_Editor->DoLink(id, startPinId, endPinId, IM_COL32(color.x, color.y, color.z, color.w), thickness, sameNode)) {
+            return false;
+        }
+        Detail::Link* link = s_Editor->GetLink(id);
+        link->m_Start.x -= startPin->m_Bounds.GetWidth() / 2;
+        link->m_End.x -= startPin->m_Bounds.GetWidth() / 2;
+        link->m_Start.x += margin;
+        link->m_End.x += margin;
+        margin += startPin->m_Bounds.GetWidth() / static_cast<float>(ids.size());
+    }
+    return true;
+}
 
 void ax::NodeEditor::Flow(LinkId linkId)
 {
@@ -265,7 +293,7 @@ bool ax::NodeEditor::QueryNewNode(PinId* pinId, const ImVec4& color, float thick
     if (result != Result::Indeterminate)
         context.SetStyle(IM_COL32(color.x, color.y, color.z, color.w), thickness);
 
-        //context.SetStyle(ImColor(color), thickness);
+    //context.SetStyle(ImColor(color), thickness);
 
     return result == Result::True;
 }
@@ -289,7 +317,7 @@ bool ax::NodeEditor::AcceptNewItem(const ImVec4& color, float thickness)
     if (result != Result::Indeterminate)
         context.SetStyle(IM_COL32(color.x, color.y, color.z, color.w), thickness);
 
-        //context.SetStyle(ImColor(color), thickness);
+    //context.SetStyle(ImColor(color), thickness);
 
     return result == Result::True;
 }
