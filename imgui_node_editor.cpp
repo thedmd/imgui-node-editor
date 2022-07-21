@@ -1254,12 +1254,12 @@ void ed::EditorContext::End()
             m_CurrentAction = &m_SizeAction;
         else if (accept(m_DragAction))
             m_CurrentAction = &m_DragAction;
-        else if (accept(m_SelectAction))
-            m_CurrentAction = &m_SelectAction;
         else if (accept(m_CreateItemAction))
             m_CurrentAction = &m_CreateItemAction;
         else if (accept(m_DeleteItemsAction))
             m_CurrentAction = &m_DeleteItemsAction;
+        else if (accept(m_SelectAction))
+            m_CurrentAction = &m_SelectAction;
 
         if (possibleAction)
             ImGui::SetMouseCursor(possibleAction->GetCursor());
