@@ -244,6 +244,7 @@ void SetCurrentEditor(EditorContext* ctx);
 EditorContext* GetCurrentEditor();
 EditorContext* CreateEditor(const Config* config = nullptr);
 void DestroyEditor(EditorContext* ctx);
+const Config& GetConfig(EditorContext* ctx = nullptr);
 
 Style& GetStyle();
 const char* GetStyleColorName(StyleColor colorIndex);

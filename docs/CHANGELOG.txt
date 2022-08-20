@@ -122,6 +122,10 @@ v0.9.1 (WIP):
             ImGuiMouseButton GetBackgroundClickButtonIndex(); // -1 if none
             ImGuiMouseButton GetBackgroundDoubleClickButtonIndex(); // -1 if none
 
+    NEW: Editor: Expose configuration editor was created with
+        New API:
+            const Config& GetConfig(EditorContext* ctx = nullptr);
+
     BUGFIX: Avoid crash while destroying editor.
 
     BUGFIX: Save draw list used by editor between Begin() and End()
