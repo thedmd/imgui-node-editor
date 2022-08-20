@@ -1050,8 +1050,8 @@ ed::EditorContext::EditorContext(const ax::NodeEditor::Config* config)
     , m_DoubleClickedNode(0)
     , m_DoubleClickedPin(0)
     , m_DoubleClickedLink(0)
-    , m_BackgroundClicked(false)
-    , m_BackgroundDoubleClicked(false)
+    , m_BackgroundClickButtonIndex(-1)
+    , m_BackgroundDoubleClickButtonIndex(-1)
     , m_IsInitialized(false)
     , m_Settings()
     , m_Config(config)
@@ -1171,8 +1171,8 @@ void ed::EditorContext::End()
     m_DoubleClickedNode       = control.DoubleClickedNode ? control.DoubleClickedNode->m_ID : 0;
     m_DoubleClickedPin        = control.DoubleClickedPin  ? control.DoubleClickedPin->m_ID  : 0;
     m_DoubleClickedLink       = control.DoubleClickedLink ? control.DoubleClickedLink->m_ID : 0;
-    m_BackgroundClicked       = control.BackgroundClicked;
-    m_BackgroundDoubleClicked = control.BackgroundDoubleClicked;
+    m_BackgroundClickButtonIndex       = control.BackgroundClickButtonIndex;
+    m_BackgroundDoubleClickButtonIndex = control.BackgroundDoubleClickButtonIndex;
 
     //if (DoubleClickedNode) LOG_TRACE(0, "DOUBLE CLICK NODE: %d", DoubleClickedNode);
     //if (DoubleClickedPin)  LOG_TRACE(0, "DOUBLE CLICK PIN:  %d", DoubleClickedPin);
@@ -2233,13 +2233,13 @@ ed::Control ed::EditorContext::BuildControl(bool allowOffscreen)
     extraFlags |= ImGuiButtonFlags_MouseButtonRight;
     extraFlags |= ImGuiButtonFlags_MouseButtonMiddle;
 
-    static auto invisibleButtonEx = [](const char* str_id, const ImVec2& size_arg, ImGuiButtonFlags extraFlags)
+    static auto invisibleButtonEx = [](const char* str_id, const ImVec2& size_arg, ImGuiButtonFlags extraFlags) -> int
     {
         using namespace ImGui;
 
         ImGuiWindow* window = GetCurrentWindow();
         if (window->SkipItems)
-            return false;
+            return -1;
 
         if (size_arg.x == 0.0f || size_arg.y == 0.0f)
             return false;
@@ -2249,16 +2249,18 @@ ed::Control ed::EditorContext::BuildControl(bool allowOffscreen)
         const ImRect bb(window->DC.CursorPos, window->DC.CursorPos + size);
         ItemSize(size);
         if (!ItemAdd(bb, id))
-            return false;
+            return -1;
+
+        auto buttonIndex = ImGui::GetCurrentContext()->ActiveIdMouseButton;
 
         bool hovered, held;
         bool pressed = ButtonBehavior(bb, id, &hovered, &held, extraFlags);
 
-        return pressed;
+        return pressed ? buttonIndex : -1;
     };
 
     // Emits invisible button and returns true if it is clicked.
-    auto emitInteractiveArea = [extraFlags](ObjectId id, const ImRect& rect)
+    auto emitInteractiveAreaEx = [](ObjectId id, const ImRect& rect, ImGuiButtonFlags extraFlags) -> int
     {
         char idString[33] = { 0 }; // itoa can output 33 bytes maximum
         snprintf(idString, 32, "%p", id.AsPointer());
@@ -2267,18 +2269,23 @@ ed::Control ed::EditorContext::BuildControl(bool allowOffscreen)
         // debug
         //if (id < 0) return ImGui::Button(idString, to_imvec(rect.size));
 
-        auto result = invisibleButtonEx(idString, rect.GetSize(), extraFlags);
+        auto buttonIndex = invisibleButtonEx(idString, rect.GetSize(), extraFlags);
 
         // #debug
-        //m_DrawList->AddRectFilled(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), IM_COL32(0, 255, 0, 64));
+        //ImGui::GetWindowDrawList()->AddRectFilled(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), IM_COL32(0, 255, 0, 64));
 
-        return result;
+        return buttonIndex;
+    };
+
+    auto emitInteractiveArea = [&emitInteractiveAreaEx, extraFlags](ObjectId id, const ImRect& rect)
+    {
+        return emitInteractiveAreaEx(id, rect, extraFlags);
     };
 
     // Check input interactions over area.
     auto checkInteractionsInArea = [this, &emitInteractiveArea, &hotObject, &activeObject, &clickedObject, &doubleClickedObject](ObjectId id, const ImRect& rect, Object* object)
     {
-        if (emitInteractiveArea(id, rect))
+        if (emitInteractiveArea(id, rect) >= 0)
             clickedObject = object;
         if (!doubleClickedObject && ImGui::IsMouseDoubleClicked(m_Config.DragButtonIndex) && ImGui::IsItemHovered())
             doubleClickedObject = object;
@@ -2350,15 +2357,41 @@ ed::Control ed::EditorContext::BuildControl(bool allowOffscreen)
     if (nullptr == hotObject)
         hotObject = FindLinkAt(mousePos);
 
-    // Check for interaction with background.
-    auto backgroundClicked       = emitInteractiveArea(NodeId(0), editorRect);
-    auto backgroundDoubleClicked = !doubleClickedObject && ImGui::IsItemHovered() ? ImGui::IsMouseDoubleClicked(m_Config.DragButtonIndex) : false;
-    auto isBackgroundActive      = ImGui::IsItemActive();
-    auto isBackgroundHot         = !hotObject;
-    auto isDragging              = ImGui::IsMouseDragging(0, 1) || ImGui::IsMouseDragging(1, 1) || ImGui::IsMouseDragging(2, 1);
+    ImGuiButtonFlags backgroundExtraFlags = ImGuiButtonFlags_None;
+    if (m_Config.DragButtonIndex == 0 || m_Config.SelectButtonIndex == 0 || m_Config.NavigateButtonIndex == 0)
+        backgroundExtraFlags |= ImGuiButtonFlags_MouseButtonLeft;
+    if (m_Config.DragButtonIndex == 1 || m_Config.SelectButtonIndex == 1 || m_Config.NavigateButtonIndex == 1)
+        backgroundExtraFlags |= ImGuiButtonFlags_MouseButtonRight;
+    if (m_Config.DragButtonIndex == 2 || m_Config.SelectButtonIndex == 2 || m_Config.NavigateButtonIndex == 2)
+        backgroundExtraFlags |= ImGuiButtonFlags_MouseButtonMiddle;
 
-    if (backgroundDoubleClicked)
-        backgroundClicked = false;
+    auto isMouseDoubleClickOverBackground = [doubleClickedObject, backgroundExtraFlags]() -> int
+    {
+        if (doubleClickedObject)
+            return -1;
+
+        if (!ImGui::IsItemHovered())
+            return -1;
+
+        if ((backgroundExtraFlags & ImGuiButtonFlags_MouseButtonLeft) && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
+            return ImGuiButtonFlags_MouseButtonLeft;
+        if ((backgroundExtraFlags & ImGuiButtonFlags_MouseButtonRight) && ImGui::IsMouseDoubleClicked(ImGuiButtonFlags_MouseButtonRight))
+            return ImGuiButtonFlags_MouseButtonRight;
+        if ((backgroundExtraFlags & ImGuiButtonFlags_MouseButtonMiddle) && ImGui::IsMouseDoubleClicked(ImGuiButtonFlags_MouseButtonMiddle))
+            return ImGuiButtonFlags_MouseButtonMiddle;
+
+        return -1;
+    };
+
+    // Check for interaction with background.
+    auto backgroundClickButonIndex        = emitInteractiveAreaEx(NodeId(0), editorRect, backgroundExtraFlags);
+    auto backgroundDoubleClickButtonIndex = isMouseDoubleClickOverBackground();
+    auto isBackgroundActive               = ImGui::IsItemActive();
+    auto isBackgroundHot                  = !hotObject;
+    auto isDragging                       = ImGui::IsMouseDragging(0, 1) || ImGui::IsMouseDragging(1, 1) || ImGui::IsMouseDragging(2, 1);
+
+    if (backgroundDoubleClickButtonIndex >= 0)
+        backgroundClickButonIndex = -1;
 
     if (isMouseOffscreen)
         ImGui::PopClipRect();
@@ -2379,17 +2412,17 @@ ed::Control ed::EditorContext::BuildControl(bool allowOffscreen)
         m_LastActiveLink = nullptr;
 
     // Steal click from backgrounds if link is hovered.
-    if (!isDragging && backgroundClicked && hotLink)
+    if (!isDragging && backgroundClickButonIndex >= 0 && hotLink)
     {
-        clickedObject     = hotLink;
-        backgroundClicked = false;
+        clickedObject             = hotLink;
+        backgroundClickButonIndex = -1;
     }
 
     // Steal double-click from backgrounds if link is hovered.
-    if (!isDragging && backgroundDoubleClicked && hotLink)
+    if (!isDragging && backgroundDoubleClickButtonIndex >= 0 && hotLink)
     {
-        doubleClickedObject = hotLink;
-        backgroundDoubleClicked = false;
+        doubleClickedObject              = hotLink;
+        backgroundDoubleClickButtonIndex = -1;
     }
 
     m_IsHovered = ImGui::IsItemHovered(ImGuiHoveredFlags_RectOnly);
@@ -2403,7 +2436,7 @@ ed::Control ed::EditorContext::BuildControl(bool allowOffscreen)
 # endif
 
     return Control(hotObject, activeObject, clickedObject, doubleClickedObject,
-        isBackgroundHot, isBackgroundActive, backgroundClicked, backgroundDoubleClicked);
+        isBackgroundHot, isBackgroundActive, backgroundClickButonIndex, backgroundDoubleClickButtonIndex);
 }
 
 void ed::EditorContext::ShowMetrics(const Control& control)
@@ -3897,7 +3930,7 @@ ed::EditorAction::AcceptResult ed::SelectAction::Accept(const Control& control)
         if (io.KeyCtrl)
             m_SelectedObjectsAtStart = Editor->GetSelectedObjects();
     }
-    else if (control.BackgroundClicked)
+    else if (control.BackgroundClickButtonIndex == Editor->GetConfig().SelectButtonIndex)
     {
         Editor->ClearSelection();
     }

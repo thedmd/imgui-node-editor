@@ -370,6 +370,8 @@ PinId GetDoubleClickedPin();
 LinkId GetDoubleClickedLink();
 bool IsBackgroundClicked();
 bool IsBackgroundDoubleClicked();
+ImGuiMouseButton GetBackgroundClickButtonIndex(); // -1 if none
+ImGuiMouseButton GetBackgroundDoubleClickButtonIndex(); // -1 if none
 
 bool GetLinkPins(LinkId linkId, PinId* startPinId, PinId* endPinId); // pass nullptr if particular pin do not interest you
 

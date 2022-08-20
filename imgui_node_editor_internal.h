@@ -562,16 +562,16 @@ struct Control
     Link*   DoubleClickedLink;
     bool    BackgroundHot;
     bool    BackgroundActive;
-    bool    BackgroundClicked;
-    bool    BackgroundDoubleClicked;
+    int     BackgroundClickButtonIndex;
+    int     BackgroundDoubleClickButtonIndex;
 
     Control()
-        : Control(nullptr, nullptr, nullptr, nullptr, false, false, false, false)
+        : Control(nullptr, nullptr, nullptr, nullptr, false, false, -1, -1)
     {
     }
 
     Control(Object* hotObject, Object* activeObject, Object* clickedObject, Object* doubleClickedObject,
-        bool backgroundHot, bool backgroundActive, bool backgroundClicked, bool backgroundDoubleClicked)
+        bool backgroundHot, bool backgroundActive, int backgroundClickButtonIndex, int backgroundDoubleClickButtonIndex)
         : HotObject(hotObject)
         , ActiveObject(activeObject)
         , ClickedObject(clickedObject)
@@ -590,8 +590,8 @@ struct Control
         , DoubleClickedLink(nullptr)
         , BackgroundHot(backgroundHot)
         , BackgroundActive(backgroundActive)
-        , BackgroundClicked(backgroundClicked)
-        , BackgroundDoubleClicked(backgroundDoubleClicked)
+        , BackgroundClickButtonIndex(backgroundClickButtonIndex)
+        , BackgroundDoubleClickButtonIndex(backgroundDoubleClickButtonIndex)
     {
         if (hotObject)
         {
@@ -1432,8 +1432,10 @@ struct EditorContext
     NodeId GetDoubleClickedNode()      const { return m_DoubleClickedNode;       }
     PinId  GetDoubleClickedPin()       const { return m_DoubleClickedPin;        }
     LinkId GetDoubleClickedLink()      const { return m_DoubleClickedLink;       }
-    bool   IsBackgroundClicked()       const { return m_BackgroundClicked;       }
-    bool   IsBackgroundDoubleClicked() const { return m_BackgroundDoubleClicked; }
+    bool   IsBackgroundClicked()                           const { return m_BackgroundClickButtonIndex >= 0; }
+    bool   IsBackgroundDoubleClicked()                     const { return m_BackgroundDoubleClickButtonIndex >= 0; }
+    ImGuiMouseButton GetBackgroundClickButtonIndex()       const { return m_BackgroundClickButtonIndex; }
+    ImGuiMouseButton GetBackgroundDoubleClickButtonIndex() const { return m_BackgroundDoubleClickButtonIndex; }
 
     float AlignPointToGrid(float p) const
     {
@@ -1508,8 +1510,8 @@ private:
     NodeId              m_DoubleClickedNode;
     PinId               m_DoubleClickedPin;
     LinkId              m_DoubleClickedLink;
-    bool                m_BackgroundClicked;
-    bool                m_BackgroundDoubleClicked;
+    int                 m_BackgroundClickButtonIndex;
+    int                 m_BackgroundDoubleClickButtonIndex;
 
     bool                m_IsInitialized;
     Settings            m_Settings;

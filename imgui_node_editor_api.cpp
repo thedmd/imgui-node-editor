@@ -689,6 +689,16 @@ bool ax::NodeEditor::IsBackgroundDoubleClicked()
     return s_Editor->IsBackgroundDoubleClicked();
 }
 
+ImGuiMouseButton ax::NodeEditor::GetBackgroundClickButtonIndex()
+{
+    return s_Editor->GetBackgroundClickButtonIndex();
+}
+
+ImGuiMouseButton ax::NodeEditor::GetBackgroundDoubleClickButtonIndex()
+{
+    return s_Editor->GetBackgroundDoubleClickButtonIndex();
+}
+
 bool ax::NodeEditor::GetLinkPins(LinkId linkId, PinId* startPinId, PinId* endPinId)
 {
     auto link = s_Editor->FindLink(linkId);

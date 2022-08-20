@@ -117,6 +117,11 @@ v0.9.1 (WIP):
 
     NEW: Editor: SaveReasonFlags now inform about node creation/deletion
 
+    NEW: Editor: Expose button index background was clicked with
+        New API:
+            ImGuiMouseButton GetBackgroundClickButtonIndex(); // -1 if none
+            ImGuiMouseButton GetBackgroundDoubleClickButtonIndex(); // -1 if none
+
     BUGFIX: Avoid crash while destroying editor.
 
     BUGFIX: Save draw list used by editor between Begin() and End()
