@@ -1254,12 +1254,12 @@ void ed::EditorContext::End()
             m_CurrentAction = &m_SizeAction;
         else if (accept(m_DragAction))
             m_CurrentAction = &m_DragAction;
-        else if (accept(m_SelectAction))
-            m_CurrentAction = &m_SelectAction;
         else if (accept(m_CreateItemAction))
             m_CurrentAction = &m_CreateItemAction;
         else if (accept(m_DeleteItemsAction))
             m_CurrentAction = &m_DeleteItemsAction;
+        else if (accept(m_SelectAction))
+            m_CurrentAction = &m_SelectAction;
 
         if (possibleAction)
             ImGui::SetMouseCursor(possibleAction->GetCursor());
@@ -3567,7 +3567,7 @@ ed::EditorAction::AcceptResult ed::SizeAction::Accept(const Control& control)
     if (m_IsActive)
         return False;
 
-    if (control.ActiveNode && IsGroup(control.ActiveNode) && ImGui::IsMouseDragging(Editor->GetConfig().DragButtonIndex, 0))
+    if (control.ActiveNode && IsGroup(control.ActiveNode) && ImGui::IsMouseDragging(Editor->GetConfig().DragButtonIndex, 1))
     {
         //const auto mousePos     = to_point(ImGui::GetMousePos());
         //const auto closestPoint = control.ActiveNode->Bounds.get_closest_point_hollow(mousePos, static_cast<int>(control.ActiveNode->Rounding));
@@ -3739,7 +3739,7 @@ ed::EditorAction::AcceptResult ed::DragAction::Accept(const Control& control)
     if (m_IsActive)
         return False;
 
-    if (Editor->CanAcceptUserInput() && control.ActiveObject && ImGui::IsMouseDragging(Editor->GetConfig().DragButtonIndex))
+    if (Editor->CanAcceptUserInput() && control.ActiveObject && ImGui::IsMouseDragging(Editor->GetConfig().DragButtonIndex, 1))
     {
         if (!control.ActiveObject->AcceptDrag())
             return False;
@@ -4081,7 +4081,7 @@ ed::EditorAction::AcceptResult ed::ContextMenuAction::Accept(const Control& cont
 {
     const auto isPressed  = ImGui::IsMouseClicked(Editor->GetConfig().ContextMenuButtonIndex);
     const auto isReleased = ImGui::IsMouseReleased(Editor->GetConfig().ContextMenuButtonIndex);
-    const auto isDragging = ImGui::IsMouseDragging(Editor->GetConfig().ContextMenuButtonIndex);
+    const auto isDragging = ImGui::IsMouseDragging(Editor->GetConfig().ContextMenuButtonIndex, 1);
 
     if (isPressed || isReleased || isDragging)
     {
@@ -4447,7 +4447,7 @@ ed::EditorAction::AcceptResult ed::CreateItemAction::Accept(const Control& contr
     if (m_IsActive)
         return EditorAction::False;
 
-    if (control.ActivePin && ImGui::IsMouseDragging(Editor->GetConfig().DragButtonIndex))
+    if (control.ActivePin && ImGui::IsMouseDragging(Editor->GetConfig().DragButtonIndex, 1))
     {
         m_DraggedPin = control.ActivePin;
         DragStart(m_DraggedPin);

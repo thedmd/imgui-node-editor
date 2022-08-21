@@ -177,3 +177,5 @@ v0.9.1 (WIP):
 
     BUGFIX: Editor: Remove node settings when it is explicitly deleted (#153)
 
+    BUGFIX: Editor: Improve link dragging with fast movement (#156)
+
