@@ -889,11 +889,9 @@ void ed::Link::Draw(ImDrawList* drawList, DrawFlags flags)
     }
     else if (flags & Highlighted)
     {
-        const auto borderColor = Editor->GetColor(StyleColor_HighlightLinkBorder);
-
         drawList->ChannelsSetCurrent(c_LinkChannel_Selection);
 
-        Draw(drawList, borderColor, 3.5f);
+        Draw(drawList, m_HighlightColor, 3.5f);
     }
 }
 
@@ -1591,6 +1589,7 @@ bool ed::EditorContext::DoLink(LinkId id, PinId startPinId, PinId endPinId, ImU3
     link->m_StartPin      = startPin;
     link->m_EndPin        = endPin;
     link->m_Color         = color;
+    link->m_HighlightColor= GetColor(StyleColor_HighlightLinkBorder);
     link->m_Thickness     = thickness;
     link->m_IsLive        = true;
 
