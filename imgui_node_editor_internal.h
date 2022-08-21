@@ -301,6 +301,7 @@ struct Pin final: Object
     float   m_Radius;
     float   m_ArrowSize;
     float   m_ArrowWidth;
+    bool    m_SnapLinkToDir;
     bool    m_HasConnection;
     bool    m_HadConnection;
 
@@ -321,6 +322,7 @@ struct Pin final: Object
         , m_Radius(0)
         , m_ArrowSize(0)
         , m_ArrowWidth(0)
+        , m_SnapLinkToDir(true)
         , m_HasConnection(false)
         , m_HadConnection(false)
     {

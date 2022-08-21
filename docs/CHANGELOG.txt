@@ -131,6 +131,10 @@ v0.9.1 (WIP):
             StyleColor_HighlightLinkBorder
             StyleVar_HighlightConnectedLinks
 
+    NEW: Editor: Add ability to snap link origin to pin direction (#167)
+        New API:
+            StyleVar_SnapLinkToPinDir
+
     BUGFIX: Avoid crash while destroying editor.
 
     BUGFIX: Save draw list used by editor between Begin() and End()

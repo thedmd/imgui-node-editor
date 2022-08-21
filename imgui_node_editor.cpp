@@ -460,7 +460,7 @@ static void ImDrawList_PolyFillScanFlood(ImDrawList *draw, std::vector<ImVec2>* 
 
 static void ImDrawList_AddBezierWithArrows(ImDrawList* drawList, const ImCubicBezierPoints& curve, float thickness,
     float startArrowSize, float startArrowWidth, float endArrowSize, float endArrowWidth,
-    bool fill, ImU32 color, float strokeThickness)
+    bool fill, ImU32 color, float strokeThickness, const ImVec2* startDirHint = nullptr, const ImVec2* endDirHint = nullptr)
 {
     using namespace ax;
 
@@ -475,7 +475,7 @@ static void ImDrawList_AddBezierWithArrows(ImDrawList* drawList, const ImCubicBe
 
         if (startArrowSize > 0.0f)
         {
-            const auto start_dir  = ImNormalized(ImCubicBezierTangent(curve.P0, curve.P1, curve.P2, curve.P3, 0.0f));
+            const auto start_dir  = ImNormalized(startDirHint ? *startDirHint : ImCubicBezierTangent(curve.P0, curve.P1, curve.P2, curve.P3, 0.0f));
             const auto start_n    = ImVec2(-start_dir.y, start_dir.x);
             const auto half_width = startArrowWidth * 0.5f;
             const auto tip        = curve.P0 - start_dir * startArrowSize;
@@ -488,7 +488,7 @@ static void ImDrawList_AddBezierWithArrows(ImDrawList* drawList, const ImCubicBe
 
         if (endArrowSize > 0.0f)
         {
-            const auto    end_dir = ImNormalized(ImCubicBezierTangent(curve.P0, curve.P1, curve.P2, curve.P3, 1.0f));
+            const auto    end_dir = ImNormalized(endDirHint ? -*endDirHint : ImCubicBezierTangent(curve.P0, curve.P1, curve.P2, curve.P3, 1.0f));
             const auto    end_n   = ImVec2(  -end_dir.y,   end_dir.x);
             const auto half_width = endArrowWidth * 0.5f;
             const auto tip        = curve.P3 + end_dir * endArrowSize;
@@ -568,12 +568,44 @@ void ed::Pin::Draw(ImDrawList* drawList, DrawFlags flags)
 
 ImVec2 ed::Pin::GetClosestPoint(const ImVec2& p) const
 {
-    return ImRect_ClosestPoint(m_Pivot, p, true, m_Radius + m_ArrowSize);
+    auto pivot  = m_Pivot;
+    auto extent = m_Radius + m_ArrowSize;
+
+    if (m_SnapLinkToDir && extent > 0.0f)
+    {
+        pivot.Min += m_Dir * extent;
+        pivot.Max += m_Dir * extent;
+
+        extent = 0;
+    }
+
+    return ImRect_ClosestPoint(pivot, p, true, extent);
 }
 
 ImLine ed::Pin::GetClosestLine(const Pin* pin) const
 {
-    return ImRect_ClosestLine(m_Pivot, pin->m_Pivot, m_Radius + m_ArrowSize, pin->m_Radius + pin->m_ArrowSize);
+    auto pivotA  =      m_Pivot;
+    auto pivotB  = pin->m_Pivot;
+    auto extentA =      m_Radius +      m_ArrowSize;
+    auto extentB = pin->m_Radius + pin->m_ArrowSize;
+
+    if (m_SnapLinkToDir && extentA > 0.0f)
+    {
+        pivotA.Min += m_Dir * extentA;
+        pivotA.Max += m_Dir * extentA;
+
+        extentA = 0;
+    }
+
+    if (pin->m_SnapLinkToDir && extentB > 0.0f)
+    {
+        pivotB.Min += pin->m_Dir * extentB;
+        pivotB.Max += pin->m_Dir * extentB;
+
+        extentB = 0;
+    }
+
+    return ImRect_ClosestLine(pivotA, pivotB, extentA, extentB);
 }
 
 
@@ -881,7 +913,9 @@ void ed::Link::Draw(ImDrawList* drawList, ImU32 color, float extraThickness) con
         m_StartPin && m_StartPin->m_ArrowWidth > 0.0f ? m_StartPin->m_ArrowWidth + extraThickness : 0.0f,
           m_EndPin &&   m_EndPin->m_ArrowSize  > 0.0f ?   m_EndPin->m_ArrowSize  + extraThickness : 0.0f,
           m_EndPin &&   m_EndPin->m_ArrowWidth > 0.0f ?   m_EndPin->m_ArrowWidth + extraThickness : 0.0f,
-        true, color, 1.0f);
+        true, color, 1.0f,
+        m_StartPin && m_StartPin->m_SnapLinkToDir ? &m_StartPin->m_Dir : nullptr,
+        m_EndPin   &&   m_EndPin->m_SnapLinkToDir ?   &m_EndPin->m_Dir : nullptr);
 }
 
 void ed::Link::UpdateEndpoints()
@@ -5204,6 +5238,7 @@ void ed::NodeBuilder::BeginPin(PinId pinId, PinKind kind)
     m_CurrentPin->m_ArrowWidth  = editorStyle.PinArrowWidth;
     m_CurrentPin->m_Dir         = kind == PinKind::Output ? editorStyle.SourceDirection : editorStyle.TargetDirection;
     m_CurrentPin->m_Strength    = editorStyle.LinkStrength;
+    m_CurrentPin->m_SnapLinkToDir = editorStyle.SnapLinkToPinDir != 0.0f;
 
     m_CurrentPin->m_PreviousPin = m_CurrentNode->m_LastPin;
     m_CurrentNode->m_LastPin    = m_CurrentPin;
@@ -5574,6 +5609,7 @@ float* ed::Style::GetVarFloatAddr(StyleVar idx)
         case StyleVar_GroupRounding:            return &GroupRounding;
         case StyleVar_GroupBorderWidth:         return &GroupBorderWidth;
         case StyleVar_HighlightConnectedLinks:  return &HighlightConnectedLinks;
+        case StyleVar_SnapLinkToPinDir:         return &SnapLinkToPinDir;
         default:                                return nullptr;
     }
 }

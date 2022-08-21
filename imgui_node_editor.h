@@ -154,6 +154,7 @@ enum StyleVar
     StyleVar_GroupRounding,
     StyleVar_GroupBorderWidth,
     StyleVar_HighlightConnectedLinks,
+    StyleVar_SnapLinkToPinDir,
 
     StyleVar_Count
 };
@@ -184,6 +185,7 @@ struct Style
     float   GroupRounding;
     float   GroupBorderWidth;
     float   HighlightConnectedLinks;
+    float   SnapLinkToPinDir; // when true link will start on the line defined by pin direction
     ImVec4  Colors[StyleColor_Count];
 
     Style()
@@ -216,6 +218,7 @@ struct Style
         GroupRounding           = 6.0f;
         GroupBorderWidth        = 1.0f;
         HighlightConnectedLinks = 0.0f;
+        SnapLinkToPinDir        = 0.0f;
 
         Colors[StyleColor_Bg]                 = ImColor( 60,  60,  70, 200);
         Colors[StyleColor_Grid]               = ImColor(120, 120, 120,  40);
