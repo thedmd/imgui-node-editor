@@ -205,7 +205,8 @@ struct Object
     {
         None     = 0,
         Hovered  = 1,
-        Selected = 2
+        Selected = 2,
+        Highlighted = 4,
     };
 
     inline friend DrawFlags operator|(DrawFlags lhs, DrawFlags rhs)  { return static_cast<DrawFlags>(static_cast<int>(lhs) | static_cast<int>(rhs)); }
@@ -216,10 +217,12 @@ struct Object
     EditorContext* const Editor;
 
     bool    m_IsLive;
+    bool    m_IsSelected;
 
     Object(EditorContext* editor)
         : Editor(editor)
         , m_IsLive(true)
+        , m_IsSelected(false)
     {
     }
 
@@ -391,6 +394,8 @@ struct Node final: Object
     float    m_GroupRounding;
     ImRect   m_GroupBounds;
 
+    bool     m_HighlightConnectedLinks;
+
     bool     m_RestoreState;
     bool     m_CenterOnScreen;
 
@@ -408,6 +413,7 @@ struct Node final: Object
         , m_BorderWidth(0)
         , m_Rounding(0)
         , m_GroupBounds()
+        , m_HighlightConnectedLinks(false)
         , m_RestoreState(false)
         , m_CenterOnScreen(false)
     {

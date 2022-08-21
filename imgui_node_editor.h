@@ -115,6 +115,7 @@ enum StyleColor
     StyleColor_NodeSelRectBorder,
     StyleColor_HovLinkBorder,
     StyleColor_SelLinkBorder,
+    StyleColor_HighlightLinkBorder,
     StyleColor_LinkSelRect,
     StyleColor_LinkSelRectBorder,
     StyleColor_PinRect,
@@ -152,6 +153,7 @@ enum StyleVar
     StyleVar_PinArrowWidth,
     StyleVar_GroupRounding,
     StyleVar_GroupBorderWidth,
+    StyleVar_HighlightConnectedLinks,
 
     StyleVar_Count
 };
@@ -181,6 +183,7 @@ struct Style
     float   PinArrowWidth;
     float   GroupRounding;
     float   GroupBorderWidth;
+    float   HighlightConnectedLinks;
     ImVec4  Colors[StyleColor_Count];
 
     Style()
@@ -212,6 +215,7 @@ struct Style
         PinArrowWidth           = 0.0f;
         GroupRounding           = 6.0f;
         GroupBorderWidth        = 1.0f;
+        HighlightConnectedLinks = 0.0f;
 
         Colors[StyleColor_Bg]                 = ImColor( 60,  60,  70, 200);
         Colors[StyleColor_Grid]               = ImColor(120, 120, 120,  40);
@@ -223,6 +227,7 @@ struct Style
         Colors[StyleColor_NodeSelRectBorder]  = ImColor(  5, 130, 255, 128);
         Colors[StyleColor_HovLinkBorder]      = ImColor( 50, 176, 255, 255);
         Colors[StyleColor_SelLinkBorder]      = ImColor(255, 176,  50, 255);
+        Colors[StyleColor_HighlightLinkBorder]= ImColor(204, 105,   0, 255);
         Colors[StyleColor_LinkSelRect]        = ImColor(  5, 130, 255,  64);
         Colors[StyleColor_LinkSelRectBorder]  = ImColor(  5, 130, 255, 128);
         Colors[StyleColor_PinRect]            = ImColor( 60, 180, 255, 100);

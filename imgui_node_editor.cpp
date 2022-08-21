@@ -859,6 +859,14 @@ void ed::Link::Draw(ImDrawList* drawList, DrawFlags flags)
 
         Draw(drawList, borderColor, 2.0f);
     }
+    else if (flags & Highlighted)
+    {
+        const auto borderColor = Editor->GetColor(StyleColor_HighlightLinkBorder);
+
+        drawList->ChannelsSetCurrent(c_LinkChannel_Selection);
+
+        Draw(drawList, borderColor, 3.5f);
+    }
 }
 
 void ed::Link::Draw(ImDrawList* drawList, ImU32 color, float extraThickness) const
@@ -1200,8 +1208,28 @@ void ed::EditorContext::End()
             selectedObjects = &selectAction->m_CandidateObjects;
 
         for (auto selectedObject : *selectedObjects)
+        {
             if (selectedObject->IsVisible())
                 selectedObject->Draw(m_DrawList, Object::Selected);
+        }
+
+        // Highlight adjacent links
+        static auto isLinkHighlightedForPin = [](const Pin& pin)
+        {
+            return pin.m_Node->m_HighlightConnectedLinks && pin.m_Node->m_IsSelected;
+        };
+
+        for (auto& link : m_Links)
+        {
+            if (!link->m_IsLive || !link->IsVisible())
+                continue;
+
+            auto isLinkHighlighted = isLinkHighlightedForPin(*link->m_StartPin) || isLinkHighlightedForPin(*link->m_EndPin);
+            if (!isLinkHighlighted)
+                continue;
+
+            link->Draw(m_DrawList, Object::Highlighted);
+        }
     }
 
     if (!isSelecting)
@@ -1651,19 +1679,26 @@ void ed::EditorContext::RemoveSettings(Object* object)
 
 void ed::EditorContext::ClearSelection()
 {
+    for (auto& object : m_SelectedObjects)
+        object->m_IsSelected = false;
+
     m_SelectedObjects.clear();
 }
 
 void ed::EditorContext::SelectObject(Object* object)
 {
     m_SelectedObjects.push_back(object);
+    object->m_IsSelected = true;
 }
 
 void ed::EditorContext::DeselectObject(Object* object)
 {
     auto objectIt = std::find(m_SelectedObjects.begin(), m_SelectedObjects.end(), object);
-    if (objectIt != m_SelectedObjects.end())
-        m_SelectedObjects.erase(objectIt);
+    if (objectIt == m_SelectedObjects.end())
+        return;
+
+    object->m_IsSelected = false;
+    m_SelectedObjects.erase(objectIt);
 }
 
 void ed::EditorContext::SetSelectedObject(Object* object)
@@ -1682,7 +1717,8 @@ void ed::EditorContext::ToggleObjectSelection(Object* object)
 
 bool ed::EditorContext::IsSelected(Object* object)
 {
-    return std::find(m_SelectedObjects.begin(), m_SelectedObjects.end(), object) != m_SelectedObjects.end();
+    return object && object->m_IsSelected;
+    // return std::find(m_SelectedObjects.begin(), m_SelectedObjects.end(), object) != m_SelectedObjects.end();
 }
 
 const ed::vector<ed::Object*>& ed::EditorContext::GetSelectedObjects()
@@ -5069,6 +5105,7 @@ void ed::NodeBuilder::Begin(NodeId nodeId)
     m_CurrentNode->m_GroupBorderColor = Editor->GetColor(StyleColor_GroupBorder, alpha);
     m_CurrentNode->m_GroupBorderWidth = editorStyle.GroupBorderWidth;
     m_CurrentNode->m_GroupRounding    = editorStyle.GroupRounding;
+    m_CurrentNode->m_HighlightConnectedLinks = editorStyle.HighlightConnectedLinks != 0.0f;
 
     m_IsGroup = false;
 
@@ -5499,6 +5536,7 @@ const char* ed::Style::GetColorName(StyleColor colorIndex) const
         case StyleColor_NodeSelRectBorder: return "NodeSelRectBorder";
         case StyleColor_HovLinkBorder: return "HoveredLinkBorder";
         case StyleColor_SelLinkBorder: return "SelLinkBorder";
+        case StyleColor_HighlightLinkBorder: return "HighlightLinkBorder";
         case StyleColor_LinkSelRect: return "LinkSelRect";
         case StyleColor_LinkSelRectBorder: return "LinkSelRectBorder";
         case StyleColor_PinRect: return "PinRect";
@@ -5535,6 +5573,7 @@ float* ed::Style::GetVarFloatAddr(StyleVar idx)
         case StyleVar_PinArrowWidth:            return &PinArrowWidth;
         case StyleVar_GroupRounding:            return &GroupRounding;
         case StyleVar_GroupBorderWidth:         return &GroupBorderWidth;
+        case StyleVar_HighlightConnectedLinks:  return &HighlightConnectedLinks;
         default:                                return nullptr;
     }
 }

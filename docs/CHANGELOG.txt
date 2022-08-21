@@ -126,6 +126,11 @@ v0.9.1 (WIP):
         New API:
             const Config& GetConfig(EditorContext* ctx = nullptr);
 
+    NEW: Editor: Add highlighting of Links connected to selected Node (#175)
+        New API:
+            StyleColor_HighlightLinkBorder
+            StyleVar_HighlightConnectedLinks
+
     BUGFIX: Avoid crash while destroying editor.
 
     BUGFIX: Save draw list used by editor between Begin() and End()
