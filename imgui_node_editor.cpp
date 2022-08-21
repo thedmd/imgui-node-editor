@@ -4057,7 +4057,6 @@ void ed::SelectAction::Draw(ImDrawList* drawList)
     auto max  = ImVec2(ImMax(m_StartPoint.x, m_EndPoint.x), ImMax(m_StartPoint.y, m_EndPoint.y));
 
     drawList->AddRectFilled(min, max, fillColor);
-    FringeScaleScope fringe(1.0f);
     drawList->AddRect(min, max, outlineColor);
 }
 

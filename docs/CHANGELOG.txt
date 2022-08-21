@@ -180,3 +180,5 @@ v0.9.1 (WIP):
     BUGFIX: Editor: Improve link dragging with fast movement (#156)
 
     BUGFIX: Editor: Make selection rect start at click point
+
+    BUGFIX: Editor: Make selection rect sharp
