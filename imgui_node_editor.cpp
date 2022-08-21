@@ -1123,16 +1123,16 @@ void ed::EditorContext::Begin(const char* id, const ImVec2& size)
 
     static auto resetAndCollect = [](auto& objects)
     {
-        objects.erase(std::remove_if(objects.begin(), objects.end(), [](auto& object)
+        objects.erase(std::remove_if(objects.begin(), objects.end(), [](auto objectWrapper)
         {
-            if (object->m_DeleteOnNewFrame)
+            if (objectWrapper->m_DeleteOnNewFrame)
             {
-                delete object;
+                delete objectWrapper.m_Object;
                 return true;
             }
             else
             {
-                object->Reset();
+                objectWrapper->Reset();
                 return false;
             }
         }), objects.end());
