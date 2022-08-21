@@ -193,3 +193,5 @@ v0.9.1 (WIP):
     BUGFIX: Editor: Make selection rect start at click point
 
     BUGFIX: Editor: Make selection rect sharp
+
+    BUGFIX: Editor: Don't populate unused channels with empty draw command, fixes memory leak (#168, #165)
