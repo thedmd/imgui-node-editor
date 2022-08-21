@@ -218,11 +218,13 @@ struct Object
 
     bool    m_IsLive;
     bool    m_IsSelected;
+    bool    m_DeleteOnNewFrame;
 
     Object(EditorContext* editor)
         : Editor(editor)
         , m_IsLive(true)
         , m_IsSelected(false)
+        , m_DeleteOnNewFrame(false)
     {
     }
 
@@ -1146,6 +1148,7 @@ private:
     enum UserAction { Undetermined, Accepted, Rejected };
 
     void DeleteDeadLinks(NodeId nodeId);
+    void DeleteDeadPins(NodeId nodeId);
 
     bool QueryItem(ObjectId* itemId, IteratorType itemType);
     void RemoveItem(bool deleteDependencies);

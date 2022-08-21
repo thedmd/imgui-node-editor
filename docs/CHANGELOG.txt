@@ -29,6 +29,8 @@ v0.9.1 (WIP):
 
     CHANGE: Use github actions instead of Travis and AppVeyor (#113)
 
+    CHANGE: Delete operation on node/link will remove internal object (#173)
+
     NEW: All source components are now versioned
 
     NEW: Make view state independent of window resolution.

@@ -1125,9 +1125,26 @@ void ed::EditorContext::Begin(const char* id, const ImVec2& size)
     //ImGui::LogToClipboard();
     //Log("---- begin ----");
 
-    for (auto node  : m_Nodes)   node->Reset();
-    for (auto pin   : m_Pins)     pin->Reset();
-    for (auto link  : m_Links)   link->Reset();
+    static auto resetAndCollect = [](auto& objects)
+    {
+        objects.erase(std::remove_if(objects.begin(), objects.end(), [](auto& object)
+        {
+            if (object->m_DeleteOnNewFrame)
+            {
+                delete object;
+                return true;
+            }
+            else
+            {
+                object->Reset();
+                return false;
+            }
+        }), objects.end());
+    };
+
+    resetAndCollect(m_Nodes);
+    resetAndCollect(m_Pins);
+    resetAndCollect(m_Links);
 
     m_DrawList = ImGui::GetWindowDrawList();
 
@@ -4833,12 +4850,24 @@ void ed::DeleteItemsAction::DeleteDeadLinks(NodeId nodeId)
     Editor->FindLinksForNode(nodeId, links, true);
     for (auto link : links)
     {
+        link->m_DeleteOnNewFrame = true;
+
         auto it = std::find(m_CandidateObjects.begin(), m_CandidateObjects.end(), link);
         if (it != m_CandidateObjects.end())
             continue;
 
         m_CandidateObjects.push_back(link);
     }
+}
+
+void ed::DeleteItemsAction::DeleteDeadPins(NodeId nodeId)
+{
+    auto node = Editor->FindNode(nodeId);
+    if (!node)
+        return;
+
+    for (auto pin = node->m_LastPin; pin; pin = pin->m_PreviousPin)
+        pin->m_DeleteOnNewFrame = true;
 }
 
 ed::EditorAction::AcceptResult ed::DeleteItemsAction::Accept(const Control& control)
@@ -5055,8 +5084,14 @@ void ed::DeleteItemsAction::RemoveItem(bool deleteDependencies)
 
     Editor->RemoveSettings(item);
 
+    item->m_DeleteOnNewFrame = true;
+
     if (deleteDependencies && m_CurrentItemType == Node)
-        DeleteDeadLinks(item->ID().AsNodeId());
+    {
+        auto node = item->ID().AsNodeId();
+        DeleteDeadLinks(node);
+        DeleteDeadPins(node);
+    }
 
     if (m_CurrentItemType == Link)
         Editor->NotifyLinkDeleted(item->AsLink());
