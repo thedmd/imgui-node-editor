@@ -876,6 +876,9 @@ private:
     bool               m_MovingOverEdge;
     ImVec2             m_MoveScreenOffset;
 
+    const float*       m_ZoomLevels;
+    int                m_ZoomLevelCount;
+
     bool HandleZoom(const Control& control);
 
     void NavigateTo(const ImRect& target, float duration = -1.0f, NavigationReason reason = NavigationReason::Unknown);
@@ -883,8 +886,8 @@ private:
     float MatchZoom(int steps, float fallbackZoom);
     int MatchZoomIndex(int direction);
 
-    static const float s_ZoomLevels[];
-    static const int   s_ZoomLevelCount;
+    static const float s_DefaultZoomLevels[];
+    static const int   s_DefaultZoomLevelCount;
 };
 
 struct SizeAction final: EditorAction
@@ -1474,6 +1477,8 @@ private:
 
     void UpdateAnimations();
 
+    Config              m_Config;
+
     bool                m_IsFirstFrame;
     bool                m_IsFocused;
     bool                m_IsHovered;
@@ -1527,8 +1532,6 @@ private:
 
     bool                m_IsInitialized;
     Settings            m_Settings;
-
-    Config              m_Config;
 
     ImDrawList*         m_DrawList;
     int                 m_ExternalChannel;

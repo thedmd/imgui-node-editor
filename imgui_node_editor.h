@@ -65,6 +65,7 @@ struct Config
     ConfigSaveNodeSettings  SaveNodeSettings;
     ConfigLoadNodeSettings  LoadNodeSettings;
     void*                   UserPointer;
+    ImVector<float>         CustomZoomLevels;
     int                     DragButtonIndex;        // Mouse button index drag action will react to (0-left, 1-right, 2-middle)
     int                     SelectButtonIndex;      // Mouse button index select action will react to (0-left, 1-right, 2-middle)
     int                     NavigateButtonIndex;    // Mouse button index navigate action will react to (0-left, 1-right, 2-middle)
@@ -79,6 +80,7 @@ struct Config
         , SaveNodeSettings(nullptr)
         , LoadNodeSettings(nullptr)
         , UserPointer(nullptr)
+        , CustomZoomLevels()
         , DragButtonIndex(0)
         , SelectButtonIndex(0)
         , NavigateButtonIndex(1)

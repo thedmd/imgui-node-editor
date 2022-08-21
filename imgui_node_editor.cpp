@@ -1056,7 +1056,8 @@ ImRect ed::Link::GetBounds() const
 //
 //------------------------------------------------------------------------------
 ed::EditorContext::EditorContext(const ax::NodeEditor::Config* config)
-    : m_IsFirstFrame(true)
+    : m_Config(config)
+    , m_IsFirstFrame(true)
     , m_IsFocused(false)
     , m_IsHovered(false)
     , m_IsHoveredWithoutOverlapp(false)
@@ -1092,7 +1093,6 @@ ed::EditorContext::EditorContext(const ax::NodeEditor::Config* config)
     , m_BackgroundDoubleClickButtonIndex(-1)
     , m_IsInitialized(false)
     , m_Settings()
-    , m_Config(config)
     , m_DrawList(nullptr)
     , m_ExternalChannel(0)
 {
@@ -3235,12 +3235,12 @@ void ed::FlowAnimationController::Release(FlowAnimation* animation)
 // Navigate Action
 //
 //------------------------------------------------------------------------------
-const float ed::NavigateAction::s_ZoomLevels[] =
+const float ed::NavigateAction::s_DefaultZoomLevels[] =
 {
     0.1f, 0.15f, 0.20f, 0.25f, 0.33f, 0.5f, 0.75f, 1.0f, 1.25f, 1.50f, 2.0f, 2.5f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f
 };
 
-const int ed::NavigateAction::s_ZoomLevelCount = sizeof(s_ZoomLevels) / sizeof(*s_ZoomLevels);
+const int ed::NavigateAction::s_DefaultZoomLevelCount = sizeof(s_DefaultZoomLevels) / sizeof(*s_DefaultZoomLevels);
 
 ed::NavigateAction::NavigateAction(EditorContext* editor, ImGuiEx::Canvas& canvas):
     EditorAction(editor),
@@ -3258,7 +3258,9 @@ ed::NavigateAction::NavigateAction(EditorContext* editor, ImGuiEx::Canvas& canva
     m_LastSelectionId(0),
     m_LastObject(nullptr),
     m_MovingOverEdge(false),
-    m_MoveScreenOffset(0, 0)
+    m_MoveScreenOffset(0, 0),
+    m_ZoomLevels(editor->GetConfig().CustomZoomLevels.Size > 0 ? editor->GetConfig().CustomZoomLevels.Data : s_DefaultZoomLevels),
+    m_ZoomLevelCount(editor->GetConfig().CustomZoomLevels.Size > 0 ? editor->GetConfig().CustomZoomLevels.Size : s_DefaultZoomLevelCount)
 {
 }
 
@@ -3396,7 +3398,7 @@ bool ed::NavigateAction::HandleZoom(const Control& control)
 
     auto mousePos = io.MousePos;
     auto steps    = (int)io.MouseWheel;
-    auto newZoom  = MatchZoom(steps, s_ZoomLevels[steps < 0 ? 0 : s_ZoomLevelCount - 1]);
+    auto newZoom  = MatchZoom(steps, m_ZoomLevels[steps < 0 ? 0 : m_ZoomLevelCount - 1]);
 
     auto oldView   = GetView();
     m_Zoom = newZoom;
@@ -3578,13 +3580,13 @@ float ed::NavigateAction::MatchZoom(int steps, float fallbackZoom)
     if (currentZoomIndex < 0)
         return fallbackZoom;
 
-    auto currentZoom = s_ZoomLevels[currentZoomIndex];
+    auto currentZoom = m_ZoomLevels[currentZoomIndex];
     if (fabsf(currentZoom - m_Zoom) > 0.001f)
         return currentZoom;
 
     auto newIndex = currentZoomIndex + steps;
-    if (newIndex >= 0 && newIndex < s_ZoomLevelCount)
-        return s_ZoomLevels[newIndex];
+    if (newIndex >= 0 && newIndex < m_ZoomLevelCount)
+        return m_ZoomLevels[newIndex];
     else
         return fallbackZoom;
 }
@@ -3594,9 +3596,9 @@ int ed::NavigateAction::MatchZoomIndex(int direction)
     int   bestIndex    = -1;
     float bestDistance = 0.0f;
 
-    for (int i = 0; i < s_ZoomLevelCount; ++i)
+    for (int i = 0; i < m_ZoomLevelCount; ++i)
     {
-        auto distance = fabsf(s_ZoomLevels[i] - m_Zoom);
+        auto distance = fabsf(m_ZoomLevels[i] - m_Zoom);
         if (distance < bestDistance || bestIndex < 0)
         {
             bestDistance = distance;
@@ -3610,8 +3612,8 @@ int ed::NavigateAction::MatchZoomIndex(int direction)
         {
             ++bestIndex;
 
-            if (bestIndex >= s_ZoomLevelCount)
-                bestIndex = s_ZoomLevelCount - 1;
+            if (bestIndex >= m_ZoomLevelCount)
+                bestIndex = m_ZoomLevelCount - 1;
         }
         else if (direction < 0)
         {

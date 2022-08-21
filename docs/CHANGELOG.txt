@@ -137,6 +137,10 @@ v0.9.1 (WIP):
         New API:
             StyleVar_SnapLinkToPinDir
 
+    NEW: Editor: Add way to override default zoom levels (#174)
+        New API:
+            ImVector<float> Config::CustomZoomLevels;
+
     BUGFIX: Avoid crash while destroying editor.
 
     BUGFIX: Save draw list used by editor between Begin() and End()
