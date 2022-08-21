@@ -56,6 +56,7 @@ void Log(const char* fmt, ...);
 //inline ImRect ToRect(const ax::rectf& rect);
 //inline ImRect ToRect(const ax::rect& rect);
 inline ImRect ImGui_GetItemRect();
+inline ImVec2 ImGui_GetMouseClickPos(ImGuiMouseButton buttonIndex);
 
 
 //------------------------------------------------------------------------------

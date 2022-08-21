@@ -3917,7 +3917,7 @@ ed::EditorAction::AcceptResult ed::SelectAction::Accept(const Control& control)
     if (Editor->CanAcceptUserInput() && control.BackgroundHot && ImGui::IsMouseDragging(Editor->GetConfig().SelectButtonIndex, 1))
     {
         m_IsActive = true;
-        m_StartPoint = ImGui::GetMousePos();
+        m_StartPoint = ImGui_GetMouseClickPos(Editor->GetConfig().SelectButtonIndex);
         m_EndPoint   = m_StartPoint;
 
         // Links and nodes cannot be selected together
