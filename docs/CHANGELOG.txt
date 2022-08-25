@@ -201,3 +201,5 @@ v0.9.1 (WIP):
     BUGFIX: Editor: Don't populate unused channels with empty draw command, fixes memory leak (#168, #165)
 
     BUGFIX: Application: Correctly set DX11 View for NULL textures (#162)
+
+    BUGFIX: Application: Recreate DX11 resources lazily (related to #162)

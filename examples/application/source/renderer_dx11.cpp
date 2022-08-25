@@ -107,7 +107,6 @@ void RendererDX11::Resize(int width, int height)
     CleanupRenderTarget();
     m_swapChain->ResizeBuffers(0, (UINT)width, (UINT)height, DXGI_FORMAT_UNKNOWN, 0);
     CreateRenderTarget();
-    ImGui_ImplDX11_CreateDeviceObjects();
 }
 
 HRESULT RendererDX11::CreateDeviceD3D(HWND hWnd)
