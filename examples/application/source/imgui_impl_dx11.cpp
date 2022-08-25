@@ -274,7 +274,8 @@ void ImGui_ImplDX11_RenderDrawData(ImDrawData* draw_data)
 
                 // Bind texture, Draw
                 TEXTURE* texture = (TEXTURE*)pcmd->TextureId;
-                ctx->PSSetShaderResources(0, 1, &texture->View);
+                ID3D11ShaderResourceView* textureView = texture ? texture->View : nullptr;
+                ctx->PSSetShaderResources(0, 1, &textureView);
                 ctx->DrawIndexed(pcmd->ElemCount, pcmd->IdxOffset + global_idx_offset, pcmd->VtxOffset + global_vtx_offset);
             }
         }
