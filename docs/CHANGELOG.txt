@@ -205,3 +205,5 @@ v0.9.1 (WIP):
     BUGFIX: Application: Recreate DX11 resources lazily (related to #162)
 
     BUGFIX: Editor: Don't steal input from active user widget (#172)
+
+    BUGFIX: Editor: Delete item from internal list only when action accepts (#178)

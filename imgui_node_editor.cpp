@@ -5081,13 +5081,12 @@ void ed::DeleteItemsAction::RejectItem()
 
     m_UserAction = Rejected;
 
-    RemoveItem(false);
+    DropCurrentItem();
 }
 
 void ed::DeleteItemsAction::RemoveItem(bool deleteDependencies)
 {
-    auto item = m_CandidateObjects[m_CandidateItemIndex];
-    m_CandidateObjects.erase(m_CandidateObjects.begin() + m_CandidateItemIndex);
+    auto item = DropCurrentItem();
 
     Editor->DeselectObject(item);
 
@@ -5104,6 +5103,14 @@ void ed::DeleteItemsAction::RemoveItem(bool deleteDependencies)
 
     if (m_CurrentItemType == Link)
         Editor->NotifyLinkDeleted(item->AsLink());
+}
+
+ed::Object* ed::DeleteItemsAction::DropCurrentItem()
+{
+    auto item = m_CandidateObjects[m_CandidateItemIndex];
+    m_CandidateObjects.erase(m_CandidateObjects.begin() + m_CandidateItemIndex);
+
+    return item;
 }
 
 

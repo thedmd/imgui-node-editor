@@ -1156,6 +1156,7 @@ private:
 
     bool QueryItem(ObjectId* itemId, IteratorType itemType);
     void RemoveItem(bool deleteDependencies);
+    Object* DropCurrentItem();
 
     vector<Object*> m_ManuallyDeletedObjects;
 
