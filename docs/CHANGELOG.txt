@@ -215,3 +215,5 @@ v0.9.1 (WIP):
     BUGFIX: Editor: Don't steal input from active user widget (#172)
 
     BUGFIX: Editor: Delete item from internal list only when action accepts (#178)
+
+    BUGFIX: Editor: Cycle canvas to correctly restore view on first frame (#159)

@@ -1111,8 +1111,22 @@ ed::EditorContext::~EditorContext()
 
 void ed::EditorContext::Begin(const char* id, const ImVec2& size)
 {
+    m_EditorActiveId = ImGui::GetID(id);
+    ImGui::PushID(id);
+
+    auto availableContentSize = ImGui::GetContentRegionAvail();
+    ImVec2 canvasSize = ImFloor(size);
+    if (canvasSize.x <= 0.0f)
+        canvasSize.x = ImMax(4.0f, availableContentSize.x);
+    if (canvasSize.y <= 0.0f)
+        canvasSize.y = ImMax(4.0f, availableContentSize.y);
+
     if (!m_IsInitialized)
     {
+        // Cycle canvas so it has a change to setup its size before settings are loaded
+        m_Canvas.Begin(id, canvasSize);
+        m_Canvas.End();
+
         LoadSettings();
         m_IsInitialized = true;
     }
@@ -1145,16 +1159,6 @@ void ed::EditorContext::Begin(const char* id, const ImVec2& size)
 
     ImDrawList_SwapSplitter(m_DrawList, m_Splitter);
     m_ExternalChannel = m_DrawList->_Splitter._Current;
-
-    m_EditorActiveId = ImGui::GetID(id);
-    ImGui::PushID(id);
-
-    auto availableContentSize = ImGui::GetContentRegionAvail();
-    ImVec2 canvasSize = ImFloor(size);
-    if (canvasSize.x <= 0.0f)
-        canvasSize.x = ImMax(4.0f, availableContentSize.x);
-    if (canvasSize.y <= 0.0f)
-        canvasSize.y = ImMax(4.0f, availableContentSize.y);
 
     if (m_CurrentAction && m_CurrentAction->IsDragging() && m_NavigateAction.MoveOverEdge(canvasSize))
     {
