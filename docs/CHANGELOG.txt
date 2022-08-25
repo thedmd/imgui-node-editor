@@ -203,3 +203,5 @@ v0.9.1 (WIP):
     BUGFIX: Application: Correctly set DX11 View for NULL textures (#162)
 
     BUGFIX: Application: Recreate DX11 resources lazily (related to #162)
+
+    BUGFIX: Editor: Don't steal input from active user widget (#172)

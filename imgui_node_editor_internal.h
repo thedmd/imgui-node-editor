@@ -1480,6 +1480,7 @@ private:
 
     Config              m_Config;
 
+    ImGuiID             m_EditorActiveId;
     bool                m_IsFirstFrame;
     bool                m_IsFocused;
     bool                m_IsHovered;

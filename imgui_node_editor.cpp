@@ -1055,6 +1055,7 @@ ImRect ed::Link::GetBounds() const
 //------------------------------------------------------------------------------
 ed::EditorContext::EditorContext(const ax::NodeEditor::Config* config)
     : m_Config(config)
+    , m_EditorActiveId(0)
     , m_IsFirstFrame(true)
     , m_IsFocused(false)
     , m_IsHovered(false)
@@ -1145,6 +1146,7 @@ void ed::EditorContext::Begin(const char* id, const ImVec2& size)
     ImDrawList_SwapSplitter(m_DrawList, m_Splitter);
     m_ExternalChannel = m_DrawList->_Splitter._Current;
 
+    m_EditorActiveId = ImGui::GetID(id);
     ImGui::PushID(id);
 
     auto availableContentSize = ImGui::GetContentRegionAvail();
@@ -2305,6 +2307,7 @@ ed::Control ed::EditorContext::BuildControl(bool allowOffscreen)
         ImGui::PushClipRect(editorRect.Min, editorRect.Max, false);
     }
 
+    ImGuiID activeId            = 0;
     Object* hotObject           = nullptr;
     Object* activeObject        = nullptr;
     Object* clickedObject       = nullptr;
@@ -2342,7 +2345,7 @@ ed::Control ed::EditorContext::BuildControl(bool allowOffscreen)
     };
 
     // Emits invisible button and returns true if it is clicked.
-    auto emitInteractiveAreaEx = [](ObjectId id, const ImRect& rect, ImGuiButtonFlags extraFlags) -> int
+    auto emitInteractiveAreaEx = [&activeId](ObjectId id, const ImRect& rect, ImGuiButtonFlags extraFlags) -> int
     {
         char idString[33] = { 0 }; // itoa can output 33 bytes maximum
         snprintf(idString, 32, "%p", id.AsPointer());
@@ -2355,6 +2358,9 @@ ed::Control ed::EditorContext::BuildControl(bool allowOffscreen)
 
         // #debug
         //ImGui::GetWindowDrawList()->AddRectFilled(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), IM_COL32(0, 255, 0, 64));
+
+        if (ImGui::IsItemActive())
+            activeId = ImGui::GetActiveID();
 
         return buttonIndex;
     };
@@ -2506,6 +2512,12 @@ ed::Control ed::EditorContext::BuildControl(bool allowOffscreen)
         doubleClickedObject              = hotLink;
         backgroundDoubleClickButtonIndex = -1;
     }
+
+    if (activeId)
+        m_EditorActiveId = activeId;
+
+    if (ImGui::IsAnyItemActive() && ImGui::GetActiveID() != m_EditorActiveId)
+        return Control();
 
     m_IsHovered = ImGui::IsItemHovered(ImGuiHoveredFlags_RectOnly);
     m_IsHoveredWithoutOverlapp = ImGui::IsItemHovered();
