@@ -141,6 +141,14 @@ v0.9.1 (WIP):
         New API:
             ImVector<float> Config::CustomZoomLevels;
 
+    NEW: Editor: Add canvas size mode (#170)
+
+        Config can now decide how editor should resize view when changing size.
+
+        New API:
+            enum class CanvasSizeMode;
+            Config::CanvasSizeMode;
+
     BUGFIX: Avoid crash while destroying editor.
 
     BUGFIX: Save draw list used by editor between Begin() and End()

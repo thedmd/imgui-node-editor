@@ -32,6 +32,27 @@ struct PinId;
 
 
 //------------------------------------------------------------------------------
+enum class PinKind
+{
+    Input,
+    Output
+};
+
+enum class FlowDirection
+{
+    Forward,
+    Backward
+};
+
+enum class CanvasSizeMode
+{
+    FitVerticalView,        // Previous view will be scaled to fit new view on Y axis
+    FitHorizontalView,      // Previous view will be scaled to fit new view on X axis
+    CenterOnly,             // Previous view will be centered on new view
+};
+
+
+//------------------------------------------------------------------------------
 enum class SaveReasonFlags: uint32_t
 {
     None       = 0x00000000,
@@ -57,6 +78,8 @@ using ConfigSession          = void   (*)(void* userPointer);
 
 struct Config
 {
+    using CanvasSizeModeAlias = ax::NodeEditor::CanvasSizeMode;
+
     const char*             SettingsFile;
     ConfigSession           BeginSaveSession;
     ConfigSession           EndSaveSession;
@@ -66,6 +89,7 @@ struct Config
     ConfigLoadNodeSettings  LoadNodeSettings;
     void*                   UserPointer;
     ImVector<float>         CustomZoomLevels;
+    CanvasSizeModeAlias     CanvasSizeMode;
     int                     DragButtonIndex;        // Mouse button index drag action will react to (0-left, 1-right, 2-middle)
     int                     SelectButtonIndex;      // Mouse button index select action will react to (0-left, 1-right, 2-middle)
     int                     NavigateButtonIndex;    // Mouse button index navigate action will react to (0-left, 1-right, 2-middle)
@@ -81,26 +105,13 @@ struct Config
         , LoadNodeSettings(nullptr)
         , UserPointer(nullptr)
         , CustomZoomLevels()
+        , CanvasSizeMode(CanvasSizeModeAlias::FitVerticalView)
         , DragButtonIndex(0)
         , SelectButtonIndex(0)
         , NavigateButtonIndex(1)
         , ContextMenuButtonIndex(1)
     {
     }
-};
-
-
-//------------------------------------------------------------------------------
-enum class PinKind
-{
-    Input,
-    Output
-};
-
-enum class FlowDirection
-{
-    Forward,
-    Backward
 };
 
 
