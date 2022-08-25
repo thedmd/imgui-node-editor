@@ -217,3 +217,5 @@ v0.9.1 (WIP):
     BUGFIX: Editor: Delete item from internal list only when action accepts (#178)
 
     BUGFIX: Editor: Cycle canvas to correctly restore view on first frame (#159)
+
+    BUGFIX: Editor: Don't relay on ImGui CursorMaxPos to apply padding (https://github.com/ocornut/imgui/issues/5548)

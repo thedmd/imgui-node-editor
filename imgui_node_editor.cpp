@@ -5256,9 +5256,9 @@ void ed::NodeBuilder::End()
         ImGui::EndGroup();
         ImGui::SameLine(0, editorStyle.NodePadding.z);
         ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.0f, 0.0f));
-        ImGui::Dummy(ImVec2(0, 0));
+        ImGui::Dummy(ImVec2(0, 0)); // bump cursor at the end of the line and move to next one
+        ImGui::Dummy(ImVec2(0, editorStyle.NodePadding.w)); // apply padding
         ImGui::PopStyleVar();
-        ImGui::SetCursorPosY(ImGui::GetCursorPosY() + editorStyle.NodePadding.w);
     }
 
     // End outer group.
