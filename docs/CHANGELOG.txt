@@ -31,6 +31,8 @@ v0.9.1 (WIP):
 
     CHANGE: Delete operation on node/link will remove internal object (#173)
 
+    CHANGE: Natvis: Add crude_json::value visualization
+
     NEW: All source components are now versioned
 
     NEW: Make view state independent of window resolution.

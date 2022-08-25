@@ -30,4 +30,35 @@
         </Expand>
     </Type>
 
+    <Type Name="std::pair&lt;*, crude_json::value&gt;" IncludeView="MapHelper" Priority="High">
+        <DisplayString>{second}</DisplayString>
+        <Expand HideRawView="true">
+            <ExpandedItem>second</ExpandedItem>
+        </Expand>
+    </Type>
+
+    <Type Name="crude_json::value">
+        <Intrinsic Name="object_ptr"  Expression="(crude_json::object*)&amp;m_Storage" />
+        <Intrinsic Name="array_ptr"   Expression="(crude_json::array*)&amp;m_Storage" />
+        <Intrinsic Name="string_ptr"  Expression="(crude_json::string*)&amp;m_Storage" />
+        <Intrinsic Name="boolean_ptr" Expression="(crude_json::boolean*)&amp;m_Storage" />
+        <Intrinsic Name="number_ptr"  Expression="(crude_json::number*)&amp;m_Storage" />
+
+        <DisplayString Condition="m_Type == crude_json::type_t::null">null</DisplayString>
+        <DisplayString Condition="m_Type == crude_json::type_t::object">{*object_ptr()} : object</DisplayString>
+        <DisplayString Condition="m_Type == crude_json::type_t::array">{*array_ptr()} : array</DisplayString>
+        <DisplayString Condition="m_Type == crude_json::type_t::string">{*string_ptr()} : string</DisplayString>
+        <DisplayString Condition="m_Type == crude_json::type_t::boolean">{*boolean_ptr()} : boolean</DisplayString>
+        <DisplayString Condition="m_Type == crude_json::type_t::number">{*number_ptr(),g} : number</DisplayString>
+        <DisplayString Condition="m_Type == crude_json::type_t::discarded">discarded</DisplayString>
+        <Expand HideRawView="true">
+            <!--<Synthetic Name="[type]"><DisplayString>{m_Type,en}</DisplayString></Synthetic>-->
+            <ExpandedItem Condition="m_Type == crude_json::type_t::object">*object_ptr(),view(simple)</ExpandedItem>
+            <ExpandedItem Condition="m_Type == crude_json::type_t::array">*array_ptr(),view(simple)</ExpandedItem>
+            <Item Name="[value]" Condition="m_Type == crude_json::type_t::string">*string_ptr(),view(simple)</Item>
+            <Item Name="[value]" Condition="m_Type == crude_json::type_t::boolean">*boolean_ptr()</Item>
+            <Item Name="[value]" Condition="m_Type == crude_json::type_t::number">*number_ptr()</Item>
+        </Expand>
+    </Type>
+
 </AutoVisualizer>
