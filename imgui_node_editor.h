@@ -168,6 +168,8 @@ enum StyleVar
     StyleVar_GroupBorderWidth,
     StyleVar_HighlightConnectedLinks,
     StyleVar_SnapLinkToPinDir,
+    StyleVar_HoveredNodeBorderOffset,
+    StyleVar_SelectedNodeBorderOffset,
 
     StyleVar_Count
 };
@@ -199,39 +201,43 @@ struct Style
     float   GroupBorderWidth;
     float   HighlightConnectedLinks;
     float   SnapLinkToPinDir; // when true link will start on the line defined by pin direction
+    float   SelectedNodeBorderOffset;
+    float   HoverNodeBorderOffset;
     ImVec4  Colors[StyleColor_Count];
 
     Style()
     {
-        NodePadding             = ImVec4(8, 8, 8, 8);
-        NodeRounding            = 12.0f;
-        NodeBorderWidth         = 1.5f;
-        HoveredNodeBorderWidth  = 3.5f;
-        SelectedNodeBorderWidth = 3.5f;
-        PinRounding             = 4.0f;
-        PinBorderWidth          = 0.0f;
-        LinkStrength            = 100.0f;
-        SourceDirection         = ImVec2(1.0f, 0.0f);
-        TargetDirection         = ImVec2(-1.0f, 0.0f);
-        ScrollDuration          = 0.35f;
-        FlowMarkerDistance      = 30.0f;
-        FlowSpeed               = 150.0f;
-        FlowDuration            = 2.0f;
-        PivotAlignment          = ImVec2(0.5f, 0.5f);
-        PivotSize               = ImVec2(0.0f, 0.0f);
-        PivotScale              = ImVec2(1, 1);
-#if IMGUI_VERSION_NUM > 18101
-        PinCorners              = ImDrawFlags_RoundCornersAll;
-#else
-        PinCorners              = ImDrawCornerFlags_All;
-#endif
-        PinRadius               = 0.0f;
-        PinArrowSize            = 0.0f;
-        PinArrowWidth           = 0.0f;
-        GroupRounding           = 6.0f;
-        GroupBorderWidth        = 1.0f;
-        HighlightConnectedLinks = 0.0f;
-        SnapLinkToPinDir        = 0.0f;
+        NodePadding              = ImVec4(8, 8, 8, 8);
+        NodeRounding             = 12.0f;
+        NodeBorderWidth          = 1.5f;
+        HoveredNodeBorderWidth   = 3.5f;
+        SelectedNodeBorderWidth  = 3.5f;
+        PinRounding              = 4.0f;
+        PinBorderWidth           = 0.0f;
+        LinkStrength             = 100.0f;
+        SourceDirection          = ImVec2(1.0f, 0.0f);
+        TargetDirection          = ImVec2(-1.0f, 0.0f);
+        ScrollDuration           = 0.35f;
+        FlowMarkerDistance       = 30.0f;
+        FlowSpeed                = 150.0f;
+        FlowDuration             = 2.0f;
+        PivotAlignment           = ImVec2(0.5f, 0.5f);
+        PivotSize                = ImVec2(0.0f, 0.0f);
+        PivotScale               = ImVec2(1, 1);
+#if IMGUI_VERSION_NUM > 18101    
+        PinCorners               = ImDrawFlags_RoundCornersAll;
+#else                            
+        PinCorners               = ImDrawCornerFlags_All;
+#endif                           
+        PinRadius                = 0.0f;
+        PinArrowSize             = 0.0f;
+        PinArrowWidth            = 0.0f;
+        GroupRounding            = 6.0f;
+        GroupBorderWidth         = 1.0f;
+        HighlightConnectedLinks  = 0.0f;
+        SnapLinkToPinDir         = 0.0f;
+        HoverNodeBorderOffset    = 0.0f;
+        SelectedNodeBorderOffset = 0.0f;
 
         Colors[StyleColor_Bg]                 = ImColor( 60,  60,  70, 200);
         Colors[StyleColor_Grid]               = ImColor(120, 120, 120,  40);
