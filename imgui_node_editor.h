@@ -21,6 +21,11 @@
 
 
 //------------------------------------------------------------------------------
+# define IMGUI_NODE_EDITOR_VERSION      "0.9.2"
+# define IMGUI_NODE_EDITOR_VERSION_NUM  000902
+
+
+//------------------------------------------------------------------------------
 namespace ax {
 namespace NodeEditor {
 
