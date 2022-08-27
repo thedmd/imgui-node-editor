@@ -688,7 +688,7 @@ void ed::Node::Draw(ImDrawList* drawList, DrawFlags flags)
 
         drawList->ChannelsSetCurrent(m_Channel + c_NodeBaseChannel);
 
-        DrawBorder(drawList, borderColor, editorStyle.SelectedNodeBorderWidth);
+        DrawBorder(drawList, borderColor, editorStyle.SelectedNodeBorderWidth, editorStyle.SelectedNodeBorderOffset);
     }
     else if (!IsGroup(this) && (flags & Hovered))
     {
@@ -697,16 +697,18 @@ void ed::Node::Draw(ImDrawList* drawList, DrawFlags flags)
 
         drawList->ChannelsSetCurrent(m_Channel + c_NodeBaseChannel);
 
-        DrawBorder(drawList, borderColor, editorStyle.HoveredNodeBorderWidth);
+        DrawBorder(drawList, borderColor, editorStyle.HoveredNodeBorderWidth, editorStyle.HoverNodeBorderOffset);
     }
 }
 
-void ed::Node::DrawBorder(ImDrawList* drawList, ImU32 color, float thickness)
+void ed::Node::DrawBorder(ImDrawList* drawList, ImU32 color, float thickness, float offset)
 {
     if (thickness > 0.0f)
     {
-        drawList->AddRect(m_Bounds.Min, m_Bounds.Max,
-            color, m_Rounding, c_AllRoundCornersFlags, thickness);
+        const ImVec2 extraOffset = ImVec2(offset, offset);
+
+        drawList->AddRect(m_Bounds.Min - extraOffset, m_Bounds.Max + extraOffset,
+            color, ImMax(0.0f, m_Rounding + offset), c_AllRoundCornersFlags, thickness);
     }
 }
 
@@ -5683,6 +5685,8 @@ float* ed::Style::GetVarFloatAddr(StyleVar idx)
         case StyleVar_GroupBorderWidth:         return &GroupBorderWidth;
         case StyleVar_HighlightConnectedLinks:  return &HighlightConnectedLinks;
         case StyleVar_SnapLinkToPinDir:         return &SnapLinkToPinDir;
+        case StyleVar_HoveredNodeBorderOffset:  return &HoverNodeBorderOffset;
+        case StyleVar_SelectedNodeBorderOffset: return &SelectedNodeBorderOffset;
         default:                                return nullptr;
     }
 }

@@ -433,7 +433,7 @@ struct Node final: Object
     virtual bool IsSelectable() override { return true; }
 
     virtual void Draw(ImDrawList* drawList, DrawFlags flags = None) override final;
-    void DrawBorder(ImDrawList* drawList, ImU32 color, float thickness = 1.0f);
+    void DrawBorder(ImDrawList* drawList, ImU32 color, float thickness = 1.0f, float offset = 0.0f);
 
     void GetGroupedNodes(std::vector<Node*>& result, bool append = false);
 

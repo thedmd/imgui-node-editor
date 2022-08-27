@@ -1,5 +1,7 @@
 v0.9.2 (WIP):
 
+    NEW: Editor: Add offset of hover/select to style (thanks @MultiPain)
+
     BUGFIX: Editor: Correctly initialize 'width' for view resize code (thx @gnif)
 
     BUGFIX: Examples: Handle node deletion before links (#182)
