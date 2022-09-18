@@ -1,4 +1,11 @@
-v0.9.1 (WIP):
+v0.9.2 (WIP):
+
+    BUGFIX: Editor: Correctly initialize 'width' for view resize code (thx @gnif)
+
+
+
+
+v0.9.1 (2022-08-27):
 
     CHANGE: Remove unwanted extra frame height from node bottom
 

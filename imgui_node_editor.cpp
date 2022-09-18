@@ -1194,7 +1194,7 @@ void ed::EditorContext::Begin(const char* id, const ImVec2& size)
         auto centerY            = (previousVisibleRect.Max.y + previousVisibleRect.Min.y) * 0.5f;
         auto currentVisibleRect = m_Canvas.ViewRect();
         auto currentAspectRatio = currentVisibleRect.GetHeight() ? (currentVisibleRect.GetWidth() / currentVisibleRect.GetHeight()) : 0.0f;
-        auto width              = previousVisibleRect.GetHeight();
+        auto width              = previousVisibleRect.GetWidth();
         auto height             = previousVisibleRect.GetHeight();
 
         if (m_Config.CanvasSizeMode == ax::NodeEditor::CanvasSizeMode::FitVerticalView)
