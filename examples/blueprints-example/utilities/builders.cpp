@@ -72,15 +72,11 @@ void util::BlueprintNodeBuilder::End()
                 headerColor, GetStyle().NodeRounding, 1 | 2);
 #endif
 
-
-            auto headerSeparatorMin = ImVec2(HeaderMin.x, HeaderMax.y);
-            auto headerSeparatorMax = ImVec2(ContentMax.x, ContentMin.y);
-
-            if ((headerSeparatorMax.x > headerSeparatorMin.x) && (headerSeparatorMax.y > headerSeparatorMin.y))
+            if (ContentMin.y > HeaderMax.y)
             {
                 drawList->AddLine(
-                    ImVec2(headerSeparatorMin.x - (8 - halfBorderWidth), headerSeparatorMin.y  -0.5f),
-                    ImVec2(headerSeparatorMax.x + (8 - halfBorderWidth), headerSeparatorMin.y - 0.5f),
+                    ImVec2(HeaderMin.x - (8 - halfBorderWidth), HeaderMax.y  -0.5f),
+                    ImVec2(HeaderMax.x + (8 - halfBorderWidth), HeaderMax.y - 0.5f),
                     ImColor(255, 255, 255, 96 * alpha / (3 * 255)), 1.0f);
             }
         }
