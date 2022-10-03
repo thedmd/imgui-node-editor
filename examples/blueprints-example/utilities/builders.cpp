@@ -74,13 +74,13 @@ void util::BlueprintNodeBuilder::End()
 
 
             auto headerSeparatorMin = ImVec2(HeaderMin.x, HeaderMax.y);
-            auto headerSeparatorMax = ImVec2(HeaderMax.x, HeaderMin.y);
+            auto headerSeparatorMax = ImVec2(ContentMax.x, ContentMin.y);
 
             if ((headerSeparatorMax.x > headerSeparatorMin.x) && (headerSeparatorMax.y > headerSeparatorMin.y))
             {
                 drawList->AddLine(
-                    headerSeparatorMin + ImVec2(-(8 - halfBorderWidth), -0.5f),
-                    headerSeparatorMax + ImVec2( (8 - halfBorderWidth), -0.5f),
+                    ImVec2(headerSeparatorMin.x - (8 - halfBorderWidth), headerSeparatorMin.y  -0.5f),
+                    ImVec2(headerSeparatorMax.x + (8 - halfBorderWidth), headerSeparatorMin.y - 0.5f),
                     ImColor(255, 255, 255, 96 * alpha / (3 * 255)), 1.0f);
             }
         }
