@@ -2763,8 +2763,23 @@ void ed::FlowAnimation::Draw(ImDrawList* drawList)
         const auto markerRadius = 4.0f * (1.0f - progress) + 2.0f;
         const auto markerColor  = Editor->GetColor(StyleColor_FlowMarker, markerAlpha);
 
-        for (float d = m_Offset; d < m_PathLength; d += m_MarkerDistance)
-            drawList->AddCircleFilled(SamplePath(d), markerRadius, markerColor);
+        if (m_Link->m_SameNode) {
+                drawList->AddCircleFilled(m_Path[0].Point + ImVec2(0, m_Offset), markerRadius, markerColor);
+            drawList->AddCircleFilled(m_Path[1].Point + ImVec2(m_Offset, 0), markerRadius, markerColor);
+                drawList->AddCircleFilled(m_Path[2].Point + ImVec2(m_Offset, 0), markerRadius, markerColor);
+                drawList->AddCircleFilled(m_Path[3].Point + ImVec2(m_Offset, 0), markerRadius, markerColor);
+                drawList->AddCircleFilled(m_Path[4].Point + ImVec2(0, -m_Offset), markerRadius, markerColor);
+                drawList->AddCircleFilled(m_Path[5].Point + ImVec2(0, -m_Offset), markerRadius, markerColor);
+                drawList->AddCircleFilled(m_Path[6].Point + ImVec2(0, -m_Offset), markerRadius, markerColor);
+                drawList->AddCircleFilled(m_Path[7].Point + ImVec2(-m_Offset, 0), markerRadius, markerColor);
+                drawList->AddCircleFilled(m_Path[8].Point + ImVec2(-m_Offset, 0), markerRadius, markerColor);
+                drawList->AddCircleFilled(m_Path[9].Point + ImVec2(-m_Offset, 0), markerRadius, markerColor);
+                drawList->AddCircleFilled(m_Path[10].Point + ImVec2(0, m_Offset), markerRadius, markerColor);
+        } else {
+            for (float d = m_Offset; d < m_PathLength; d += m_MarkerDistance) {
+                drawList->AddCircleFilled(SamplePath(d), markerRadius, markerColor);
+            }
+        }
     }
 }
 
@@ -2780,27 +2795,48 @@ bool ed::FlowAnimation::IsPathValid() const
 
 void ed::FlowAnimation::UpdatePath()
 {
-    if (!IsLinkValid())
-    {
+    if (!IsLinkValid()) {
         ClearPath();
         return;
     }
 
-    const auto curve  = m_Link->GetPath();
+    const auto curve = m_Link->GetPath();
 
-    m_LastStart  = m_Link->m_Start;
-    m_LastEnd    = m_Link->m_End;
-    m_PathLength = ImCubicBezierLength(curve.P0, curve.P1, curve.P2, curve.P3);
+    if (m_Link->m_SameNode) {
+        auto distance = [](const ImVec2& a, const ImVec2& b) {
+            const float distanceX = b.x - a.x;
+            const float distanceY = b.y - a.y;
+            return ImSqrt(distanceX * distanceX + distanceY * distanceY);
+        };
+        m_Path.clear();
+        m_LastStart = m_Link->m_Start;
+        m_LastEnd = m_Link->m_End;
+        m_PathLength = 1;
+        m_Path.push_back(CurvePoint{0, curve.P0});
+        m_Path.push_back(CurvePoint{0, curve.P1});
+        m_Path.push_back(CurvePoint{0, curve.P1 + ImVec2(distance(curve.P1, curve.P2) / 3, 0)});
+        m_Path.push_back(CurvePoint{0, curve.P1 + ImVec2(distance(curve.P1, curve.P2) * 2 / 3, 0)});
+        m_Path.push_back(CurvePoint{0, curve.P2});
+        m_Path.push_back(CurvePoint{0, curve.P2 + ImVec2(0, -distance(curve.P2, curve.P3) / 3)});
+        m_Path.push_back(CurvePoint{0, curve.P2 + ImVec2(0, -distance(curve.P2, curve.P3) * 2 / 3)});
+        m_Path.push_back(CurvePoint{0, curve.P3});
+        m_Path.push_back(CurvePoint{0, curve.P3 + ImVec2(-distance(curve.P3, curve.P4) / 3, 0)});
+        m_Path.push_back(CurvePoint{0, curve.P3 + ImVec2(-distance(curve.P3, curve.P4) * 2 / 3, 0)});
+        m_Path.push_back(CurvePoint{0, curve.P4});
+        m_Path.push_back(CurvePoint{0, curve.P5});
 
-    auto collectPointsCallback = [this](ImCubicBezierFixedStepSample& result)
-    {
-        m_Path.push_back(CurvePoint{ result.Length, result.Point });
-    };
+    } else {
+        m_LastStart = m_Link->m_Start;
+        m_LastEnd = m_Link->m_End;
+        m_PathLength = ImCubicBezierLength(curve.P0, curve.P1, curve.P2, curve.P3);
 
-    const auto step = ImMax(m_MarkerDistance * 0.5f, 15.0f);
-
-    m_Path.resize(0);
-    ImCubicBezierFixedStep(collectPointsCallback, ImCubicBezierPoints{curve.P0, curve.P1, curve.P2, curve.P3}, step, false, 0.5f, 0.001f);
+        auto collectPointsCallback = [this](ImCubicBezierFixedStepSample& result) {
+            m_Path.push_back(CurvePoint{result.Length, result.Point});
+        };
+        const auto step = ImMax(m_MarkerDistance * 0.5f, 15.0f);
+        m_Path.resize(0);
+        ImCubicBezierFixedStep(collectPointsCallback, ImCubicBezierPoints{curve.P0, curve.P1, curve.P2, curve.P3}, step, false, 0.5f, 0.001f);
+    }
 }
 
 void ed::FlowAnimation::ClearPath()
