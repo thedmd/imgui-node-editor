@@ -234,10 +234,12 @@ bool ax::NodeEditor::LinkDuplicates(const std::vector<uint64_t>& ids, PinId star
     return true;
 }
 
-void ax::NodeEditor::Flow(LinkId linkId)
+void ax::NodeEditor::Flow(LinkId linkId, const ImVec4& color)
 {
-    if (auto link = s_Editor->FindLink(linkId))
+    if (auto link = s_Editor->FindLink(linkId)) {
+        link->m_FlowColor = IM_COL32(color.x, color.y, color.z, color.w);
         s_Editor->Flow(link);
+    }
 }
 
 bool ax::NodeEditor::BeginCreate(const ImVec4& color, float thickness)

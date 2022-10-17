@@ -439,7 +439,8 @@ struct Link final: Object
     LinkId m_ID;
     Pin*   m_StartPin;
     Pin*   m_EndPin;
-    ImU32  m_Color;
+    ImU32 m_Color;
+    ImU32 m_FlowColor;
     float  m_Thickness;
     ImVec2 m_Start;
     ImVec2 m_End;

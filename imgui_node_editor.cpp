@@ -2750,7 +2750,7 @@ void ed::FlowAnimation::Draw(ImDrawList* drawList)
     const auto progress    = GetProgress();
 
     const auto flowAlpha = 1.0f - progress * progress;
-    const auto flowColor = Editor->GetColor(StyleColor_Flow, flowAlpha);
+    const auto flowColor = m_Link->m_FlowColor;
     //const auto flowPath  = Link->GetCurve();
 
     m_Link->Draw(drawList, flowColor, 2.0f);
@@ -2761,7 +2761,7 @@ void ed::FlowAnimation::Draw(ImDrawList* drawList)
 
         const auto markerAlpha  = powf(1.0f - progress, 0.35f);
         const auto markerRadius = 4.0f * (1.0f - progress) + 2.0f;
-        const auto markerColor  = Editor->GetColor(StyleColor_FlowMarker, markerAlpha);
+        const auto markerColor = m_Link->m_FlowColor;
 
         if (m_Link->m_SameNode) {
                 drawList->AddCircleFilled(m_Path[0].Point + ImVec2(0, m_Offset), markerRadius, markerColor);
