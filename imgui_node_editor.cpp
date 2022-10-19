@@ -615,7 +615,7 @@ void ed::Node::Draw(ImDrawList* drawList, DrawFlags flags)
                 drawList->AddRect(
                     m_GroupBounds.Min,
                     m_GroupBounds.Max,
-                    m_GroupBorderColor, m_GroupRounding, 15, m_GroupBorderWidth);
+                    m_GroupBorderColor, m_GroupRounding, ImDrawFlags_RoundCornersAll, m_GroupBorderWidth);
             }
         }
 
