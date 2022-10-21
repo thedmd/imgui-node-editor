@@ -204,7 +204,7 @@ bool ax::NodeEditor::Link(LinkId id, PinId startPinId, PinId endPinId, const ImV
     return s_Editor->DoLink(id, startPinId, endPinId, IM_COL32(color.x, color.y, color.z, color.w), thickness, sameNode);
 }
 
-bool ax::NodeEditor::LinkDuplicates(const std::vector<uint64_t>& ids, PinId startPinId, PinId endPinId, const ImVec4& color, float thickness, bool sameNode)
+bool ax::NodeEditor::LinkDuplicates(const std::vector<std::pair<uint64_t, ImVec4>>& ids, PinId startPinId, PinId endPinId, const ImVec4& color, float thickness, bool sameNode)
 {
     float margin = 0.0F;
     constexpr int kmaxRenderLinks = 8;
@@ -217,14 +217,15 @@ bool ax::NodeEditor::LinkDuplicates(const std::vector<uint64_t>& ids, PinId star
     const bool aligned = fabsf(endx - startx) < 0.05F * fabsf(endy - starty);
 
     if (ids.size() > kmaxRenderLinks || sameNode || !aligned) {
-        return s_Editor->DoLink(ids.front(), startPinId, endPinId, IM_COL32(color.x, color.y, color.z, color.w), thickness * static_cast<float>(ids.size()), sameNode);
+        return s_Editor->DoLink(ids.front().first, startPinId, endPinId, IM_COL32(color.x, color.y, color.z, color.w), thickness * static_cast<float>(ids.size()), sameNode);
     }
 
     for (auto id : ids) {
-        if (!s_Editor->DoLink(id, startPinId, endPinId, IM_COL32(color.x, color.y, color.z, color.w), thickness, sameNode)) {
+        ImVec4 current_color = id.second;
+        if (!s_Editor->DoLink(id.first, startPinId, endPinId, IM_COL32(current_color.x, current_color.y, current_color.z, current_color.w), thickness, sameNode)) {
             return false;
         }
-        Detail::Link* link = s_Editor->GetLink(id);
+        Detail::Link* link = s_Editor->GetLink(id.first);
         link->m_Start.x -= startPin->m_Bounds.GetWidth() / 2;
         link->m_End.x -= startPin->m_Bounds.GetWidth() / 2;
         link->m_Start.x += margin;
@@ -447,6 +448,18 @@ bool ax::NodeEditor::HasSelectionChanged()
 int ax::NodeEditor::GetSelectedObjectCount()
 {
     return (int) s_Editor->GetSelectedObjects().size();
+}
+
+int ax::NodeEditor::GetSelectedNodesCount()
+{
+    auto list = s_Editor->GetSelectedObjects();
+    return static_cast<int>(std::count_if(list.begin(), list.end(), [](Detail::Object* obj) { return obj->AsNode() != nullptr; }));
+}
+
+int ax::NodeEditor::GetSelectedLinksCount()
+{
+    auto list = s_Editor->GetSelectedObjects();
+    return static_cast<int>(std::count_if(list.begin(), list.end(), [](Detail::Object* obj) { return obj->AsLink() != nullptr; }));
 }
 
 int ax::NodeEditor::GetSelectedNodes(NodeId* nodes, int size)
