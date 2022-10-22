@@ -1,3 +1,12 @@
+//Disable a bunch of warnings for now
+#ifndef _MSC_VER
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wcomment"
+#pragma GCC diagnostic ignored "-Wshadow"
+#pragma GCC diagnostic ignored "-Wunused-but-set-variable"
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+#endif
+
 //------------------------------------------------------------------------------
 // VERSION 0.1
 //
@@ -673,3 +682,7 @@ inline void ImCubicBezierFixedStep(F& callback, const ImCubicBezierPoints& curve
 
 //------------------------------------------------------------------------------
 # endif // __IMGUI_BEZIER_MATH_INL__
+
+#ifndef _MSC_VER
+#pragma GCC diagnostic pop
+#endif
