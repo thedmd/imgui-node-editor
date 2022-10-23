@@ -2,6 +2,8 @@
 #ifndef _MSC_VER
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wshadow"
+#pragma GCC diagnostic ignored "-Wcomment"
+#pragma GCC diagnostic ignored "-Wunused-parameter"
 #endif
 
 //------------------------------------------------------------------------------
