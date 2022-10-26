@@ -1,7 +1,6 @@
 ﻿//Disable a bunch of warnings for now
 #ifndef _MSC_VER
 #pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wcomment"
 #pragma GCC diagnostic ignored "-Wshadow"
 #pragma GCC diagnostic ignored "-Wunused-but-set-variable"
 #pragma GCC diagnostic ignored "-Wunused-parameter"
