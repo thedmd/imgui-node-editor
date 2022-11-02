@@ -2,6 +2,8 @@ v0.9.2 (WIP):
 
     BUGFIX: Editor: Correctly initialize 'width' for view resize code (thx @gnif)
 
+    BUGFIX: Examples: Handle node deletion before links (#182)
+        Deleting node queue connected links for deletion.
 
 
 
