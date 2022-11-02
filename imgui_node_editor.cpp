@@ -202,34 +202,34 @@ static void ImDrawListSplitter_Grow(ImDrawList* draw_list, ImDrawListSplitter* s
 
 static void ImDrawList_ChannelsGrow(ImDrawList* draw_list, int channels_count)
 {
-	ImDrawListSplitter_Grow(draw_list, &draw_list->_Splitter, channels_count);
+    ImDrawListSplitter_Grow(draw_list, &draw_list->_Splitter, channels_count);
 }
 
 static void ImDrawListSplitter_SwapChannels(ImDrawListSplitter* splitter, int left, int right)
 {
-	IM_ASSERT(left < splitter->_Count && right < splitter->_Count);
-	if (left == right)
-		return;
+    IM_ASSERT(left < splitter->_Count && right < splitter->_Count);
+    if (left == right)
+        return;
 
-	auto currentChannel = splitter->_Current;
+    auto currentChannel = splitter->_Current;
 
-	auto* leftCmdBuffer  = &splitter->_Channels[left]._CmdBuffer;
-	auto* leftIdxBuffer  = &splitter->_Channels[left]._IdxBuffer;
-	auto* rightCmdBuffer = &splitter->_Channels[right]._CmdBuffer;
-	auto* rightIdxBuffer = &splitter->_Channels[right]._IdxBuffer;
+    auto* leftCmdBuffer  = &splitter->_Channels[left]._CmdBuffer;
+    auto* leftIdxBuffer  = &splitter->_Channels[left]._IdxBuffer;
+    auto* rightCmdBuffer = &splitter->_Channels[right]._CmdBuffer;
+    auto* rightIdxBuffer = &splitter->_Channels[right]._IdxBuffer;
 
-	leftCmdBuffer->swap(*rightCmdBuffer);
-	leftIdxBuffer->swap(*rightIdxBuffer);
+    leftCmdBuffer->swap(*rightCmdBuffer);
+    leftIdxBuffer->swap(*rightIdxBuffer);
 
-	if (currentChannel == left)
-		splitter->_Current = right;
-	else if (currentChannel == right)
-		splitter->_Current = left;
+    if (currentChannel == left)
+        splitter->_Current = right;
+    else if (currentChannel == right)
+        splitter->_Current = left;
 }
 
 static void ImDrawList_SwapChannels(ImDrawList* drawList, int left, int right)
 {
-	ImDrawListSplitter_SwapChannels(&drawList->_Splitter, left, right);
+    ImDrawListSplitter_SwapChannels(&drawList->_Splitter, left, right);
 }
 
 static void ImDrawList_SwapSplitter(ImDrawList* drawList, ImDrawListSplitter& splitter)
@@ -1972,7 +1972,7 @@ void ed::EditorContext::Resume(SuspendFlags flags)
 
 bool ed::EditorContext::IsSuspended()
 {
-	return m_Canvas.IsSuspended();
+    return m_Canvas.IsSuspended();
 }
 
 bool ed::EditorContext::IsFocused()
