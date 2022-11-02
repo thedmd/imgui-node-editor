@@ -2991,7 +2991,7 @@ void ed::Settings::RemoveNode(NodeId id)
     if (!node)
         return;
 
-    *node = NodeSettings(id);
+    *node = NodeSettings();
 }
 
 void ed::Settings::ClearDirty(Node* node)
