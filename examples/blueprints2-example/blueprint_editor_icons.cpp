@@ -58,19 +58,19 @@ void blueprint_editor_utilities::DrawIcon(ImDrawList* drawList, const ImVec2& a,
         const auto tip_bottom = ImVec2(canvas_x + canvas_w * 0.5f, bottom);
 
         drawList->PathLineTo(tr(ImVec2(left, top) + ImVec2(0, rounding)));
-        drawList->PathBezierCurveTo(
+        drawList->PathBezierCubicCurveTo(
             tr(ImVec2(left, top)),
             tr(ImVec2(left, top)),
             tr(ImVec2(left, top) + ImVec2(rounding, 0)));
         drawList->PathLineTo(tr(tip_top));
         drawList->PathLineTo(tr(tip_top + (tip_right - tip_top) * tip_round));
-        drawList->PathBezierCurveTo(
+        drawList->PathBezierCubicCurveTo(
             tr(tip_right),
             tr(tip_right),
             tr(tip_bottom + (tip_right - tip_bottom) * tip_round));
         drawList->PathLineTo(tr(tip_bottom));
         drawList->PathLineTo(tr(ImVec2(left, bottom) + ImVec2(rounding, 0)));
-        drawList->PathBezierCurveTo(
+        drawList->PathBezierCubicCurveTo(
             tr(ImVec2(left, bottom)),
             tr(ImVec2(left, bottom)),
             tr(ImVec2(left, bottom) - ImVec2(0, rounding)));

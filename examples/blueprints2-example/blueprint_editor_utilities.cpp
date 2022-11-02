@@ -359,7 +359,7 @@ void blueprint_editor_utilities::DebugOverlay::DrawInputPin(const Pin& pin)
 
     // Remember current vertex, later we will patch generated mesh so drawn value
     // will be aligned to the right side of the pin.
-    auto vertexStartIdx = m_DrawList->_VtxCurrentOffset + m_DrawList->_VtxCurrentIdx;
+    auto vertexStartIdx = m_DrawList->_CmdHeader.VtxOffset + m_DrawList->_VtxCurrentIdx;
 
     auto isCurrentNode = (m_CurrentNode == pin.m_Node);
     auto color = ImGui::GetStyleColorVec4(isCurrentNode ? ImGuiCol_PlotHistogram : ImGuiCol_NavHighlight);
@@ -380,7 +380,7 @@ void blueprint_editor_utilities::DebugOverlay::DrawInputPin(const Pin& pin)
 
     // Move generated mesh to the left
     auto itemWidth = ImGui::GetItemRectSize().x;
-    auto vertexEndIdx = m_DrawList->_VtxCurrentOffset + m_DrawList->_VtxCurrentIdx;
+    auto vertexEndIdx = m_DrawList->_CmdHeader.VtxOffset + m_DrawList->_VtxCurrentIdx;
     for (auto vertexIdx = vertexStartIdx; vertexIdx < vertexEndIdx; ++vertexIdx)
         m_DrawList->VtxBuffer[vertexIdx].pos.x -= itemWidth;
 

@@ -49,7 +49,7 @@ ImEx::ScopedDisableItem::ScopedDisableItem(bool disable, float disabledAlpha)
     if (!m_Disable)
         return;
 
-    auto wasDisabled = (ImGui::GetCurrentWindow()->DC.ItemFlags & ImGuiItemFlags_Disabled) == ImGuiItemFlags_Disabled;
+    auto wasDisabled = (ImGui::GetItemFlags() & ImGuiItemFlags_Disabled) == ImGuiItemFlags_Disabled;
 
     ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true);
 

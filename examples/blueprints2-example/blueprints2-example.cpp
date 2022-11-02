@@ -670,9 +670,9 @@ private:
                     itemMax.x = nodeStart.x + nodeSize.x - border + 0.5f;
                     itemMax.y = itemMax.y + ImGui::GetStyle().ItemSpacing.y + 0.5f;
 
-                    drawList->AddRectFilled(itemMin, itemMax, IM_COL32(255, 255, 255, 64), rounding, ImDrawCornerFlags_Top);
+                    drawList->AddRectFilled(itemMin, itemMax, IM_COL32(255, 255, 255, 64), rounding, ImDrawFlags_RoundCornersTop);
 
-                    //drawList->AddRectFilledMultiColor(itemMin, itemMax, IM_COL32(255, 0, 0, 64), rounding, ImDrawCornerFlags_Top);
+                    //drawList->AddRectFilledMultiColor(itemMin, itemMax, IM_COL32(255, 0, 0, 64), rounding, ImDrawFlags_RoundCornersTop);
                 });
 
                 ImGui::PushFont(HeaderFont());
