@@ -1,5 +1,8 @@
 # pragma once
 # include <imgui.h>
+
+# if !defined(IMGUI_VERSION_NUM) || (IMGUI_VERSION_NUM < 18822)
+
 # include <type_traits>
 
 // https://stackoverflow.com/a/8597498
@@ -46,3 +49,17 @@ static inline int GetEnumValueForD()
 {
     return KeyTester_ImGuiKey_D::Get<ImGuiKey_>(nullptr);
 }
+
+# else
+
+static inline ImGuiKey GetEnumValueForF()
+{
+    return ImGuiKey_F;
+}
+
+static inline ImGuiKey GetEnumValueForD()
+{
+    return ImGuiKey_D;
+}
+
+# endif
