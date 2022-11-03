@@ -40,6 +40,7 @@ namespace ax {
 namespace NodeEditor {
 namespace Detail {
 
+# if !defined(IMGUI_VERSION_NUM) || (IMGUI_VERSION_NUM < 18822)
 # define DECLARE_KEY_TESTER(Key)                                                                    \
     DECLARE_HAS_NESTED(Key, Key)                                                                    \
     struct KeyTester_ ## Key                                                                        \
@@ -69,6 +70,17 @@ static inline int GetKeyIndexForD()
 {
     return KeyTester_ImGuiKey_D::Get<ImGuiKey_>(nullptr);
 }
+# else
+static inline ImGuiKey GetKeyIndexForF()
+{
+    return ImGuiKey_F;
+}
+
+static inline ImGuiKey GetKeyIndexForD()
+{
+    return ImGuiKey_D;
+}
+# endif
 
 } // namespace Detail
 } // namespace NodeEditor
