@@ -168,8 +168,10 @@ static void ImDrawListSplitter_Grow(ImDrawList* draw_list, ImDrawListSplitter* s
     }
 
     int old_channels_count = splitter->_Channels.Size;
-    if (old_channels_count < channels_count)
+    if (old_channels_count < channels_count) {
+        splitter->_Channels.reserve(channels_count);
         splitter->_Channels.resize(channels_count);
+    }
     int old_used_channels_count = splitter->_Count;
     splitter->_Count = channels_count;
 
@@ -183,13 +185,6 @@ static void ImDrawListSplitter_Grow(ImDrawList* draw_list, ImDrawListSplitter* s
         {
             splitter->_Channels[i]._CmdBuffer.resize(0);
             splitter->_Channels[i]._IdxBuffer.resize(0);
-        }
-        if (splitter->_Channels[i]._CmdBuffer.Size == 0)
-        {
-            ImDrawCmd draw_cmd;
-            draw_cmd.ClipRect = draw_list->_ClipRectStack.back();
-            draw_cmd.TextureId = draw_list->_TextureIdStack.back();
-            splitter->_Channels[i]._CmdBuffer.push_back(draw_cmd);
         }
     }
 }
