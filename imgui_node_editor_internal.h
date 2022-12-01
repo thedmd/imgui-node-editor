@@ -1257,6 +1257,7 @@ struct EditorContext
     Style& GetStyle() { return m_Style; }
 
     void Begin(const char* id, const ImVec2& size = ImVec2(0, 0));
+    void GetGroupContainedIds(NodeId id, std::vector<NodeId>* ids);
     void End();
 
     bool DoLink(LinkId id, PinId startPinId, PinId endPinId, ImU32 color, float thickness, bool isSameNode = false);

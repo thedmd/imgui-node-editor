@@ -176,6 +176,11 @@ ImVec2 ax::NodeEditor::GetGroupMax()
     return s_Editor->GetHintBuilder().GetGroupMax();
 }
 
+void ax::NodeEditor::GetGroupContainedIds(NodeId id, std::vector<NodeId>* ids)
+{
+    s_Editor->GetGroupContainedIds(id, ids);
+}
+
 ImDrawList* ax::NodeEditor::GetHintForegroundDrawList()
 {
     return s_Editor->GetHintBuilder().GetForegroundDrawList();
