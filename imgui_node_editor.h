@@ -7,15 +7,14 @@
 // CREDITS
 //   Written by Michal Cichon
 //------------------------------------------------------------------------------
-# ifndef __IMGUI_NODE_EDITOR_H__
-# define __IMGUI_NODE_EDITOR_H__
-# pragma once
-
+#ifndef __IMGUI_NODE_EDITOR_H__
+#define __IMGUI_NODE_EDITOR_H__
+#pragma once
 
 //------------------------------------------------------------------------------
-# include <imgui.h>
-# include <cstdint> // std::uintXX_t
-# include <utility> // std::move
+#include <cstdint> // std::uintXX_t
+#include <imgui.h>
+#include <utility> // std::move
 #include <vector>
 
 #define IMGUI_DEFINE_MATH_OPERATORS
@@ -24,45 +23,47 @@
 namespace ax {
 namespace NodeEditor {
 
-
 //------------------------------------------------------------------------------
 struct NodeId;
 struct LinkId;
 struct PinId;
 
-
 //------------------------------------------------------------------------------
-enum class SaveReasonFlags: uint32_t
-{
-    None       = 0x00000000,
+enum class SaveReasonFlags : uint32_t {
+    None = 0x00000000,
     Navigation = 0x00000001,
-    Position   = 0x00000002,
-    Size       = 0x00000004,
-    Selection  = 0x00000008,
-    User       = 0x00000010
+    Position = 0x00000002,
+    Size = 0x00000004,
+    Selection = 0x00000008,
+    User = 0x00000010
 };
 
-inline SaveReasonFlags operator |(SaveReasonFlags lhs, SaveReasonFlags rhs) { return static_cast<SaveReasonFlags>(static_cast<uint32_t>(lhs) | static_cast<uint32_t>(rhs)); }
-inline SaveReasonFlags operator &(SaveReasonFlags lhs, SaveReasonFlags rhs) { return static_cast<SaveReasonFlags>(static_cast<uint32_t>(lhs) & static_cast<uint32_t>(rhs)); }
+inline SaveReasonFlags operator|(SaveReasonFlags lhs, SaveReasonFlags rhs)
+{
+    return static_cast<SaveReasonFlags>(static_cast<uint32_t>(lhs) | static_cast<uint32_t>(rhs));
+}
+inline SaveReasonFlags operator&(SaveReasonFlags lhs, SaveReasonFlags rhs)
+{
+    return static_cast<SaveReasonFlags>(static_cast<uint32_t>(lhs) & static_cast<uint32_t>(rhs));
+}
 
-using ConfigSaveSettings     = bool   (*)(const char* data, size_t size, SaveReasonFlags reason, void* userPointer);
-using ConfigLoadSettings     = size_t (*)(char* data, void* userPointer);
+using ConfigSaveSettings = bool (*)(const char* data, size_t size, SaveReasonFlags reason, void* userPointer);
+using ConfigLoadSettings = size_t (*)(char* data, void* userPointer);
 
-using ConfigSaveNodeSettings = bool   (*)(NodeId nodeId, const char* data, size_t size, SaveReasonFlags reason, void* userPointer);
+using ConfigSaveNodeSettings = bool (*)(NodeId nodeId, const char* data, size_t size, SaveReasonFlags reason, void* userPointer);
 using ConfigLoadNodeSettings = size_t (*)(NodeId nodeId, char* data, void* userPointer);
 
-using ConfigSession          = void   (*)(void* userPointer);
+using ConfigSession = void (*)(void* userPointer);
 
-struct Config
-{
-    const char*             SettingsFile;
-    ConfigSession           BeginSaveSession;
-    ConfigSession           EndSaveSession;
-    ConfigSaveSettings      SaveSettings;
-    ConfigLoadSettings      LoadSettings;
-    ConfigSaveNodeSettings  SaveNodeSettings;
-    ConfigLoadNodeSettings  LoadNodeSettings;
-    void*                   UserPointer;
+struct Config {
+    const char* SettingsFile;
+    ConfigSession BeginSaveSession;
+    ConfigSession EndSaveSession;
+    ConfigSaveSettings SaveSettings;
+    ConfigLoadSettings LoadSettings;
+    ConfigSaveNodeSettings SaveNodeSettings;
+    ConfigLoadNodeSettings LoadNodeSettings;
+    void* UserPointer;
 
     Config()
         : SettingsFile("NodeEditor.json")
@@ -77,18 +78,14 @@ struct Config
     }
 };
 
-
 //------------------------------------------------------------------------------
-enum class PinKind
-{
+enum class PinKind {
     Input,
     Output
 };
 
-
 //------------------------------------------------------------------------------
-enum StyleColor
-{
+enum StyleColor {
     StyleColor_Bg,
     StyleColor_Grid,
     StyleColor_NodeBg,
@@ -111,8 +108,7 @@ enum StyleColor
     StyleColor_Count
 };
 
-enum StyleVar
-{
+enum StyleVar {
     StyleVar_NodePadding,
     StyleVar_NodeRounding,
     StyleVar_NodeBorderWidth,
@@ -140,84 +136,81 @@ enum StyleVar
     StyleVar_Count
 };
 
-struct Style
-{
-    ImVec4  NodePadding;
-    float   NodeRounding;
-    float   NodeBorderWidth;
-    float   HoveredNodeBorderWidth;
-    float   SelectedNodeBorderWidth;
-    float   PinRounding;
-    float   PinBorderWidth;
-    float   LinkStrength;
-    ImVec2  SourceDirection;
-    ImVec2  TargetDirection;
-    float   ScrollDuration;
-    float   FlowMarkerDistance;
-    float   FlowSpeed;
-    float   FlowDuration;
-    ImVec2  PivotAlignment;
-    ImVec2  PivotSize;
-    ImVec2  PivotScale;
-    float   PinCorners;
-    float   PinRadius;
-    float   PinArrowSize;
-    float   PinArrowWidth;
-    float   GroupRounding;
-    float   GroupBorderWidth;
-    ImVec4  Colors[StyleColor_Count];
+struct Style {
+    ImVec4 NodePadding;
+    float NodeRounding;
+    float NodeBorderWidth;
+    float HoveredNodeBorderWidth;
+    float SelectedNodeBorderWidth;
+    float PinRounding;
+    float PinBorderWidth;
+    float LinkStrength;
+    ImVec2 SourceDirection;
+    ImVec2 TargetDirection;
+    float ScrollDuration;
+    float FlowMarkerDistance;
+    float FlowSpeed;
+    float FlowDuration;
+    ImVec2 PivotAlignment;
+    ImVec2 PivotSize;
+    ImVec2 PivotScale;
+    float PinCorners;
+    float PinRadius;
+    float PinArrowSize;
+    float PinArrowWidth;
+    float GroupRounding;
+    float GroupBorderWidth;
+    ImVec4 Colors[StyleColor_Count];
 
     Style()
     {
-        NodePadding             = ImVec4(8, 8, 8, 8);
-        NodeRounding            = 12.0f;
-        NodeBorderWidth         = 1.5f;
-        HoveredNodeBorderWidth  = 3.5f;
+        NodePadding = ImVec4(8, 8, 8, 8);
+        NodeRounding = 12.0f;
+        NodeBorderWidth = 1.5f;
+        HoveredNodeBorderWidth = 3.5f;
         SelectedNodeBorderWidth = 3.5f;
-        PinRounding             = 4.0f;
-        PinBorderWidth          = 0.0f;
-        LinkStrength            = 100.0f;
-        SourceDirection         = ImVec2(1.0f, 0.0f);
-        TargetDirection         = ImVec2(-1.0f, 0.0f);
-        ScrollDuration          = 0.35f;
-        FlowMarkerDistance      = 30.0f;
-        FlowSpeed               = 150.0f;
-        FlowDuration            = 2.0f;
-        PivotAlignment          = ImVec2(0.5f, 0.5f);
-        PivotSize               = ImVec2(0.0f, 0.0f);
-        PivotScale              = ImVec2(1, 1);
-        PinCorners              = ImDrawFlags_RoundCornersAll;
-        PinRadius               = 0.0f;
-        PinArrowSize            = 0.0f;
-        PinArrowWidth           = 0.0f;
-        GroupRounding           = 6.0f;
-        GroupBorderWidth        = 1.0f;
+        PinRounding = 4.0f;
+        PinBorderWidth = 0.0f;
+        LinkStrength = 100.0f;
+        SourceDirection = ImVec2(1.0f, 0.0f);
+        TargetDirection = ImVec2(-1.0f, 0.0f);
+        ScrollDuration = 0.35f;
+        FlowMarkerDistance = 30.0f;
+        FlowSpeed = 150.0f;
+        FlowDuration = 2.0f;
+        PivotAlignment = ImVec2(0.5f, 0.5f);
+        PivotSize = ImVec2(0.0f, 0.0f);
+        PivotScale = ImVec2(1, 1);
+        PinCorners = ImDrawFlags_RoundCornersAll;
+        PinRadius = 0.0f;
+        PinArrowSize = 0.0f;
+        PinArrowWidth = 0.0f;
+        GroupRounding = 6.0f;
+        GroupBorderWidth = 1.0f;
 
-        Colors[StyleColor_Bg]                 = ImVec4(60, 60, 70, 200);
-        Colors[StyleColor_Grid]               = ImVec4(120, 120, 120,  40);
-        Colors[StyleColor_NodeBg]             = ImVec4( 32,  32,  32, 200);
-        Colors[StyleColor_NodeBorder]         = ImVec4(255, 255, 255,  96);
-        Colors[StyleColor_HovNodeBorder]      = ImVec4( 50, 176, 255, 255);
-        Colors[StyleColor_SelNodeBorder]      = ImVec4(255, 176,  50, 255);
-        Colors[StyleColor_NodeSelRect]        = ImVec4(  5, 130, 255,  64);
-        Colors[StyleColor_NodeSelRectBorder]  = ImVec4(  5, 130, 255, 128);
-        Colors[StyleColor_HovLinkBorder]      = ImVec4( 50, 176, 255, 255);
-        Colors[StyleColor_SelLinkBorder]      = ImVec4(255, 176,  50, 255);
-        Colors[StyleColor_LinkSelRect]        = ImVec4(  5, 130, 255,  64);
-        Colors[StyleColor_LinkSelRectBorder]  = ImVec4(  5, 130, 255, 128);
-        Colors[StyleColor_PinRect]            = ImVec4( 60, 180, 255, 100);
-        Colors[StyleColor_PinRectBorder]      = ImVec4( 60, 180, 255, 128);
-        Colors[StyleColor_Flow]               = ImVec4(255, 128,  64, 255);
-        Colors[StyleColor_FlowMarker]         = ImVec4(255, 128,  64, 255);
-        Colors[StyleColor_GroupBg]            = ImVec4(  0,   0,   0, 160);
-        Colors[StyleColor_GroupBorder]        = ImVec4(255, 255, 255,  32);
+        Colors[StyleColor_Bg] = ImVec4(60, 60, 70, 200);
+        Colors[StyleColor_Grid] = ImVec4(120, 120, 120, 40);
+        Colors[StyleColor_NodeBg] = ImVec4(32, 32, 32, 200);
+        Colors[StyleColor_NodeBorder] = ImVec4(255, 255, 255, 96);
+        Colors[StyleColor_HovNodeBorder] = ImVec4(50, 176, 255, 255);
+        Colors[StyleColor_SelNodeBorder] = ImVec4(255, 176, 50, 255);
+        Colors[StyleColor_NodeSelRect] = ImVec4(5, 130, 255, 64);
+        Colors[StyleColor_NodeSelRectBorder] = ImVec4(5, 130, 255, 128);
+        Colors[StyleColor_HovLinkBorder] = ImVec4(50, 176, 255, 255);
+        Colors[StyleColor_SelLinkBorder] = ImVec4(255, 176, 50, 255);
+        Colors[StyleColor_LinkSelRect] = ImVec4(5, 130, 255, 64);
+        Colors[StyleColor_LinkSelRectBorder] = ImVec4(5, 130, 255, 128);
+        Colors[StyleColor_PinRect] = ImVec4(60, 180, 255, 100);
+        Colors[StyleColor_PinRectBorder] = ImVec4(60, 180, 255, 128);
+        Colors[StyleColor_Flow] = ImVec4(255, 128, 64, 255);
+        Colors[StyleColor_FlowMarker] = ImVec4(255, 128, 64, 255);
+        Colors[StyleColor_GroupBg] = ImVec4(0, 0, 0, 160);
+        Colors[StyleColor_GroupBorder] = ImVec4(255, 255, 255, 32);
     }
 };
 
-
 //------------------------------------------------------------------------------
 struct EditorContext;
-
 
 //------------------------------------------------------------------------------
 void SetCurrentEditor(EditorContext* ctx);
@@ -301,8 +294,8 @@ bool HasSelectionChanged();
 int GetSelectedObjectCount();
 int GetSelectedNodesCount();
 int GetSelectedLinksCount();
-int  GetSelectedNodes(NodeId* nodes, int size);
-int  GetSelectedLinks(LinkId* links, int size);
+int GetSelectedNodes(NodeId* nodes, int size);
+int GetSelectedLinks(LinkId* links, int size);
 void ClearSelection();
 void SelectNode(NodeId nodeId, bool append = false);
 void SelectLink(LinkId linkId, bool append = false);
@@ -329,9 +322,9 @@ bool AcceptCopy();
 bool AcceptPaste();
 bool AcceptDuplicate();
 bool AcceptCreateNode();
-int  GetActionContextSize();
-int  GetActionContextNodes(NodeId* nodes, int size);
-int  GetActionContextLinks(LinkId* links, int size);
+int GetActionContextSize();
+int GetActionContextNodes(NodeId* nodes, int size);
+int GetActionContextLinks(LinkId* links, int size);
 void EndShortcut();
 
 float GetCurrentZoom();
@@ -348,21 +341,11 @@ ImVec2 GetScreenSize();
 ImVec2 ScreenToCanvas(const ImVec2& pos);
 ImVec2 CanvasToScreen(const ImVec2& pos);
 
-
-
-
-
-
-
-
-
-
 //------------------------------------------------------------------------------
 namespace Details {
 
 template <typename T, typename Tag>
-struct SafeType
-{
+struct SafeType {
     SafeType(T t)
         : m_Value(std::move(t))
     {
@@ -372,11 +355,9 @@ struct SafeType
 
     template <typename T2, typename Tag2>
     SafeType(
-        const SafeType
-        <
+        const SafeType<
             typename std::enable_if<!std::is_same<T, T2>::value, T2>::type,
-            typename std::enable_if<!std::is_same<Tag, Tag2>::value, Tag2>::type
-        >&) = delete;
+            typename std::enable_if<!std::is_same<Tag, Tag2>::value, Tag2>::type>&) = delete;
 
     SafeType& operator=(const SafeType&) = default;
 
@@ -388,11 +369,9 @@ private:
     T m_Value;
 };
 
-
 template <typename Tag>
 struct SafePointerType
-    : SafeType<uintptr_t, Tag>
-{
+    : SafeType<uintptr_t, Tag> {
     static const Tag Invalid;
 
     using SafeType<uintptr_t, Tag>::SafeType;
@@ -402,14 +381,21 @@ struct SafePointerType
     {
     }
 
-    template <typename T = void> explicit SafePointerType(T* ptr): SafePointerType(reinterpret_cast<uintptr_t>(ptr)) {}
-    template <typename T = void> T* AsPointer() const { return reinterpret_cast<T*>(this->Get()); }
+    template <typename T = void>
+    explicit SafePointerType(T* ptr)
+        : SafePointerType(reinterpret_cast<uintptr_t>(ptr))
+    {}
+    template <typename T = void>
+    T* AsPointer() const
+    {
+        return reinterpret_cast<T*>(this->Get());
+    }
 
     explicit operator bool() const { return *this != Invalid; }
 };
 
 template <typename Tag>
-const Tag SafePointerType<Tag>::Invalid = { 0 };
+const Tag SafePointerType<Tag>::Invalid = {0};
 
 template <typename Tag>
 inline bool operator==(const SafePointerType<Tag>& lhs, const SafePointerType<Tag>& rhs)
@@ -425,26 +411,21 @@ inline bool operator!=(const SafePointerType<Tag>& lhs, const SafePointerType<Ta
 
 } // namespace Details
 
-struct NodeId final: Details::SafePointerType<NodeId>
-{
+struct NodeId final : Details::SafePointerType<NodeId> {
     using SafePointerType::SafePointerType;
 };
 
-struct LinkId final: Details::SafePointerType<LinkId>
-{
+struct LinkId final : Details::SafePointerType<LinkId> {
     using SafePointerType::SafePointerType;
 };
 
-struct PinId final: Details::SafePointerType<PinId>
-{
+struct PinId final : Details::SafePointerType<PinId> {
     using SafePointerType::SafePointerType;
 };
-
 
 //------------------------------------------------------------------------------
-} // namespace Editor
+} // namespace NodeEditor
 } // namespace ax
 
-
 //------------------------------------------------------------------------------
-# endif // __IMGUI_NODE_EDITOR_H__
+#endif // __IMGUI_NODE_EDITOR_H__
