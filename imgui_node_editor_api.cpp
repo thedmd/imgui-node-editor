@@ -213,6 +213,7 @@ bool ax::NodeEditor::LinkDuplicates(const std::vector<std::pair<uint64_t, ImVec4
 {
     float margin = 0.0F;
     constexpr int kmaxRenderLinks = 8;
+    constexpr float kmaxThicknes = 8;
     Detail::Pin* startPin = s_Editor->FindPin(startPinId);
     Detail::Pin* endPin = s_Editor->FindPin(endPinId);
     const float startx = startPin->m_Node->GetBounds().GetTR().x;
@@ -222,7 +223,11 @@ bool ax::NodeEditor::LinkDuplicates(const std::vector<std::pair<uint64_t, ImVec4
     const bool aligned = fabsf(endx - startx) < 0.05F * fabsf(endy - starty);
 
     if (ids.size() > kmaxRenderLinks || sameNode || !aligned) {
-        return s_Editor->DoLink(ids.front().first, startPinId, endPinId, IM_COL32(color.x, color.y, color.z, color.w), thickness * static_cast<float>(ids.size()), sameNode);
+        float render_tickness = thickness * static_cast<float>(ids.size());
+        if (render_tickness > kmaxThicknes) {
+            render_tickness = kmaxThicknes;
+        }
+        return s_Editor->DoLink(ids.front().first, startPinId, endPinId, IM_COL32(color.x, color.y, color.z, color.w), render_tickness, sameNode);
     }
 
     for (auto id : ids) {

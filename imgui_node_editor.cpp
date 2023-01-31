@@ -781,12 +781,17 @@ void ed::Link::Draw(ImDrawList* drawList, ImU32 color, float extraThickness) con
 
     const auto path = GetPath();
     const auto half_thickness = (m_Thickness + extraThickness) * 0.5f;
-    drawList->PathLineTo(path.P0);
-    drawList->PathLineTo(path.P1);
-    drawList->PathLineTo(path.P2);
-    drawList->PathLineTo(path.P3);
-    drawList->PathLineTo(path.P4);
-    drawList->PathLineTo(path.P5);
+    if (m_SameNode | path.backward) {
+        drawList->PathLineTo(path.P0);
+        drawList->PathLineTo(path.P1);
+        drawList->PathLineTo(path.P2);
+        drawList->PathLineTo(path.P3);
+        drawList->PathLineTo(path.P4);
+        drawList->PathLineTo(path.P5);
+    } else {
+        drawList->PathLineTo(path.P0);
+        drawList->PathLineTo(path.P5);
+    }
     drawList->PathStroke(color, 0, m_Thickness + extraThickness);
     const auto end_dir = ImVec2(0, 1);
     const auto end_n = ImVec2(-end_dir.y, end_dir.x);
@@ -869,6 +874,7 @@ ImLinePoints ed::Link::GetPath() const
         result.P3 = ImVec2(result.P2.x, cp1.y - node_bounds.GetHeight() * kLinkMarginSmall);
         result.P4 = ImVec2(cp1.x, result.P3.y);
         result.P5 = cp1;
+        result.backward = true;
     } else {
         const ImVec2 offset = (m_End - m_Start) / 4;
         result.P0 = m_Start;
@@ -877,6 +883,7 @@ ImLinePoints ed::Link::GetPath() const
         result.P3 = result.P2 + offset;
         result.P4 = result.P3 + offset;
         result.P5 = m_End;
+        result.backward = false;
     }
 
     return result;
