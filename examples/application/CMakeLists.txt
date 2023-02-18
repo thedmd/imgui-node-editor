@@ -4,7 +4,6 @@ set(_Application_Sources
     include/application.h
     source/application.cpp
     source/entry_point.cpp
-    source/imgui_extra_keys.h
     source/config.h.in
     source/setup.h
     source/platform.h
@@ -21,12 +20,11 @@ target_include_directories(application PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/includ
 target_include_directories(application PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/source)
 
 find_package(imgui REQUIRED)
-find_package(stb_image REQUIRED)
 find_package(ScopeGuard REQUIRED)
 find_package(imgui_backends REQUIRED)
 
 target_link_libraries(application PUBLIC imgui imgui_backends)
-target_link_libraries(application PRIVATE stb_image ScopeGuard)
+target_link_libraries(application PRIVATE ScopeGuard)
 
 configure_file(
     source/config.h.in

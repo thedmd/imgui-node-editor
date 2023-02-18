@@ -6,11 +6,14 @@ set(_imgui_backends_SourceDir ${IMGUI_NODE_EDITOR_ROOT_DIR}/backends)
 
 
 find_package(imgui REQUIRED)
+find_package(stb_image REQUIRED)
 
-set(_Backends_Sources)
+# find_package(OpenGL)
+
+set(_Backends_Sources ${_imgui_backends_SourceDir}/imgui_extra_keys.h)
 add_library(imgui_backends STATIC ${_Backends_Sources})
 target_include_directories(imgui_backends PUBLIC ${_imgui_backends_SourceDir})
-target_link_libraries(imgui_backends PUBLIC imgui)
+target_link_libraries(imgui_backends PUBLIC imgui stb_image)
 
 if (WIN32)
     list(APPEND _Backends_Sources
@@ -89,4 +92,3 @@ find_package_handle_standard_args(
     REQUIRED_VARS
         _imgui_backends_SourceDir
 )
-
