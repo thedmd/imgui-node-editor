@@ -209,8 +209,11 @@ bool ax::NodeEditor::Link(LinkId id, PinId startPinId, PinId endPinId, const ImV
     return s_Editor->DoLink(id, startPinId, endPinId, IM_COL32(color.x, color.y, color.z, color.w), thickness, sameNode);
 }
 
-bool ax::NodeEditor::LinkDuplicates(const std::vector<std::pair<uint64_t, ImVec4>>& ids, PinId startPinId, PinId endPinId, const ImVec4& color, float thickness, bool sameNode)
+bool ax::NodeEditor::LinkDuplicates(const std::vector<std::pair<uint64_t, ImVec4>>& ids, PinId startPinId, PinId endPinId, float thickness, bool sameNode)
 {
+    if (ids.empty()) {
+        return false;
+    }
     float margin = 0.0F;
     constexpr int kmaxRenderLinks = 8;
     constexpr float kmaxThicknes = 8;
@@ -222,15 +225,16 @@ bool ax::NodeEditor::LinkDuplicates(const std::vector<std::pair<uint64_t, ImVec4
     const float endy = endPin->m_Node->GetBounds().GetTR().y;
     const bool aligned = fabsf(endx - startx) < 0.05F * fabsf(endy - starty);
 
-    if (ids.size() > kmaxRenderLinks || sameNode || !aligned) {
-        float render_tickness = thickness * static_cast<float>(ids.size());
-        if (render_tickness > kmaxThicknes) {
-            render_tickness = kmaxThicknes;
+    if (ids.size() > kmaxRenderLinks || sameNode || !aligned || ids.size() == 1) {
+        float render_thickness = thickness * static_cast<float>(ids.size());
+        if (render_thickness > kmaxThicknes) {
+            render_thickness = kmaxThicknes;
         }
-        return s_Editor->DoLink(ids.front().first, startPinId, endPinId, IM_COL32(color.x, color.y, color.z, color.w), render_tickness, sameNode);
+        const auto& firstObj = ids.front();
+        return s_Editor->DoLink(firstObj.first, startPinId, endPinId, IM_COL32(firstObj.second.x, firstObj.second.y, firstObj.second.z, firstObj.second.w), render_thickness, sameNode);
     }
 
-    for (auto id : ids) {
+    for (const auto& id : ids) {
         ImVec4 current_color = id.second;
         if (!s_Editor->DoLink(id.first, startPinId, endPinId, IM_COL32(current_color.x, current_color.y, current_color.z, current_color.w), thickness, sameNode)) {
             return false;
