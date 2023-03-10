@@ -209,6 +209,14 @@ bool ax::NodeEditor::Link(LinkId id, PinId startPinId, PinId endPinId, const ImV
     return s_Editor->DoLink(id, startPinId, endPinId, IM_COL32(color.x, color.y, color.z, color.w), thickness, sameNode);
 }
 
+bool ax::NodeEditor::LinkBezier(LinkId id, PinId startPinId, PinId endPinId, const ImVec4& color, float thickness, bool sameNode)
+{
+    auto link = s_Editor->GetLink(id);
+    link->m_Bezier = true;
+
+    return s_Editor->DoLink(id, startPinId, endPinId, IM_COL32(color.x, color.y, color.z, color.w), thickness, sameNode);
+}
+
 bool ax::NodeEditor::LinkDuplicates(const std::vector<std::pair<uint64_t, ImVec4>>& ids, PinId startPinId, PinId endPinId, float thickness, bool sameNode)
 {
     if (ids.empty()) {

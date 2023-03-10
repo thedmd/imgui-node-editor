@@ -40,7 +40,7 @@ struct ImLinePointsT
     bool backward;
 };
 
-using ImCubicBezierPoints = ImCubicBezierPointsT<ImVec2>;
+using ImCubicBezierPoints = ImLinePointsT<ImVec2>;
 using ImLinePoints = ImLinePointsT<ImVec2>;
 
 //------------------------------------------------------------------------------

@@ -781,6 +781,15 @@ void ed::Link::Draw(ImDrawList* drawList, ImU32 color, float extraThickness) con
 
     const auto path = GetPath();
     const auto half_thickness = (m_Thickness + extraThickness) * 0.5f;
+    if (m_Bezier) {
+        ImDrawList_AddBezierWithArrows(drawList, path, m_Thickness + extraThickness,
+            m_StartPin && m_StartPin->m_ArrowSize > 0.0f ? m_StartPin->m_ArrowSize + extraThickness : 0.0f,
+            m_StartPin && m_StartPin->m_ArrowWidth > 0.0f ? m_StartPin->m_ArrowWidth + extraThickness : 0.0f,
+            m_EndPin && m_EndPin->m_ArrowSize > 0.0f ? m_EndPin->m_ArrowSize + extraThickness : 0.0f,
+            m_EndPin && m_EndPin->m_ArrowWidth > 0.0f ? m_EndPin->m_ArrowWidth + extraThickness : 0.0f,
+            true, color, 1.0f);
+        return;
+    }
     if (m_SameNode | path.backward) {
         drawList->PathLineTo(path.P0);
         drawList->PathLineTo(path.P1);
@@ -865,6 +874,9 @@ ImLinePoints ed::Link::GetPath() const
     const auto endStrength = easeLinkStrength(m_Start, m_End, m_EndPin->m_Strength);
     const auto cp0 = m_Start + m_StartPin->m_Dir * startStrength;
     auto cp1 = m_End + m_EndPin->m_Dir * endStrength;
+    if (m_Bezier) {
+        return GetCurve();
+    }
     if (isBackWard()) {
         const ImRect node_bounds = m_StartPin && m_StartPin->m_Node ? m_StartPin->m_Node->m_Bounds : kDefaultNodeRect;
         cp1 -= kPinMarginTotal;
@@ -885,6 +897,34 @@ ImLinePoints ed::Link::GetPath() const
         result.P5 = m_End;
         result.backward = false;
     }
+
+    return result;
+}
+
+ImCubicBezierPoints ed::Link::GetCurve() const
+{
+    auto easeLinkStrength = [](const ImVec2& a, const ImVec2& b, float strength) {
+        const auto distanceX = b.x - a.x;
+        const auto distanceY = b.y - a.y;
+        const auto distance = ImSqrt(distanceX * distanceX + distanceY * distanceY);
+        const auto halfDistance = distance * 0.5f;
+
+        if (halfDistance < strength)
+            strength = strength * ImSin(IM_PI * 0.5f * halfDistance / strength);
+
+        return strength;
+    };
+
+    const auto startStrength = easeLinkStrength(m_Start, m_End, m_StartPin->m_Strength);
+    const auto endStrength = easeLinkStrength(m_Start, m_End, m_EndPin->m_Strength);
+    const auto cp0 = m_Start + m_StartPin->m_Dir * startStrength;
+    const auto cp1 = m_End + m_EndPin->m_Dir * endStrength;
+
+    ImCubicBezierPoints result;
+    result.P0 = m_Start;
+    result.P1 = cp0;
+    result.P2 = cp1;
+    result.P3 = m_End;
 
     return result;
 }
@@ -941,6 +981,23 @@ bool ed::Link::TestHit(const ImVec2& point, float extraThickness) const
     if (!m_IsLive)
         return false;
 
+    if (m_Bezier) {
+        if (!m_IsLive)
+            return false;
+
+        auto bounds = GetBounds();
+        if (extraThickness > 0.0f)
+            bounds.Expand(extraThickness);
+
+        if (!bounds.Contains(point))
+            return false;
+
+        const auto bezier = GetCurve();
+        const auto result = ImProjectOnCubicBezier(point, bezier.P0, bezier.P1, bezier.P2, bezier.P3, 50);
+
+        return result.Distance <= m_Thickness + extraThickness;
+    }
+
     auto bounds = GetBounds();
     if (extraThickness > 0.0f)
         bounds.Expand(extraThickness);
@@ -964,8 +1021,27 @@ bool ed::Link::TestHit(const ImRect& rect, bool allowIntersect) const
     if (!allowIntersect || !rect.Overlaps(bounds))
         return false;
 
-    const ImLinePoints path = GetPath();
+    if (m_Bezier) {
+        const auto bezier = GetCurve();
 
+        const auto p0 = rect.GetTL();
+        const auto p1 = rect.GetTR();
+        const auto p2 = rect.GetBR();
+        const auto p3 = rect.GetBL();
+
+        if (ImCubicBezierLineIntersect(bezier.P0, bezier.P1, bezier.P2, bezier.P3, p0, p1).Count > 0)
+            return true;
+        if (ImCubicBezierLineIntersect(bezier.P0, bezier.P1, bezier.P2, bezier.P3, p1, p2).Count > 0)
+            return true;
+        if (ImCubicBezierLineIntersect(bezier.P0, bezier.P1, bezier.P2, bezier.P3, p2, p3).Count > 0)
+            return true;
+        if (ImCubicBezierLineIntersect(bezier.P0, bezier.P1, bezier.P2, bezier.P3, p3, p0).Count > 0)
+            return true;
+
+        return false;
+    }
+
+    const ImLinePoints path = GetPath();
     const auto p0 = rect.GetTL();
     const auto p1 = rect.GetTR();
     const auto p2 = rect.GetBR();

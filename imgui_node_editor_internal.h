@@ -473,6 +473,7 @@ struct Link final : Object {
     ImVec2 m_Start;
     ImVec2 m_End;
     bool m_SameNode;
+    bool m_Bezier;
 
     Link(EditorContext* editor, LinkId id)
         : Object(editor)
@@ -482,6 +483,7 @@ struct Link final : Object {
         , m_Color(IM_COL32_WHITE)
         , m_Thickness(1.0f)
         , m_SameNode(false)
+        , m_Bezier(false)
     {
     }
 
@@ -496,6 +498,7 @@ struct Link final : Object {
     bool isBackWard() const;
 
     ImLinePoints GetPath() const;
+    ImCubicBezierPoints GetCurve() const;
     ImLinePoints GetPathSameNode() const;
 
     virtual bool TestHit(const ImVec2& point, float extraThickness = 0.0f) const override final;

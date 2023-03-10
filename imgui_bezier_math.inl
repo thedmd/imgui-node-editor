@@ -106,7 +106,7 @@ inline T ImCubicBezierTangent(const T& p0, const T& p1, const T& p2, const T& p3
 }
 
 template <typename T>
-inline T ImCubicBezierTangent(const ImCubicBezierPointsT<T>& curve, float t)
+inline T ImCubicBezierTangent(const ImLinePointsT<T>& curve, float t)
 {
     return ImCubicBezierTangent(curve.P0, curve.P1, curve.P2, curve.P3, t);
 }
