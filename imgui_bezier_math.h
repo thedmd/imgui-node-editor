@@ -37,7 +37,7 @@ struct ImLinePointsT
     T P3;
     T P4;
     T P5;
-    bool backward;
+    bool backward = false;
 };
 
 using ImCubicBezierPoints = ImLinePointsT<ImVec2>;

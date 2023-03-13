@@ -781,7 +781,7 @@ void ed::Link::Draw(ImDrawList* drawList, ImU32 color, float extraThickness) con
 
     const auto path = GetPath();
     const auto half_thickness = (m_Thickness + extraThickness) * 0.5f;
-    if (m_Bezier) {
+    if (m_Bezier && !m_SameNode) {
         ImDrawList_AddBezierWithArrows(drawList, path, m_Thickness + extraThickness,
             m_StartPin && m_StartPin->m_ArrowSize > 0.0f ? m_StartPin->m_ArrowSize + extraThickness : 0.0f,
             m_StartPin && m_StartPin->m_ArrowWidth > 0.0f ? m_StartPin->m_ArrowWidth + extraThickness : 0.0f,
@@ -934,12 +934,30 @@ ImLinePoints ed::Link::GetPathSameNode() const
     ImLinePoints result;
 
     const ImRect node_bounds = m_StartPin && m_StartPin->m_Node ? m_StartPin->m_Node->m_Bounds : kDefaultNodeRect;
-    result.P0 = m_Start + kPinMarginStart;
-    result.P1 = result.P0 + kPinMarginEnd;
-    result.P2 = result.P1 + ImVec2(node_bounds.GetWidth() * kLinkMarginLarge, 0);
-    result.P3 = ImVec2(result.P2.x, m_End.y - node_bounds.GetHeight() * kLinkMarginMax);
-    result.P4 = result.P3 - ImVec2(node_bounds.GetWidth() * kLinkMarginLarge, 0);
-    result.P5 = m_End - kPinMarginTotal;
+    bool is_horizontal = m_StartPin && m_EndPin && m_StartPin->m_Bounds.GetTR().y == m_EndPin->GetBounds().GetTR().y && m_StartPin->m_Bounds.GetBL().y == m_EndPin->GetBounds().GetBL().y;
+    auto distance = [](const ImVec2& p1, const ImVec2& p2) {
+        return ImSqrt(ImPow(p2.x - p1.x, 2) + ImPow(p2.y - p1.y, 2));
+    };
+    if (is_horizontal) {
+        result.P0 = m_Start + kPinMarginStart;
+        result.P1 = result.P0 + kPinMarginEnd;
+        auto dist = distance(m_StartPin->GetBounds().GetCenter(), m_EndPin->GetBounds().GetCenter());
+        result.P2 = ImVec2(result.P1.x - dist / 3, result.P1.y);
+        result.P3 = ImVec2(result.P2.x - dist / 3, result.P2.y);
+        result.P4 = ImVec2(result.P3.x - dist / 3, result.P3.y);
+        result.P5 = m_End + kPinMarginStart;
+        return result;
+    }
+    bool is_vertical = m_StartPin && m_EndPin && m_StartPin->m_Bounds.GetTR().x == m_EndPin->GetBounds().GetTR().x && m_StartPin->m_Bounds.GetBL().x == m_EndPin->GetBounds().GetBL().x;
+    if (is_vertical) {
+        result.P0 = m_Start + kPinMarginStart;
+        result.P1 = result.P0 + kPinMarginEnd;
+        result.P2 = result.P1 + ImVec2(node_bounds.GetWidth() * kLinkMarginLarge, 0);
+        result.P3 = ImVec2(result.P2.x, m_End.y - node_bounds.GetHeight() * kLinkMarginMax);
+        result.P4 = result.P3 - ImVec2(node_bounds.GetWidth() * kLinkMarginLarge, 0);
+        result.P5 = m_End - kPinMarginTotal;
+        return result;
+    }
 
     return result;
 }
@@ -981,28 +999,19 @@ bool ed::Link::TestHit(const ImVec2& point, float extraThickness) const
     if (!m_IsLive)
         return false;
 
-    if (m_Bezier) {
-        if (!m_IsLive)
-            return false;
+    auto bounds = GetBounds();
+    if (extraThickness > 0.0f)
+        bounds.Expand(extraThickness);
+    if (!bounds.Contains(point))
+        return false;
 
-        auto bounds = GetBounds();
-        if (extraThickness > 0.0f)
-            bounds.Expand(extraThickness);
-
-        if (!bounds.Contains(point))
-            return false;
+    if (m_Bezier && !m_SameNode) {
 
         const auto bezier = GetCurve();
         const auto result = ImProjectOnCubicBezier(point, bezier.P0, bezier.P1, bezier.P2, bezier.P3, 50);
 
         return result.Distance <= m_Thickness + extraThickness;
     }
-
-    auto bounds = GetBounds();
-    if (extraThickness > 0.0f)
-        bounds.Expand(extraThickness);
-    if (!bounds.Contains(point))
-        return false;
 
     const auto path = GetPath();
     return TestHitSameNode(path, point, extraThickness);
