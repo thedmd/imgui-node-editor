@@ -462,6 +462,11 @@ bool ax::NodeEditor::IsActive()
     return s_Editor->IsActive();
 }
 
+bool ax::NodeEditor::InBeginEnd()
+{
+    return s_Editor->InBeginEnd();
+}
+
 bool ax::NodeEditor::HasSelectionChanged()
 {
     return s_Editor->HasSelectionChanged();

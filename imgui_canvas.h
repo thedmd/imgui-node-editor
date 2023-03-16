@@ -192,6 +192,8 @@ struct Canvas
     // See: Suspend()/Resume()
     bool IsSuspended() const { return m_SuspendCounter > 0; }
 
+    bool InBeginEnd() const { return m_InBeginEnd; }
+
 private:
 # define IMGUI_EX_CANVAS_DEFERED() 0
 

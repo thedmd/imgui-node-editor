@@ -290,6 +290,7 @@ void Resume();
 bool IsSuspended();
 
 bool IsActive();
+bool InBeginEnd();
 
 bool HasSelectionChanged();
 int GetSelectedObjectCount();

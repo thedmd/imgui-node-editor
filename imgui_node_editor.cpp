@@ -2089,6 +2089,11 @@ bool ed::EditorContext::AreShortcutsEnabled()
     return m_ShortcutsEnabled;
 }
 
+bool ax::NodeEditor::Detail::EditorContext::InBeginEnd() const
+{
+    return m_Canvas.InBeginEnd();
+}
+
 ed::Control ed::EditorContext::BuildControl(bool allowOffscreen)
 {
     if (!allowOffscreen && !ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem))

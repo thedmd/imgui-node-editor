@@ -1393,6 +1393,7 @@ struct EditorContext {
 
     void EnableShortcuts(bool enable);
     bool AreShortcutsEnabled();
+    bool InBeginEnd() const;
 
     NodeId GetDoubleClickedNode() const { return m_DoubleClickedNode; }
     PinId GetDoubleClickedPin() const { return m_DoubleClickedPin; }
