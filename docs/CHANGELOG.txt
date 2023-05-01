@@ -23,6 +23,8 @@ v0.9.2 (WIP):
 
     BUGFIX: Examples: Use ImGuiKey_KeypadEnter with ImGui r18604 (#183)
 
+    BUGFIX: Examples: Add missing <cstdint> include for std::intptr_t (#199)
+
 
 v0.9.1 (2022-08-27):
 
