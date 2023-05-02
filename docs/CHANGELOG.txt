@@ -2,6 +2,8 @@ v0.9.2 (WIP):
 
     NEW: Editor: Add offset of hover/select to style (thanks @MultiPain)
 
+    NEW: Editor: Add IMGUI_NODE_EDITOR_API to support building editor as a shared library (#189)
+
     CHANGE: Editor: Support ImGui r18836 after SetItemUsingMouseWheel removal (#218), thanks @ocornut
 
     CHANGE: Editor: Define IMGUI_DEFINE_MATH_OPERATORS before <imgui.h> (#209), thanks @ocornut
