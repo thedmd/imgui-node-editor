@@ -683,7 +683,7 @@ struct Example:
         ImGui::EndHorizontal();
 
         static ImGuiTextFilter filter;
-        filter.Draw("", paneWidth);
+        filter.Draw("##filter", paneWidth);
 
         ImGui::Spacing();
 
