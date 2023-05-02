@@ -374,6 +374,9 @@ int BreakLinks(PinId pinId); // Break all links connected to this pin
 void NavigateToContent(float duration = -1);
 void NavigateToSelection(bool zoomIn = false, float duration = -1);
 
+void SuspendNavigation();
+void ResumeNavigation();
+
 bool ShowNodeContextMenu(NodeId* nodeId);
 bool ShowPinContextMenu(PinId* pinId);
 bool ShowLinkContextMenu(LinkId* linkId);

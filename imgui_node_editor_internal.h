@@ -1433,6 +1433,16 @@ struct EditorContext
         m_NavigateAction.NavigateTo(bounds, zoomMode, duration);
     }
 
+    inline void SuspendNavigation()
+    {
+        m_NavigateAction.m_IsActive = false;
+    }
+
+    inline void ResumeNavigation()
+    {
+        m_NavigateAction.m_IsActive = true;
+    }
+
     void RegisterAnimation(Animation* animation);
     void UnregisterAnimation(Animation* animation);
 
