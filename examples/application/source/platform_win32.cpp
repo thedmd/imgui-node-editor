@@ -290,7 +290,11 @@ LRESULT PlatformWin32::WinProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam
             }
 
             if (m_Renderer != nullptr && wParam != SIZE_MINIMIZED)
+            {
                 m_Renderer->Resize(static_cast<int>(LOWORD(lParam)), static_cast<int>(HIWORD(lParam)));
+                m_IsMinimized  = false;
+                m_WasMinimized = false;
+            }
             return 0;
 
         case WM_SYSCOMMAND:
