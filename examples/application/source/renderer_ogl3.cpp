@@ -4,6 +4,7 @@
 
 # include "platform.h"
 # include <algorithm>
+# include <cstdint>
 
 # if PLATFORM(WINDOWS)
 #     define NOMINMAX
