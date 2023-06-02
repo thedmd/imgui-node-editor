@@ -34,11 +34,6 @@ inline ImVec2 operator*(const float lhs, const ImVec2& rhs)
     return ImVec2(lhs * rhs.x, lhs * rhs.y);
 }
 
-inline static ImVec2 operator-(const ImVec2& lhs)
-{
-    return ImVec2(-lhs.x, -lhs.y);
-}
-
 
 //------------------------------------------------------------------------------
 inline float ImLength(float v)
