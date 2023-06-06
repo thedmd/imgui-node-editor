@@ -454,6 +454,79 @@ static void ImDrawList_PolyFillScanFlood(ImDrawList *draw, std::vector<ImVec2>* 
 }
 */
 
+namespace ax {
+namespace NodeEditor {
+namespace Detail {
+
+std::string Serialize(NodeId n)
+{
+#ifdef IMGUI_NODE_EDITOR_CUSTOM_NODEID
+    return n.AsString();
+#else
+    return std::to_string(n.Get());
+#endif
+}
+
+std::string Serialize(PinId n)
+{
+#ifdef IMGUI_NODE_EDITOR_CUSTOM_PINID
+    return n.AsString();
+#else
+    return std::to_string(n.Get());
+#endif
+}
+
+std::string Serialize(LinkId n)
+{
+#ifdef IMGUI_NODE_EDITOR_CUSTOM_LINKID
+    return n.AsString();
+#else
+    return std::to_string(n.Get());
+#endif
+}
+
+std::string ObjectId::AsString() const
+{
+    switch (m_Type) {
+        case ObjectType::Pin: return Serialize(AsPinId());
+        case ObjectType::Node: return Serialize(AsNodeId());
+        case ObjectType::Link: return Serialize(AsLinkId());
+        case ObjectType::None: break;
+    }
+    return {};
+}
+
+NodeId DeserializeNodeId(const char *str, const char *end)
+{
+#ifdef IMGUI_NODE_EDITOR_CUSTOM_NODEID
+    return NodeId::FromString(str, end);
+#else
+    return NodeId(reinterpret_cast<void*>(strtoull(str, nullptr, 10)));
+#endif
+}
+
+PinId DeserializePinId(const char *str, const char *end)
+{
+#ifdef IMGUI_NODE_EDITOR_CUSTOM_PINID
+    return PinId::FromString(str, end);
+#else
+    return PinId(reinterpret_cast<void*>(strtoull(str, nullptr, 10)));
+#endif
+}
+
+LinkId DeserializeLinkId(const char *str, const char *end)
+{
+#ifdef IMGUI_NODE_EDITOR_CUSTOM_LINKID
+    return LinkId::FromString(str, end);
+#else
+    return LinkId(reinterpret_cast<void*>(strtoull(str, nullptr, 10)));
+#endif
+}
+
+}
+}
+}
+
 static void ImDrawList_AddBezierWithArrows(ImDrawList* drawList, const ImCubicBezierPoints& curve, float thickness,
     float startArrowSize, float startArrowWidth, float endArrowSize, float endArrowWidth,
     bool fill, ImU32 color, float strokeThickness, const ImVec2* startDirHint = nullptr, const ImVec2* endDirHint = nullptr)
@@ -1082,12 +1155,12 @@ ed::EditorContext::EditorContext(const ax::NodeEditor::Config* config)
     , m_DeleteItemsAction(this)
     , m_AnimationControllers{ &m_FlowAnimationController }
     , m_FlowAnimationController(this)
-    , m_HoveredNode(0)
-    , m_HoveredPin(0)
-    , m_HoveredLink(0)
-    , m_DoubleClickedNode(0)
-    , m_DoubleClickedPin(0)
-    , m_DoubleClickedLink(0)
+    , m_HoveredNode(NodeId::Invalid)
+    , m_HoveredPin(PinId::Invalid)
+    , m_HoveredLink(LinkId::Invalid)
+    , m_DoubleClickedNode(NodeId::Invalid)
+    , m_DoubleClickedPin(PinId::Invalid)
+    , m_DoubleClickedLink(LinkId::Invalid)
     , m_BackgroundClickButtonIndex(-1)
     , m_BackgroundDoubleClickButtonIndex(-1)
     , m_IsInitialized(false)
@@ -1242,12 +1315,12 @@ void ed::EditorContext::End()
     auto  control     = BuildControl(m_CurrentAction && m_CurrentAction->IsDragging()); // NavigateAction.IsMovingOverEdge()
     //auto& editorStyle = GetStyle();
 
-    m_HoveredNode             = control.HotNode && m_CurrentAction == nullptr ? control.HotNode->m_ID : 0;
-    m_HoveredPin              = control.HotPin  && m_CurrentAction == nullptr ? control.HotPin->m_ID  : 0;
-    m_HoveredLink             = control.HotLink && m_CurrentAction == nullptr ? control.HotLink->m_ID : 0;
-    m_DoubleClickedNode       = control.DoubleClickedNode ? control.DoubleClickedNode->m_ID : 0;
-    m_DoubleClickedPin        = control.DoubleClickedPin  ? control.DoubleClickedPin->m_ID  : 0;
-    m_DoubleClickedLink       = control.DoubleClickedLink ? control.DoubleClickedLink->m_ID : 0;
+    m_HoveredNode             = control.HotNode && m_CurrentAction == nullptr ? control.HotNode->m_ID : NodeId::Invalid;
+    m_HoveredPin              = control.HotPin  && m_CurrentAction == nullptr ? control.HotPin->m_ID  : PinId::Invalid;
+    m_HoveredLink             = control.HotLink && m_CurrentAction == nullptr ? control.HotLink->m_ID : LinkId::Invalid;
+    m_DoubleClickedNode       = control.DoubleClickedNode ? control.DoubleClickedNode->m_ID : NodeId::Invalid;
+    m_DoubleClickedPin        = control.DoubleClickedPin  ? control.DoubleClickedPin->m_ID  : PinId::Invalid;
+    m_DoubleClickedLink       = control.DoubleClickedLink ? control.DoubleClickedLink->m_ID : LinkId::Invalid;
     m_BackgroundClickButtonIndex       = control.BackgroundClickButtonIndex;
     m_BackgroundDoubleClickButtonIndex = control.BackgroundDoubleClickButtonIndex;
 
@@ -1581,7 +1654,7 @@ void ed::EditorContext::End()
     if (!m_CurrentAction && m_IsFirstFrame && !m_Settings.m_Selection.empty())
     {
         ClearSelection();
-        for (auto id : m_Settings.m_Selection)
+        for (auto &id : m_Settings.m_Selection)
             if (auto object = FindObject(id))
                 SelectObject(object);
     }
@@ -2105,7 +2178,7 @@ ed::Link* ed::EditorContext::FindLink(LinkId id)
     return FindItemIn(m_Links, id);
 }
 
-ed::Object* ed::EditorContext::FindObject(ObjectId id)
+ed::Object* ed::EditorContext::FindObject(const ObjectId &id)
 {
     if (id.IsNodeId())
         return FindNode(id.AsNodeId());
@@ -2367,16 +2440,14 @@ ed::Control ed::EditorContext::BuildControl(bool allowOffscreen)
     };
 
     // Emits invisible button and returns true if it is clicked.
-    auto emitInteractiveAreaEx = [&activeId](ObjectId id, const ImRect& rect, ImGuiButtonFlags extraFlags) -> int
+    auto emitInteractiveAreaEx = [&activeId](const std::string &idString, const ImRect& rect, ImGuiButtonFlags extraFlags) -> int
     {
-        char idString[33] = { 0 }; // itoa can output 33 bytes maximum
-        snprintf(idString, 32, "%p", id.AsPointer());
         ImGui::SetCursorScreenPos(rect.Min);
 
         // debug
         //if (id < 0) return ImGui::Button(idString, to_imvec(rect.size));
 
-        auto buttonIndex = invisibleButtonEx(idString, rect.GetSize(), extraFlags);
+        auto buttonIndex = invisibleButtonEx(idString.c_str(), rect.GetSize(), extraFlags);
 
         // #debug
         //ImGui::GetWindowDrawList()->AddRectFilled(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), IM_COL32(0, 255, 0, 64));
@@ -2387,15 +2458,15 @@ ed::Control ed::EditorContext::BuildControl(bool allowOffscreen)
         return buttonIndex;
     };
 
-    auto emitInteractiveArea = [&emitInteractiveAreaEx, extraFlags](ObjectId id, const ImRect& rect)
+    auto emitInteractiveArea = [&emitInteractiveAreaEx, extraFlags](const std::string &idString, const ImRect& rect)
     {
-        return emitInteractiveAreaEx(id, rect, extraFlags);
+        return emitInteractiveAreaEx(idString, rect, extraFlags);
     };
 
     // Check input interactions over area.
-    auto checkInteractionsInArea = [this, &emitInteractiveArea, &hotObject, &activeObject, &clickedObject, &doubleClickedObject](ObjectId id, const ImRect& rect, Object* object)
+    auto checkInteractionsInArea = [this, &emitInteractiveArea, &hotObject, &activeObject, &clickedObject, &doubleClickedObject](const std::string &idString, const ImRect& rect, Object* object)
     {
-        if (emitInteractiveArea(id, rect) >= 0)
+        if (emitInteractiveArea(idString, rect) >= 0)
             clickedObject = object;
         if (!doubleClickedObject && ImGui::IsMouseDoubleClicked(m_Config.DragButtonIndex) && ImGui::IsItemHovered())
             doubleClickedObject = object;
@@ -2421,14 +2492,14 @@ ed::Control ed::EditorContext::BuildControl(bool allowOffscreen)
         {
             if (!pin->m_IsLive) continue;
 
-            checkInteractionsInArea(pin->m_ID, pin->m_Bounds, pin);
+            checkInteractionsInArea(Serialize(pin->m_ID), pin->m_Bounds, pin);
         }
 
         // Check for interactions with node.
         if (node->m_Type == NodeType::Group)
         {
             // Node with a hole
-            ImGui::PushID(node->m_ID.AsPointer());
+            ImGui::PushID(Serialize(node->m_ID).c_str());
 
             static const NodeRegion c_Regions[] =
             {
@@ -2448,13 +2519,13 @@ ed::Control ed::EditorContext::BuildControl(bool allowOffscreen)
                 auto bounds = node->GetRegionBounds(region);
                 if (ImRect_IsEmpty(bounds))
                     continue;
-                checkInteractionsInArea(NodeId(static_cast<int>(region)), bounds, node);
+                checkInteractionsInArea(std::to_string(static_cast<int>(region)), bounds, node);
             }
 
             ImGui::PopID();
         }
         else
-            checkInteractionsInArea(node->m_ID, node->m_Bounds, node);
+            checkInteractionsInArea(Serialize(node->m_ID), node->m_Bounds, node);
     }
 
     // Links are not regular widgets and must be done manually since
@@ -2494,7 +2565,7 @@ ed::Control ed::EditorContext::BuildControl(bool allowOffscreen)
     };
 
     // Check for interaction with background.
-    auto backgroundClickButonIndex        = emitInteractiveAreaEx(NodeId(0), editorRect, backgroundExtraFlags);
+    auto backgroundClickButonIndex        = emitInteractiveAreaEx("background", editorRect, backgroundExtraFlags);
     auto backgroundDoubleClickButtonIndex = isMouseDoubleClickOverBackground();
     auto isBackgroundActive               = ImGui::IsItemActive();
     auto isBackgroundHot                  = !hotObject;
@@ -2610,13 +2681,13 @@ void ed::EditorContext::ShowMetrics(const Control& control)
     ImGui::Text("Live Nodes: %d", liveNodeCount);
     ImGui::Text("Live Pins: %d", livePinCount);
     ImGui::Text("Live Links: %d", liveLinkCount);
-    ImGui::Text("Hot Object: %s (%p)", getHotObjectName(), control.HotObject ? control.HotObject->ID().AsPointer() : nullptr);
+    ImGui::Text("Hot Object: %s (%s)", getHotObjectName(), control.HotObject ? control.HotObject->ID().AsString().c_str() : nullptr);
     if (auto node = control.HotObject ? control.HotObject->AsNode() : nullptr)
     {
         ImGui::SameLine();
         ImGui::Text("{ x=%g y=%g w=%g h=%g }", node->m_Bounds.Min.x, node->m_Bounds.Min.y, node->m_Bounds.GetWidth(), node->m_Bounds.GetHeight());
     }
-    ImGui::Text("Active Object: %s (%p)", getActiveObjectName(), control.ActiveObject ? control.ActiveObject->ID().AsPointer() : nullptr);
+    ImGui::Text("Active Object: %s (%s)", getActiveObjectName(), control.ActiveObject ? control.ActiveObject->ID().AsString().c_str() : nullptr);
     if (auto node = control.ActiveObject ? control.ActiveObject->AsNode() : nullptr)
     {
         ImGui::SameLine();
@@ -2779,9 +2850,9 @@ std::string ed::Settings::Serialize()
 {
     json::value result;
 
-    auto serializeObjectId = [](ObjectId id)
+    auto serializeObjectId = [](const ObjectId &id)
     {
-        auto value = std::to_string(reinterpret_cast<uintptr_t>(id.AsPointer()));
+        auto value = id.AsString();
         switch (id.Type())
         {
             default:
@@ -2849,16 +2920,16 @@ bool ed::Settings::Parse(const std::string& string, Settings& settings)
     {
         auto separator = str.find_first_of(':');
         auto idStart   = str.c_str() + ((separator != std::string::npos) ? separator + 1 : 0);
-        auto id        = reinterpret_cast<void*>(strtoull(idStart, nullptr, 10));
+        auto *end      = str.c_str() + str.size();
         if (str.compare(0, separator, "node") == 0)
-            return ObjectId(NodeId(id));
+            return ObjectId(DeserializeNodeId(idStart, end));
         else if (str.compare(0, separator, "link") == 0)
-            return ObjectId(LinkId(id));
+            return ObjectId(DeserializeLinkId(idStart, end));
         else if (str.compare(0, separator, "pin") == 0)
-            return ObjectId(PinId(id));
+            return ObjectId(DeserializePinId(idStart, end));
         else
             // fallback to old format
-            return ObjectId(NodeId(id)); //return ObjectId();
+            return ObjectId(DeserializeNodeId(idStart, end)); //return ObjectId();
     };
 
     //auto& settingsObject = settingsValue.get<json::object>();
@@ -3791,7 +3862,7 @@ void ed::SizeAction::ShowMetrics()
 
     ImGui::Text("%s:", GetName());
     ImGui::Text("    Active: %s", m_IsActive ? "yes" : "no");
-    ImGui::Text("    Node: %s (%p)", getObjectName(m_SizedNode), m_SizedNode ? m_SizedNode->m_ID.AsPointer() : nullptr);
+    ImGui::Text("    Node: %s (%s)", getObjectName(m_SizedNode), m_SizedNode ? Serialize(m_SizedNode->m_ID).c_str() : nullptr);
     if (m_SizedNode && m_IsActive)
     {
         ImGui::Text("    Bounds: { x=%g y=%g w=%g h=%g }", m_SizedNode->m_Bounds.Min.x, m_SizedNode->m_Bounds.Min.y, m_SizedNode->m_Bounds.GetWidth(), m_SizedNode->m_Bounds.GetHeight());
@@ -3997,7 +4068,7 @@ void ed::DragAction::ShowMetrics()
 
     ImGui::Text("%s:", GetName());
     ImGui::Text("    Active: %s", m_IsActive ? "yes" : "no");
-    ImGui::Text("    Node: %s (%p)", getObjectName(m_DraggedObject), m_DraggedObject ? m_DraggedObject->ID().AsPointer() : nullptr);
+    ImGui::Text("    Node: %s (%s)", getObjectName(m_DraggedObject), m_DraggedObject ? m_DraggedObject->ID().AsString().c_str() : nullptr);
 }
 
 
@@ -4594,12 +4665,12 @@ bool ed::CreateItemAction::Process(const Control& control)
     {
         const auto draggingFromSource = (m_DraggedPin->m_Kind == PinKind::Output);
 
-        ed::Pin cursorPin(Editor, 0, draggingFromSource ? PinKind::Input : PinKind::Output);
+        ed::Pin cursorPin(Editor, PinId::Invalid, draggingFromSource ? PinKind::Input : PinKind::Output);
         cursorPin.m_Pivot    = ImRect(ImGui::GetMousePos(), ImGui::GetMousePos());
         cursorPin.m_Dir      = -m_DraggedPin->m_Dir;
         cursorPin.m_Strength =  m_DraggedPin->m_Strength;
 
-        ed::Link candidate(Editor, 0);
+        ed::Link candidate(Editor, LinkId::Invalid);
         candidate.m_Color    = m_LinkColor;
         candidate.m_StartPin = draggingFromSource ? m_DraggedPin : &cursorPin;
         candidate.m_EndPin   = draggingFromSource ? &cursorPin : m_DraggedPin;
@@ -4842,7 +4913,7 @@ ed::CreateItemAction::Result ed::CreateItemAction::QueryNode(PinId* pinId)
     if (!m_InActive || m_CurrentStage == None || m_ItemType != Node)
         return Indeterminate;
 
-    *pinId = m_LinkStart ? m_LinkStart->m_ID : 0;
+    *pinId = m_LinkStart ? m_LinkStart->m_ID : PinId::Invalid;
 
     Editor->SetUserContext(true);
 
@@ -5006,7 +5077,8 @@ bool ed::DeleteItemsAction::QueryLink(LinkId* linkId, PinId* startId, PinId* end
     if (!QueryItem(&objectId, Link))
         return false;
 
-    if (auto id = objectId.AsLinkId())
+    auto id = objectId.AsLinkId();
+    if (id.IsValid())
         *linkId = id;
     else
         return false;
@@ -5029,7 +5101,8 @@ bool ed::DeleteItemsAction::QueryNode(NodeId* nodeId)
     if (!QueryItem(&objectId, Node))
         return false;
 
-    if (auto id = objectId.AsNodeId())
+    auto id = objectId.AsNodeId();
+    if (id.IsValid())
         *nodeId = id;
     else
         return false;

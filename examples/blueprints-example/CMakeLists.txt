@@ -1,4 +1,4 @@
-add_example_executable(blueprints-example
+add_example_executable(blueprints-example SOURCES
     blueprints-example.cpp
     utilities/builders.h
     utilities/drawing.h

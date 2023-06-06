@@ -36,6 +36,8 @@ target_include_directories(imgui_node_editor PUBLIC
     ${IMGUI_NODE_EDITOR_ROOT_DIR}
 )
 
+set(IMGUI_NODE_EDITOR_SOURCES ${_imgui_node_editor_Sources} PARENT_SCOPE)
+
 target_link_libraries(imgui_node_editor PUBLIC imgui)
 
 source_group(TREE ${IMGUI_NODE_EDITOR_ROOT_DIR} FILES ${_imgui_node_editor_Sources})

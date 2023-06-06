@@ -1,4 +1,4 @@
-add_example_executable(canvas-example
+add_example_executable(canvas-example SOURCES
     canvas-example.cpp
 )
 

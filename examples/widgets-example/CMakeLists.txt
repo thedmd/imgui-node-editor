@@ -1,3 +1,3 @@
-add_example_executable(widgets-example
+add_example_executable(widgets-example SOURCES
     widgets-example.cpp
 )

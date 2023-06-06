@@ -30,7 +30,7 @@
 
 # include <vector>
 # include <string>
-
+# include <variant>
 
 //------------------------------------------------------------------------------
 namespace ax {
@@ -147,23 +147,55 @@ using ax::NodeEditor::NodeId;
 using ax::NodeEditor::PinId;
 using ax::NodeEditor::LinkId;
 
-struct ObjectId final: Details::SafePointerType<ObjectId>
+struct ObjectId final
 {
-    using Super = Details::SafePointerType<ObjectId>;
-    using Super::Super;
-
-    ObjectId():                  Super(Invalid),              m_Type(ObjectType::None)   {}
-    ObjectId(PinId  pinId):      Super(pinId.AsPointer()),    m_Type(ObjectType::Pin)    {}
-    ObjectId(NodeId nodeId):     Super(nodeId.AsPointer()),   m_Type(ObjectType::Node)   {}
-    ObjectId(LinkId linkId):     Super(linkId.AsPointer()),   m_Type(ObjectType::Link)   {}
+    ObjectId():                  m_Type(ObjectType::None) {}
+    ObjectId(PinId  pinId):      m_Type(ObjectType::Pin)  { new (&m_Id.Pin) PinId(std::move(pinId)); }
+    ObjectId(NodeId nodeId):     m_Type(ObjectType::Node) { new (&m_Id.Node) NodeId(std::move(nodeId)); }
+    ObjectId(LinkId linkId):     m_Type(ObjectType::Link) { new (&m_Id.Link) LinkId(std::move(linkId)); }
+    ObjectId(ObjectId &&o): m_Type(o.m_Type) {
+        switch (m_Type) {
+            case ObjectType::Pin:
+                new (&m_Id.Pin) PinId(std::move(o.m_Id.Pin));
+                break;
+            case ObjectType::Node:
+                new (&m_Id.Node) NodeId(std::move(o.m_Id.Node));
+                break;
+            case ObjectType::Link:
+                new (&m_Id.Link) LinkId(std::move(o.m_Id.Link));
+                break;
+            case ObjectType::None:
+                break;
+        }
+    }
+    ObjectId(const ObjectId &o): m_Type(o.m_Type) {
+        switch (m_Type) {
+            case ObjectType::Pin:
+                new (&m_Id.Pin) PinId(o.m_Id.Pin);
+                break;
+            case ObjectType::Node:
+                new (&m_Id.Node) NodeId(o.m_Id.Node);
+                break;
+            case ObjectType::Link:
+                new (&m_Id.Link) LinkId(o.m_Id.Link);
+                break;
+            case ObjectType::None:
+                break;
+        }
+    }
+    ~ObjectId() {
+        clearId();
+    }
 
     explicit operator PinId()    const { return AsPinId();    }
     explicit operator NodeId()   const { return AsNodeId();   }
     explicit operator LinkId()   const { return AsLinkId();   }
 
-    PinId    AsPinId()    const { IM_ASSERT(IsPinId());    return PinId(AsPointer());    }
-    NodeId   AsNodeId()   const { IM_ASSERT(IsNodeId());   return NodeId(AsPointer());   }
-    LinkId   AsLinkId()   const { IM_ASSERT(IsLinkId());   return LinkId(AsPointer());   }
+    PinId    AsPinId()    const { IM_ASSERT(IsPinId());    return m_Id.Pin;    }
+    NodeId   AsNodeId()   const { IM_ASSERT(IsNodeId());   return m_Id.Node;   }
+    LinkId   AsLinkId()   const { IM_ASSERT(IsLinkId());   return m_Id.Link;   }
+
+    std::string AsString() const;
 
     bool IsPinId()    const { return m_Type == ObjectType::Pin;    }
     bool IsNodeId()   const { return m_Type == ObjectType::Node;   }
@@ -171,8 +203,86 @@ struct ObjectId final: Details::SafePointerType<ObjectId>
 
     ObjectType Type() const { return m_Type; }
 
+    bool operator==(const ObjectId &o) const {
+        if (m_Type != o.m_Type) {
+            return false;
+        }
+
+        switch (m_Type) {
+            case ObjectType::Pin: return m_Id.Pin == o.m_Id.Pin;
+            case ObjectType::Node: return m_Id.Node == o.m_Id.Node;
+            case ObjectType::Link: return m_Id.Link == o.m_Id.Link;
+            case ObjectType::None: break;
+        }
+        return true;
+    }
+
+    ObjectId &operator=(ObjectId &&o) {
+        clearId();
+
+        m_Type = o.m_Type;
+        switch (m_Type) {
+            case ObjectType::Pin:
+                new (&m_Id.Pin) PinId(std::move(o.m_Id.Pin));
+                break;
+            case ObjectType::Node:
+                new (&m_Id.Node) NodeId(std::move(o.m_Id.Node));
+                break;
+            case ObjectType::Link:
+                new (&m_Id.Link) LinkId(std::move(o.m_Id.Link));
+                break;
+            case ObjectType::None:
+                break;
+        }
+        return *this;
+    }
+    ObjectId &operator=(const ObjectId &o) {
+        clearId();
+
+        m_Type = o.m_Type;
+        switch (m_Type) {
+            case ObjectType::Pin:
+                new (&m_Id.Pin) PinId(o.m_Id.Pin);
+                break;
+            case ObjectType::Node:
+                new (&m_Id.Node) NodeId(o.m_Id.Node);
+                break;
+            case ObjectType::Link:
+                new (&m_Id.Link) LinkId(o.m_Id.Link);
+                break;
+            case ObjectType::None:
+                break;
+        }
+        return *this;
+    }
+
 private:
+    void clearId()
+    {
+        switch (m_Type) {
+            case ObjectType::Pin:
+                m_Id.Pin.~PinId();
+                break;
+            case ObjectType::Node:
+                m_Id.Node.~NodeId();
+                break;
+            case ObjectType::Link:
+                m_Id.Link.~LinkId();
+                break;
+            case ObjectType::None:
+                break;
+        }
+        m_Type = ObjectType::None;
+    }
+
     ObjectType m_Type;
+    union Id {
+        Id() {}
+        ~Id() {}
+        NodeId Node;
+        PinId Pin;
+        LinkId Link;
+    } m_Id;
 };
 
 struct EditorContext;
@@ -195,7 +305,7 @@ struct ObjectWrapper
 
     bool operator<(const ObjectWrapper& rhs) const
     {
-        return m_ID.AsPointer() < rhs.m_ID.AsPointer();
+        return m_ID < rhs.m_ID;
     }
 };
 
@@ -1381,7 +1491,7 @@ struct EditorContext
     Node*   FindNode(NodeId id);
     Pin*    FindPin(PinId id);
     Link*   FindLink(LinkId id);
-    Object* FindObject(ObjectId id);
+    Object* FindObject(const ObjectId &id);
 
     Node*  GetNode(NodeId id);
     Pin*   GetPin(PinId id, PinKind kind);

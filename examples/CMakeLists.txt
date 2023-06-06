@@ -23,8 +23,14 @@ set(CMAKE_CXX_STANDARD_REQUIRED   YES)
 macro(add_example_executable name)
     project(${name})
 
+    set(options NOLINK)
+    set(oneValueArgs)
+    set(multiValueArgs SOURCES)
+    cmake_parse_arguments(ADD_EXAMPLE "${options}" "${oneValueArgs}"
+                          "${multiValueArgs}" ${ARGN})
+
     set(_Example_Sources
-        ${ARGN}
+        ${ADD_EXAMPLE_SOURCES}
     )
 
     #source_group("" FILES ${_Example_Sources})
@@ -69,7 +75,10 @@ macro(add_example_executable name)
 
     find_package(imgui REQUIRED)
     find_package(imgui_node_editor REQUIRED)
-    target_link_libraries(${name} PRIVATE imgui imgui_node_editor application)
+    target_link_libraries(${name} PRIVATE imgui application)
+    if (NOT ADD_EXAMPLE_NOLINK)
+        target_link_libraries(${name} PRIVATE imgui_node_editor)
+    endif()
 
     set(_ExampleBinDir ${CMAKE_BINARY_DIR}/bin)
 
@@ -132,3 +141,4 @@ add_subdirectory(simple-example)
 add_subdirectory(widgets-example)
 add_subdirectory(basic-interaction-example)
 add_subdirectory(blueprints-example)
+add_subdirectory(idtypes-example)
