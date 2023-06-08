@@ -24,6 +24,9 @@
 # define IMGUI_NODE_EDITOR_VERSION      "0.9.2"
 # define IMGUI_NODE_EDITOR_VERSION_NUM  000902
 
+#ifdef IMGUI_NODE_EDITOR_USER_CONFIG
+#include IMGUI_NODE_EDITOR_USER_CONFIG
+#endif
 
 //------------------------------------------------------------------------------
 namespace ax {
@@ -31,9 +34,23 @@ namespace NodeEditor {
 
 
 //------------------------------------------------------------------------------
+#ifdef IMGUI_NODE_EDITOR_CUSTOM_NODEID
+using NodeId = IMGUI_NODE_EDITOR_CUSTOM_NODEID;
+#else
 struct NodeId;
+#endif
+
+#ifdef IMGUI_NODE_EDITOR_CUSTOM_LINKID
+using LinkId = IMGUI_NODE_EDITOR_CUSTOM_LINKID;
+#else
 struct LinkId;
+#endif
+
+#ifdef IMGUI_NODE_EDITOR_CUSTOM_PINID
+using PinId = IMGUI_NODE_EDITOR_CUSTOM_PINID;
+#else
 struct PinId;
+#endif
 
 
 //------------------------------------------------------------------------------
@@ -465,7 +482,11 @@ struct SafePointerType
     template <typename T = void> explicit SafePointerType(T* ptr): SafePointerType(reinterpret_cast<uintptr_t>(ptr)) {}
     template <typename T = void> T* AsPointer() const { return reinterpret_cast<T*>(this->Get()); }
 
+    inline bool IsValid() const { return *this != Invalid; }
+
     explicit operator bool() const { return *this != Invalid; }
+
+    inline bool operator<(Tag o) const { return AsPointer() < o.AsPointer(); }
 };
 
 template <typename Tag>
@@ -485,20 +506,26 @@ inline bool operator!=(const SafePointerType<Tag>& lhs, const SafePointerType<Ta
 
 } // namespace Details
 
+#ifndef IMGUI_NODE_EDITOR_CUSTOM_NODEID
 struct NodeId final: Details::SafePointerType<NodeId>
 {
     using SafePointerType::SafePointerType;
 };
+#endif
 
+#ifndef IMGUI_NODE_EDITOR_CUSTOM_LINKID
 struct LinkId final: Details::SafePointerType<LinkId>
 {
     using SafePointerType::SafePointerType;
 };
+#endif
 
+#ifndef IMGUI_NODE_EDITOR_CUSTOM_PINID
 struct PinId final: Details::SafePointerType<PinId>
 {
     using SafePointerType::SafePointerType;
 };
+#endif
 
 
 //------------------------------------------------------------------------------
