@@ -2281,7 +2281,7 @@ void ed::EditorContext::UpdateAnimations()
     }
 }
 
-void ed::EditorContext::Flow(Link* link, FlowDirection direction)
+void ed::EditorContext::Flow(Link* link, ax::NodeEditor::FlowDirection direction)
 {
     m_FlowAnimationController.Flow(link, direction);
 }
@@ -3222,7 +3222,7 @@ ed::FlowAnimationController::~FlowAnimationController()
         delete animation;
 }
 
-void ed::FlowAnimationController::Flow(Link* link, FlowDirection direction)
+void ed::FlowAnimationController::Flow(Link* link, ax::NodeEditor::FlowDirection direction)
 {
     if (!link || !link->m_IsLive)
         return;
