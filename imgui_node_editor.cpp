@@ -1091,8 +1091,8 @@ void ed::EditorContext::Begin(const char* id, const ImVec2& size)
     if (!m_IsInitialized)
     {
         // Cycle canvas so it has a change to setup its size before settings are loaded
-        m_Canvas.Begin(id, canvasSize);
-        m_Canvas.End();
+        if(m_Canvas.Begin(id, canvasSize))
+            m_Canvas.End();
 
         LoadSettings();
         m_IsInitialized = true;
