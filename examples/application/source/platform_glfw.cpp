@@ -37,6 +37,7 @@ struct PlatformGLFW final
     void FinishFrame() override;
     void Quit() override;
 
+    float GetDisplayScaleFactor();
     void UpdatePixelDensity();
 
     Application&    m_Application;
@@ -265,6 +266,15 @@ void PlatformGLFW::Quit()
     glfwPostEmptyEvent();
 }
 
+float PlatformGLFW::GetDisplayScaleFactor() {
+    float xscale = 1.f;
+    float yscale = 1.f;
+    auto monitor = glfwGetPrimaryMonitor();
+    if (monitor)
+        glfwGetMonitorContentScale(monitor, &xscale, &yscale);
+    return 0.5f * (xscale + yscale);
+}
+
 void PlatformGLFW::UpdatePixelDensity()
 {
     float xscale, yscale;
@@ -275,7 +285,7 @@ void PlatformGLFW::UpdatePixelDensity()
     float windowScale      = scale;
     float framebufferScale = scale;
 # else
-    float windowScale      = 1.0f;
+    float windowScale      = GetDisplayScaleFactor();
     float framebufferScale = scale;
 # endif
 
