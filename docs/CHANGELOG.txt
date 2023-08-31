@@ -12,6 +12,8 @@ v0.9.2 (WIP):
 
     CHANGE: Examples: Define IMGUI_DEFINE_MATH_OPERATORS before <imgui.h> (#209), thanks @ocornut
 
+    CHANGE: Canvas: Don't use deprecated SetItemAllowOverlap (#250)
+
     BUGFIX: Editor: Correctly initialize 'width' for view resize code (thx @gnif)
 
     BUGFIX: Examples: Handle node deletion before links (#182)
