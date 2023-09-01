@@ -68,7 +68,7 @@ struct VtxCurrentOffsetRef
     }
 };
 
-static void SentinelDrawCallback(const ImDrawList* parent_list, const ImDrawCmd* cmd)
+static void SentinelDrawCallback(const ImDrawList* /*parent_list*/, const ImDrawCmd* /*cmd*/)
 {
     // This is a sentinel draw callback, it's only purpose is to mark draw list command.
     //IM_ASSERT(false && "This draw callback should never be called.");
