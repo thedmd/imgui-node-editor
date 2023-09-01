@@ -41,6 +41,8 @@ v0.9.2 (WIP):
 
     BUGFIX: Editor: Clean long to int implicit cast warning in crude_json
 
+    BUGFIX: Canvas: Ensure canvas draw commands are separated from other ImGui draw commands (#205, #250)
+
 
 v0.9.1 (2022-08-27):
 
