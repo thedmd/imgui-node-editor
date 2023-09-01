@@ -1,10 +1,9 @@
+#define IMGUI_DEFINE_MATH_OPERATORS
 #include <application.h>
 #include "utilities/builders.h"
 #include "utilities/widgets.h"
 
 #include <imgui_node_editor.h>
-
-#define IMGUI_DEFINE_MATH_OPERATORS
 #include <imgui_internal.h>
 
 #include <string>
@@ -648,7 +647,9 @@ struct Example:
         ImGui::DragFloat("Node Rounding", &editorStyle.NodeRounding, 0.1f, 0.0f, 40.0f);
         ImGui::DragFloat("Node Border Width", &editorStyle.NodeBorderWidth, 0.1f, 0.0f, 15.0f);
         ImGui::DragFloat("Hovered Node Border Width", &editorStyle.HoveredNodeBorderWidth, 0.1f, 0.0f, 15.0f);
+        ImGui::DragFloat("Hovered Node Border Offset", &editorStyle.HoverNodeBorderOffset, 0.1f, -40.0f, 40.0f);
         ImGui::DragFloat("Selected Node Border Width", &editorStyle.SelectedNodeBorderWidth, 0.1f, 0.0f, 15.0f);
+        ImGui::DragFloat("Selected Node Border Offset", &editorStyle.SelectedNodeBorderOffset, 0.1f, -40.0f, 40.0f);
         ImGui::DragFloat("Pin Rounding", &editorStyle.PinRounding, 0.1f, 0.0f, 40.0f);
         ImGui::DragFloat("Pin Border Width", &editorStyle.PinBorderWidth, 0.1f, 0.0f, 15.0f);
         ImGui::DragFloat("Link Strength", &editorStyle.LinkStrength, 1.0f, 0.0f, 500.0f);
@@ -682,7 +683,7 @@ struct Example:
         ImGui::EndHorizontal();
 
         static ImGuiTextFilter filter;
-        filter.Draw("", paneWidth);
+        filter.Draw("##filter", paneWidth);
 
         ImGui::Spacing();
 
@@ -765,6 +766,9 @@ struct Example:
             }
 
             bool isSelected = std::find(selectedNodes.begin(), selectedNodes.end(), node.ID) != selectedNodes.end();
+# if IMGUI_VERSION_NUM >= 18967
+            ImGui::SetNextItemAllowOverlap();
+# endif
             if (ImGui::Selectable((node.Name + "##" + std::to_string(reinterpret_cast<uintptr_t>(node.ID.AsPointer()))).c_str(), &isSelected))
             {
                 if (io.KeyCtrl)
@@ -793,7 +797,11 @@ struct Example:
 
             auto drawList = ImGui::GetWindowDrawList();
             ImGui::SetCursorScreenPos(iconPanelPos);
+# if IMGUI_VERSION_NUM < 18967
             ImGui::SetItemAllowOverlap();
+# else
+            ImGui::SetNextItemAllowOverlap();
+# endif
             if (node.SavedState.empty())
             {
                 if (ImGui::InvisibleButton("save", ImVec2((float)saveIconWidth, (float)saveIconHeight)))
@@ -813,7 +821,11 @@ struct Example:
             }
 
             ImGui::SameLine(0, ImGui::GetStyle().ItemInnerSpacing.x);
+# if IMGUI_VERSION_NUM < 18967
             ImGui::SetItemAllowOverlap();
+# else
+            ImGui::SetNextItemAllowOverlap();
+# endif
             if (!node.SavedState.empty())
             {
                 if (ImGui::InvisibleButton("restore", ImVec2((float)restoreIconWidth, (float)restoreIconHeight)))
@@ -837,7 +849,9 @@ struct Example:
             }
 
             ImGui::SameLine(0, 0);
+# if IMGUI_VERSION_NUM < 18967
             ImGui::SetItemAllowOverlap();
+# endif
             ImGui::Dummy(ImVec2(0, (float)restoreIconHeight));
 
             ImGui::PopID();
@@ -1537,17 +1551,6 @@ struct Example:
 
                 if (ed::BeginDelete())
                 {
-                    ed::LinkId linkId = 0;
-                    while (ed::QueryDeletedLink(&linkId))
-                    {
-                        if (ed::AcceptDeletedItem())
-                        {
-                            auto id = std::find_if(m_Links.begin(), m_Links.end(), [linkId](auto& link) { return link.ID == linkId; });
-                            if (id != m_Links.end())
-                                m_Links.erase(id);
-                        }
-                    }
-
                     ed::NodeId nodeId = 0;
                     while (ed::QueryDeletedNode(&nodeId))
                     {
@@ -1556,6 +1559,17 @@ struct Example:
                             auto id = std::find_if(m_Nodes.begin(), m_Nodes.end(), [nodeId](auto& node) { return node.ID == nodeId; });
                             if (id != m_Nodes.end())
                                 m_Nodes.erase(id);
+                        }
+                    }
+
+                    ed::LinkId linkId = 0;
+                    while (ed::QueryDeletedLink(&linkId))
+                    {
+                        if (ed::AcceptDeletedItem())
+                        {
+                            auto id = std::find_if(m_Links.begin(), m_Links.end(), [linkId](auto& link) { return link.ID == linkId; });
+                            if (id != m_Links.end())
+                                m_Links.erase(id);
                         }
                     }
                 }

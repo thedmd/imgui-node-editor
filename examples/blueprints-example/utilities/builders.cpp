@@ -7,8 +7,8 @@
 // CREDITS
 //   Written by Michal Cichon
 //------------------------------------------------------------------------------
-# include "builders.h"
 # define IMGUI_DEFINE_MATH_OPERATORS
+# include "builders.h"
 # include <imgui_internal.h>
 
 
@@ -72,15 +72,11 @@ void util::BlueprintNodeBuilder::End()
                 headerColor, GetStyle().NodeRounding, 1 | 2);
 #endif
 
-
-            auto headerSeparatorMin = ImVec2(HeaderMin.x, HeaderMax.y);
-            auto headerSeparatorMax = ImVec2(HeaderMax.x, HeaderMin.y);
-
-            if ((headerSeparatorMax.x > headerSeparatorMin.x) && (headerSeparatorMax.y > headerSeparatorMin.y))
+            if (ContentMin.y > HeaderMax.y)
             {
                 drawList->AddLine(
-                    headerSeparatorMin + ImVec2(-(8 - halfBorderWidth), -0.5f),
-                    headerSeparatorMax + ImVec2( (8 - halfBorderWidth), -0.5f),
+                    ImVec2(HeaderMin.x - (8 - halfBorderWidth), HeaderMax.y - 0.5f),
+                    ImVec2(HeaderMax.x + (8 - halfBorderWidth), HeaderMax.y - 0.5f),
                     ImColor(255, 255, 255, 96 * alpha / (3 * 255)), 1.0f);
             }
         }

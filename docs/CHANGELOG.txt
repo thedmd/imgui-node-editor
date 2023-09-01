@@ -1,4 +1,52 @@
-v0.9.1 (WIP):
+v0.9.2 (2023-09-01):
+
+    NEW: Editor: Add offset of hover/select to style (thanks @MultiPain)
+
+    NEW: Editor: Add IMGUI_NODE_EDITOR_API to support building editor as a shared library (#189)
+
+    NEW: Canvas: Add IMGUIEX_CANVAS_API to support building canvas as a shared library (#189)
+
+    CHANGE: Editor: Support ImGui r18836 after SetItemUsingMouseWheel removal (#218), thanks @ocornut
+
+    CHANGE: Editor: Define IMGUI_DEFINE_MATH_OPERATORS before <imgui.h> (#209), thanks @ocornut
+
+    CHANGE: Examples: Define IMGUI_DEFINE_MATH_OPERATORS before <imgui.h> (#209), thanks @ocornut
+
+    CHANGE: Canvas: Don't use deprecated SetItemAllowOverlap (#250)
+
+    CHANGE: Examples: Don't use deprecated SetItemAllowOverlap (#250)
+
+    CHANGE: Editor: Define IMGUI_DEFINE_MATH_OPERATORS before <imgui.h> (#209), thanks @ocornut
+
+    CHANGE: Editor: Unary operator- for ImVec2 is defined by ImGui since r18955 (#248)
+
+    BUGFIX: Editor: Correctly initialize 'width' for view resize code (thx @gnif)
+
+    BUGFIX: Examples: Handle node deletion before links (#182)
+        Deleting node queue connected links for deletion.
+
+    BUGFIX: Examples: Simplify and fix drawing of node header line (#180)
+
+    BUGFIX: Editor: Cleanup tabs.
+
+    BUGFIX: Editor: Use ImGuiKey directly with ImGui r18822 (#183)
+
+    BUGFIX: Examples: Use ImGuiKey directly with ImGui r18822 (#183)
+
+    BUGFIX: Examples: Use ImGuiKey_KeypadEnter with ImGui r18604 (#183)
+
+    BUGFIX: Examples: Add missing <cstdint> include for std::intptr_t (#199)
+
+    BUGFIX: Examples: Don't use empty string as identifier
+
+    BUGFIX: Editor: Clean long to int implicit cast warning in crude_json
+
+    BUGFIX: Canvas: Ensure canvas draw commands are separated from other ImGui draw commands (#205, #250)
+
+    BUGFIX: Editor: Don't call Canvas.End() when Canvas.Begin() failed (#186), thanks @pthom, @TheZoc
+
+
+v0.9.1 (2022-08-27):
 
     CHANGE: Remove unwanted extra frame height from node bottom
 

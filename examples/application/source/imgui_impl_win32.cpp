@@ -93,7 +93,11 @@ bool    ImGui_ImplWin32_Init(void* hwnd)
     io.KeyMap[ImGuiKey_Space] = VK_SPACE;
     io.KeyMap[ImGuiKey_Enter] = VK_RETURN;
     io.KeyMap[ImGuiKey_Escape] = VK_ESCAPE;
+# if defined(IMGUI_VERSION_NUM) && (IMGUI_VERSION_NUM >= 18604)
+    io.KeyMap[ImGuiKey_KeypadEnter] = VK_RETURN;
+# else
     io.KeyMap[ImGuiKey_KeyPadEnter] = VK_RETURN;
+# endif
     io.KeyMap[ImGuiKey_A] = 'A';
     io.KeyMap[ImGuiKey_C] = 'C';
     io.KeyMap[ImGuiKey_V] = 'V';
