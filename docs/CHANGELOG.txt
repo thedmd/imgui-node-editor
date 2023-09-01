@@ -1,5 +1,11 @@
 v0.10.0 (WIP):
 
+    BREAKING: Editor: Ensure CreateItemAction is not activated fom invalid state, thanks @pthom
+        From this point ed::EndCreate() and ed::EndDelete() can only be called when
+        ed::BeginCreate() and ed::BeginDelete() calls were successful.
+
+    BUGFIX: Examples: Call ed::EndCreate() and ed::EndDelete() only when ed::BeginCreate() and ed::BeginDelete() returned true
+
 
 v0.9.2 (2023-09-01):
 

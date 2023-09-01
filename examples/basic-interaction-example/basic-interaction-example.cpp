@@ -153,8 +153,8 @@ struct Example:
                     // visual feedback by changing link thickness and color.
                 }
             }
+            ed::EndCreate(); // Wraps up object creation action handling.
         }
-        ed::EndCreate(); // Wraps up object creation action handling.
 
 
         // Handle deletion action
@@ -181,9 +181,8 @@ struct Example:
                 // You may reject link deletion by calling:
                 // ed::RejectDeletedItem();
             }
+            ed::EndDelete(); // Wrap up deletion action
         }
-        ed::EndDelete(); // Wrap up deletion action
-
 
 
         // End of interaction with editor.

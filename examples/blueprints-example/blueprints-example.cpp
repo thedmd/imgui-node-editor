@@ -1543,11 +1543,11 @@ struct Example:
                             ed::Resume();
                         }
                     }
+
+                    ed::EndCreate();
                 }
                 else
                     newLinkPin = nullptr;
-
-                ed::EndCreate();
 
                 if (ed::BeginDelete())
                 {
@@ -1572,8 +1572,9 @@ struct Example:
                                 m_Links.erase(id);
                         }
                     }
+
+                    ed::EndDelete();
                 }
-                ed::EndDelete();
             }
 
             ImGui::SetCursorScreenPos(cursorTopLeft);

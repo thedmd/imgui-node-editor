@@ -384,8 +384,8 @@ struct Example:
                         }
                     }
                 }
+                ed::EndCreate();
             }
-            ed::EndCreate();
 
             // Handle deletion action ---------------------------------------------------------------------------
             if (ed::BeginDelete())
@@ -405,8 +405,8 @@ struct Example:
                         }
                     }
                 }
+                ed::EndDelete();
             }
-            ed::EndDelete();
 
         ed::End();
         ed::SetCurrentEditor(nullptr);
