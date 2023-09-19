@@ -27,6 +27,11 @@
         static constexpr bool value = (sizeof(yes_type) == sizeof(test<mixin>(0)));  \
     }
 
+// Special sentinel value. This needs to be unique, so allow it to be overridden in the user's ImGui config
+# ifndef ImDrawCallback_ImCanvas
+#     define ImDrawCallback_ImCanvas        (ImDrawCallback)(-2)
+# endif
+
 namespace ImCanvasDetails {
 
 DECLARE_HAS_MEMBER(HasFringeScale, _FringeScale);
@@ -67,12 +72,6 @@ struct VtxCurrentOffsetRef
         return drawList->_CmdHeader.VtxOffset;
     }
 };
-
-static void SentinelDrawCallback(const ImDrawList* parent_list, const ImDrawCmd* cmd)
-{
-    // This is a sentinel draw callback, it's only purpose is to mark draw list command.
-    IM_ASSERT(false && "This draw callback should never be called.");
-}
 
 } // namespace ImCanvasDetails
 
@@ -444,7 +443,7 @@ void ImGuiEx::Canvas::EnterLocalSpace()
     //
     //     More investigation is needed. To get to the bottom of this.
     if ((!m_DrawList->CmdBuffer.empty() && m_DrawList->CmdBuffer.back().ElemCount > 0) || m_DrawList->_Splitter._Count > 1)
-        m_DrawList->AddCallback(&ImCanvasDetails::SentinelDrawCallback, nullptr);
+        m_DrawList->AddCallback(ImDrawCallback_ImCanvas, nullptr);
 
 # if defined(IMGUI_HAS_VIEWPORT)
     auto window = ImGui::GetCurrentWindow();
@@ -556,9 +555,9 @@ void ImGuiEx::Canvas::LeaveLocalSpace()
     // Remove sentinel draw command if present
     if (m_DrawListCommadBufferSize > 0)
     {
-        if (m_DrawList->CmdBuffer.size() > m_DrawListCommadBufferSize && m_DrawList->CmdBuffer[m_DrawListCommadBufferSize].UserCallback == &ImCanvasDetails::SentinelDrawCallback)
+        if (m_DrawList->CmdBuffer.size() > m_DrawListCommadBufferSize && m_DrawList->CmdBuffer[m_DrawListCommadBufferSize].UserCallback == ImDrawCallback_ImCanvas)
             m_DrawList->CmdBuffer.erase(m_DrawList->CmdBuffer.Data + m_DrawListCommadBufferSize);
-        else if (m_DrawList->CmdBuffer.size() >= m_DrawListCommadBufferSize && m_DrawList->CmdBuffer[m_DrawListCommadBufferSize - 1].UserCallback == &ImCanvasDetails::SentinelDrawCallback)
+        else if (m_DrawList->CmdBuffer.size() >= m_DrawListCommadBufferSize && m_DrawList->CmdBuffer[m_DrawListCommadBufferSize - 1].UserCallback == ImDrawCallback_ImCanvas)
             m_DrawList->CmdBuffer.erase(m_DrawList->CmdBuffer.Data + m_DrawListCommadBufferSize - 1);
     }
 
