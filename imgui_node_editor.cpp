@@ -1965,7 +1965,8 @@ void ed::EditorContext::Suspend(SuspendFlags flags)
     IM_ASSERT(m_DrawList != nullptr && "Suspend was called outiside of Begin/End.");
     auto lastChannel = m_DrawList->_Splitter._Current;
     m_DrawList->ChannelsSetCurrent(m_ExternalChannel);
-    m_Canvas.Suspend();
+    if (m_IsCanvasVisible)
+        m_Canvas.Suspend();
     m_DrawList->ChannelsSetCurrent(lastChannel);
     if ((flags & SuspendFlags::KeepSplitter) != SuspendFlags::KeepSplitter)
         ImDrawList_SwapSplitter(m_DrawList, m_Splitter);
@@ -1978,7 +1979,8 @@ void ed::EditorContext::Resume(SuspendFlags flags)
         ImDrawList_SwapSplitter(m_DrawList, m_Splitter);
     auto lastChannel = m_DrawList->_Splitter._Current;
     m_DrawList->ChannelsSetCurrent(m_ExternalChannel);
-    m_Canvas.Resume();
+    if (m_IsCanvasVisible)
+        m_Canvas.Resume();
     m_DrawList->ChannelsSetCurrent(lastChannel);
 }
 
