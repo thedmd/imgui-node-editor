@@ -421,6 +421,15 @@ void ImGuiEx::Canvas::EnterLocalSpace()
     auto clipped_clip_rect = m_DrawList->_ClipRectStack.back();
     ImGui::PopClipRect();
 
+# if IMGUI_EX_CANVAS_DEFERED()
+    m_Ranges.resize(m_Ranges.Size + 1);
+    m_CurrentRange = &m_Ranges.back();
+    m_CurrentRange->BeginComandIndex = ImMax(m_DrawList->CmdBuffer.Size, 0);
+    m_CurrentRange->BeginVertexIndex = m_DrawList->_VtxCurrentIdx + ImVtxOffsetRef(m_DrawList);
+# endif
+    m_DrawListCommadBufferSize       = ImMax(m_DrawList->CmdBuffer.Size, 0);
+    m_DrawListStartVertexIndex       = m_DrawList->_VtxCurrentIdx + ImVtxOffsetRef(m_DrawList);
+
     // Make sure we do not share draw command with anyone. We don't want to mess
     // with someones clip rectangle.
 
@@ -436,15 +445,6 @@ void ImGuiEx::Canvas::EnterLocalSpace()
     //     More investigation is needed. To get to the bottom of this.
     if ((!m_DrawList->CmdBuffer.empty() && m_DrawList->CmdBuffer.back().ElemCount > 0) || m_DrawList->_Splitter._Count > 1)
         m_DrawList->AddCallback(&ImCanvasDetails::SentinelDrawCallback, nullptr);
-
-# if IMGUI_EX_CANVAS_DEFERED()
-    m_Ranges.resize(m_Ranges.Size + 1);
-    m_CurrentRange = &m_Ranges.back();
-    m_CurrentRange->BeginComandIndex = ImMax(m_DrawList->CmdBuffer.Size - 1, 0);
-    m_CurrentRange->BeginVertexIndex = m_DrawList->_VtxCurrentIdx + ImVtxOffsetRef(m_DrawList);
-# endif
-    m_DrawListCommadBufferSize       = ImMax(m_DrawList->CmdBuffer.Size - 1, 0);
-    m_DrawListStartVertexIndex       = m_DrawList->_VtxCurrentIdx + ImVtxOffsetRef(m_DrawList);
 
 # if defined(IMGUI_HAS_VIEWPORT)
     auto window = ImGui::GetCurrentWindow();
@@ -554,8 +554,13 @@ void ImGuiEx::Canvas::LeaveLocalSpace()
     }
 
     // Remove sentinel draw command if present
-    if (m_DrawListCommadBufferSize > 0 && m_DrawList->CmdBuffer.size() >= m_DrawListCommadBufferSize && m_DrawList->CmdBuffer[m_DrawListCommadBufferSize - 1].UserCallback == &ImCanvasDetails::SentinelDrawCallback)
-        m_DrawList->CmdBuffer.erase(m_DrawList->CmdBuffer.Data + m_DrawListCommadBufferSize - 1);
+    if (m_DrawListCommadBufferSize > 0)
+    {
+        if (m_DrawList->CmdBuffer.size() > m_DrawListCommadBufferSize && m_DrawList->CmdBuffer[m_DrawListCommadBufferSize].UserCallback == &ImCanvasDetails::SentinelDrawCallback)
+            m_DrawList->CmdBuffer.erase(m_DrawList->CmdBuffer.Data + m_DrawListCommadBufferSize);
+        else if (m_DrawList->CmdBuffer.size() >= m_DrawListCommadBufferSize && m_DrawList->CmdBuffer[m_DrawListCommadBufferSize - 1].UserCallback == &ImCanvasDetails::SentinelDrawCallback)
+            m_DrawList->CmdBuffer.erase(m_DrawList->CmdBuffer.Data + m_DrawListCommadBufferSize - 1);
+    }
 
     auto& fringeScale = ImFringeScaleRef(m_DrawList);
     fringeScale = m_LastFringeScale;
