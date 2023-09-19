@@ -1,6 +1,6 @@
 v0.9.3 (WIP):
 
-    nothing yet
+    BUGFIX: Canvas: Ensure SentinelDrawCallback cleanup (#255)
 
 
 v0.9.2 (2023-09-01):
