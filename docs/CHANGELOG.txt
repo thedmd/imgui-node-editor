@@ -1,3 +1,8 @@
+v0.9.3 (WIP):
+
+    nothing yet
+
+
 v0.9.2 (2023-09-01):
 
     NEW: Editor: Add offset of hover/select to style (thanks @MultiPain)
