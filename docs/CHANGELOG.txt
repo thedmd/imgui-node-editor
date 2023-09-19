@@ -1,5 +1,7 @@
 v0.9.3 (WIP):
 
+    CHANGE: Canvas: Use ImDrawCallback_ImCanvas macro as draw callback sentinel (#256), thanks @nspitko
+
     BUGFIX: Canvas: Ensure SentinelDrawCallback cleanup (#255)
 
     BUGFIX: Editor: Don't call Reasume/Suspend on invisible canvas (#255)
