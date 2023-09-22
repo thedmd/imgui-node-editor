@@ -9,3 +9,4 @@ bin
 *.user
 *.ini
 *.json
+build_win
