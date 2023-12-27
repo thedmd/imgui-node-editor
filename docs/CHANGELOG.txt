@@ -1,5 +1,7 @@
 v0.9.4 (WIP):
 
+    NEW: Editor: Add smooth zoom (#266)
+
     BUGFIX: Canvas: Remember index of first command buffer to not miss updating any used (#260)
 
     BUGFIX: Editor: Don't duplicated ImVec2/ImVec3 == != operators defined since ImGui r19002 (#268)

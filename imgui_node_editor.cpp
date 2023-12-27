@@ -3449,8 +3449,7 @@ bool ed::NavigateAction::HandleZoom(const Control& control)
     m_Animation.Finish();
 
     auto mousePos = io.MousePos;
-    auto steps    = (int)io.MouseWheel;
-    auto newZoom  = MatchZoom(steps, m_ZoomLevels[steps < 0 ? 0 : m_ZoomLevelCount - 1]);
+    auto newZoom  = GetNextZoom(io.MouseWheel);
 
     auto oldView   = GetView();
     m_Zoom = newZoom;
@@ -3624,6 +3623,32 @@ void ed::NavigateAction::SetViewRect(const ImRect& rect)
 ImRect ed::NavigateAction::GetViewRect() const
 {
     return m_Canvas.CalcViewRect(GetView());
+}
+
+float ed::NavigateAction::GetNextZoom(float steps)
+{
+    if (this->Editor->GetConfig().EnableSmoothZoom)
+    {
+        return MatchSmoothZoom(steps);
+    }
+    else
+    {
+        auto fixedSteps = (int)steps;
+        return MatchZoom(fixedSteps, m_ZoomLevels[fixedSteps < 0 ? 0 : m_ZoomLevelCount - 1]);
+    }
+}
+
+float ed::NavigateAction::MatchSmoothZoom(float steps)
+{
+    const auto power = Editor->GetConfig().SmoothZoomPower;
+
+    const auto newZoom = m_Zoom * powf(power, steps);
+    if (newZoom < m_ZoomLevels[0])
+        return m_ZoomLevels[0];
+    else if (newZoom > m_ZoomLevels[m_ZoomLevelCount - 1])
+        return m_ZoomLevels[m_ZoomLevelCount - 1];
+    else
+        return newZoom;
 }
 
 float ed::NavigateAction::MatchZoom(int steps, float fallbackZoom)

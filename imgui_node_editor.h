@@ -105,6 +105,8 @@ struct Config
     int                     SelectButtonIndex;      // Mouse button index select action will react to (0-left, 1-right, 2-middle)
     int                     NavigateButtonIndex;    // Mouse button index navigate action will react to (0-left, 1-right, 2-middle)
     int                     ContextMenuButtonIndex; // Mouse button index context menu action will react to (0-left, 1-right, 2-middle)
+    bool                    EnableSmoothZoom;
+    float                   SmoothZoomPower;
 
     Config()
         : SettingsFile("NodeEditor.json")
@@ -121,6 +123,12 @@ struct Config
         , SelectButtonIndex(0)
         , NavigateButtonIndex(1)
         , ContextMenuButtonIndex(1)
+        , EnableSmoothZoom(false)
+# ifdef __APPLE__
+        , SmoothZoomPower(1.1f)
+# else
+        , SmoothZoomPower(1.3f)
+# endif
     {
     }
 };
