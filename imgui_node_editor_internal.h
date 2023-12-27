@@ -886,6 +886,8 @@ private:
 
     void NavigateTo(const ImRect& target, float duration = -1.0f, NavigationReason reason = NavigationReason::Unknown);
 
+    float GetNextZoom(float steps);
+    float MatchSmoothZoom(float steps);
     float MatchZoom(int steps, float fallbackZoom);
     int MatchZoomIndex(int direction);
 

@@ -6,6 +6,8 @@ v0.10.0 (WIP):
 
     NEW: Canvas: Add example of zooming at fixed point (#270)
 
+    NEW: Editor: Add smooth zoom (#266)
+
     CHANGE: Canvas: Use ImDrawCallback_ImCanvas macro as draw callback sentinel (#256), thanks @nspitko
 
     BUGFIX: Examples: Call ed::EndCreate() and ed::EndDelete() only when ed::BeginCreate() and ed::BeginDelete() returned true
