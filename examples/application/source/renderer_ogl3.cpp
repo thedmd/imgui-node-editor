@@ -32,8 +32,10 @@ using namespace gl;
 #     include <glbinding/glbinding.h>// Initialize with glbinding::initialize()
 #     include <glbinding/gl/gl.h>
 using namespace gl;
-# else
+# elif defined(IMGUI_IMPL_OPENGL_LOADER_CUSTOM)
 #     include IMGUI_IMPL_OPENGL_LOADER_CUSTOM
+# else
+#     include "imgui_impl_opengl3_loader.h"
 # endif
 
 struct ImTexture
