@@ -188,7 +188,27 @@ struct Example:
                 canvas.SetView(drawStartPoint + ImGui::GetMouseDragDelta(1, 0.0f) * viewScale, viewScale);
             }
             else if (isDragging)
+            {
                 isDragging = false;
+            }
+            else if (!isDragging && ImGui::IsItemHovered() && io.MouseWheel)
+            {
+                auto mousePos     = io.MousePos;
+
+                // apply new view scale
+                auto oldView      = canvas.View();
+                auto newViewScale = viewScale * powf(1.1f, io.MouseWheel);
+                canvas.SetView(viewOrigin, newViewScale);
+                auto newView      = canvas.View();
+
+                // calculate origin offset to keep mouse position fixed
+                auto screenPosition = canvas.FromLocal(mousePos, oldView);
+                auto canvasPosition = canvas.ToLocal(screenPosition, newView);
+                auto originOffset   = (canvasPosition - mousePos) * newViewScale;
+
+                // apply new view
+                canvas.SetView(viewOrigin + originOffset, newViewScale);
+            }
 
             viewRect = canvas.ViewRect();
 
