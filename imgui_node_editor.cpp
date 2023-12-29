@@ -3323,7 +3323,10 @@ ed::EditorAction::AcceptResult ed::NavigateAction::Accept(const Control& control
     if (m_IsActive)
         return False;
 
-    if (Editor->CanAcceptUserInput() /*&& !ImGui::IsAnyItemActive()*/ && ImGui::IsMouseDragging(Editor->GetConfig().NavigateButtonIndex, 0.0f))
+    if (Editor->CanAcceptUserInput() /*&& !ImGui::IsAnyItemActive()*/
+        && ImGui::IsMouseDragging(Editor->GetConfig().NavigateButtonIndex, 0.0f)
+        && !ImGui::IsMouseDragPastThreshold(Editor->GetConfig().NavigateButtonIndex) // Make sure that if the dragging started in another window, we don't pick it up.
+    )
     {
         m_IsActive    = true;
         m_ScrollStart = m_Scroll;
