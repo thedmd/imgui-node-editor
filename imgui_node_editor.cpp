@@ -1,3 +1,10 @@
+//Disable a bunch of warnings for now
+#ifndef _MSC_VER
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wshadow"
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+#endif
+
 //------------------------------------------------------------------------------
 // VERSION 0.9.1
 //
@@ -5853,3 +5860,7 @@ void ed::Config::EndSave()
     if (EndSaveSession)
         EndSaveSession(UserPointer);
 }
+
+#ifndef _MSC_VER
+#pragma GCC diagnostic pop
+#endif

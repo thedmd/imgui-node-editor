@@ -1,3 +1,11 @@
+//Disable a bunch of warnings for now
+#ifndef _MSC_VER
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wshadow"
+#pragma GCC diagnostic ignored "-Wunused-but-set-variable"
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+#endif
+
 //------------------------------------------------------------------------------
 // VERSION 0.1
 //
@@ -395,17 +403,19 @@ inline ImCubicBezierIntersectResult ImCubicBezierLineIntersect(const ImVec2& p0,
         return count;
     };
 
-    // https://github.com/kaishiqi/Geometric-Bezier/blob/master/GeometricBezier/src/kaishiqi/geometric/intersection/Intersection.as
-    //
-    // Start with Bezier using Bernstein polynomials for weighting functions:
-    //     (1-t^3)P0 + 3t(1-t)^2P1 + 3t^2(1-t)P2 + t^3P3
-    //
-    // Expand and collect terms to form linear combinations of original Bezier
-    // controls.  This ends up with a vector cubic in t:
-    //     (-P0+3P1-3P2+P3)t^3 + (3P0-6P1+3P2)t^2 + (-3P0+3P1)t + P0
-    //             /\                  /\                /\       /\
-    //             ||                  ||                ||       ||
-    //             c3                  c2                c1       c0
+    /*
+       https://github.com/kaishiqi/Geometric-Bezier/blob/master/GeometricBezier/src/kaishiqi/geometric/intersection/Intersection.as
+
+       Start with Bezier using Bernstein polynomials for weighting functions:
+           (1-t^3)P0 + 3t(1-t)^2P1 + 3t^2(1-t)P2 + t^3P3
+
+       Expand and collect terms to form linear combinations of original Bezier
+       controls.  This ends up with a vector cubic in t:
+           (-P0+3P1-3P2+P3)t^3 + (3P0-6P1+3P2)t^2 + (-3P0+3P1)t + P0
+                   /\                  /\                /\       /\
+                   ||                  ||                ||       ||
+                   c3                  c2                c1       c0
+     */
 
     // Calculate the coefficients
     auto c3 =     -p0 + 3 * p1 - 3 * p2 + p3;
@@ -673,3 +683,7 @@ inline void ImCubicBezierFixedStep(F& callback, const ImCubicBezierPoints& curve
 
 //------------------------------------------------------------------------------
 # endif // __IMGUI_BEZIER_MATH_INL__
+
+#ifndef _MSC_VER
+#pragma GCC diagnostic pop
+#endif

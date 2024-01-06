@@ -1,3 +1,11 @@
+﻿//Disable a bunch of warnings for now
+#ifndef _MSC_VER
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wshadow"
+#pragma GCC diagnostic ignored "-Wunused-but-set-variable"
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+#endif
+
 // Crude implementation of JSON value object and parser.
 //
 // VERSION 0.1
@@ -888,3 +896,8 @@ bool value::save(const string& path, const int indent, const char indent_char) c
 # endif
 
 } // namespace crude_json
+
+//Disable a bunch of warnings for now
+#ifndef _MSC_VER
+#pragma GCC diagnostic pop
+#endif

@@ -43,7 +43,6 @@ inline ImVec2 operator-(const ImVec2& lhs)
 }
 # endif
 
-
 //------------------------------------------------------------------------------
 inline float ImLength(float v)
 {

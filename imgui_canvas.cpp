@@ -122,7 +122,7 @@ bool ImGuiEx::Canvas::Begin(ImGuiID id, const ImVec2& size)
 
     // #debug: Canvas content.
     //m_DrawList->AddRectFilled(m_StartPos, m_StartPos + m_CurrentSize, IM_COL32(0, 0, 0, 64));
-    //m_DrawList->AddRect(m_WidgetRect.Min, m_WidgetRect.Max, IM_COL32(255, 0, 255, 64));
+    m_DrawList->AddRect(m_WidgetRect.Min, m_WidgetRect.Max, IM_COL32(255, 0, 255, 64));
 
     ImGui::SetCursorScreenPos(ImVec2(0.0f, 0.0f));
 
@@ -561,6 +561,20 @@ void ImGuiEx::Canvas::LeaveLocalSpace()
             m_DrawList->CmdBuffer.erase(m_DrawList->CmdBuffer.Data + m_DrawListCommadBufferSize);
         else if (m_DrawList->CmdBuffer.size() >= m_DrawListCommadBufferSize && m_DrawList->CmdBuffer[m_DrawListCommadBufferSize - 1].UserCallback == ImDrawCallback_ImCanvas)
             m_DrawList->CmdBuffer.erase(m_DrawList->CmdBuffer.Data + m_DrawListCommadBufferSize - 1);
+
+        //DEBUG: Search the *entire* draw list for the sentinel command
+        for(int i=0; i<m_DrawList->CmdBuffer.size(); i++)
+        {
+            if(m_DrawList->CmdBuffer[i].UserCallback == ImDrawCallback_ImCanvas)
+            {
+                /*fprintf(stderr, "found and removed sentinel at offset %d, expected %d or %d\n",
+                    i,
+                    m_DrawListCommadBufferSize,
+                    m_DrawListCommadBufferSize-1);*/
+
+                m_DrawList->CmdBuffer.erase(m_DrawList->CmdBuffer.Data + i);
+            }
+        }
     }
 
     auto& fringeScale = ImFringeScaleRef(m_DrawList);

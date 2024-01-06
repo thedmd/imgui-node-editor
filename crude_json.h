@@ -1,4 +1,10 @@
-﻿// Crude implementation of JSON value object and parser.
+﻿//Disable a bunch of warnings for now
+#ifndef _MSC_VER
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wshadow"
+#endif
+
+// Crude implementation of JSON value object and parser.
 //
 // VERSION 0.1
 //
@@ -248,3 +254,8 @@ template <> inline       number*  value::get_ptr<number>()        { if (m_Type =
 } // namespace crude_json
 
 # endif // __CRUDE_JSON_H__
+
+//Disable a bunch of warnings for now
+#ifndef _MSC_VER
+#pragma GCC diagnostic pop
+#endif
