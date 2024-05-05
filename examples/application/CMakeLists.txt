@@ -1,10 +1,10 @@
 project(application)
 
 set(_Application_Sources
-    include/application.h
-    source/application.cpp
-    source/entry_point.cpp
-    source/imgui_extra_keys.h
+include/application.h
+source/application.cpp
+source/entry_point.cpp
+source/imgui_extra_keys.h
     source/config.h.in
     source/setup.h
     source/platform.h
@@ -13,11 +13,14 @@ set(_Application_Sources
     source/renderer.h
     source/renderer_dx11.cpp
     source/renderer_ogl3.cpp
-)
-
+    )
+    
 add_library(application STATIC)
 
-target_include_directories(application PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_include_directories(application PUBLIC 
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include/application>
+)
 
 find_package(imgui REQUIRED)
 find_package(stb_image REQUIRED)
@@ -107,3 +110,8 @@ source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES ${_Application_Sources})
 target_sources(application PRIVATE ${_Application_Sources})
 
 set_property(TARGET application PROPERTY FOLDER "examples")
+
+install(
+    FILES       ${CMAKE_CURRENT_SOURCE_DIR}/include/application.h
+    DESTINATION include/application
+    )
