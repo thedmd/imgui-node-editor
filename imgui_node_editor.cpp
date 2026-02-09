@@ -82,6 +82,21 @@ static inline ImGuiKey GetKeyIndexForD()
 }
 # endif
 
+static inline bool IsKeyPressedCompat(ImGuiKey key)
+{
+# if defined(IMGUI_VERSION_NUM) && (IMGUI_VERSION_NUM >= 18822)
+    return ImGui::IsKeyPressed(key);
+# else
+    return ImGui::IsKeyPressed(ImGui::GetKeyIndex(key));
+# endif
+}
+
+static inline void FloorRect(ImRect& rect)
+{
+    rect.Min = ImFloor(rect.Min);
+    rect.Max = ImFloor(rect.Max);
+}
+
 } // namespace Detail
 } // namespace NodeEditor
 } // namespace ax
@@ -1648,7 +1663,7 @@ void ed::EditorContext::SetNodePosition(NodeId nodeId, const ImVec2& position)
     if (node->m_Bounds.Min != position)
     {
         node->m_Bounds.Translate(position - node->m_Bounds.Min);
-        node->m_Bounds.Floor();
+        FloorRect(node->m_Bounds);
         MakeDirty(NodeEditor::SaveReasonFlags::Position, node);
     }
 }
@@ -1668,7 +1683,7 @@ void ed::EditorContext::SetGroupSize(NodeId nodeId, const ImVec2& size)
     {
         node->m_GroupBounds.Min = node->m_Bounds.Min;
         node->m_GroupBounds.Max = node->m_Bounds.Min + size;
-        node->m_GroupBounds.Floor();
+        FloorRect(node->m_GroupBounds);
         MakeDirty(NodeEditor::SaveReasonFlags::Size, node);
     }
 }
@@ -1746,10 +1761,10 @@ void ed::EditorContext::UpdateNodeState(Node* node)
 
     node->m_Bounds.Min      = settings->m_Location;
     node->m_Bounds.Max      = node->m_Bounds.Min + settings->m_Size;
-    node->m_Bounds.Floor();
+    FloorRect(node->m_Bounds);
     node->m_GroupBounds.Min = settings->m_Location;
     node->m_GroupBounds.Max = node->m_GroupBounds.Min + settings->m_GroupSize;
-    node->m_GroupBounds.Floor();
+    FloorRect(node->m_GroupBounds);
 }
 
 void ed::EditorContext::RemoveSettings(Object* object)
@@ -3799,7 +3814,7 @@ bool ed::SizeAction::Process(const Control& control)
         if ((m_Pivot & NodeRegion::Right) == NodeRegion::Right)
             newBounds.Max.x = ImMax(newBounds.Min.x + minimumSize.x, Editor->AlignPointToGrid(newBounds.Max.x + dragOffset.x));
 
-        newBounds.Floor();
+        FloorRect(newBounds);
 
         m_LastSize = newBounds.GetSize();
 
@@ -4391,15 +4406,15 @@ ed::EditorAction::AcceptResult ed::ShortcutAction::Accept(const Control& control
     Action candidateAction = None;
 
     auto& io = ImGui::GetIO();
-    if (io.KeyCtrl && !io.KeyShift && !io.KeyAlt && ImGui::IsKeyPressed(ImGui::GetKeyIndex(ImGuiKey_X)))
+    if (io.KeyCtrl && !io.KeyShift && !io.KeyAlt && IsKeyPressedCompat(ImGuiKey_X))
         candidateAction = Cut;
-    if (io.KeyCtrl && !io.KeyShift && !io.KeyAlt && ImGui::IsKeyPressed(ImGui::GetKeyIndex(ImGuiKey_C)))
+    if (io.KeyCtrl && !io.KeyShift && !io.KeyAlt && IsKeyPressedCompat(ImGuiKey_C))
         candidateAction = Copy;
-    if (io.KeyCtrl && !io.KeyShift && !io.KeyAlt && ImGui::IsKeyPressed(ImGui::GetKeyIndex(ImGuiKey_V)))
+    if (io.KeyCtrl && !io.KeyShift && !io.KeyAlt && IsKeyPressedCompat(ImGuiKey_V))
         candidateAction = Paste;
     if (io.KeyCtrl && !io.KeyShift && !io.KeyAlt && ImGui::IsKeyPressed(GetKeyIndexForD()))
         candidateAction = Duplicate;
-    if (!io.KeyCtrl && !io.KeyShift && !io.KeyAlt && ImGui::IsKeyPressed(ImGui::GetKeyIndex(ImGuiKey_Space)))
+    if (!io.KeyCtrl && !io.KeyShift && !io.KeyAlt && IsKeyPressedCompat(ImGuiKey_Space))
         candidateAction = CreateNode;
 
     if (candidateAction != None)
@@ -4953,7 +4968,7 @@ ed::EditorAction::AcceptResult ed::DeleteItemsAction::Accept(const Control& cont
         return False;
 
     auto& io = ImGui::GetIO();
-    if (Editor->CanAcceptUserInput() && ImGui::IsKeyPressed(ImGui::GetKeyIndex(ImGuiKey_Delete)) && Editor->AreShortcutsEnabled())
+    if (Editor->CanAcceptUserInput() && IsKeyPressedCompat(ImGuiKey_Delete) && Editor->AreShortcutsEnabled())
     {
         auto& selection = Editor->GetSelectedObjects();
         if (!selection.empty())
@@ -5309,7 +5324,7 @@ void ed::NodeBuilder::End()
     ImGui::EndGroup();
 
     m_NodeRect = ImGui_GetItemRect();
-    m_NodeRect.Floor();
+    FloorRect(m_NodeRect);
 
     if (m_CurrentNode->m_Bounds.GetSize() != m_NodeRect.GetSize())
     {
@@ -5417,7 +5432,7 @@ void ed::NodeBuilder::PinRect(const ImVec2& a, const ImVec2& b)
     IM_ASSERT(nullptr != m_CurrentPin);
 
     m_CurrentPin->m_Bounds = ImRect(a, b);
-    m_CurrentPin->m_Bounds.Floor();
+    FloorRect(m_CurrentPin->m_Bounds);
     m_ResolvePinRect     = false;
 }
 
@@ -5467,7 +5482,7 @@ void ed::NodeBuilder::Group(const ImVec2& size)
         ImGui::Dummy(size);
 
     m_GroupBounds = ImGui_GetItemRect();
-    m_GroupBounds.Floor();
+    FloorRect(m_GroupBounds);
 }
 
 ImDrawList* ed::NodeBuilder::GetUserBackgroundDrawList() const
