@@ -185,6 +185,16 @@ void ed::Log(const char* fmt, ...)
 # endif
 }
 
+namespace ImGui
+{
+    ImGuiKey GetKeyIndex(ImGuiKey key)
+    {
+        ImGuiContext& g = *GImGui;
+        IM_ASSERT(IsNamedKey(key));
+        const ImGuiKeyData* key_data = GetKeyData(key);
+        return (ImGuiKey)(key_data - g.IO.KeysData);
+    }
+}
 
 //------------------------------------------------------------------------------
 static bool IsGroup(const ed::Node* node)
