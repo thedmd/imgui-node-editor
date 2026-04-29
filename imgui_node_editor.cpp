@@ -1802,6 +1802,32 @@ ed::Node* ed::EditorContext::FindNodeAt(const ImVec2& p)
     return nullptr;
 }
 
+bool ed::EditorContext::IsNodeObscuredAt(Node* node, const ImVec2& p) const
+{
+    // m_Nodes is sorted by ascending Z (stable on creation order), so any node
+    // appearing after `node` in m_Nodes is drawn on top of it. Only scan that
+    // suffix to know whether `node` is visually covered at point p.
+    auto it = std::find_if(m_Nodes.begin(), m_Nodes.end(),
+        [node](const ObjectWrapper<Node>& w) { return w.m_Object == node; });
+    if (it == m_Nodes.end())
+        return false;
+    for (++it; it != m_Nodes.end(); ++it)
+    {
+        Node* other = it->m_Object;
+        if (other == node)
+            continue;
+        // Don't gate on m_IsLive: it is reset at frame start and only re-set
+        // inside each node's own BeginNode. This function may be called while
+        // building an earlier node, before later ones have been revived. Use
+        // the persistent last-frame geometry (m_Bounds) instead.
+        if (ImRect_IsEmpty(other->m_Bounds))
+            continue;
+        if (other->m_Bounds.Contains(p))
+            return true;
+    }
+    return false;
+}
+
 void ed::EditorContext::FindNodesInRect(const ImRect& r, vector<Node*>& result, bool append, bool includeIntersecting)
 {
     if (!append)
@@ -5150,7 +5176,9 @@ ed::Object* ed::DeleteItemsAction::DropCurrentItem()
 ed::NodeBuilder::NodeBuilder(EditorContext* editor):
     Editor(editor),
     m_CurrentNode(nullptr),
-    m_CurrentPin(nullptr)
+    m_CurrentPin(nullptr),
+    m_HoverSuppressionActive(false),
+    m_SavedHoveredId(0)
 {
 }
 
@@ -5240,10 +5268,34 @@ void ed::NodeBuilder::Begin(NodeId nodeId)
         ImGui::SetCursorPos(ImGui::GetCursorPos() + ImVec2(editorStyle.NodePadding.x, editorStyle.NodePadding.y));
         ImGui::BeginGroup();
     }
+
+    // If this node is currently covered by another node drawn on top of it
+    // under the cursor, prevent its widgets from claiming hover/active.
+    // ImGui uses "first hovered wins": without this, widgets in a back node
+    // submitted earlier in user code would steal hover from the visually
+    // front node. Set HoveredId to a sentinel so subsequent ItemHoverable()
+    // calls bail out; End() restores the previous value. ActiveId is left
+    // untouched so any in-progress interaction keeps working.
+    m_HoverSuppressionActive = false;
+    if (Editor->IsNodeObscuredAt(m_CurrentNode, ImGui::GetMousePos()))
+    {
+        ImGuiContext& g = *ImGui::GetCurrentContext();
+        m_SavedHoveredId = g.HoveredId;
+        g.HoveredId = ~static_cast<ImGuiID>(0); // sentinel, no real item will match
+        m_HoverSuppressionActive = true;
+    }
 }
 
 void ed::NodeBuilder::End()
 {
+    // Restore HoveredId before any further item submission.
+    if (m_HoverSuppressionActive)
+    {
+        ImGuiContext& g = *ImGui::GetCurrentContext();
+        g.HoveredId = m_SavedHoveredId;
+        m_HoverSuppressionActive = false;
+    }
+
     IM_ASSERT(nullptr != m_CurrentNode);
 
     if (auto drawList = Editor->GetDrawList())

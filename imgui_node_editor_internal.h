@@ -1192,6 +1192,11 @@ struct NodeBuilder
     ImDrawListSplitter m_Splitter;
     ImDrawListSplitter m_PinSplitter;
 
+    // Used by Begin/End to suppress hover claims from widgets in a node that
+    // is currently covered by another node under the cursor (see Begin()).
+    bool      m_HoverSuppressionActive;
+    ImGuiID   m_SavedHoveredId;
+
     NodeBuilder(EditorContext* editor);
     ~NodeBuilder();
 
@@ -1346,6 +1351,12 @@ struct EditorContext
     Node* FindNodeAt(const ImVec2& p);
     void FindNodesInRect(const ImRect& r, vector<Node*>& result, bool append = false, bool includeIntersecting = true);
     void FindLinksInRect(const ImRect& r, vector<Link*>& result, bool append = false);
+
+    // True if any node drawn on top of `node` contains `p`
+    // (`p` is in the same coordinate space as Node::m_Bounds).
+    // Drawing order follows m_Nodes after Z-sort, so we only need to scan
+    // the suffix that follows `node` in m_Nodes.
+    bool IsNodeObscuredAt(Node* node, const ImVec2& p) const;
 
     bool HasAnyLinks(NodeId nodeId) const;
     bool HasAnyLinks(PinId pinId) const;
