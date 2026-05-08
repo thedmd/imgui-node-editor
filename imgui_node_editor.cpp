@@ -933,16 +933,22 @@ void ed::Link::Draw(ImDrawList* drawList, ImU32 color, float extraThickness) con
     if (!m_IsLive)
         return;
 
-    const auto curve = GetCurve();
+    const auto segmentCount = GetSegmentCount();
+    for (auto segmentIndex = 0; segmentIndex < segmentCount; ++segmentIndex)
+    {
+        const auto curve = GetSegmentCurve(segmentIndex);
+        const bool firstSegment = segmentIndex == 0;
+        const bool lastSegment = segmentIndex == segmentCount - 1;
 
-    ImDrawList_AddBezierWithArrows(drawList, curve, m_Thickness + extraThickness,
-        m_StartPin && m_StartPin->m_ArrowSize  > 0.0f ? m_StartPin->m_ArrowSize  + extraThickness : 0.0f,
-        m_StartPin && m_StartPin->m_ArrowWidth > 0.0f ? m_StartPin->m_ArrowWidth + extraThickness : 0.0f,
-          m_EndPin &&   m_EndPin->m_ArrowSize  > 0.0f ?   m_EndPin->m_ArrowSize  + extraThickness : 0.0f,
-          m_EndPin &&   m_EndPin->m_ArrowWidth > 0.0f ?   m_EndPin->m_ArrowWidth + extraThickness : 0.0f,
-        true, color, 1.0f,
-        m_StartPin && m_StartPin->m_SnapLinkToDir ? &m_StartPin->m_Dir : nullptr,
-        m_EndPin   &&   m_EndPin->m_SnapLinkToDir ?   &m_EndPin->m_Dir : nullptr);
+        ImDrawList_AddBezierWithArrows(drawList, curve, m_Thickness + extraThickness,
+            firstSegment && m_StartPin && m_StartPin->m_ArrowSize  > 0.0f ? m_StartPin->m_ArrowSize  + extraThickness : 0.0f,
+            firstSegment && m_StartPin && m_StartPin->m_ArrowWidth > 0.0f ? m_StartPin->m_ArrowWidth + extraThickness : 0.0f,
+            lastSegment  &&   m_EndPin &&   m_EndPin->m_ArrowSize  > 0.0f ?   m_EndPin->m_ArrowSize  + extraThickness : 0.0f,
+            lastSegment  &&   m_EndPin &&   m_EndPin->m_ArrowWidth > 0.0f ?   m_EndPin->m_ArrowWidth + extraThickness : 0.0f,
+            true, color, 1.0f,
+            firstSegment && m_StartPin && m_StartPin->m_SnapLinkToDir ? &m_StartPin->m_Dir : nullptr,
+            lastSegment  &&   m_EndPin &&   m_EndPin->m_SnapLinkToDir ?   &m_EndPin->m_Dir : nullptr);
+    }
 }
 
 void ed::Link::UpdateEndpoints()
@@ -981,6 +987,98 @@ ImCubicBezierPoints ed::Link::GetCurve() const
     return result;
 }
 
+ImCubicBezierPoints ed::Link::GetSegmentCurve(int segmentIndex) const
+{
+    if (m_RoutePoints.empty())
+        return GetCurve();
+
+    auto easeLinkStrength = [](const ImVec2& a, const ImVec2& b, float strength)
+    {
+        const auto distanceX    = b.x - a.x;
+        const auto distanceY    = b.y - a.y;
+        const auto distance     = ImSqrt(distanceX * distanceX + distanceY * distanceY);
+        const auto halfDistance = distance * 0.5f;
+
+        if (halfDistance < strength)
+            strength = strength * ImSin(IM_PI * 0.5f * halfDistance / strength);
+
+        return strength;
+    };
+
+    auto anchorAt = [this](int index)
+    {
+        if (index <= 0)
+            return m_Start;
+        if (index > static_cast<int>(m_RoutePoints.size()))
+            return m_End;
+        return m_RoutePoints[index - 1];
+    };
+
+    segmentIndex = ImClamp(segmentIndex, 0, GetSegmentCount() - 1);
+    const auto from = anchorAt(segmentIndex);
+    const auto to = anchorAt(segmentIndex + 1);
+
+    ImVec2 cp0;
+    ImVec2 cp1;
+    if (segmentIndex == 0)
+    {
+        const auto startStrength = easeLinkStrength(from, to, m_StartPin->m_Strength);
+        cp0 = from + m_StartPin->m_Dir * startStrength;
+    }
+    else
+    {
+        const auto dx = to.x - from.x;
+        const auto sign = dx >= 0.0f ? 1.0f : -1.0f;
+        const auto tangent = ImClamp(ImFabs(dx) * 0.5f, 40.0f, 180.0f);
+        cp0 = ImVec2(from.x + sign * tangent, from.y);
+    }
+
+    if (segmentIndex == GetSegmentCount() - 1)
+    {
+        const auto endStrength = easeLinkStrength(from, to, m_EndPin->m_Strength);
+        cp1 = to + m_EndPin->m_Dir * endStrength;
+    }
+    else
+    {
+        const auto dx = to.x - from.x;
+        const auto sign = dx >= 0.0f ? 1.0f : -1.0f;
+        const auto tangent = ImClamp(ImFabs(dx) * 0.5f, 40.0f, 180.0f);
+        cp1 = ImVec2(to.x - sign * tangent, to.y);
+    }
+
+    ImCubicBezierPoints result;
+    result.P0 = from;
+    result.P1 = cp0;
+    result.P2 = cp1;
+    result.P3 = to;
+    return result;
+}
+
+int ed::Link::GetSegmentCount() const
+{
+    return ImMax(1, static_cast<int>(m_RoutePoints.size()) + 1);
+}
+
+int ed::Link::FindClosestSegment(const ImVec2& point) const
+{
+    if (!m_IsLive)
+        return 0;
+
+    int bestSegment = 0;
+    float bestDistance = FLT_MAX;
+    for (int segmentIndex = 0; segmentIndex < GetSegmentCount(); ++segmentIndex)
+    {
+        const auto curve = GetSegmentCurve(segmentIndex);
+        const auto result = ImProjectOnCubicBezier(point, curve.P0, curve.P1, curve.P2, curve.P3, 50);
+        if (result.Distance < bestDistance)
+        {
+            bestDistance = result.Distance;
+            bestSegment = segmentIndex;
+        }
+    }
+    return bestSegment;
+}
+
 bool ed::Link::TestHit(const ImVec2& point, float extraThickness) const
 {
     if (!m_IsLive)
@@ -993,10 +1091,15 @@ bool ed::Link::TestHit(const ImVec2& point, float extraThickness) const
     if (!bounds.Contains(point))
         return false;
 
-    const auto bezier = GetCurve();
-    const auto result = ImProjectOnCubicBezier(point, bezier.P0, bezier.P1, bezier.P2, bezier.P3, 50);
+    for (int segmentIndex = 0; segmentIndex < GetSegmentCount(); ++segmentIndex)
+    {
+        const auto bezier = GetSegmentCurve(segmentIndex);
+        const auto result = ImProjectOnCubicBezier(point, bezier.P0, bezier.P1, bezier.P2, bezier.P3, 50);
+        if (result.Distance <= m_Thickness + extraThickness)
+            return true;
+    }
 
-    return result.Distance <= m_Thickness + extraThickness;
+    return false;
 }
 
 bool ed::Link::TestHit(const ImRect& rect, bool allowIntersect) const
@@ -1012,21 +1115,23 @@ bool ed::Link::TestHit(const ImRect& rect, bool allowIntersect) const
     if (!allowIntersect || !rect.Overlaps(bounds))
         return false;
 
-    const auto bezier = GetCurve();
-
     const auto p0 = rect.GetTL();
     const auto p1 = rect.GetTR();
     const auto p2 = rect.GetBR();
     const auto p3 = rect.GetBL();
 
-    if (ImCubicBezierLineIntersect(bezier.P0, bezier.P1, bezier.P2, bezier.P3, p0, p1).Count > 0)
-        return true;
-    if (ImCubicBezierLineIntersect(bezier.P0, bezier.P1, bezier.P2, bezier.P3, p1, p2).Count > 0)
-        return true;
-    if (ImCubicBezierLineIntersect(bezier.P0, bezier.P1, bezier.P2, bezier.P3, p2, p3).Count > 0)
-        return true;
-    if (ImCubicBezierLineIntersect(bezier.P0, bezier.P1, bezier.P2, bezier.P3, p3, p0).Count > 0)
-        return true;
+    for (int segmentIndex = 0; segmentIndex < GetSegmentCount(); ++segmentIndex)
+    {
+        const auto bezier = GetSegmentCurve(segmentIndex);
+        if (ImCubicBezierLineIntersect(bezier.P0, bezier.P1, bezier.P2, bezier.P3, p0, p1).Count > 0)
+            return true;
+        if (ImCubicBezierLineIntersect(bezier.P0, bezier.P1, bezier.P2, bezier.P3, p1, p2).Count > 0)
+            return true;
+        if (ImCubicBezierLineIntersect(bezier.P0, bezier.P1, bezier.P2, bezier.P3, p2, p3).Count > 0)
+            return true;
+        if (ImCubicBezierLineIntersect(bezier.P0, bezier.P1, bezier.P2, bezier.P3, p3, p0).Count > 0)
+            return true;
+    }
 
     return false;
 }
@@ -1035,8 +1140,13 @@ ImRect ed::Link::GetBounds() const
 {
     if (m_IsLive)
     {
-        const auto curve = GetCurve();
+        auto curve = GetSegmentCurve(0);
         auto bounds = ImCubicBezierBoundingRect(curve.P0, curve.P1, curve.P2, curve.P3);
+        for (int segmentIndex = 1; segmentIndex < GetSegmentCount(); ++segmentIndex)
+        {
+            curve = GetSegmentCurve(segmentIndex);
+            bounds.Add(ImCubicBezierBoundingRect(curve.P0, curve.P1, curve.P2, curve.P3));
+        }
 
         if (bounds.GetWidth() == 0.0f)
         {
@@ -1050,11 +1160,14 @@ ImRect ed::Link::GetBounds() const
             bounds.Max.y += 0.5f;
         }
 
+        const auto firstCurve = GetSegmentCurve(0);
+        const auto lastCurve = GetSegmentCurve(GetSegmentCount() - 1);
+
         if (m_StartPin->m_ArrowSize)
         {
-            const auto start_dir = ImNormalized(ImCubicBezierTangent(curve.P0, curve.P1, curve.P2, curve.P3, 0.0f));
-            const auto p0 = curve.P0;
-            const auto p1 = curve.P0 - start_dir * m_StartPin->m_ArrowSize;
+            const auto start_dir = ImNormalized(ImCubicBezierTangent(firstCurve.P0, firstCurve.P1, firstCurve.P2, firstCurve.P3, 0.0f));
+            const auto p0 = firstCurve.P0;
+            const auto p1 = firstCurve.P0 - start_dir * m_StartPin->m_ArrowSize;
             const auto min = ImMin(p0, p1);
             const auto max = ImMax(p0, p1);
             auto arrowBounds = ImRect(min, ImMax(max, min + ImVec2(1, 1)));
@@ -1063,9 +1176,9 @@ ImRect ed::Link::GetBounds() const
 
         if (m_EndPin->m_ArrowSize)
         {
-            const auto end_dir = ImNormalized(ImCubicBezierTangent(curve.P0, curve.P1, curve.P2, curve.P3, 1.0f));
-            const auto p0 = curve.P3;
-            const auto p1 = curve.P3 + end_dir * m_EndPin->m_ArrowSize;
+            const auto end_dir = ImNormalized(ImCubicBezierTangent(lastCurve.P0, lastCurve.P1, lastCurve.P2, lastCurve.P3, 1.0f));
+            const auto p0 = lastCurve.P3;
+            const auto p1 = lastCurve.P3 + end_dir * m_EndPin->m_ArrowSize;
             const auto min = ImMin(p0, p1);
             const auto max = ImMax(p0, p1);
             auto arrowBounds = ImRect(min, ImMax(max, min + ImVec2(1, 1)));
@@ -1631,6 +1744,11 @@ void ed::EditorContext::End()
 
 bool ed::EditorContext::DoLink(LinkId id, PinId startPinId, PinId endPinId, ImU32 color, float thickness)
 {
+    return DoRoutedLink(id, startPinId, endPinId, nullptr, 0, color, thickness);
+}
+
+bool ed::EditorContext::DoRoutedLink(LinkId id, PinId startPinId, PinId endPinId, const ImVec2* routePoints, int routePointCount, ImU32 color, float thickness)
+{
     //auto& editorStyle = GetStyle();
 
     auto startPin = FindPin(startPinId);
@@ -1649,6 +1767,9 @@ bool ed::EditorContext::DoLink(LinkId id, PinId startPinId, PinId endPinId, ImU3
     link->m_HighlightColor= GetColor(StyleColor_HighlightLinkBorder);
     link->m_Thickness     = thickness;
     link->m_IsLive        = true;
+    link->m_RoutePoints.clear();
+    if (routePoints && routePointCount > 0)
+        link->m_RoutePoints.assign(routePoints, routePoints + routePointCount);
 
     link->UpdateEndpoints();
 

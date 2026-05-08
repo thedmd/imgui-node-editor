@@ -328,6 +328,8 @@ IMGUI_NODE_EDITOR_API void EndGroupHint();
 IMGUI_NODE_EDITOR_API ImDrawList* GetNodeBackgroundDrawList(NodeId nodeId);
 
 IMGUI_NODE_EDITOR_API bool Link(LinkId id, PinId startPinId, PinId endPinId, const ImVec4& color = ImVec4(1, 1, 1, 1), float thickness = 1.0f);
+IMGUI_NODE_EDITOR_API bool RoutedLink(LinkId id, PinId startPinId, PinId endPinId, const ImVec2* routePoints, int routePointCount, const ImVec4& color = ImVec4(1, 1, 1, 1), float thickness = 1.0f);
+IMGUI_NODE_EDITOR_API int  GetLinkClosestSegment(LinkId linkId, const ImVec2& canvasPosition);
 
 IMGUI_NODE_EDITOR_API void Flow(LinkId linkId, FlowDirection direction = FlowDirection::Forward);
 
