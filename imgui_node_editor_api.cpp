@@ -414,6 +414,11 @@ ImVec2 ax::NodeEditor::GetNodePosition(NodeId nodeId)
     return s_Editor->GetNodePosition(nodeId);
 }
 
+ImVec2 ax::NodeEditor::GetGroupSize(NodeId nodeId)
+{
+    return s_Editor->GetGroupSize(nodeId);
+}
+
 ImVec2 ax::NodeEditor::GetNodeSize(NodeId nodeId)
 {
     return s_Editor->GetNodeSize(nodeId);

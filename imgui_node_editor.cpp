@@ -1822,6 +1822,15 @@ ImVec2 ed::EditorContext::GetNodePosition(NodeId nodeId)
     return node->m_Bounds.Min;
 }
 
+ImVec2 ed::EditorContext::GetGroupSize(NodeId nodeId)
+{
+    auto node = FindNode(nodeId);
+    if (!node || !IsGroup(node))
+        return ImVec2(0, 0);
+
+    return node->m_GroupBounds.GetSize();
+}
+
 ImVec2 ed::EditorContext::GetNodeSize(NodeId nodeId)
 {
     auto node = FindNode(nodeId);
