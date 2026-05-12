@@ -560,7 +560,11 @@ static void ImDrawList_AddBezierWithArrows(ImDrawList* drawList, const ImCubicBe
 
         ImDrawList_PathBezierOffset(drawList, half_thickness, curve.P3, curve.P2, curve.P1, curve.P0);
 
+#if IMGUI_VERSION_NUM < 19276
         drawList->PathStroke(color, true, strokeThickness);
+#else
+        drawList->PathStroke(color, strokeThickness, ImDrawFlags_Closed);
+#endif
     }
 }
 
@@ -584,8 +588,13 @@ void ed::Pin::Draw(ImDrawList* drawList, DrawFlags flags)
         if (m_BorderWidth > 0.0f)
         {
             FringeScaleScope fringe(1.0f);
+#if IMGUI_VERSION_NUM < 19276
             drawList->AddRect(m_Bounds.Min, m_Bounds.Max,
                 m_BorderColor, m_Rounding, m_Corners, m_BorderWidth);
+#else
+            drawList->AddRect(m_Bounds.Min, m_Bounds.Max,
+                m_BorderColor, m_Rounding, m_BorderWidth, m_Corners);
+#endif
         }
 
         if (!Editor->IsSelected(m_Node))
@@ -683,10 +692,17 @@ void ed::Node::Draw(ImDrawList* drawList, DrawFlags flags)
             {
                 FringeScaleScope fringe(1.0f);
 
+#if IMGUI_VERSION_NUM < 19276
                 drawList->AddRect(
                     m_GroupBounds.Min,
                     m_GroupBounds.Max,
                     m_GroupBorderColor, m_GroupRounding, c_AllRoundCornersFlags, m_GroupBorderWidth);
+#else
+                drawList->AddRect(
+                    m_GroupBounds.Min,
+                    m_GroupBounds.Max,
+                    m_GroupBorderColor, m_GroupRounding, m_GroupBorderWidth, c_AllRoundCornersFlags);
+#endif
             }
         }
 
@@ -738,8 +754,13 @@ void ed::Node::DrawBorder(ImDrawList* drawList, ImU32 color, float thickness, fl
     {
         const ImVec2 extraOffset = ImVec2(offset, offset);
 
+#if IMGUI_VERSION_NUM < 19276
         drawList->AddRect(m_Bounds.Min - extraOffset, m_Bounds.Max + extraOffset,
             color, ImMax(0.0f, m_Rounding + offset), c_AllRoundCornersFlags, thickness);
+#else
+        drawList->AddRect(m_Bounds.Min - extraOffset, m_Bounds.Max + extraOffset,
+            color, ImMax(0.0f, m_Rounding + offset), thickness, c_AllRoundCornersFlags);
+#endif
     }
 }
 
