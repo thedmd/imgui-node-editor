@@ -242,10 +242,10 @@ struct Example:
 
 int Main(int argc, char** argv)
 {
-    Example exampe("Canvas", argc, argv);
+    Example example("Canvas", argc, argv);
 
-    if (exampe.Create())
-        return exampe.Run();
+    if (example.Create())
+        return example.Run();
 
     return 0;
 }
