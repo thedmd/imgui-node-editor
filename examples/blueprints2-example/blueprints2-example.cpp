@@ -1413,10 +1413,10 @@ private:
 
 int Main(int argc, char** argv)
 {
-    BlueprintEditorExample exampe("Blueprints2", argc, argv);
+    BlueprintEditorExample example("Blueprints2", argc, argv);
 
-    if (exampe.Create())
-        return exampe.Run();
+    if (example.Create())
+        return example.Run();
 
     return 0;
 }

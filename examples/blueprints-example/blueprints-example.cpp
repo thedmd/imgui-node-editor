@@ -1794,10 +1794,10 @@ struct Example:
 
 int Main(int argc, char** argv)
 {
-    Example exampe("Blueprints", argc, argv);
+    Example example("Blueprints", argc, argv);
 
-    if (exampe.Create())
-        return exampe.Run();
+    if (example.Create())
+        return example.Run();
 
     return 1;
 }
