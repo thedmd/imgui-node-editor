@@ -653,6 +653,8 @@ v0.10.0 (WIP):
         Text in the editor is rasterized for the zoom, as the canvas does for its view's scale. Set it to false to keep glyphs
         at the font's size.
 
+    BUGFIX: Examples: Spell the example variable right in the examples and the README (#342), thanks @vaezim
+
 v0.9.3 (2023-10-14):
 
     CHANGE: Canvas: Use ImDrawCallback_ImCanvas macro as draw callback sentinel (#256), thanks @nspitko
