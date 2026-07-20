@@ -417,6 +417,8 @@ v0.9.4 (WIP):
     BUGFIX: Examples: Leave .DS_Store files out of the macOS bundles
         Only the data copied next to the executables left them out.
 
+    BUGFIX: Examples: Spell the example variable right in the examples and the README (#342), thanks @vaezim
+
 v0.9.3 (2023-10-14):
 
     CHANGE: Canvas: Use ImDrawCallback_ImCanvas macro as draw callback sentinel (#256), thanks @nspitko
