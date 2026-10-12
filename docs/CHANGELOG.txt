@@ -153,6 +153,10 @@ v0.10.0 (WIP):
         A group fitting inside its own group area overflowed the stack, nested content was moved twice,
         and CenterNodeOnScreen() left content submitted after the group in place.
 
+    BUGFIX: Editor: Write and read settings numbers independently of the locale
+        Under a locale with a decimal comma positions were saved wrong, and the first ed::Begin()
+        switched LC_NUMERIC to "C" for good.
+
 v0.9.2 (2023-09-01):
 
     NEW: Editor: Add offset of hover/select to style (thanks @MultiPain)
