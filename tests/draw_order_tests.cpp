@@ -20,17 +20,18 @@ test::Geometry RunScene(const test::Session::Content& scene)
     return test::Capture(session.DrawList);
 }
 
-} // namespace
-
-TEST_CASE(DrawOrderLinksOverGroups, "draw_order.links_over_groups", nullptr, test::TestFlags_None)
+// A link across a green group, from a node on either side of it. Node 3, when
+// present, is unrelated and below every other node in Z.
+void CheckLinkOverGroup(bool withLowerNode)
 {
-    const auto geometry = RunScene([](int frame)
+    const auto geometry = RunScene([withLowerNode](int frame)
     {
         if (frame == 0)
         {
             ed::SetNodePosition(10, ImVec2(   0.0f,  0.0f));
             ed::SetNodePosition( 1, ImVec2(-260.0f, 60.0f));
             ed::SetNodePosition( 2, ImVec2( 520.0f, 60.0f));
+            ed::SetNodePosition( 3, ImVec2(   0.0f, 400.0f));
         }
 
         ed::PushStyleColor(ed::StyleColor_GroupBg, ImVec4(0.0f, 1.0f, 0.0f, 1.0f));
@@ -54,6 +55,15 @@ TEST_CASE(DrawOrderLinksOverGroups, "draw_order.links_over_groups", nullptr, tes
         ed::EndPin();
         ed::EndNode();
 
+        if (withLowerNode)
+        {
+            if (frame == 0)
+                ed::SetNodeZPosition(3, -1.0f);
+            ed::BeginNode(3);
+            ImGui::Text("Unrelated");
+            ed::EndNode();
+        }
+
         ed::Link(100, 11, 21, ImVec4(1.0f, 0.0f, 0.0f, 1.0f), 3.0f);
     });
 
@@ -61,6 +71,18 @@ TEST_CASE(DrawOrderLinksOverGroups, "draw_order.links_over_groups", nullptr, tes
     const auto group = test::FirstIndexOf(geometry, c_Green);
     test::Check(link >= 0 && group >= 0, "link and group background are drawn");
     test::Check(link > group, "link is drawn over the group background: link at index %ld, group at %ld", link, group);
+}
+
+} // namespace
+
+TEST_CASE(DrawOrderLinksOverGroups, "draw_order.links_over_groups", nullptr, test::TestFlags_None)
+{
+    CheckLinkOverGroup(false);
+}
+
+TEST_CASE(DrawOrderLinksOverGroupsWithLowerNode, "draw_order.links_over_groups_under_any_z", "CORE-9", test::TestFlags_None)
+{
+    CheckLinkOverGroup(true);
 }
 
 TEST_CASE(DrawOrderSelectionBorder, "draw_order.selection_border_over_lower_node", nullptr, test::TestFlags_None)
