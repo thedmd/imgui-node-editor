@@ -3687,7 +3687,8 @@ ed::FlowAnimationController::~FlowAnimationController()
 
 void ed::FlowAnimationController::Flow(Link* link, FlowDirection direction)
 {
-    if (!link || !link->m_IsLive || IsDeleted(link))
+    // A link not submitted yet in this frame may still be: drawing checks liveness.
+    if (!link || IsDeleted(link))
         return;
 
     auto& editorStyle = GetStyle();

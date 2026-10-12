@@ -218,3 +218,24 @@ TEST_CASE(FlowReusesFinishedAnimation, "flow.finished_animation_is_reused", "INT
     session.Run(2);
     test::Check(flowVertices > 0, "link 101 flows: %d flow vertices", flowVertices);
 }
+
+TEST_CASE(FlowBeforeLink, "flow.flow_called_before_the_link_is_submitted", "INT-18", test::TestFlags_None)
+{
+    test::Storage storage;
+    test::Session session(&storage);
+    FlowScene scene;
+    bool flowFirst = false;
+    session.DefaultContent = [&](int frame)
+    {
+        if (flowFirst)
+            ed::Flow(100);
+        flowFirst = false;
+        scene.Submit(frame);
+    };
+    session.Run(3);
+    flowFirst = true;
+    session.Run(3);
+
+    const int vertices = FlowVertices(session.DrawList);
+    test::Check(vertices > 0, "link 100 flows when ed::Flow() comes before ed::Link() in the frame: %d flow vertices", vertices);
+}
