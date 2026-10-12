@@ -32,6 +32,9 @@ v0.9.4 (WIP):
     BUGFIX: Editor: Keep stroke placement of borders and grid since ImGui r19298
         With ImGui 1.93 the selection border was hidden and grid lines were blurred.
 
+    BUGFIX: Editor: Write IMGUI_NODE_EDITOR_VERSION_NUM in decimal
+        000904 was an octal literal with the digit 9, so any version check failed to compile.
+
 v0.9.3 (2023-10-14):
 
     CHANGE: Canvas: Use ImDrawCallback_ImCanvas macro as draw callback sentinel (#256), thanks @nspitko
