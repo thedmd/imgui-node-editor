@@ -192,6 +192,18 @@ static bool IsShortcutPressed(ImGuiKeyChord chord)
 # endif
 }
 
+// For clicks: whether the key of c_ShortcutMod is down. From 1.90.7 ImGui swaps
+// Cmd and Ctrl on macOS itself.
+static bool IsShortcutModDown()
+{
+    auto& io = ImGui::GetIO();
+# if IMGUI_VERSION_NUM < 19070
+    if (io.ConfigMacOSXBehaviors)
+        return io.KeySuper;
+# endif
+    return io.KeyCtrl;
+}
+
 
 //------------------------------------------------------------------------------
 static void ImDrawListSplitter_Grow(ImDrawList* draw_list, ImDrawListSplitter* splitter, int channels_count)
@@ -4612,7 +4624,7 @@ ed::EditorAction::AcceptResult ed::SelectAction::Accept(const Control& control)
             Editor->ClearSelection();
         }
 
-        if (io.KeyCtrl)
+        if (IsShortcutModDown())
             m_SelectedObjectsAtStart = Editor->GetSelectedObjects();
     }
     else if (control.BackgroundClickButtonIndex == Editor->GetConfig().SelectButtonIndex)
@@ -4632,7 +4644,7 @@ ed::EditorAction::AcceptResult ed::SelectAction::Accept(const Control& control)
                 Editor->ClearSelection();
             }
 
-            if (io.KeyCtrl)
+            if (IsShortcutModDown())
                 Editor->ToggleObjectSelection(clickedObject);
             else
                 Editor->SetSelectedObject(clickedObject);

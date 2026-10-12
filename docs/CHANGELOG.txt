@@ -250,6 +250,9 @@ v0.10.0 (WIP):
     CHANGE: Editor: Make F over nested groups center the innermost one
         It centered the outermost group under the mouse.
 
+    BUGFIX: Editor: Toggle selection with Cmd+click on macOS before ImGui 1.90.7
+        Ctrl+click selection needed the physical Ctrl key on those versions.
+
 v0.9.2 (2023-09-01):
 
     NEW: Editor: Add offset of hover/select to style (thanks @MultiPain)
