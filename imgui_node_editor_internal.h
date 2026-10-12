@@ -1240,7 +1240,6 @@ struct NodeBuilder
 
     void Group(const ImVec2& size);
 
-    ImDrawList* GetUserBackgroundDrawList() const;
     ImDrawList* GetUserBackgroundDrawList(Node* node) const;
 };
 
