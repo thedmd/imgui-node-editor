@@ -319,7 +319,7 @@ IMGUI_NODE_EDITOR_API ImDrawList* GetHintBackgroundDrawList();
 IMGUI_NODE_EDITOR_API void EndGroupHint();
 
 // TODO: Add a way to manage node background channels
-IMGUI_NODE_EDITOR_API ImDrawList* GetNodeBackgroundDrawList(NodeId nodeId);
+IMGUI_NODE_EDITOR_API ImDrawList* GetNodeBackgroundDrawList(NodeId nodeId); // nullptr outside Begin()/End(), and for a node not submitted in this frame
 
 IMGUI_NODE_EDITOR_API bool Link(LinkId id, PinId startPinId, PinId endPinId, const ImVec4& color = ImVec4(1, 1, 1, 1), float thickness = 1.0f);
 
@@ -421,7 +421,7 @@ IMGUI_NODE_EDITOR_API bool IsBackgroundDoubleClicked();
 IMGUI_NODE_EDITOR_API ImGuiMouseButton GetBackgroundClickButtonIndex(); // -1 if none
 IMGUI_NODE_EDITOR_API ImGuiMouseButton GetBackgroundDoubleClickButtonIndex(); // -1 if none
 
-IMGUI_NODE_EDITOR_API bool GetLinkPins(LinkId linkId, PinId* startPinId, PinId* endPinId); // pass nullptr if particular pin do not interest you
+IMGUI_NODE_EDITOR_API bool GetLinkPins(LinkId linkId, PinId* startPinId, PinId* endPinId); // pass nullptr if particular pin do not interest you; false for an unknown link and a link whose pins were deleted
 
 IMGUI_NODE_EDITOR_API bool PinHadAnyLinks(PinId pinId);
 
