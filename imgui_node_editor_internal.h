@@ -35,6 +35,7 @@
 
 # include <vector>
 # include <string>
+# include <map>
 
 
 //------------------------------------------------------------------------------
@@ -1320,14 +1321,21 @@ struct Config: ax::NodeEditor::Config
 {
     Config(const ax::NodeEditor::Config* config);
 
-    std::string Load();
     std::string LoadNode(NodeId nodeId);
-
-    void BeginSave();
-    bool Save(const std::string& data, SaveReasonFlags flags);
     bool SaveNode(NodeId nodeId, const std::string& data, SaveReasonFlags flags);
-    void EndSave();
 };
+
+// [NodeEditor][<name>] sections of imgui.ini in one ImGui context, kept whether
+// an editor with that name exists or not.
+struct SettingsStore
+{
+    ImGuiContext*              Context = nullptr;
+    std::map<string, string>   Sections;       // JSON by editor name
+    vector<string>             ReadSections;   // read by the LoadIniSettingsFromMemory() in progress
+    vector<EditorContext*>     Editors;        // live editors with a section here
+};
+
+void InstallSettingsHandler(ImGuiContext* context);
 
 enum class SuspendFlags : uint8_t
 {
@@ -1350,6 +1358,17 @@ struct EditorContext
 
     void Begin(const char* id, const ImVec2& size = ImVec2(0, 0));
     void End();
+
+    void LoadSettingsFromMemory(const char* data, size_t size);
+    const char* SaveSettingsToMemory(size_t* outSize);
+    bool WantSaveSettings() const;
+    void ClearWantSaveSettings();
+    SaveReasonFlags GetSettingsChangeReason() const { return m_SettingsChangeReason; }
+
+    const string& GetSettingsName() const { return m_SettingsName; }
+    void ApplySettings(const string& data);
+    bool StoreSettings();
+    void DetachSettingsStore() { m_SettingsStore = nullptr; }
 
     bool DoLink(LinkId id, PinId startPinId, PinId endPinId, ImU32 color, float thickness);
 
@@ -1531,6 +1550,7 @@ struct EditorContext
 private:
     void LoadSettings();
     void RestoreView();
+    void UpdateSettings();
     void SaveSettings();
 
     void ForgetDeletedObjects();
@@ -1603,6 +1623,14 @@ private:
     bool                m_IsSettingsLoaded;
     bool                m_IsInitialized;
     Settings            m_Settings;
+    string              m_SettingsName;
+    SettingsStore*      m_SettingsStore;
+    bool                m_HasMemorySettings;    // loaded by LoadSettingsFromMemory() before the first Begin()
+    string              m_SettingsMemory;       // returned by SaveSettingsToMemory()
+    bool                m_HasSettingsChanged;   // since ClearWantSaveSettings()
+    SaveReasonFlags     m_SettingsChangeReason;
+    double              m_SettingsChangeTime;
+    double              m_FrameTime;
 
     ImDrawList*         m_DrawList;
     int                 m_ExternalChannel;

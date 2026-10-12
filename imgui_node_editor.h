@@ -77,23 +77,14 @@ enum class SaveReasonFlags: uint32_t
 inline SaveReasonFlags operator |(SaveReasonFlags lhs, SaveReasonFlags rhs) { return static_cast<SaveReasonFlags>(static_cast<uint32_t>(lhs) | static_cast<uint32_t>(rhs)); }
 inline SaveReasonFlags operator &(SaveReasonFlags lhs, SaveReasonFlags rhs) { return static_cast<SaveReasonFlags>(static_cast<uint32_t>(lhs) & static_cast<uint32_t>(rhs)); }
 
-using ConfigSaveSettings     = bool   (*)(const char* data, size_t size, SaveReasonFlags reason, void* userPointer);
-using ConfigLoadSettings     = size_t (*)(char* data, void* userPointer);
-
 using ConfigSaveNodeSettings = bool   (*)(NodeId nodeId, const char* data, size_t size, SaveReasonFlags reason, void* userPointer);
 using ConfigLoadNodeSettings = size_t (*)(NodeId nodeId, char* data, void* userPointer);
-
-using ConfigSession          = void   (*)(void* userPointer);
 
 struct Config
 {
     using CanvasSizeModeAlias = ax::NodeEditor::CanvasSizeMode;
 
-    const char*             SettingsFile;
-    ConfigSession           BeginSaveSession;
-    ConfigSession           EndSaveSession;
-    ConfigSaveSettings      SaveSettings;
-    ConfigLoadSettings      LoadSettings;
+    const char*             SettingsName;           // Section [NodeEditor][SettingsName] in imgui.ini, see InstallSettingsHandler(); copied by CreateEditor(); nullptr keeps the editor out of imgui.ini
     ConfigSaveNodeSettings  SaveNodeSettings;
     ConfigLoadNodeSettings  LoadNodeSettings;
     void*                   UserPointer;
@@ -107,11 +98,7 @@ struct Config
     float                   SmoothZoomPower;
 
     Config()
-        : SettingsFile("NodeEditor.json")
-        , BeginSaveSession(nullptr)
-        , EndSaveSession(nullptr)
-        , SaveSettings(nullptr)
-        , LoadSettings(nullptr)
+        : SettingsName("NodeEditor")
         , SaveNodeSettings(nullptr)
         , LoadNodeSettings(nullptr)
         , UserPointer(nullptr)
@@ -285,6 +272,22 @@ IMGUI_NODE_EDITOR_API EditorContext* GetCurrentEditor();
 IMGUI_NODE_EDITOR_API EditorContext* CreateEditor(const Config* config = nullptr);
 IMGUI_NODE_EDITOR_API void DestroyEditor(EditorContext* ctx);
 IMGUI_NODE_EDITOR_API const Config& GetConfig(EditorContext* ctx = nullptr);
+
+// Keeps the state of editors with a Config::SettingsName in imgui.ini, next to
+// ImGui's windows. Call once per ImGui context, before ImGui reads .ini data:
+// before the first NewFrame() when io.IniFilename is set, otherwise before
+// LoadIniSettingsFromMemory(). An editor created at any time starts from the
+// latest state of its section. nullptr: the current ImGui context.
+IMGUI_NODE_EDITOR_API void InstallSettingsHandler(ImGuiContext* context = nullptr);
+
+// Settings the application stores itself, with or without the settings handler.
+// The editor doesn't save on its own: once WantSaveSettings() is true, store
+// SaveSettingsToMemory() and call ClearWantSaveSettings().
+IMGUI_NODE_EDITOR_API void            LoadSettingsFromMemory(const char* data, size_t size = 0); // before the first Begin(), takes precedence over imgui.ini; later, replaces the state it holds; size 0: zero-terminated
+IMGUI_NODE_EDITOR_API const char*     SaveSettingsToMemory(size_t* outSize = nullptr);           // zero-terminated, valid until the next call
+IMGUI_NODE_EDITOR_API bool            WantSaveSettings();                                        // settings changed, and io.IniSavingRate elapsed since
+IMGUI_NODE_EDITOR_API void            ClearWantSaveSettings();
+IMGUI_NODE_EDITOR_API SaveReasonFlags GetSettingsChangeReason();                                 // what changed since the last ClearWantSaveSettings()
 
 IMGUI_NODE_EDITOR_API Style& GetStyle();
 IMGUI_NODE_EDITOR_API const char* GetStyleColorName(StyleColor colorIndex);

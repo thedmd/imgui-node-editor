@@ -88,7 +88,7 @@ struct Host
     void NewFrame();
     void Render();
 
-    ImGuiContext* Context      = nullptr;
+    ImGuiContext* Context      = nullptr; // a test that destroys it first sets it to nullptr
     ImVec2        DisplaySize;
     std::string   Clipboard;
     long long     Vertices       = 0;
@@ -133,7 +133,10 @@ long         FirstIndexOf(const Geometry& geometry, ImU32 color);
 
 
 //------------------------------------------------------------------------------
-// Application side storage behind the editor's settings callbacks.
+// Application side storage of editor settings. A Session loads Global with
+// LoadSettingsFromMemory() before its first frame, and stores the result of
+// SaveSettingsToMemory() after every frame that changed the settings. Nodes is
+// behind the per-node callbacks MakeConfig() sets up.
 struct Storage
 {
     std::string                      Global;
@@ -180,6 +183,7 @@ struct Session
 
     Host                  HostContext;
     ed::EditorContext*    Editor       = nullptr;
+    Storage*              Settings     = nullptr;
     ImDrawList*           DrawList     = nullptr; // host window draw list of the last frame
     int                   FrameIndex   = 0;
     Content               DefaultContent;

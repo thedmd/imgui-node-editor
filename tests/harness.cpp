@@ -174,7 +174,8 @@ Host::Host(ImVec2 displaySize)
 
 Host::~Host()
 {
-    ImGui::DestroyContext(Context);
+    if (Context)
+        ImGui::DestroyContext(Context);
 }
 
 void Host::NewFrame()
@@ -347,24 +348,8 @@ long FirstIndexOf(const Geometry& geometry, ImU32 color)
 ed::Config MakeConfig(Storage* storage)
 {
     ed::Config config;
-    config.SettingsFile = nullptr;
+    config.SettingsName = nullptr;
     config.UserPointer  = storage;
-
-    config.LoadSettings = [](char* data, void* userPointer) -> size_t
-    {
-        auto storage = static_cast<Storage*>(userPointer);
-        if (data)
-            memcpy(data, storage->Global.data(), storage->Global.size());
-        return storage->Global.size();
-    };
-
-    config.SaveSettings = [](const char* data, size_t size, ed::SaveReasonFlags, void* userPointer) -> bool
-    {
-        auto storage = static_cast<Storage*>(userPointer);
-        storage->Global.assign(data, size);
-        ++storage->GlobalSaves;
-        return true;
-    };
 
     config.LoadNodeSettings = [](ed::NodeId nodeId, char* data, void* userPointer) -> size_t
     {
@@ -396,6 +381,7 @@ ed::Config MakeConfig(Storage* storage)
 Session::Session(Storage* storage, ImVec2 displaySize)
     : Session(MakeConfig(storage), displaySize)
 {
+    Settings = storage;
 }
 
 Session::Session(const ed::Config& config, ImVec2 displaySize)
@@ -441,10 +427,18 @@ void Session::Frame(const Content& content)
         BeforeEditor();
 
     ed::SetCurrentEditor(Editor);
+    if (Settings && FrameIndex == 0 && !Settings->Global.empty())
+        ed::LoadSettingsFromMemory(Settings->Global.c_str(), Settings->Global.size());
     ed::Begin("Editor", EditorSize);
     if (content)
         content(FrameIndex);
     ed::End();
+    if (Settings && ed::GetSettingsChangeReason() != ed::SaveReasonFlags::None)
+    {
+        Settings->Global = ed::SaveSettingsToMemory();
+        ++Settings->GlobalSaves;
+        ed::ClearWantSaveSettings();
+    }
     ed::SetCurrentEditor(nullptr);
 
     if (AfterEditor)

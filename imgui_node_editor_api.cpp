@@ -89,6 +89,36 @@ const ax::NodeEditor::Config& ax::NodeEditor::GetConfig(EditorContext* ctx)
     }
 }
 
+void ax::NodeEditor::InstallSettingsHandler(ImGuiContext* context)
+{
+    ax::NodeEditor::Detail::InstallSettingsHandler(context);
+}
+
+void ax::NodeEditor::LoadSettingsFromMemory(const char* data, size_t size)
+{
+    CurrentEditor()->LoadSettingsFromMemory(data, size);
+}
+
+const char* ax::NodeEditor::SaveSettingsToMemory(size_t* outSize)
+{
+    return CurrentEditor()->SaveSettingsToMemory(outSize);
+}
+
+bool ax::NodeEditor::WantSaveSettings()
+{
+    return CurrentEditor()->WantSaveSettings();
+}
+
+void ax::NodeEditor::ClearWantSaveSettings()
+{
+    CurrentEditor()->ClearWantSaveSettings();
+}
+
+ax::NodeEditor::SaveReasonFlags ax::NodeEditor::GetSettingsChangeReason()
+{
+    return CurrentEditor()->GetSettingsChangeReason();
+}
+
 void ax::NodeEditor::SetCurrentEditor(EditorContext* ctx)
 {
     s_Editor = reinterpret_cast<ax::NodeEditor::Detail::EditorContext*>(ctx);

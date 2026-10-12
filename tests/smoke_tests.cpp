@@ -161,11 +161,12 @@ TEST_CASE(Smoke, "smoke", nullptr, test::TestFlags_None)
 
         // Dragging snaps pin pivots to the grid unless Alt is held, so allow one grid cell of deviation.
         const ImVec2 before = app.NodePosition[1];
+        const int savesBefore = storage.GlobalSaves;
         session.Drag(app.TitleScreen[1], app.TitleScreen[1] + ImVec2(60, 40));
         const ImVec2 after = app.NodePosition[1];
         Check(fabsf(after.x - before.x - 60) <= 16.0f && fabsf(after.y - before.y - 40) <= 16.0f,
             "node dragged by (60, 40), grid snapped: (%.1f, %.1f) -> (%.1f, %.1f)", before.x, before.y, after.x, after.y);
-        Check(storage.GlobalSaves > 0, "settings saved after the drag (%d saves)", storage.GlobalSaves);
+        Check(storage.GlobalSaves > savesBefore, "settings saved after the drag (%d saves, %d before)", storage.GlobalSaves, savesBefore);
 
         session.Drag(app.PinScreen[12], app.PinScreen[21]);
         Check(app.Created == 1, "link created from node 1 to node 2 (%d created)", app.Created);

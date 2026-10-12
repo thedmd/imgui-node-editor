@@ -117,9 +117,8 @@ struct Example:
 
     void OnStart() override
     {
-        ed::Config config;
-        config.SettingsFile = "Simple.json";
-        m_Context = ed::CreateEditor(&config);
+        ed::InstallSettingsHandler();
+        m_Context = ed::CreateEditor();
     }
 
     void OnStop() override
@@ -172,6 +171,8 @@ int Main(int argc, char** argv)
 Result:
 
 ![00-Simple](https://user-images.githubusercontent.com/1197433/89328516-cca01f00-d68d-11ea-9959-2da159851101.png)
+
+`ed::InstallSettingsHandler()` keeps node positions, the selection and the view in `imgui.ini`, next to ImGui's windows. Call it before ImGui reads `.ini` data. Applications that keep this state elsewhere set `Config::SettingsName` to `nullptr`, and use `ed::LoadSettingsFromMemory()` and `ed::SaveSettingsToMemory()` once `ed::WantSaveSettings()` is true.
 
 For more details please visit [examples](../examples) folder.
 

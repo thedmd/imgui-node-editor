@@ -489,9 +489,9 @@ struct Example:
 
     void OnStart() override
     {
-        ed::Config config;
+        ed::InstallSettingsHandler();
 
-        config.SettingsFile = "Blueprints.json";
+        ed::Config config;
 
         config.UserPointer = this;
 

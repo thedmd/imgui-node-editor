@@ -136,6 +136,137 @@ TEST_CASE(MalformedSettings, "settings.malformed_settings_load_safely", "CORE-12
     }
 }
 
+namespace {
+
+// An editor whose settings the application keeps itself.
+ed::Config UnnamedConfig()
+{
+    ed::Config config;
+    config.SettingsName = nullptr;
+    return config;
+}
+
+void NodesOneAndTwo(int)
+{
+    for (uintptr_t id : { 1, 2 })
+    {
+        ed::BeginNode(id);
+        ImGui::TextUnformatted("Node");
+        ed::EndNode();
+    }
+}
+
+} // namespace
+
+TEST_CASE(IdleFramesWantNoSave, "settings.idle_frames_want_no_save", "API-9", test::TestFlags_None)
+{
+    test::Session session(UnnamedConfig());
+    session.DefaultContent = NodesOneAndTwo;
+    session.Run(10);
+    session.Use([] { ed::ClearWantSaveSettings(); });
+
+    int changedFrames = 0;
+    for (int i = 0; i < 400; ++i)
+    {
+        session.Frame();
+        if (session.Use([] { return ed::WantSaveSettings() || ed::GetSettingsChangeReason() != ed::SaveReasonFlags::None; }))
+            ++changedFrames;
+    }
+    test::Check(changedFrames == 0, "idle frames change no settings: %d of 400 frames did", changedFrames);
+}
+
+TEST_CASE(WantSaveAfterSavingRate, "settings.want_save_after_saving_rate", "API-9", test::TestFlags_None)
+{
+    test::Session session(UnnamedConfig());
+    session.HostContext.Context->IO.IniSavingRate = 1.0f;
+    session.DefaultContent = NodesOneAndTwo;
+    session.Run(10);
+    session.Use([] { ed::ClearWantSaveSettings(); });
+
+    session.Frame([](int frame) { ed::SetNodePosition(1, ImVec2(500.0f, 300.0f)); NodesOneAndTwo(frame); });
+    const auto reason = session.Use([] { return ed::GetSettingsChangeReason(); });
+    session.Run(50);
+    const bool early = session.Use([] { return ed::WantSaveSettings(); });
+    session.Run(20);
+    const bool late = session.Use([] { return ed::WantSaveSettings(); });
+    session.Use([] { ed::ClearWantSaveSettings(); });
+    const bool cleared = !session.Use([] { return ed::WantSaveSettings(); }) && session.Use([] { return ed::GetSettingsChangeReason(); }) == ed::SaveReasonFlags::None;
+
+    test::Check(reason == ed::SaveReasonFlags::Position, "change reported as a position change: 0x%02X", (unsigned)reason);
+    test::Check(!early && late, "WantSaveSettings() turns true after io.IniSavingRate: %d after 50 frames, %d after 70", early, late);
+    test::Check(cleared, "ClearWantSaveSettings() clears it and the reason");
+}
+
+TEST_CASE(MemoryRoundTrip, "settings.memory_round_trip", "API-9", test::TestFlags_None)
+{
+    std::string data;
+    ImVec2 view;
+    {
+        test::Session session(UnnamedConfig());
+        session.DefaultContent = NodesOneAndTwo;
+        session.Frame([](int frame) { ed::SetNodePosition(1, ImVec2(500.0f, 300.0f)); ed::SetNodePosition(2, ImVec2(-80.0f, 40.0f)); NodesOneAndTwo(frame); });
+        session.Run(2);
+        session.Drag(ImVec2(700.0f, 400.0f), ImVec2(600.0f, 350.0f), 1);
+        session.Click(session.Use([] { return ed::CanvasToScreen(ImVec2(510.0f, 305.0f)); }));
+        data = session.Use([] { return std::string(ed::SaveSettingsToMemory()); });
+        view = session.Use([] { return ed::CanvasToScreen(ImVec2(0.0f, 0.0f)); });
+    }
+
+    test::Session session(UnnamedConfig());
+    session.Use([&] { ed::LoadSettingsFromMemory(data.c_str()); });
+    session.DefaultContent = NodesOneAndTwo;
+    session.Run(3);
+
+    const auto position1 = session.Use([] { return ed::GetNodePosition(1); });
+    const auto position2 = session.Use([] { return ed::GetNodePosition(2); });
+    const auto origin    = session.Use([] { return ed::CanvasToScreen(ImVec2(0.0f, 0.0f)); });
+    const bool selected  = session.Use([] { return ed::IsNodeSelected(1) && !ed::IsNodeSelected(2); });
+    test::Check(position1.x == 500.0f && position1.y == 300.0f && position2.x == -80.0f && position2.y == 40.0f, "node positions restored: (%g, %g), (%g, %g), from %s", position1.x, position1.y, position2.x, position2.y, data.c_str());
+    test::Check(origin.x == view.x && origin.y == view.y, "view restored: origin at (%g, %g), saved (%g, %g)", origin.x, origin.y, view.x, view.y);
+    test::Check(selected, "selection restored, from %s", data.c_str());
+}
+
+TEST_CASE(Version09Settings, "settings.settings_written_by_0_9_load", "API-9", test::TestFlags_None)
+{
+    // As 0.9.2 wrote them to its SettingsFile.
+    const char* const c_Settings09 = R"({"nodes":{"node:1":{"location":{"x":100,"y":50}},"node:2":{"group_size":{"x":300,"y":200},"location":{"x":400,"y":60}}},"selection":["node:2"],"view":{"scroll":{"x":-120,"y":-40},"visible_rect":{"max":{"x":0,"y":0},"min":{"x":0,"y":0}},"zoom":1}})";
+
+    auto content = [](int)
+    {
+        ed::BeginNode(1);
+        ImGui::TextUnformatted("Node");
+        ed::EndNode();
+        ed::BeginNode(2);
+        ImGui::TextUnformatted("Group");
+        ed::Group(ImVec2(300.0f, 200.0f));
+        ed::EndNode();
+    };
+
+    // Where the canvas origin is without settings: the top left corner of the editor.
+    ImVec2 corner;
+    {
+        test::Session session(UnnamedConfig());
+        session.DefaultContent = content;
+        session.Run(3);
+        corner = session.Use([] { return ed::CanvasToScreen(ImVec2(0.0f, 0.0f)); });
+    }
+
+    test::Session session(UnnamedConfig());
+    session.Use([&] { ed::LoadSettingsFromMemory(c_Settings09); });
+    session.DefaultContent = content;
+    session.Run(3);
+
+    const auto position1 = session.Use([] { return ed::GetNodePosition(1); });
+    const auto position2 = session.Use([] { return ed::GetNodePosition(2); });
+    const auto size2     = session.Use([] { return ed::GetNodeSize(2); });
+    const bool selected  = session.Use([] { return ed::IsNodeSelected(2) && !ed::IsNodeSelected(1); });
+    const auto origin    = session.Use([] { return ed::CanvasToScreen(ImVec2(0.0f, 0.0f)); });
+    test::Check(position1.x == 100.0f && position1.y == 50.0f && position2.x == 400.0f && position2.y == 60.0f, "node positions loaded: (%g, %g), (%g, %g)", position1.x, position1.y, position2.x, position2.y);
+    test::Check(size2.x >= 300.0f && size2.y >= 200.0f, "group size loaded: (%g, %g)", size2.x, size2.y);
+    test::Check(selected, "selection loaded");
+    test::Check(origin.x == corner.x + 120.0f && origin.y == corner.y + 40.0f, "view loaded: canvas origin at (%g, %g), editor corner at (%g, %g)", origin.x, origin.y, corner.x, corner.y);
+}
+
 TEST_CASE(CLocalePreserved, "settings.c_locale_is_preserved", "JSON-2", test::TestFlags_None)
 {
     int tested = 0;

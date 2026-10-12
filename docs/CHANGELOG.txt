@@ -171,6 +171,19 @@ v0.10.0 (WIP):
         A view wider than 2^29 canvas units, such as navigating to content 10^9 units across, hung the frame.
         Grid lines less than 2 pixels apart, or fully transparent, are not drawn.
 
+    BREAKING: Editor: Keep settings in imgui.ini or application storage instead of a file
+        Config::SettingsFile with its NodeEditor.json default, Config::SaveSettings, LoadSettings,
+        BeginSaveSession and EndSaveSession are removed, and the editor writes no files.
+        ed::InstallSettingsHandler(), called once per ImGui context before ImGui reads .ini data, keeps
+        the state of each editor in a [NodeEditor][Config::SettingsName] section of imgui.ini.
+        Applications that store it themselves set Config::SettingsName to nullptr, call
+        ed::LoadSettingsFromMemory() before the first ed::Begin(), and store ed::SaveSettingsToMemory()
+        once ed::WantSaveSettings() is true. Files written through SettingsFile load this way.
+
+    NEW: Editor: Add InstallSettingsHandler(), LoadSettingsFromMemory(), SaveSettingsToMemory(), WantSaveSettings(), ClearWantSaveSettings() and GetSettingsChangeReason()
+
+    CHANGE: Examples: Keep editor state in the example's .ini file through InstallSettingsHandler()
+
 v0.9.2 (2023-09-01):
 
     NEW: Editor: Add offset of hover/select to style (thanks @MultiPain)
