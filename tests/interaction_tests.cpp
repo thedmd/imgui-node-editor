@@ -910,3 +910,36 @@ TEST_CASE(FocusInnermostGroup, "interaction.f_centers_innermost_group_under_mous
     test::Check(ImFabs(inner.x - screenCenter.x) < 1.0f && ImFabs(inner.y - screenCenter.y) < 1.0f,
         "F centers the inner group at (%g, %g): it is at (%g, %g), the outer group at (%g, %g)", screenCenter.x, screenCenter.y, inner.x, inner.y, outer.x, outer.y);
 }
+
+TEST_CASE(MacCommandClick, "interaction.macos_command_click_adds_to_selection", "INT-19", test::TestFlags_None)
+{
+    test::Storage storage;
+    test::Session session(&storage);
+    session.HostContext.Context->IO.ConfigMacOSXBehaviors = true;
+    ImVec2 nodeOnScreen[2];
+    session.DefaultContent = [&](int frame)
+    {
+        for (int i = 0; i < 2; ++i)
+        {
+            const auto id = ed::NodeId(i + 1);
+            if (frame == 0)
+                ed::SetNodePosition(id, ImVec2(100.0f + 200.0f * i, 100.0f));
+            ed::BeginNode(id);
+            ImGui::TextUnformatted("Node");
+            ed::EndNode();
+            nodeOnScreen[i] = ed::CanvasToScreen(ed::GetNodePosition(id) + ed::GetNodeSize(id) * 0.5f);
+        }
+    };
+    session.Run(3);
+
+    session.Click(nodeOnScreen[0]);
+    ImGui::GetIO().AddKeyEvent(ImGuiMod_Super, true);
+    session.Run(1);
+    session.Click(nodeOnScreen[1]);
+    ImGui::GetIO().AddKeyEvent(ImGuiMod_Super, false);
+    session.Run(1);
+
+    const bool first  = session.Use([] { return ed::IsNodeSelected(1); });
+    const bool second = session.Use([] { return ed::IsNodeSelected(2); });
+    test::Check(first && second, "Cmd+click on node 2 adds it to the selection: %d, %d", first, second);
+}
