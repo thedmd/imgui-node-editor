@@ -5737,15 +5737,13 @@ void ed::NodeBuilder::Group(const ImVec2& size)
     ImRect_Floor(m_GroupBounds);
 }
 
-ImDrawList* ed::NodeBuilder::GetUserBackgroundDrawList() const
-{
-    return GetUserBackgroundDrawList(m_CurrentNode);
-}
-
 ImDrawList* ed::NodeBuilder::GetUserBackgroundDrawList(Node* node) const
 {
+    // Node channels belong to the editor's draw list splitter, which a node being built swaps out.
+    IM_ASSERT(nullptr == m_CurrentNode && "Node background draw list is available after EndNode().");
+
     auto drawList = Editor->GetDrawList();
-    if (node && node->m_IsLive && drawList)
+    if (node && node->m_IsLive && drawList && !m_CurrentNode)
     {
         drawList->ChannelsSetCurrent(node->m_Channel + c_NodeUserBackgroundChannel);
         return drawList;
@@ -5772,6 +5770,9 @@ ed::HintBuilder::HintBuilder(EditorContext* editor):
 bool ed::HintBuilder::Begin(NodeId nodeId)
 {
     IM_ASSERT(nullptr == m_CurrentNode);
+    IM_ASSERT(nullptr == Editor->GetNodeBuilder().m_CurrentNode && "Group hints are drawn outside of BeginNode()/EndNode().");
+    if (Editor->GetNodeBuilder().m_CurrentNode)
+        return false;
 
     auto& view = Editor->GetView();
     auto& rect = Editor->GetRect();

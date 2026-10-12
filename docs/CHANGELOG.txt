@@ -141,6 +141,10 @@ v0.10.0 (WIP):
     BUGFIX: Editor: Use the node padding BeginNode() saw in EndNode()
         Pushing StyleVar_NodePadding around only one of the two calls broke ImGui's group stack.
 
+    BUGFIX: Editor: Return no node draw list or group hint while a node is built
+        GetNodeBackgroundDrawList() and BeginGroupHint() inside BeginNode()/EndNode() corrupted memory;
+        they assert and return nothing now. The background draw list is available after EndNode().
+
 v0.9.2 (2023-09-01):
 
     NEW: Editor: Add offset of hover/select to style (thanks @MultiPain)
