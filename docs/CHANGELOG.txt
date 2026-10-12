@@ -139,6 +139,10 @@ v0.9.4 (WIP):
     BUGFIX: Editor: Report background double-clicks with mouse button indices
         GetBackgroundDoubleClickButtonIndex() returned 1, 2 and 4, and a right double-click went unnoticed.
 
+    BUGFIX: Editor: List the shortcut context in GetActionContextNodes() and GetActionContextLinks()
+        They listed the selection, without a hovered node, the contents of selected groups or the links
+        between the nodes, so they didn't add up to GetActionContextSize().
+
 v0.9.3 (2023-10-14):
 
     CHANGE: Canvas: Use ImDrawCallback_ImCanvas macro as draw callback sentinel (#256), thanks @nspitko
