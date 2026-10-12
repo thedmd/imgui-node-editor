@@ -65,6 +65,9 @@ v0.10.0 (WIP):
 
     BUGFIX: Examples: Let renderer backends apply framebuffer scale
 
+    BUGFIX: Examples: Pass AddRect() and PathStroke() arguments in order used since ImGui r19276
+        Corner flags given as fifth AddRect() argument drew outlines as thick as the flag value.
+
 v0.9.2 (2023-09-01):
 
     NEW: Editor: Add offset of hover/select to style (thanks @MultiPain)
