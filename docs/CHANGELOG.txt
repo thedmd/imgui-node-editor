@@ -8,6 +8,10 @@ v0.9.4 (WIP):
 
     BUGFIX: Examples: Use imgui_impl_opengl3_loader.h instead of gl3w (#264)
 
+    BUGFIX: Editor: Restore node state from Config::LoadNodeSettings when node is created
+        Since v0.9.1 state provided by application was ignored and overwritten
+        by Config::SaveNodeSettings with default location.
+
 v0.9.3 (2023-10-14):
 
     CHANGE: Canvas: Use ImDrawCallback_ImCanvas macro as draw callback sentinel (#256), thanks @nspitko
