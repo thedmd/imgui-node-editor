@@ -664,3 +664,32 @@ TEST_CASE(SubdivisionTolerance, "math.subdivision_without_tolerance_uses_the_def
     test::Check(same(zero) && same(nan), "tolerances of 0 and NaN subdivide as the default does into %d points: %d and %d points",
         static_cast<int>(defaults.size()), static_cast<int>(zero.size()), static_cast<int>(nan.size()));
 }
+
+TEST_CASE(ClosestPointSnap, "math.closest_point_snaps_to_the_edge", "MATH-8", test::TestFlags_None)
+{
+    // Points inside (0, 0)-(100, 50) snap to the nearest edge, or stay where they are.
+    const ImRect rect(0, 0, 100, 50);
+    struct Case { ImVec2 Point; bool Snap; ImVec2 Expected; };
+    const Case cases[] =
+    {
+        { ImVec2( 10, 20), true,  ImVec2(  0, 20) },
+        { ImVec2( 95, 25), true,  ImVec2(100, 25) },
+        { ImVec2( 50,  4), true,  ImVec2( 50,  0) },
+        { ImVec2( 60, 45), true,  ImVec2( 60, 50) },
+        { ImVec2( 10, 20), false, ImVec2( 10, 20) },
+        { ImVec2( -5, 20), true,  ImVec2(  0, 20) },
+        { ImVec2(120, 70), false, ImVec2(100, 50) },
+    };
+    int wrong = 0;
+    for (const auto& c : cases)
+    {
+        const auto result = ImRect_ClosestPoint(rect, c.Point, c.Snap);
+        if (result.x != c.Expected.x || result.y != c.Expected.y)
+        {
+            ++wrong;
+            test::Check(false, "(%g, %g) with snap %d goes to (%g, %g), not (%g, %g)", c.Point.x, c.Point.y, c.Snap ? 1 : 0, result.x, result.y, c.Expected.x, c.Expected.y);
+        }
+    }
+
+    test::Check(wrong == 0, "points go to the closest point of the rectangle, or of its edge when snapping");
+}
