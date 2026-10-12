@@ -129,6 +129,9 @@ v0.10.0 (WIP):
     BUGFIX: Editor: Don't draw or hit-test the graph over the host window while the canvas is out of view
         Interactions and saving wait until the canvas is visible again.
 
+    BUGFIX: Editor: Count nested Suspend()/Resume() pairs
+        A second Suspend() brought back the editor's own draw list splitter in screen space.
+
 v0.9.2 (2023-09-01):
 
     NEW: Editor: Add offset of hover/select to style (thanks @MultiPain)

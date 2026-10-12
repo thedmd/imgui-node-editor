@@ -19,7 +19,13 @@ struct Variant
     bool BareHost     = false; // transparent host without padding, rounding or border, as in issue #282
     bool Split        = false; // node content uses ChannelsSplit()
     bool Table        = false; // node content has a table
+    int  Nesting      = 1;     // Suspend()/Resume() pairs nested in each other
+    bool Draw         = false; // draw in screen space inside the innermost pair
 };
+
+int  s_SuspendStateErrors = 0; // IsSuspended() didn't match the nesting
+int  s_Nesting            = 1;
+bool s_Draw               = false;
 
 void EmitClippedCommands(int count, bool canvasSpace, ImVec2 hostPos)
 {
@@ -37,12 +43,38 @@ void EmitClippedCommands(int count, bool canvasSpace, ImVec2 hostPos)
 
 void SuspendResume()
 {
-    ed::Suspend();
-    ed::Resume();
+    for (int i = 0; i < s_Nesting; ++i)
+    {
+        ed::Suspend();
+        if (!ed::IsSuspended())
+            ++s_SuspendStateErrors;
+    }
+    if (s_Draw)
+    {
+        // Splitting channels needs the host window's splitter, as in ImGui::Columns().
+        auto drawList = ImGui::GetWindowDrawList();
+        drawList->ChannelsSplit(2);
+        drawList->ChannelsSetCurrent(1);
+        drawList->AddRectFilled(ImVec2(20.0f, 20.0f), ImVec2(50.0f, 40.0f), IM_COL32(255, 0, 255, 255));
+        drawList->ChannelsSetCurrent(0);
+        drawList->AddRectFilled(ImVec2(30.0f, 30.0f), ImVec2(60.0f, 50.0f), IM_COL32(0, 255, 255, 255));
+        drawList->ChannelsMerge();
+    }
+    for (int i = 0; i < s_Nesting; ++i)
+    {
+        if (!ed::IsSuspended())
+            ++s_SuspendStateErrors;
+        ed::Resume();
+    }
+    if (ed::IsSuspended())
+        ++s_SuspendStateErrors;
 }
 
 void Scene(int frame, Site site, const Variant& variant)
 {
+    s_Nesting = variant.Nesting;
+    s_Draw    = variant.Draw;
+
     if (frame == 0)
     {
         ed::SetNodePosition(1, ImVec2(0.0f, 0.0f));
@@ -157,10 +189,13 @@ Result RunScene(Site site, const Variant& variant)
     return result;
 }
 
-// Compares the site with the same scene without Suspend()/Resume() in every variant.
-void CheckSite(Site site)
+// Compares the site with the same scene without Suspend()/Resume() in every
+// variant. Nested pairs draw inside, and are compared with a single pair that
+// draws the same.
+void CheckSite(Site site, int nesting = 1)
 {
     int total = 0, differing = 0, stray = 0, asserts = 0;
+    s_SuspendStateErrors = 0;
     for (bool bareHost : { false, true })
     {
         for (int hostCommands = 0; hostCommands <= 4; ++hostCommands)
@@ -173,8 +208,10 @@ void CheckSite(Site site)
                 variant.BareHost     = bareHost;
                 variant.Split        = site == Site::InNodeSplit;
                 variant.Table        = site == Site::InTableCell;
+                variant.Draw         = nesting > 1;
 
-                const auto baseline = RunScene(Site::None, variant);
+                const auto baseline = RunScene(nesting > 1 ? site : Site::None, variant);
+                variant.Nesting = nesting;
                 const auto result   = RunScene(site, variant);
 
                 ++total;
@@ -193,9 +230,10 @@ void CheckSite(Site site)
         }
     }
 
-    test::Check(differing == 0, "render identical to one without Suspend()/Resume(): %d of %d variants differ", differing, total);
+    test::Check(differing == 0, "render identical to %s: %d of %d variants differ", nesting > 1 ? "a single drawing pair" : "one without Suspend()/Resume()", differing, total);
     test::Check(stray == 0, "no canvas callback left for the renderer: %d of %d variants leave one", stray, total);
     test::Check(asserts == 0, "no IM_ASSERT failures: %d", asserts);
+    test::Check(s_SuspendStateErrors == 0, "IsSuspended() follows %d nested pairs: %d mismatches", nesting, s_SuspendStateErrors);
 }
 
 } // namespace
@@ -233,4 +271,22 @@ TEST_CASE(SuspendInPin, "suspend.in_pin", "CNV-1", test::TestFlags_None)
 TEST_CASE(SuspendInTableCell, "suspend.in_table_cell", "CNV-1", test::TestFlags_None)
 {
     CheckSite(Site::InTableCell);
+}
+
+TEST_CASE(NestedSuspendBetweenNodes, "suspend.nested_between_nodes", "CORE-16", test::TestFlags_None)
+{
+    CheckSite(Site::BetweenNodes, 2);
+    CheckSite(Site::BetweenNodes, 3);
+}
+
+TEST_CASE(NestedSuspendInNode, "suspend.nested_in_node", "CORE-16", test::TestFlags_None)
+{
+    CheckSite(Site::InNode, 2);
+    CheckSite(Site::InNode, 3);
+}
+
+TEST_CASE(NestedSuspendInPin, "suspend.nested_in_pin", "CORE-16", test::TestFlags_None)
+{
+    CheckSite(Site::InPin, 2);
+    CheckSite(Site::InPin, 3);
 }
