@@ -1010,3 +1010,51 @@ TEST_CASE(PopupOverFrontNode, "interaction.popup_of_a_back_node_over_a_front_nod
 
     test::Check(pressed, "the popup's button over node 2 takes the click");
 }
+
+TEST_CASE(PanFromAnotherWindow, "interaction.drag_from_another_window_doesnt_pan", "PR-238", test::TestFlags_None)
+{
+    test::Storage storage;
+    test::Session session(&storage);
+    session.HostSize = ImVec2(700.0f, 640.0f);
+    session.DefaultContent = SmallNode;
+    session.AfterHost = [&]
+    {
+        ImGui::SetNextWindowPos(ImVec2(800.0f, 40.0f));
+        ImGui::SetNextWindowSize(ImVec2(400.0f, 400.0f));
+        ImGui::Begin("Other", nullptr, session.HostFlags);
+        ImGui::End();
+    };
+    auto origin = [&] { return session.Use([] { return ed::CanvasToScreen(ImVec2(0.0f, 0.0f)); }); };
+    session.Run(3);
+    session.Click(ImVec2(400.0f, 300.0f));
+
+    // A right-drag from the other window into the editor.
+    const auto before = origin();
+    test::MouseMove(ImVec2(900.0f, 200.0f));
+    session.Run(2);
+    test::MouseButton(1, true);
+    session.Run(2);
+    for (int i = 1; i <= 10; ++i)
+    {
+        test::MouseMove(ImVec2(900.0f - 50.0f * i, 200.0f + 10.0f * i));
+        session.Run(1);
+    }
+    const auto afterOutside = origin();
+    test::MouseButton(1, false);
+    session.Run(3);
+
+    // A right-drag from the editor, with a fast first move.
+    test::MouseMove(ImVec2(300.0f, 300.0f));
+    session.Run(2);
+    test::MouseButton(1, true);
+    session.Run(1);
+    test::MouseMove(ImVec2(360.0f, 330.0f));
+    session.Run(3);
+    const auto afterInside = origin();
+    test::MouseButton(1, false);
+    session.Run(3);
+    session.AfterHost = nullptr;
+
+    test::Check(afterOutside.x == before.x && afterOutside.y == before.y, "a right-drag from another window doesn't pan the editor: origin (%g, %g) -> (%g, %g)", before.x, before.y, afterOutside.x, afterOutside.y);
+    test::Check(afterInside.x == afterOutside.x + 60.0f && afterInside.y == afterOutside.y + 30.0f, "a right-drag from the editor pans it from its first move: origin (%g, %g) -> (%g, %g)", afterOutside.x, afterOutside.y, afterInside.x, afterInside.y);
+}
