@@ -1208,6 +1208,7 @@ struct NodeBuilder
     Pin*  m_CurrentPin;
 
     ImRect m_NodeRect;
+    ImVec4 m_NodePadding;
 
     ImRect m_PivotRect;
     ImVec2 m_PivotAlignment;
