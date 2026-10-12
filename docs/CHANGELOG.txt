@@ -159,6 +159,9 @@ v0.9.4 (WIP):
     BUGFIX: Editor: Measure nodes and pins without items correctly on ImGui 1.91
         A node without items grew toward the item submitted before it, and an empty pin took hover far away.
 
+    BUGFIX: Editor: Don't offer a link from a pin to itself
+        Dragging back onto the source pin made QueryNewLink() report it as both ends.
+
 v0.9.3 (2023-10-14):
 
     CHANGE: Canvas: Use ImDrawCallback_ImCanvas macro as draw callback sentinel (#256), thanks @nspitko

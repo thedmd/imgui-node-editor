@@ -333,6 +333,7 @@ IMGUI_NODE_EDITOR_API bool Link(LinkId id, PinId startPinId, PinId endPinId, con
 IMGUI_NODE_EDITOR_API void Flow(LinkId linkId, FlowDirection direction = FlowDirection::Forward);
 
 IMGUI_NODE_EDITOR_API bool BeginCreate(const ImVec4& color = ImVec4(1, 1, 1, 1), float thickness = 1.0f);
+// startId is the pin the drag started from and endId the one it is over, of either kind.
 IMGUI_NODE_EDITOR_API bool QueryNewLink(PinId* startId, PinId* endId);
 IMGUI_NODE_EDITOR_API bool QueryNewLink(PinId* startId, PinId* endId, const ImVec4& color, float thickness = 1.0f);
 IMGUI_NODE_EDITOR_API bool QueryNewNode(PinId* pinId);
