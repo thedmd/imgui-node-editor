@@ -88,10 +88,17 @@ struct value
 
     operator type_t() const { return m_Type; }
 
+    // Mutable lookups add missing entries, turning null into an array or an object;
+    // on another type they assert and return a value that isn't in the document.
+    // Const lookups return null for a missing entry or another type.
           value& operator[](size_t index);
     const value& operator[](size_t index) const;
           value& operator[](const string& key);
     const value& operator[](const string& key) const;
+
+    // Returns nullptr for a missing key, or when this isn't an object.
+          value* find(const string& key);
+    const value* find(const string& key) const;
 
     bool contains(const string& key) const;
 

@@ -99,6 +99,9 @@ v0.9.4 (WIP):
     BUGFIX: Editor: Write non-finite numbers in settings as null
         A single NaN or infinity, such as a zoom, made the saved settings unreadable.
 
+    BUGFIX: Editor: Make crude_json lookups safe on unexpected documents
+        Missing keys, wrong types and out-of-range indices crashed or terminated the process.
+
 v0.9.3 (2023-10-14):
 
     CHANGE: Canvas: Use ImDrawCallback_ImCanvas macro as draw callback sentinel (#256), thanks @nspitko
