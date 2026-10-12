@@ -14,6 +14,7 @@
 # include <imgui.h>
 # include "imgui_impl_dx11.h"
 # include <d3d11.h>
+# include <cstdint> // std::uintptr_t
 
 
 struct RendererDX11 final
@@ -210,12 +211,12 @@ ImTextureID RendererDX11::CreateTexture(const void* data, int width, int height)
     if (!UploadTexture(texture))
     {
         IM_DELETE(texture);
-        return nullptr;
+        return ImTextureID{};
     }
 
     m_textures.push_back(texture);
 
-    return static_cast<ImTextureID>(texture->View);
+    return reinterpret_cast<ImTextureID>(texture->View);
 }
 
 void RendererDX11::DestroyTexture(ImTextureID texture)
@@ -252,7 +253,7 @@ auto RendererDX11::FindTexture(ImTextureID texture) -> Texture*
     if (!texture)
         return nullptr;
 
-    auto textureView = static_cast<decltype(Texture::View)>(texture);
+    auto textureView = reinterpret_cast<decltype(Texture::View)>(static_cast<std::uintptr_t>(texture));
 
     for (auto& t : m_textures)
     {

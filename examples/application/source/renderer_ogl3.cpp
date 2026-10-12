@@ -4,7 +4,6 @@
 
 # include "platform.h"
 # include <algorithm>
-# include <cstdint> // std::intptr_t
 
 # if PLATFORM(WINDOWS)
 #     define NOMINMAX
@@ -177,12 +176,12 @@ ImTextureID RendererOpenGL3::CreateTexture(const void* data, int width, int heig
     texture.Width  = width;
     texture.Height = height;
 
-    return reinterpret_cast<ImTextureID>(static_cast<std::intptr_t>(texture.TextureID));
+    return static_cast<ImTextureID>(texture.TextureID);
 }
 
 ImVector<ImTexture>::iterator RendererOpenGL3::FindTexture(ImTextureID texture)
 {
-    auto textureID = static_cast<GLuint>(reinterpret_cast<std::intptr_t>(texture));
+    auto textureID = static_cast<GLuint>(texture);
 
     return std::find_if(m_Textures.begin(), m_Textures.end(), [textureID](ImTexture& texture)
     {

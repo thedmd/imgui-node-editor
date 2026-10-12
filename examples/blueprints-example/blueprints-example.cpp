@@ -572,7 +572,7 @@ struct Example:
             if (id)
             {
                 DestroyTexture(id);
-                id = nullptr;
+                id = ImTextureID{};
             }
         };
 
@@ -1795,9 +1795,9 @@ struct Example:
     const int            m_PinIconSize = 24;
     std::vector<Node>    m_Nodes;
     std::vector<Link>    m_Links;
-    ImTextureID          m_HeaderBackground = nullptr;
-    ImTextureID          m_SaveIcon = nullptr;
-    ImTextureID          m_RestoreIcon = nullptr;
+    ImTextureID          m_HeaderBackground = ImTextureID{};
+    ImTextureID          m_SaveIcon = ImTextureID{};
+    ImTextureID          m_RestoreIcon = ImTextureID{};
     const float          m_TouchTime = 1.0f;
     std::map<ed::NodeId, float, NodeIdLess> m_NodeTouchTime;
     bool                 m_ShowOrdinals = false;
