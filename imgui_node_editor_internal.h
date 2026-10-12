@@ -768,6 +768,8 @@ struct AnimationController
     {
         IM_UNUSED(drawList);
     }
+
+    virtual void ForgetDeletedObjects() {} // objects marked for deletion are freed right after this call
 };
 
 struct FlowAnimationController final : AnimationController
@@ -778,6 +780,8 @@ struct FlowAnimationController final : AnimationController
     void Flow(Link* link, FlowDirection direction = FlowDirection::Forward);
 
     virtual void Draw(ImDrawList* drawList) override final;
+
+    virtual void ForgetDeletedObjects() override final;
 
     void Release(FlowAnimation* animation);
 
@@ -810,6 +814,8 @@ struct EditorAction
     virtual bool IsDragging() { return false; }
 
     virtual void ShowMetrics() {}
+
+    virtual void ForgetDeletedObjects() {} // objects marked for deletion are freed right after this call
 
     virtual NavigateAction*     AsNavigate()     { return nullptr; }
     virtual SizeAction*         AsSize()         { return nullptr; }
@@ -857,6 +863,8 @@ struct NavigateAction final: EditorAction
     virtual bool Process(const Control& control) override final;
 
     virtual void ShowMetrics() override final;
+
+    virtual void ForgetDeletedObjects() override final;
 
     virtual NavigateAction* AsNavigate() override final { return this; }
 
@@ -925,6 +933,8 @@ struct SizeAction final: EditorAction
 
     virtual void ShowMetrics() override final;
 
+    virtual void ForgetDeletedObjects() override final;
+
     virtual SizeAction* AsSize() override final { return this; }
 
     virtual bool IsDragging() override final { return m_IsActive; }
@@ -964,6 +974,8 @@ struct DragAction final: EditorAction
 
     virtual void ShowMetrics() override final;
 
+    virtual void ForgetDeletedObjects() override final;
+
     virtual DragAction* AsDrag() override final { return this; }
 };
 
@@ -989,6 +1001,8 @@ struct SelectAction final: EditorAction
     virtual bool Process(const Control& control) override final;
 
     virtual void ShowMetrics() override final;
+
+    virtual void ForgetDeletedObjects() override final;
 
     virtual bool IsDragging() override final { return m_IsActive; }
 
@@ -1041,6 +1055,8 @@ struct ShortcutAction final: EditorAction
     virtual void Reject() override final;
 
     virtual void ShowMetrics() override final;
+
+    virtual void ForgetDeletedObjects() override final;
 
     virtual ShortcutAction* AsCutCopyPaste() override final { return this; }
 
@@ -1112,6 +1128,8 @@ struct CreateItemAction final : EditorAction
 
     virtual void ShowMetrics() override final;
 
+    virtual void ForgetDeletedObjects() override final;
+
     virtual bool IsDragging() override final { return m_IsActive; }
 
     virtual CreateItemAction* AsCreateItem() override final { return this; }
@@ -1150,6 +1168,8 @@ struct DeleteItemsAction final: EditorAction
     virtual bool Process(const Control& control) override final;
 
     virtual void ShowMetrics() override final;
+
+    virtual void ForgetDeletedObjects() override final;
 
     virtual DeleteItemsAction* AsDeleteItems() override final { return this; }
 
@@ -1489,6 +1509,8 @@ struct EditorContext
 private:
     void LoadSettings();
     void SaveSettings();
+
+    void ForgetDeletedObjects();
 
     Control BuildControl(bool allowOffscreen);
 

@@ -39,6 +39,11 @@ v0.9.4 (WIP):
         Rejected items were offered again on every frame, and a drag cancelled after
         the item was accepted left BeginCreate() returning true until the next drag.
 
+    BUGFIX: Editor: Drop references to deleted objects before freeing them
+        Freed nodes, pins and links were still read through the selection, the link under the mouse,
+        flow animations, the DeleteNode()/DeleteLink() queue and pending new links.
+        GetLinkPins() returns false for a link whose pins were deleted.
+
 v0.9.3 (2023-10-14):
 
     CHANGE: Canvas: Use ImDrawCallback_ImCanvas macro as draw callback sentinel (#256), thanks @nspitko
