@@ -109,6 +109,41 @@ TEST_CASE(PinSubmittedTwice, "api.pin_submitted_twice_in_a_node", "API-4", test:
     test::Check(true, "ed::End() returns with the mouse over the node");
 }
 
+TEST_CASE(NodePaddingScopedToBegin, "api.node_padding_scoped_to_begin_or_end_node", "API-5", test::TestFlags_None)
+{
+    // ImGui's idiom of scoping a style var to the one call it affects.
+    test::Storage storage;
+    test::Session session(&storage);
+    ImVec2 sizes[2];
+    session.DefaultContent = [&](int frame)
+    {
+        if (frame == 0)
+        {
+            ed::SetNodePosition(1, ImVec2(100.0f, 100.0f));
+            ed::SetNodePosition(2, ImVec2(400.0f, 100.0f));
+        }
+
+        ed::PushStyleVar(ed::StyleVar_NodePadding, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
+        ed::BeginNode(1);
+        ed::PopStyleVar();
+        ImGui::TextUnformatted("Node");
+        ed::EndNode();
+        sizes[0] = ed::GetNodeSize(1);
+
+        ed::BeginNode(2);
+        ImGui::TextUnformatted("Node");
+        ed::PushStyleVar(ed::StyleVar_NodePadding, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
+        ed::EndNode();
+        ed::PopStyleVar();
+        sizes[1] = ed::GetNodeSize(2);
+    };
+
+    session.Run(3);
+    const ImVec2 textSize = ImGui::CalcTextSize("Node");
+    test::Check(sizes[0].x == ImFloor(textSize.x) && sizes[0].y == ImFloor(textSize.y), "node 1 has no padding: %g x %g", sizes[0].x, sizes[0].y);
+    test::Check(sizes[1].x > textSize.x && sizes[1].y > textSize.y, "node 2 has the default padding: %g x %g", sizes[1].x, sizes[1].y);
+}
+
 TEST_CASE(CallWithoutEditor, "api.call_without_current_editor_asserts", "API-8", test::TestFlags_None)
 {
     test::ExpectAsserts(1);

@@ -5528,10 +5528,12 @@ void ed::NodeBuilder::Begin(NodeId nodeId)
     // Begin outer group
     ImGui::BeginGroup();
 
-    // Apply frame padding. Begin inner group if necessary.
-    if (editorStyle.NodePadding.x != 0 || editorStyle.NodePadding.y != 0 || editorStyle.NodePadding.z != 0 || editorStyle.NodePadding.w != 0)
+    // Apply frame padding. Begin inner group if necessary. End() uses the same
+    // padding, even if the style changes in between.
+    m_NodePadding = editorStyle.NodePadding;
+    if (m_NodePadding.x != 0 || m_NodePadding.y != 0 || m_NodePadding.z != 0 || m_NodePadding.w != 0)
     {
-        ImGui::SetCursorPos(ImGui::GetCursorPos() + ImVec2(editorStyle.NodePadding.x, editorStyle.NodePadding.y));
+        ImGui::SetCursorPos(ImGui::GetCursorPos() + ImVec2(m_NodePadding.x, m_NodePadding.y));
         ImGui::BeginGroup();
     }
 }
@@ -5548,14 +5550,13 @@ void ed::NodeBuilder::End()
 
     // Apply frame padding. This must be done in this convoluted way if outer group
     // size must contain inner group padding.
-    auto& editorStyle = Editor->GetStyle();
-    if (editorStyle.NodePadding.x != 0 || editorStyle.NodePadding.y != 0 || editorStyle.NodePadding.z != 0 || editorStyle.NodePadding.w != 0)
+    if (m_NodePadding.x != 0 || m_NodePadding.y != 0 || m_NodePadding.z != 0 || m_NodePadding.w != 0)
     {
         ImGui::EndGroup();
-        ImGui::SameLine(0, editorStyle.NodePadding.z);
+        ImGui::SameLine(0, m_NodePadding.z);
         ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.0f, 0.0f));
         ImGui::Dummy(ImVec2(0, 0)); // bump cursor at the end of the line and move to next one
-        ImGui::Dummy(ImVec2(0, editorStyle.NodePadding.w)); // apply padding
+        ImGui::Dummy(ImVec2(0, m_NodePadding.w)); // apply padding
         ImGui::PopStyleVar();
     }
 
