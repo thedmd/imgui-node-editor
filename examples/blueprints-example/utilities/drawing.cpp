@@ -112,7 +112,7 @@ void ax::Drawing::DrawIcon(ImDrawList* drawList, const ImVec2& a, const ImVec2& 
                 const auto p0 = rect_center - ImVec2(r, r);
                 const auto p1 = rect_center + ImVec2(r, r);
 
-                drawList->AddRectFilled(p0, p1, color, 0, ImDrawFlags_RoundCornersAll);
+                drawList->AddRectFilled(p0, p1, color, 0, ImDrawFlags_RoundAll);
             }
             else
             {
@@ -122,10 +122,10 @@ void ax::Drawing::DrawIcon(ImDrawList* drawList, const ImVec2& a, const ImVec2& 
 
                 if (innerColor & 0xFF000000)
                 {
-                    drawList->AddRectFilled(p0, p1, innerColor, 0, ImDrawFlags_RoundCornersAll);
+                    drawList->AddRectFilled(p0, p1, innerColor, 0, ImDrawFlags_RoundAll);
                 }
 
-                drawList->AddRect(p0, p1, color, 0, 2.0f * outline_scale, ImDrawFlags_RoundCornersAll);
+                drawList->AddRect(p0, p1, color, 0, 2.0f * outline_scale, ImDrawFlags_RoundAll);
             }
         }
 
@@ -168,7 +168,7 @@ void ax::Drawing::DrawIcon(ImDrawList* drawList, const ImVec2& a, const ImVec2& 
                 const auto p0 = rect_center - ImVec2(r, r);
                 const auto p1 = rect_center + ImVec2(r, r);
 
-                drawList->AddRectFilled(p0, p1, color, cr, ImDrawFlags_RoundCornersAll);
+                drawList->AddRectFilled(p0, p1, color, cr, ImDrawFlags_RoundAll);
             }
             else
             {
@@ -179,10 +179,10 @@ void ax::Drawing::DrawIcon(ImDrawList* drawList, const ImVec2& a, const ImVec2& 
 
                 if (innerColor & 0xFF000000)
                 {
-                    drawList->AddRectFilled(p0, p1, innerColor, cr, ImDrawFlags_RoundCornersAll);
+                    drawList->AddRectFilled(p0, p1, innerColor, cr, ImDrawFlags_RoundAll);
                 }
 
-                drawList->AddRect(p0, p1, color, cr, 2.0f * outline_scale, ImDrawFlags_RoundCornersAll);
+                drawList->AddRect(p0, p1, color, cr, 2.0f * outline_scale, ImDrawFlags_RoundAll);
             }
         }
         else if (type == IconType::Diamond)
