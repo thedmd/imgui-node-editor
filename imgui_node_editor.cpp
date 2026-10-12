@@ -2706,7 +2706,7 @@ ed::Control ed::EditorContext::BuildControl(bool allowOffscreen)
             return -1;
 
         if (size_arg.x == 0.0f || size_arg.y == 0.0f)
-            return false;
+            return -1;
 
         const ImGuiID id = window->GetID(str_id);
         ImVec2 size = CalcItemSize(size_arg, 0.0f, 0.0f);
@@ -2753,6 +2753,10 @@ ed::Control ed::EditorContext::BuildControl(bool allowOffscreen)
     // Check input interactions over area.
     auto checkInteractionsInArea = [this, &emitInteractiveArea, &hotObject, &activeObject, &clickedObject, &doubleClickedObject](ObjectId id, const ImRect& rect, Object* object)
     {
+        // An empty area adds no item, and the item queries would answer for the previous one.
+        if (rect.GetWidth() <= 0.0f || rect.GetHeight() <= 0.0f)
+            return;
+
         if (emitInteractiveArea(id, rect) >= 0)
             clickedObject = object;
         if (!doubleClickedObject && ImGui::IsMouseDoubleClicked(m_Config.DragButtonIndex) && ImGui::IsItemHovered())

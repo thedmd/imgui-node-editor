@@ -693,3 +693,29 @@ TEST_CASE(NodeAndPinWithSameId, "interaction.node_and_pin_with_same_id", "CORE-3
     const auto result = DragNodeAbovePin(1, false);
     test::Check(result.Moved && !result.Offered, "dragging node 1 above pin 1 of node 2 moves the node (%d), without a link from the pin (%d)", result.Moved, result.Offered);
 }
+
+TEST_CASE(EmptyPinDoesntClick, "interaction.empty_pin_isnt_clicked", "CORE-4", test::TestFlags_None)
+{
+    const auto result = DragNodeAbovePin(10, true);
+    test::Check(result.Moved && !result.Offered, "dragging a node above an empty pin moves the node (%d), without a link from the pin (%d)", result.Moved, result.Offered);
+}
+
+TEST_CASE(EmptyNodeDoesntClick, "interaction.empty_node_isnt_clicked", "CORE-4", test::TestFlags_None)
+{
+    test::Storage storage;
+    test::Session session(&storage);
+    session.DefaultContent = [&](int frame)
+    {
+        if (frame == 0)
+            ed::SetNodePosition(3, ImVec2(100.0f, 100.0f));
+        ed::PushStyleVar(ed::StyleVar_NodePadding, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
+        ed::BeginNode(3);
+        ed::EndNode();
+        ed::PopStyleVar();
+    };
+    test::MouseMove(ImVec2(900.0f, 600.0f));
+    session.Run(10);
+
+    const bool selected = session.Use([] { return ed::IsNodeSelected(3); });
+    test::Check(!selected, "without any click, an empty node isn't selected");
+}
