@@ -16,6 +16,7 @@
 
 //------------------------------------------------------------------------------
 # include "imgui_bezier_math.h"
+# include <cmath>
 # include <map> // used in ImCubicBezierFixedStep
 
 
@@ -351,48 +352,68 @@ inline ImProjectResult ImProjectOnCubicBezier(const ImVec2& p, const ImCubicBezi
 
 inline ImCubicBezierIntersectResult ImCubicBezierLineIntersect(const ImVec2& p0, const ImVec2& p1, const ImVec2& p2, const ImVec2& p3, const ImVec2& a0, const ImVec2& a1)
 {
-    auto cubic_roots = [](float a, float b, float c, float d, float* roots) -> int
+    // Real roots of a t^3 + b t^2 + c t + d, in double. Leading coefficients that
+    // vanish next to the others leave a quadratic or a linear equation.
+    auto solve = [](double a, double b, double c, double d, double* roots) -> int
     {
-        int count = 0;
+        const double scale   = ImMax(ImMax(std::fabs(a), std::fabs(b)), ImMax(std::fabs(c), std::fabs(d)));
+        const double epsilon = scale * 1e-7;
+        if (scale == 0.0)
+            return 0;
 
-        auto sign = [](float x) -> float { return x < 0 ? -1.0f : 1.0f; };
-
-        auto A = b / a;
-        auto B = c / a;
-        auto C = d / a;
-
-        auto Q = (3 * B - ImPow(A, 2)) / 9;
-        auto R = (9 * A * B - 27 * C - 2 * ImPow(A, 3)) / 54;
-        auto D = ImPow(Q, 3) + ImPow(R, 2);               // polynomial discriminant
-
-        if (D >= 0) // complex or duplicate roots
+        if (std::fabs(a) > epsilon)
         {
-            auto S = sign(R + ImSqrt(D)) * ImPow(ImFabs(R + ImSqrt(D)), (1.0f / 3.0f));
-            auto T = sign(R - ImSqrt(D)) * ImPow(ImFabs(R - ImSqrt(D)), (1.0f / 3.0f));
+            const double A = b / a;
+            const double B = c / a;
+            const double C = d / a;
 
-            roots[0] = -A / 3 + (S + T);                // real root
-            roots[1] = -A / 3 - (S + T) / 2;            // real part of complex root
-            roots[2] = -A / 3 - (S + T) / 2;            // real part of complex root
-            auto Im = ImFabs(ImSqrt(3) * (S - T) / 2);  // complex part of root pair
+            const double Q = (3 * B - A * A) / 9;
+            const double R = (9 * A * B - 27 * C - 2 * A * A * A) / 54;
+            const double D = Q * Q * Q + R * R; // polynomial discriminant
 
-                                                        // discard complex roots
-            if (Im != 0)
-                count = 1;
-            else
-                count = 3;
+            if (D >= 0) // complex or duplicate roots
+            {
+                const double S = std::cbrt(R + std::sqrt(D));
+                const double T = std::cbrt(R - std::sqrt(D));
+
+                roots[0] = -A / 3 + (S + T);       // real root
+                roots[1] = -A / 3 - (S + T) / 2;   // real part of complex root
+                roots[2] = roots[1];
+
+                // Discard complex roots.
+                return S != T ? 1 : 3;
+            }
+            else // distinct real roots
+            {
+                const double th = std::acos(R / std::sqrt(-Q * Q * Q));
+                const double pi = 3.14159265358979323846;
+
+                roots[0] = 2 * std::sqrt(-Q) * std::cos(th / 3) - A / 3;
+                roots[1] = 2 * std::sqrt(-Q) * std::cos((th + 2 * pi) / 3) - A / 3;
+                roots[2] = 2 * std::sqrt(-Q) * std::cos((th + 4 * pi) / 3) - A / 3;
+                return 3;
+            }
         }
-        else                                            // distinct real roots
+        else if (std::fabs(b) > epsilon)
         {
-            auto th = ImAcos(R / ImSqrt(-ImPow(Q, 3)));
+            const double discriminant = c * c - 4 * b * d;
+            if (discriminant < 0)
+                return 0;
 
-            roots[0] = 2 * ImSqrt(-Q) * ImCos(th / 3) - A / 3;
-            roots[1] = 2 * ImSqrt(-Q) * ImCos((th + 2 * IM_PI) / 3) - A / 3;
-            roots[2] = 2 * ImSqrt(-Q) * ImCos((th + 4 * IM_PI) / 3) - A / 3;
-
-            count = 3;
+            const double q = -0.5 * (c + (c < 0 ? -1 : 1) * std::sqrt(discriminant));
+            roots[0] = q / b;
+            if (q == 0)
+                return 1;
+            roots[1] = d / q;
+            return 2;
+        }
+        else if (std::fabs(c) > epsilon)
+        {
+            roots[0] = -d / c;
+            return 1;
         }
 
-        return count;
+        return 0;
     };
 
     // https://github.com/kaishiqi/Geometric-Bezier/blob/master/GeometricBezier/src/kaishiqi/geometric/intersection/Intersection.as
@@ -414,58 +435,38 @@ inline ImCubicBezierIntersectResult ImCubicBezierLineIntersect(const ImVec2& p0,
     auto c0 =      p0;
 
     // Convert line to normal form: ax + by + c = 0
-    auto a = a1.y - a0.y;
-    auto b = a0.x - a1.x;
-    auto c = a0.x * (a0.y - a1.y) + a0.y * (a1.x - a0.x);
+    const double a = a1.y - a0.y;
+    const double b = a0.x - a1.x;
+    const double c = static_cast<double>(a0.x) * (a0.y - a1.y) + static_cast<double>(a0.y) * (a1.x - a0.x);
 
     // Rotate each cubic coefficient using line for new coordinate system?
     // Find roots of rotated cubic
-    float roots[3];
-    auto rootCount = cubic_roots(
+    double roots[3];
+    auto rootCount = solve(
         a * c3.x + b * c3.y,
         a * c2.x + b * c2.y,
         a * c1.x + b * c1.y,
         a * c0.x + b * c0.y + c,
         roots);
 
-    // Any roots in closed interval [0,1] are intersections on Bezier, but
-    // might not be on the line segment.
-    // Find intersections and calculate point coordinates
-
-    auto min = ImMin(a0, a1);
-    auto max = ImMax(a0, a1);
+    // Any roots in closed interval [0,1] are intersections on Bezier, and those
+    // that project into the line segment are on it too.
+    const auto segment           = a1 - a0;
+    const auto segment_length_sq = ImDot(segment, segment);
 
     ImCubicBezierIntersectResult result;
     auto points = result.Points;
 
     for (int i = 0; i < rootCount; ++i)
     {
-        auto root = roots[i];
+        const auto root = roots[i];
+        if (root < 0 || root > 1)
+            continue;
 
-        if (0 <= root && root <= 1)
-        {
-            // We're within the Bezier curve
-            // Find point on Bezier
-            auto p = ImCubicBezier(p0, p1, p2, p3, root);
-
-            // See if point is on line segment
-            // Had to make special cases for vertical and horizontal lines due
-            // to slight errors in calculation of p00
-            if (a0.x == a1.x)
-            {
-                if (min.y <= p.y && p.y <= max.y)
-                    *points++ = p;
-            }
-            else if (a0.y == a1.y)
-            {
-                if (min.x <= p.x && p.x <= max.x)
-                    *points++ = p;
-            }
-            else if (p.x >= min.x && p.y >= min.y && p.x <= max.x && p.y <= max.y)
-            {
-                *points++ = p;
-            }
-        }
+        const auto p = ImCubicBezier(p0, p1, p2, p3, static_cast<float>(root));
+        const auto s = ImDot(p - a0, segment) / segment_length_sq;
+        if (s >= 0 && s <= 1)
+            *points++ = p;
     }
 
     result.Count = static_cast<int>(points - result.Points);
