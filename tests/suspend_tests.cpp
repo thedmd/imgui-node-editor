@@ -8,7 +8,7 @@
 
 namespace {
 
-enum class Site { None, BetweenNodes, InNode, InNodePopup, InNodePopupPairs, InNodeSplit, InPin, InTableCell };
+enum class Site { None, BeforeNodes, BetweenNodes, InNode, InNodePopup, InNodePopupPairs, InNodeSplit, InPin, InTableCell };
 
 const char* c_ViewState = R"({"view":{"scroll":{"x":-150.0,"y":-90.0},"zoom":1.5}})";
 
@@ -80,6 +80,9 @@ void Scene(int frame, Site site, const Variant& variant)
         ed::SetNodePosition(1, ImVec2(0.0f, 0.0f));
         ed::SetNodePosition(2, ImVec2(300.0f, 120.0f));
     }
+
+    if (site == Site::BeforeNodes)
+        SuspendResume();
 
     ed::BeginNode(1);
     ImGui::Text("Node A");
@@ -237,6 +240,12 @@ void CheckSite(Site site, int nesting = 1)
 }
 
 } // namespace
+
+TEST_CASE(SuspendBeforeNodes, "suspend.before_nodes", "CORE-16", test::TestFlags_None)
+{
+    CheckSite(Site::BeforeNodes);
+    CheckSite(Site::BeforeNodes, 2);
+}
 
 TEST_CASE(SuspendBetweenNodes, "suspend.between_nodes", "CNV-1", test::TestFlags_None)
 {

@@ -343,6 +343,9 @@ v0.10.0 (WIP):
     BUGFIX: Editor: Keep groups under links whatever the Z order of other nodes
         A regular node with a lower Z than the groups put every group above every link.
 
+    BUGFIX: Editor: Draw content added before the first node over the background
+        It shared the host window's channel, which merges before the editor's background and grid.
+
 v0.9.2 (2023-09-01):
 
     NEW: Editor: Add offset of hover/select to style (thanks @MultiPain)
