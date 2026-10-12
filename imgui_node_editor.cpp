@@ -1035,17 +1035,17 @@ bool ed::Link::TestHit(const ImVec2& point, float extraThickness) const
     if (!m_IsLive)
         return false;
 
-    auto bounds = GetCurveBounds();
-    if (extraThickness > 0.0f)
-        bounds.Expand(extraThickness);
+    const auto maxDistance = m_Thickness + extraThickness;
 
-    if (!bounds.Contains(point))
+    auto bounds = GetCurveBounds();
+    bounds.Expand(maxDistance);
+    if (point.x < bounds.Min.x || point.y < bounds.Min.y || point.x > bounds.Max.x || point.y > bounds.Max.y)
         return false;
 
     const auto bezier = GetCurve();
     const auto result = ImProjectOnCubicBezier(point, bezier.P0, bezier.P1, bezier.P2, bezier.P3, 50);
 
-    return result.Distance <= m_Thickness + extraThickness;
+    return result.Distance <= maxDistance;
 }
 
 bool ed::Link::TestHit(const ImRect& rect, bool allowIntersect) const
