@@ -817,11 +817,12 @@ ImRect ed::Node::GetRegionBounds(NodeRegion region) const
             m_GroupBorderWidth), c_GroupSelectThickness);
         const float minimumSize = activeAreaMinimumSize * 5;
 
+        // Expand() moves both sides, by half of what is missing each.
         auto bounds = m_Bounds;
         if (bounds.GetWidth() < minimumSize)
-            bounds.Expand(ImVec2(minimumSize - bounds.GetWidth(), 0.0f));
+            bounds.Expand(ImVec2((minimumSize - bounds.GetWidth()) * 0.5f, 0.0f));
         if (bounds.GetHeight() < minimumSize)
-            bounds.Expand(ImVec2(0.0f, minimumSize - bounds.GetHeight()));
+            bounds.Expand(ImVec2(0.0f, (minimumSize - bounds.GetHeight()) * 0.5f));
 
         if (region == NodeRegion::Top)
         {
