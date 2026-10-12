@@ -4,7 +4,7 @@ v0.10.0 (WIP):
         From this point ed::EndCreate() and ed::EndDelete() can only be called when
         ed::BeginCreate() and ed::BeginDelete() calls were successful.
 
-    BREAKING: Editor: Minimum supported version is now Dear ImGui 1.89 (August 2022)
+    BREAKING: Editor: Minimum supported version is now Dear ImGui 1.89 (November 2022)
 
     BREAKING: Canvas: Minimum supported version is now Dear ImGui 1.89 (August 2022)
 
@@ -71,6 +71,8 @@ v0.10.0 (WIP):
     BUGFIX: Examples: Don't use API obsoleted in ImGui 1.93
 
     BUGFIX: Examples: Copy data files without racing in parallel builds
+
+    BUGFIX: Editor: Check minimum ImGui version in every translation unit
 
 v0.9.2 (2023-09-01):
 

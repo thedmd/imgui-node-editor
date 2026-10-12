@@ -36,21 +36,6 @@
     };
 
 
-namespace ax {
-namespace NodeEditor {
-namespace Detail {
-
-# if !defined(IMGUI_VERSION_NUM)
-#     error IMGUI_VERSION_NUM is not defined, please update Dear ImGui copy to at least 1.89 (August 2022)
-# elif IMGUI_VERSION_NUM < 18900
-#     error Please update Dear ImGui copy to at least 1.89 (August 2022)
-# endif
-
-} // namespace Detail
-} // namespace NodeEditor
-} // namespace ax
-
-
 //------------------------------------------------------------------------------
 namespace ed = ax::NodeEditor::Detail;
 

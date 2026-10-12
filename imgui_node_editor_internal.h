@@ -23,6 +23,11 @@
 
 //------------------------------------------------------------------------------
 # include <imgui.h>
+# if !defined(IMGUI_VERSION_NUM)
+#     error IMGUI_VERSION_NUM is not defined, please update Dear ImGui copy to at least 1.89 (November 2022)
+# elif IMGUI_VERSION_NUM < 18900
+#     error Please update Dear ImGui copy to at least 1.89 (November 2022)
+# endif
 # include <imgui_internal.h>
 # include "imgui_extra_math.h"
 # include "imgui_bezier_math.h"
