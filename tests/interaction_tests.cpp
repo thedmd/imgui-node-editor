@@ -367,3 +367,46 @@ TEST_CASE(MacCommandShortcuts, "interaction.macos_command_shortcuts", "INT-19", 
     test::Check(scene.Copies == 1, "Cmd+C copies with io.ConfigMacOSXBehaviors: %d copies", scene.Copies);
 # endif
 }
+
+TEST_CASE(DragAnchorSurvivesZoom, "interaction.dragged_node_stays_under_mouse_when_zooming", "INT-5", test::TestFlags_None)
+{
+    test::Storage storage;
+    test::Session session(&storage);
+    ShortcutScene scene;
+    session.DefaultContent = [&](int frame) { scene.Submit(frame); };
+    session.Run(3);
+
+    // Where on the node the mouse holds it, in canvas units.
+    auto grabOffset = [&]
+    {
+        return session.Use([] { return ed::ScreenToCanvas(ImGui::GetIO().MousePos) - ed::GetNodePosition(1); });
+    };
+
+    // Alt keeps the node off the grid.
+    const ImVec2 press = scene.NodeOnScreen;
+    ImGui::GetIO().AddKeyEvent(ImGuiMod_Alt, true);
+    test::MouseMove(press);
+    session.Run(2);
+    test::MouseButton(0, true);
+    session.Run(1);
+    for (int i = 1; i <= 10; ++i)
+    {
+        test::MouseMove(press + ImVec2(30.0f * i, 0.0f));
+        session.Run(1);
+    }
+    session.Run(2);
+    const auto before = grabOffset();
+
+    test::MouseWheel(1.0f);
+    session.Run(30);
+    const auto after = grabOffset();
+    const float zoom = 1.0f / session.Use([] { return ed::GetCurrentZoom(); });
+
+    test::MouseButton(0, false);
+    session.Run(2);
+    ImGui::GetIO().AddKeyEvent(ImGuiMod_Alt, false);
+    session.Run(1);
+
+    test::Check(zoom > 1.0f, "zoomed in during the drag: zoom %g", zoom);
+    test::Check(ImFabs(after.x - before.x) < 0.5f && ImFabs(after.y - before.y) < 0.5f, "the node stays where the mouse holds it: offset (%g, %g) -> (%g, %g)", before.x, before.y, after.x, after.y);
+}
