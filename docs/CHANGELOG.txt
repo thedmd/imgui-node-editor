@@ -340,6 +340,9 @@ v0.10.0 (WIP):
     BUGFIX: Canvas: Tessellate curves for the zoom with ImGui before 1.93
         Links looked faceted when zoomed in, tessellated as at zoom 1.
 
+    BUGFIX: Editor: Keep groups under links whatever the Z order of other nodes
+        A regular node with a lower Z than the groups put every group above every link.
+
 v0.9.2 (2023-09-01):
 
     NEW: Editor: Add offset of hover/select to style (thanks @MultiPain)

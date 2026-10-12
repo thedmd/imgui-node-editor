@@ -1594,9 +1594,12 @@ void ed::EditorContext::End()
         });
     }
 
-    // Apply Z order
+    // Apply Z order, keeping groups before regular nodes
     std::stable_sort(m_Nodes.begin(), m_Nodes.end(), [](const auto& lhs, const auto& rhs)
     {
+        if (IsGroup(lhs) != IsGroup(rhs))
+            return IsGroup(lhs);
+
         return lhs->m_ZPosition < rhs->m_ZPosition;
     });
 
