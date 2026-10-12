@@ -3,6 +3,7 @@
 //------------------------------------------------------------------------------
 # include "harness.h"
 # include "imgui_bezier_math.h"
+# include <cfloat>
 # include <cmath>
 # include <cstdint>
 # include <vector>
@@ -152,6 +153,14 @@ double ArcLength(const std::vector<double>& table, double t)
     const double position = ImClamp(t, 0.0, 1.0) * 20000.0;
     const int    i        = ImMin(static_cast<int>(position), 19999);
     return table[i] + (table[i + 1] - table[i]) * (position - i);
+}
+
+std::vector<ImVec2> Subdivide(const ImCubicBezierPoints& curve, float tolerance)
+{
+    std::vector<ImVec2> points;
+    auto collect = [&points](const ImCubicBezierSubdivideSample& sample) { points.push_back(sample.Point); };
+    ImCubicBezierSubdivide(collect, curve, tolerance);
+    return points;
 }
 
 } // namespace
@@ -606,4 +615,31 @@ TEST_CASE(SampleCoincidingControlPoints, "math.sample_follows_the_curve", "MATH-
     }
 
     test::Check(off == 0, "samples lie on the curve: %d of 3300 off, by up to %g", off, worst);
+}
+
+TEST_CASE(SubdivisionDepthLimit, "math.subdivision_reaches_the_curve_end", "MATH-8", test::TestFlags_None)
+{
+    // A tolerance this fine leaves sub-curves that aren't flat at the depth limit.
+    const ImCubicBezierPoints curve{ ImVec2(0, 0), ImVec2(100, 0), ImVec2(200, 150), ImVec2(300, 150) };
+    const auto points = Subdivide(curve, 1e-4f);
+
+    double deviation = 0.0;
+    for (int k = 0; k <= 2000 && points.size() > 1; ++k)
+    {
+        const auto p = Cubic(curve, k / 2000.0);
+        double closest = DBL_MAX;
+        for (size_t i = 1; i < points.size(); ++i)
+        {
+            const double ax = points[i - 1].x, ay = points[i - 1].y;
+            const double bx = points[i].x - ax, by = points[i].y - ay;
+            const double lengthSq = bx * bx + by * by;
+            const double s = lengthSq > 0 ? ImClamp(((p.x - ax) * bx + (p.y - ay) * by) / lengthSq, 0.0, 1.0) : 0.0;
+            closest = ImMin(closest, std::hypot(p.x - (ax + s * bx), p.y - (ay + s * by)));
+        }
+        deviation = ImMax(deviation, closest);
+    }
+
+    const auto end = points.empty() ? ImVec2(0, 0) : points.back();
+    test::Check(end.x == curve.P3.x && end.y == curve.P3.y && deviation < 0.01,
+        "the points follow the curve to its end: %d points, the last at (%g, %g), the curve up to %g away", static_cast<int>(points.size()), end.x, end.y, deviation);
 }

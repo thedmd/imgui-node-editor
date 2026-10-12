@@ -534,11 +534,11 @@ inline void ImCubicBezierSubdivide(ImCubicBezierSubdivideCallback callback, void
             float d3 = ((curve.P2.x - curve.P3.x) * dy - (curve.P2.y - curve.P3.y) * dx);
             d2 = (d2 >= 0) ? d2 : -d2;
             d3 = (d3 >= 0) ? d3 : -d3;
-            if ((d2 + d3) * (d2 + d3) < TesselationTollerance * (dx * dx + dy * dy))
+            if ((d2 + d3) * (d2 + d3) < TesselationTollerance * (dx * dx + dy * dy) || level >= 10)
             {
                 Commit(curve.P3, ImCubicBezierTangent(curve, 1.0f));
             }
-            else if (level < 10)
+            else
             {
                 const auto p12 = (curve.P0 + curve.P1) * 0.5f;
                 const auto p23 = (curve.P1 + curve.P2) * 0.5f;
