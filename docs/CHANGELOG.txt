@@ -191,6 +191,9 @@ v0.9.4 (WIP):
     BUGFIX: Editor: End the fixed step search along a curve without length
         ImCubicBezierFixedStep() looped forever on such curves with overshoot, or with tolerances below float resolution; the editor's flow animation doesn't overshoot.
 
+    BUGFIX: Editor: Compute cubic Bezier derivatives from control point differences
+        Far from the origin, curve lengths and tangents picked up the rounding of the coordinates.
+
 v0.9.3 (2023-10-14):
 
     CHANGE: Canvas: Use ImDrawCallback_ImCanvas macro as draw callback sentinel (#256), thanks @nspitko
