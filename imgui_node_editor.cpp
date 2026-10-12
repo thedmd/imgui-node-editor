@@ -313,6 +313,24 @@ static void ImDrawList_SwapSplitter(ImDrawList* drawList, ImDrawListSplitter& sp
 //        drawList->ChannelsSetCurrent(lastCurrentChannel);
 //}
 
+static void ImDrawList_AddRectCompat(ImDrawList* drawList, const ImVec2& a, const ImVec2& b, ImU32 col, float rounding, ImDrawFlags flags, float thickness)
+{
+# if IMGUI_VERSION_NUM >= 19276
+    drawList->AddRect(a, b, col, rounding, thickness, flags);
+# else
+    drawList->AddRect(a, b, col, rounding, flags, thickness);
+# endif
+}
+
+static void ImDrawList_PathStrokeClosed(ImDrawList* drawList, ImU32 col, float thickness)
+{
+# if IMGUI_VERSION_NUM >= 19276
+    drawList->PathStroke(col, thickness, ImDrawFlags_Closed);
+# else
+    drawList->PathStroke(col, ImDrawFlags_Closed, thickness);
+# endif
+}
+
 static void ImDrawList_PathBezierOffset(ImDrawList* drawList, float offset, const ImVec2& p0, const ImVec2& p1, const ImVec2& p2, const ImVec2& p3)
 {
     using namespace ed;
@@ -511,7 +529,7 @@ static void ImDrawList_AddBezierWithArrows(ImDrawList* drawList, const ImCubicBe
 
         ImDrawList_PathBezierOffset(drawList, half_thickness, curve.P3, curve.P2, curve.P1, curve.P0);
 
-        drawList->PathStroke(color, true, strokeThickness);
+        ImDrawList_PathStrokeClosed(drawList, color, strokeThickness);
     }
 }
 
@@ -535,7 +553,7 @@ void ed::Pin::Draw(ImDrawList* drawList, DrawFlags flags)
         if (m_BorderWidth > 0.0f)
         {
             FringeScaleScope fringe(1.0f);
-            drawList->AddRect(m_Bounds.Min, m_Bounds.Max,
+            ImDrawList_AddRectCompat(drawList, m_Bounds.Min, m_Bounds.Max,
                 m_BorderColor, m_Rounding, m_Corners, m_BorderWidth);
         }
 
@@ -634,7 +652,7 @@ void ed::Node::Draw(ImDrawList* drawList, DrawFlags flags)
             {
                 FringeScaleScope fringe(1.0f);
 
-                drawList->AddRect(
+                ImDrawList_AddRectCompat(drawList,
                     m_GroupBounds.Min,
                     m_GroupBounds.Max,
                     m_GroupBorderColor, m_GroupRounding, c_AllRoundCornersFlags, m_GroupBorderWidth);
@@ -689,7 +707,7 @@ void ed::Node::DrawBorder(ImDrawList* drawList, ImU32 color, float thickness, fl
     {
         const ImVec2 extraOffset = ImVec2(offset, offset);
 
-        drawList->AddRect(m_Bounds.Min - extraOffset, m_Bounds.Max + extraOffset,
+        ImDrawList_AddRectCompat(drawList, m_Bounds.Min - extraOffset, m_Bounds.Max + extraOffset,
             color, ImMax(0.0f, m_Rounding + offset), c_AllRoundCornersFlags, thickness);
     }
 }
