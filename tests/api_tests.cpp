@@ -170,6 +170,39 @@ TEST_CASE(DrawListsInsideNode, "api.node_draw_lists_requested_inside_a_node", "A
     test::Check(after != nullptr, "background draw list available after EndNode()");
 }
 
+TEST_CASE(StyleStackMisuse, "api.style_stack_misuse_asserts", "API-7", test::TestFlags_None)
+{
+    // An extra pop of each stack, and a float pushed to the ImVec4 NodePadding.
+    test::ExpectAsserts(3);
+    test::Storage storage;
+    test::Session session(&storage);
+    ImVec4 padding;
+    session.Frame([&](int)
+    {
+        ed::PopStyleColor();
+        ed::PopStyleVar();
+        ed::PushStyleVar(ed::StyleVar_NodePadding, 1.0f);
+        padding = ed::GetStyle().NodePadding;
+    });
+
+    const ImVec4 defaultPadding = ed::Style().NodePadding;
+    test::Check(padding.x == defaultPadding.x && padding.y == defaultPadding.y && padding.z == defaultPadding.z && padding.w == defaultPadding.w,
+        "NodePadding unchanged by the wrong push: (%g, %g, %g, %g)", padding.x, padding.y, padding.z, padding.w);
+}
+
+TEST_CASE(StyleStackUnbalanced, "api.style_stack_unbalanced_in_frame_asserts", "API-7", test::TestFlags_None)
+{
+    // Pushed before ed::Begin() and popped after ed::End() is fine; a push left inside is not.
+    test::ExpectAsserts(1);
+    test::Storage storage;
+    test::Session session(&storage);
+    session.Use([] { ed::PushStyleColor(ed::StyleColor_Bg, ImVec4(1.0f, 0.0f, 0.0f, 1.0f)); });
+    session.Frame([](int) {});
+    session.Use([] { ed::PopStyleColor(); });
+    session.Frame([](int) { ed::PushStyleVar(ed::StyleVar_NodeRounding, 2.0f); });
+    session.Use([] { ed::PopStyleVar(); });
+}
+
 TEST_CASE(CallWithoutEditor, "api.call_without_current_editor_asserts", "API-8", test::TestFlags_None)
 {
     test::ExpectAsserts(1);
