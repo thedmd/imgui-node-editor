@@ -50,7 +50,7 @@ bool Application::Create(int width /*= -1*/, int height /*= -1*/)
 
     ImGui::StyleColorsDark();
 
-    RecreateFontAtlas();
+    LoadFonts();
 
     m_Platform->AcknowledgeWindowScaleChanged();
     m_Platform->AcknowledgeFramebufferScaleChanged();
@@ -79,22 +79,15 @@ int Application::Run()
     return 0;
 }
 
-void Application::RecreateFontAtlas()
+void Application::LoadFonts()
 {
     ImGuiIO& io = ImGui::GetIO();
 
-    IM_DELETE(io.Fonts);
-
-    io.Fonts = IM_NEW(ImFontAtlas);
-
     ImFontConfig config;
     config.PixelSnapH = true;
-    config.RasterizerDensity = m_Platform->GetFramebufferScale();
 
     m_DefaultFont = io.Fonts->AddFontFromFileTTF("data/Play-Regular.ttf", 18.0f, &config);
     m_HeaderFont  = io.Fonts->AddFontFromFileTTF("data/Cuprum-Bold.ttf",  20.0f, &config);
-
-    io.Fonts->Build();
 }
 
 void Application::Frame()
@@ -105,12 +98,7 @@ void Application::Frame()
         m_Platform->AcknowledgeWindowScaleChanged();
 
     if (m_Platform->HasFramebufferScaleChanged())
-    {
-        m_Renderer->InvalidateResources();
-        RecreateFontAtlas();
-        m_Renderer->UpdateResources();
         m_Platform->AcknowledgeFramebufferScaleChanged();
-    }
 
     const float windowScale      = m_Platform->GetWindowScale();
     const float framebufferScale = m_Platform->GetFramebufferScale();

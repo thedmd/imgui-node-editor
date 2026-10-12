@@ -35,8 +35,6 @@ struct RendererDX11 final
     void Clear(const ImVec4& color) override;
     void Present() override;
     void Resize(int width, int height) override;
-    void InvalidateResources() override;
-    void UpdateResources() override;
 
     ImTextureID CreateTexture(const void* data, int width, int height) override;
     void        DestroyTexture(ImTextureID texture) override;
@@ -122,16 +120,6 @@ void RendererDX11::Resize(int width, int height)
     CleanupRenderTarget();
     m_swapChain->ResizeBuffers(0, (UINT)width, (UINT)height, DXGI_FORMAT_UNKNOWN, 0);
     CreateRenderTarget();
-}
-
-void RendererDX11::InvalidateResources()
-{
-    ImGui_ImplDX11_InvalidateDeviceObjects();
-}
-
-void RendererDX11::UpdateResources()
-{
-    ImGui_ImplDX11_CreateDeviceObjects();
 }
 
 HRESULT RendererDX11::CreateDeviceD3D(HWND hWnd)

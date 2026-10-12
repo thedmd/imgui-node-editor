@@ -21,9 +21,6 @@ struct Renderer
 
     virtual void Resize(int width, int height) = 0;
 
-    virtual void InvalidateResources() = 0;
-    virtual void UpdateResources() = 0;
-
     virtual ImTextureID CreateTexture(const void* data, int width, int height) = 0;
     virtual void        DestroyTexture(ImTextureID texture) = 0;
     virtual int         GetTextureWidth(ImTextureID texture) = 0;
