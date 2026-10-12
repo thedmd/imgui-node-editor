@@ -314,7 +314,7 @@ IMGUI_NODE_EDITOR_API void EndPin();
 IMGUI_NODE_EDITOR_API void Group(const ImVec2& size);
 IMGUI_NODE_EDITOR_API void EndNode();
 
-IMGUI_NODE_EDITOR_API bool BeginGroupHint(NodeId nodeId);
+IMGUI_NODE_EDITOR_API bool BeginGroupHint(NodeId nodeId); // outside of BeginNode()/EndNode()
 IMGUI_NODE_EDITOR_API ImVec2 GetGroupMin();
 IMGUI_NODE_EDITOR_API ImVec2 GetGroupMax();
 IMGUI_NODE_EDITOR_API ImDrawList* GetHintForegroundDrawList();
@@ -322,7 +322,7 @@ IMGUI_NODE_EDITOR_API ImDrawList* GetHintBackgroundDrawList();
 IMGUI_NODE_EDITOR_API void EndGroupHint();
 
 // TODO: Add a way to manage node background channels
-IMGUI_NODE_EDITOR_API ImDrawList* GetNodeBackgroundDrawList(NodeId nodeId); // nullptr outside Begin()/End(), and for a node not submitted in this frame
+IMGUI_NODE_EDITOR_API ImDrawList* GetNodeBackgroundDrawList(NodeId nodeId); // available after EndNode(); nullptr outside Begin()/End(), and for a node not submitted in this frame
 
 IMGUI_NODE_EDITOR_API bool Link(LinkId id, PinId startPinId, PinId endPinId, const ImVec4& color = ImVec4(1, 1, 1, 1), float thickness = 1.0f);
 

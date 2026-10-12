@@ -144,6 +144,32 @@ TEST_CASE(NodePaddingScopedToBegin, "api.node_padding_scoped_to_begin_or_end_nod
     test::Check(sizes[1].x > textSize.x && sizes[1].y > textSize.y, "node 2 has the default padding: %g x %g", sizes[1].x, sizes[1].y);
 }
 
+TEST_CASE(DrawListsInsideNode, "api.node_draw_lists_requested_inside_a_node", "API-6", test::TestFlags_None)
+{
+    // Three frames, each asking for a node background draw list and a group hint inside a node.
+    test::ExpectAsserts(6);
+    test::Storage storage;
+    test::Session session(&storage);
+    ImDrawList* inside = nullptr;
+    ImDrawList* after  = nullptr;
+    bool        hint   = true;
+    session.DefaultContent = [&](int frame)
+    {
+        if (frame == 0)
+            ed::SetNodePosition(1, ImVec2(100.0f, 100.0f));
+        ed::BeginNode(1);
+        ImGui::TextUnformatted("Node");
+        inside = ed::GetNodeBackgroundDrawList(1);
+        hint   = ed::BeginGroupHint(1);
+        ed::EndNode();
+        after = ed::GetNodeBackgroundDrawList(1);
+    };
+
+    session.Run(3);
+    test::Check(inside == nullptr && !hint, "nothing returned inside the node: draw list %p, group hint %d", (void*)inside, hint ? 1 : 0);
+    test::Check(after != nullptr, "background draw list available after EndNode()");
+}
+
 TEST_CASE(CallWithoutEditor, "api.call_without_current_editor_asserts", "API-8", test::TestFlags_None)
 {
     test::ExpectAsserts(1);
