@@ -240,10 +240,10 @@ inline ImCubicBezierSplitResultT<T> ImCubicBezierSplit(const ImCubicBezierPoints
 
 inline ImRect ImCubicBezierBoundingRect(const ImVec2& p0, const ImVec2& p1, const ImVec2& p2, const ImVec2& p3)
 {
+    // The extrema are where the derivative, a t^2 + b t + c, is zero.
     auto a = 3 * p3 - 9 * p2 + 9 * p1 - 3 * p0;
     auto b = 6 * p0 - 12 * p1 + 6 * p2;
     auto c = 3 * p1 - 3 * p0;
-    auto delta_squared = ImMul(b, b) - 4 * ImMul(a, c);
 
     auto tl = ImMin(p0, p3);
     auto rb = ImMax(p0, p3);
@@ -252,25 +252,35 @@ inline ImRect ImCubicBezierBoundingRect(const ImVec2& p0, const ImVec2& p1, cons
 
     for (int i = 0; i < 2; ++i)
     {
-        if (IM_VEC2_INDEX(a, i) == 0.0f)
-            continue;
+        const auto ai = IM_VEC2_INDEX(a, i);
+        const auto bi = IM_VEC2_INDEX(b, i);
+        const auto ci = IM_VEC2_INDEX(c, i);
 
-        if (IM_VEC2_INDEX(delta_squared, i) >= 0)
+        float roots[2];
+        int   count = 0;
+        if (ImFabs(ai) <= 1e-6f * ImFabs(bi))
         {
-            auto delta = ImSqrt(IM_VEC2_INDEX(delta_squared, i));
-
-            auto t0 = (-IM_VEC2_INDEX(b, i) + delta) / (2 * IM_VEC2_INDEX(a, i));
-            if (t0 > 0 && t0 < 1)
+            if (bi != 0)
+                roots[count++] = -ci / bi;
+        }
+        else
+        {
+            const auto discriminant = bi * bi - 4 * ai * ci;
+            if (discriminant >= 0)
             {
-                auto p = ImCubicBezier(IM_VEC2_INDEX(p0, i), IM_VEC2_INDEX(p1, i), IM_VEC2_INDEX(p2, i), IM_VEC2_INDEX(p3, i), t0);
-                IM_VEC2_INDEX(tl, i) = ImMin(IM_VEC2_INDEX(tl, i), p);
-                IM_VEC2_INDEX(rb, i) = ImMax(IM_VEC2_INDEX(rb, i), p);
+                const auto q = -0.5f * (bi + (bi < 0 ? -1.0f : 1.0f) * ImSqrt(discriminant));
+                roots[count++] = q / ai;
+                if (q != 0)
+                    roots[count++] = ci / q;
             }
+        }
 
-            auto t1 = (-IM_VEC2_INDEX(b, i) - delta) / (2 * IM_VEC2_INDEX(a, i));
-            if (t1 > 0 && t1 < 1)
+        for (int k = 0; k < count; ++k)
+        {
+            const auto t = roots[k];
+            if (t > 0 && t < 1)
             {
-                auto p = ImCubicBezier(IM_VEC2_INDEX(p0, i), IM_VEC2_INDEX(p1, i), IM_VEC2_INDEX(p2, i), IM_VEC2_INDEX(p3, i), t1);
+                auto p = ImCubicBezier(IM_VEC2_INDEX(p0, i), IM_VEC2_INDEX(p1, i), IM_VEC2_INDEX(p2, i), IM_VEC2_INDEX(p3, i), t);
                 IM_VEC2_INDEX(tl, i) = ImMin(IM_VEC2_INDEX(tl, i), p);
                 IM_VEC2_INDEX(rb, i) = ImMax(IM_VEC2_INDEX(rb, i), p);
             }
