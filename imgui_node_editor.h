@@ -22,7 +22,7 @@
 
 //------------------------------------------------------------------------------
 # define IMGUI_NODE_EDITOR_VERSION      "0.10.0"
-# define IMGUI_NODE_EDITOR_VERSION_NUM  001000
+# define IMGUI_NODE_EDITOR_VERSION_NUM  1000
 
 
 //------------------------------------------------------------------------------
