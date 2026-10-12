@@ -3795,9 +3795,21 @@ ed::NavigateAction::NavigateAction(EditorContext* editor, ImGuiEx::Canvas& canva
     m_LastObject(nullptr),
     m_MovingOverEdge(false),
     m_MoveScreenOffset(0, 0),
-    m_ZoomLevels(editor->GetConfig().CustomZoomLevels.Size > 0 ? editor->GetConfig().CustomZoomLevels.Data : s_DefaultZoomLevels),
-    m_ZoomLevelCount(editor->GetConfig().CustomZoomLevels.Size > 0 ? editor->GetConfig().CustomZoomLevels.Size : s_DefaultZoomLevelCount)
+    m_SmoothZoomPower(editor->GetConfig().SmoothZoomPower),
+    m_WheelSteps(0.0f)
 {
+    for (auto level : editor->GetConfig().CustomZoomLevels)
+        if (level > 0.0f && std::isfinite(level))
+            m_ZoomLevels.push_back(level);
+    std::sort(m_ZoomLevels.begin(), m_ZoomLevels.end());
+    m_ZoomLevels.erase(std::unique(m_ZoomLevels.begin(), m_ZoomLevels.end()), m_ZoomLevels.end());
+    if (m_ZoomLevels.empty())
+        m_ZoomLevels.assign(s_DefaultZoomLevels, s_DefaultZoomLevels + s_DefaultZoomLevelCount);
+
+    const auto isPowerValid = m_SmoothZoomPower > 1.0f && std::isfinite(m_SmoothZoomPower);
+    IM_ASSERT(isPowerValid && "Config::SmoothZoomPower must be greater than 1.");
+    if (!isPowerValid)
+        m_SmoothZoomPower = ax::NodeEditor::Config().SmoothZoomPower;
 }
 
 ed::EditorAction::AcceptResult ed::NavigateAction::Accept(const Control& control)
@@ -3937,12 +3949,15 @@ bool ed::NavigateAction::HandleZoom(const Control& control)
     auto savedScroll = m_Scroll;
     auto savedZoom   = m_Zoom;
 
+    const auto wasAnimating = m_Animation.IsPlaying();
     m_Animation.Finish();
 
     // io.MousePos is local to the view shown in this frame, not to the one Finish() set.
     auto mousePos  = io.MousePos;
     auto screenPos = m_Canvas.FromLocal(mousePos);
     auto newZoom   = GetNextZoom(io.MouseWheel);
+    if (!wasAnimating && newZoom == m_Zoom)
+        return true;
 
     m_Zoom = newZoom;
     auto newView   = GetView();
@@ -4115,7 +4130,7 @@ ImRect ed::NavigateAction::GetViewRect() const
 
 void ed::NavigateAction::ClampZoom()
 {
-    const auto zoom = ImClamp(m_Zoom, m_ZoomLevels[0], m_ZoomLevels[m_ZoomLevelCount - 1]);
+    const auto zoom = ImClamp(m_Zoom, m_ZoomLevels.front(), m_ZoomLevels.back());
     if (zoom == m_Zoom)
         return;
 
@@ -4127,81 +4142,50 @@ void ed::NavigateAction::ClampZoom()
 
 float ed::NavigateAction::GetNextZoom(float steps)
 {
-    if (this->Editor->GetConfig().EnableSmoothZoom)
-    {
+    if (Editor->GetConfig().EnableSmoothZoom)
         return MatchSmoothZoom(steps);
-    }
-    else
-    {
-        auto fixedSteps = (int)steps;
-        return MatchZoom(fixedSteps, m_ZoomLevels[fixedSteps < 0 ? 0 : m_ZoomLevelCount - 1]);
-    }
+
+    // Trackpads and high resolution wheels send fractions of a step.
+    m_WheelSteps += steps;
+    const auto wholeSteps = static_cast<int>(m_WheelSteps);
+    m_WheelSteps -= static_cast<float>(wholeSteps);
+
+    return MatchZoom(wholeSteps);
 }
 
+// A zoom outside the zoom levels, which navigation may set, only moves back toward them.
 float ed::NavigateAction::MatchSmoothZoom(float steps)
 {
-    const auto power = Editor->GetConfig().SmoothZoomPower;
-
-    const auto newZoom = m_Zoom * powf(power, steps);
-    if (newZoom < m_ZoomLevels[0])
-        return m_ZoomLevels[0];
-    else if (newZoom > m_ZoomLevels[m_ZoomLevelCount - 1])
-        return m_ZoomLevels[m_ZoomLevelCount - 1];
+    const auto newZoom = m_Zoom * powf(m_SmoothZoomPower, steps);
+    if (steps > 0.0f)
+        return ImMax(m_Zoom, ImMin(newZoom, m_ZoomLevels.back()));
     else
-        return newZoom;
+        return ImMin(m_Zoom, ImMax(newZoom, m_ZoomLevels.front()));
 }
 
-float ed::NavigateAction::MatchZoom(int steps, float fallbackZoom)
+// Each step goes to the first level above or below the zoom, which may lie between
+// levels or outside them. Levels closer than 0.1% count as the zoom itself.
+float ed::NavigateAction::MatchZoom(int steps)
 {
-    auto currentZoomIndex = MatchZoomIndex(steps);
-    if (currentZoomIndex < 0)
-        return fallbackZoom;
+    auto zoom = m_Zoom;
 
-    auto currentZoom = m_ZoomLevels[currentZoomIndex];
-    if (fabsf(currentZoom - m_Zoom) > 0.001f)
-        return currentZoom;
-
-    auto newIndex = currentZoomIndex + steps;
-    if (newIndex >= 0 && newIndex < m_ZoomLevelCount)
-        return m_ZoomLevels[newIndex];
-    else
-        return fallbackZoom;
-}
-
-int ed::NavigateAction::MatchZoomIndex(int direction)
-{
-    int   bestIndex    = -1;
-    float bestDistance = 0.0f;
-
-    for (int i = 0; i < m_ZoomLevelCount; ++i)
+    for (; steps > 0; --steps)
     {
-        auto distance = fabsf(m_ZoomLevels[i] - m_Zoom);
-        if (distance < bestDistance || bestIndex < 0)
-        {
-            bestDistance = distance;
-            bestIndex    = i;
-        }
+        auto next = std::upper_bound(m_ZoomLevels.begin(), m_ZoomLevels.end(), zoom * 1.001f);
+        if (next == m_ZoomLevels.end())
+            break;
+        zoom = *next;
     }
 
-    if (bestDistance > 0.001f)
+    for (; steps < 0; ++steps)
     {
-        if (direction > 0)
-        {
-            ++bestIndex;
-
-            if (bestIndex >= m_ZoomLevelCount)
-                bestIndex = m_ZoomLevelCount - 1;
-        }
-        else if (direction < 0)
-        {
-            --bestIndex;
-
-            if (bestIndex < 0)
-                bestIndex = 0;
-        }
+        auto next = std::lower_bound(m_ZoomLevels.begin(), m_ZoomLevels.end(), zoom * 0.999f);
+        if (next == m_ZoomLevels.begin())
+            break;
+        zoom = *(next - 1);
     }
 
-    return bestIndex;
+    return zoom;
 }
 
 

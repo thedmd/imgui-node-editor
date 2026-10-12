@@ -909,8 +909,9 @@ private:
     bool               m_MovingOverEdge;
     ImVec2             m_MoveScreenOffset;
 
-    const float*       m_ZoomLevels;
-    int                m_ZoomLevelCount;
+    vector<float>      m_ZoomLevels;       // ascending, unique and positive
+    float              m_SmoothZoomPower;
+    float              m_WheelSteps;       // left over from fractional wheel deltas in stepped mode
 
     bool HandleZoom(const Control& control);
 
@@ -918,8 +919,7 @@ private:
 
     float GetNextZoom(float steps);
     float MatchSmoothZoom(float steps);
-    float MatchZoom(int steps, float fallbackZoom);
-    int MatchZoomIndex(int direction);
+    float MatchZoom(int steps);
 
     static const float s_DefaultZoomLevels[];
     static const int   s_DefaultZoomLevelCount;
