@@ -88,6 +88,7 @@ set(_TestSources
     settings_tests.cpp
     smoke_tests.cpp
     suspend_tests.cpp
+    view_tests.cpp
 )
 
 add_executable(node_editor_tests
