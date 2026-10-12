@@ -3,54 +3,89 @@ name: build
 on:
   push:
   pull_request:
-  workflow_run:
-    # Use a workflow as a trigger of scheduled builds. Forked repositories can disable scheduled builds by disabling
-    # "scheduled" workflow, while maintaining ability to perform local CI builds.
-    workflows:
-      - scheduled
-    branches:
-      - master
-      - develop
-    types:
-      - requested
 
-env:
-  # Customize the CMake build type here (Release, Debug, RelWithDebInfo, etc.)
-  BUILD_TYPE: Release
+permissions:
+  contents: read
 
 jobs:
-  Windows:
-    runs-on: windows-latest
+  examples:
+    name: Examples, ${{ matrix.os }}, ${{ matrix.config }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2025, macos-15, ubuntu-24.04]
+        config: [Debug, Release]
 
     steps:
-    - uses: actions/checkout@v4
-    - name: Configure CMake
-      run: cmake -S examples -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}}
-    - name: Build
-      run: cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}}
-
-  macOS:
-    runs-on: macos-latest
-
-    steps:
-    - uses: actions/checkout@v4
-    - name: Configure CMake
-      run: cmake -S examples -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}}
-    - name: Build
-      run: cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}}
-
-  Linux:
-    runs-on: ubuntu-latest
-
-    steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
     - name: Install dependencies
+      if: runner.os == 'Linux'
       run: |
-          sudo apt update
-          sudo apt install libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libxext-dev libwayland-dev libxkbcommon-dev mesa-common-dev libgl1-mesa-dev
-
-    - name: Configure CMake
-      run: cmake -S examples -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}}
+        sudo apt-get update
+        sudo apt-get install -y libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libxext-dev libwayland-dev libxkbcommon-dev mesa-common-dev libgl1-mesa-dev
+    - name: Configure
+      run: cmake -S examples -B build -DCMAKE_BUILD_TYPE=${{ matrix.config }}
     - name: Build
-      run: cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}}
+      run: cmake --build build --config ${{ matrix.config }} --parallel
 
+  tests:
+    name: Tests, ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: MSVC,                  os: windows-2025 }
+          - { name: GCC,                   os: ubuntu-24.04, cxx: g++ }
+          - { name: Clang,                 os: ubuntu-24.04, cxx: clang++ }
+          - { name: Apple Clang,           os: macos-15 }
+          - { name: Clang with sanitizers, os: ubuntu-24.04, cxx: clang++, sanitize: 'ON' }
+
+    steps:
+    - uses: actions/checkout@v5
+    - name: Install a locale with a decimal comma
+      if: runner.os == 'Linux'
+      run: sudo locale-gen de_DE.UTF-8
+    - name: Lower address space randomization for AddressSanitizer
+      if: matrix.sanitize == 'ON'
+      run: sudo sysctl vm.mmap_rnd_bits=28
+    - name: Configure
+      env:
+        CXX: ${{ matrix.cxx }}
+      run: cmake -S tests -B build -DCMAKE_BUILD_TYPE=Debug -DIMGUI_NODE_EDITOR_WARNINGS_AS_ERRORS=ON -DIMGUI_NODE_EDITOR_TESTS_SANITIZE=${{ matrix.sanitize || 'OFF' }}
+    - name: Build
+      run: cmake --build build --config Debug --parallel
+    - name: Test
+      run: ctest --test-dir build -C Debug --output-on-failure
+
+  # Releases on both sides of every IMGUI_VERSION_NUM guard, from the 1.89 floor
+  # to the latest release. tests/imgui_walk.py checks every release locally.
+  imgui-versions:
+    name: Dear ImGui ${{ matrix.imgui }}${{ matrix.strict && ', strict' || '' }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        imgui: [v1.89, v1.89.5, v1.89.6, v1.89.7, v1.89.8, v1.90, v1.90.1, v1.91.0, v1.91.1, v1.92.6, v1.92.7, v1.92.8, v1.92.9b, v1.92.9b-docking]
+        strict: [false]
+        include:
+          - { imgui: v1.89,    strict: true }
+          - { imgui: v1.92.9b, strict: true }
+
+    steps:
+    - uses: actions/checkout@v5
+    - uses: actions/checkout@v5
+      with:
+        repository: ocornut/imgui
+        ref: ${{ matrix.imgui }}
+        path: imgui
+    - name: Configure
+      run: >
+        cmake -S tests -B build -DCMAKE_BUILD_TYPE=Debug -DIMGUI_DIR=${{ github.workspace }}/imgui
+        -DIMGUI_NODE_EDITOR_WARNINGS_AS_ERRORS=ON
+        ${{ matrix.strict && '"-DIMGUI_NODE_EDITOR_TESTS_DEFINITIONS=IMGUI_DISABLE_OBSOLETE_FUNCTIONS;IMGUI_DISABLE_OBSOLETE_KEYIO"' || '' }}
+    - name: Build
+      run: cmake --build build --parallel
+    - name: Test
+      run: ctest --test-dir build --output-on-failure
