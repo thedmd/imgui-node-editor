@@ -32,6 +32,10 @@ v0.10.0 (WIP):
 
     BUGFIX: Examples: Use imgui_impl_opengl3_loader.h instead of gl3w (#264)
 
+    BUGFIX: Editor: Restore node state from Config::LoadNodeSettings when node is created
+        Since v0.9.1 state provided by application was ignored and overwritten
+        by Config::SaveNodeSettings with default location.
+
 v0.9.2 (2023-09-01):
 
     NEW: Editor: Add offset of hover/select to style (thanks @MultiPain)

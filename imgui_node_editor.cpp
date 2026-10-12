@@ -2004,6 +2004,9 @@ ed::Node* ed::EditorContext::CreateNode(NodeId id)
     if (!settings)
         settings = m_Settings.AddNode(id);
 
+    if (!settings->m_WasUsed)
+        MarkNodeToRestoreState(node);
+
     UpdateNodeState(node);
 
     if (settings->m_GroupSize.x > 0 || settings->m_GroupSize.y > 0)
