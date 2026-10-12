@@ -2128,6 +2128,7 @@ ed::Pin* ed::EditorContext::CreatePin(PinId id, PinKind kind)
 {
     IM_ASSERT(nullptr == FindObject(id));
     auto pin = new Pin(this, id, kind);
+    pin->m_IsLive = false;
     m_Pins.push_back({id, pin});
     std::sort(m_Pins.begin(), m_Pins.end());
     return pin;
@@ -5599,7 +5600,12 @@ void ed::NodeBuilder::BeginPin(PinId pinId, PinKind kind)
     auto& editorStyle = Editor->GetStyle();
 
     m_CurrentPin = Editor->GetPin(pinId, kind);
-    m_CurrentPin->m_Node = m_CurrentNode;
+
+    // Linking a pin into a pin chain a second time would make the chain loop.
+    IM_ASSERT(!m_CurrentPin->m_IsLive && "Pin was already submitted in this frame. Please use unique pin IDs.");
+    const bool isFirstSubmission = !m_CurrentPin->m_IsLive;
+    if (isFirstSubmission)
+        m_CurrentPin->m_Node = m_CurrentNode;
 
     m_CurrentPin->m_IsLive      = true;
     m_CurrentPin->m_Color       = Editor->GetColor(StyleColor_PinRect);
@@ -5614,8 +5620,11 @@ void ed::NodeBuilder::BeginPin(PinId pinId, PinKind kind)
     m_CurrentPin->m_Strength    = editorStyle.LinkStrength;
     m_CurrentPin->m_SnapLinkToDir = editorStyle.SnapLinkToPinDir != 0.0f;
 
-    m_CurrentPin->m_PreviousPin = m_CurrentNode->m_LastPin;
-    m_CurrentNode->m_LastPin    = m_CurrentPin;
+    if (isFirstSubmission)
+    {
+        m_CurrentPin->m_PreviousPin = m_CurrentNode->m_LastPin;
+        m_CurrentNode->m_LastPin    = m_CurrentPin;
+    }
 
     m_PivotAlignment          = editorStyle.PivotAlignment;
     m_PivotSize               = editorStyle.PivotSize;
