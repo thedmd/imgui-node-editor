@@ -206,6 +206,9 @@ v0.9.4 (WIP):
     BUGFIX: Editor: Subdivide curves with the default tolerance when given none
         ImCubicBezierSubdivide() took a tolerance of 0 or NaN as given, which no sub-curve meets.
 
+    BUGFIX: Editor: Snap points inside a rectangle to its nearest edge when asked
+        ImRect_ClosestPoint() returned them unchanged whether snapping or not; the editor doesn't snap such points.
+
 v0.9.3 (2023-10-14):
 
     CHANGE: Canvas: Use ImDrawCallback_ImCanvas macro as draw callback sentinel (#256), thanks @nspitko

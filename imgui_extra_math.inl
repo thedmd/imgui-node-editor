@@ -80,10 +80,29 @@ inline ImVec2 ImRect_ClosestPoint(const ImRect& rect, const ImVec2& p, bool snap
     if (!snap_to_edge && rect.Contains(p))
         return p;
 
-    return ImVec2(
+    auto result = ImVec2(
         (p.x > rect.Max.x) ? rect.Max.x : (p.x < rect.Min.x ? rect.Min.x : p.x),
         (p.y > rect.Max.y) ? rect.Max.y : (p.y < rect.Min.y ? rect.Min.y : p.y)
     );
+
+    if (snap_to_edge && result.x == p.x && result.y == p.y)
+    {
+        const auto left    = p.x - rect.Min.x;
+        const auto right   = rect.Max.x - p.x;
+        const auto top     = p.y - rect.Min.y;
+        const auto bottom  = rect.Max.y - p.y;
+        const auto closest = ImMin(ImMin(left, right), ImMin(top, bottom));
+        if (closest == left)
+            result.x = rect.Min.x;
+        else if (closest == right)
+            result.x = rect.Max.x;
+        else if (closest == top)
+            result.y = rect.Min.y;
+        else
+            result.y = rect.Max.y;
+    }
+
+    return result;
 }
 
 inline ImVec2 ImRect_ClosestPoint(const ImRect& rect, const ImVec2& p, bool snap_to_edge, float radius)
