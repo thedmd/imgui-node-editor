@@ -3681,14 +3681,13 @@ bool ed::NavigateAction::HandleZoom(const Control& control)
 
     m_Animation.Finish();
 
-    auto mousePos = io.MousePos;
-    auto newZoom  = GetNextZoom(io.MouseWheel);
+    // io.MousePos is local to the view shown in this frame, not to the one Finish() set.
+    auto mousePos  = io.MousePos;
+    auto screenPos = m_Canvas.FromLocal(mousePos);
+    auto newZoom   = GetNextZoom(io.MouseWheel);
 
-    auto oldView   = GetView();
     m_Zoom = newZoom;
     auto newView   = GetView();
-
-    auto screenPos = m_Canvas.FromLocal(mousePos, oldView);
     auto canvasPos = m_Canvas.ToLocal(screenPos, newView);
 
     auto offset       = (canvasPos - mousePos) * m_Zoom;
