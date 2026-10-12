@@ -55,7 +55,7 @@ TEST_CASE(ShortcutsWhileTyping, "interaction.shortcuts_ignored_while_typing", "I
     test::Check(actions == 0, "Ctrl+X/C/V/D and Space typed into the text field reach no editor shortcut: %d did", actions);
 }
 
-TEST_CASE(GroupResizeFromPressPosition, "interaction.group_resize_uses_press_position", "INT-3", test::TestFlags_KnownFailure)
+TEST_CASE(GroupResizeFromPressPosition, "interaction.group_resize_uses_press_position", "INT-3", test::TestFlags_None)
 {
     test::Storage storage;
     test::Session session(&storage);
@@ -96,6 +96,85 @@ TEST_CASE(GroupResizeFromPressPosition, "interaction.group_resize_uses_press_pos
 
     test::Check(size.x >= widthBefore + 30.0f, "group widened by the drag: %g -> %g", widthBefore, size.x);
     test::Check(position.x == positionBefore.x && position.y == positionBefore.y, "group not moved: (%g, %g) -> (%g, %g)", positionBefore.x, positionBefore.y, position.x, position.y);
+}
+
+namespace {
+
+struct ResizeResult
+{
+    ImVec2 PositionBefore, PositionAfter;
+    float  WidthBefore = 0.0f, WidthAfter = 0.0f;
+};
+
+// Presses 'button' 2 px inside the right edge of a 200 x 150 group, moves it by 'dx'
+// in the first dragging frame, and releases it. Alt keeps the edge off the grid.
+ResizeResult ResizeRightEdge(const ed::Config& config, int button, float dx)
+{
+    test::Session session(config);
+    ImVec2 position, size, screenMin, screenMax;
+    session.DefaultContent = [&](int frame)
+    {
+        if (frame == 0)
+            ed::SetNodePosition(1, ImVec2(100.0f, 100.0f));
+        ed::BeginNode(1);
+        ImGui::Text("Group");
+        ed::Group(ImVec2(200.0f, 150.0f));
+        ed::EndNode();
+        position  = ed::GetNodePosition(1);
+        size      = ed::GetNodeSize(1);
+        screenMin = ed::CanvasToScreen(position);
+        screenMax = ed::CanvasToScreen(position + size);
+    };
+    session.Run(3);
+
+    ResizeResult result;
+    result.PositionBefore = position;
+    result.WidthBefore    = size.x;
+
+    const ImVec2 press(screenMax.x - 2.0f, (screenMin.y + screenMax.y) * 0.5f);
+    ImGui::GetIO().AddKeyEvent(ImGuiMod_Alt, true);
+    test::MouseMove(press);
+    session.Run(2);
+    test::MouseButton(button, true);
+    session.Run(1);
+    test::MouseMove(press + ImVec2(dx, 0.0f));
+    session.Run(3);
+    test::MouseButton(button, false);
+    session.Run(2);
+    ImGui::GetIO().AddKeyEvent(ImGuiMod_Alt, false);
+    session.Run(1);
+
+    result.PositionAfter = position;
+    result.WidthAfter    = size.x;
+    return result;
+}
+
+void CheckResized(const ResizeResult& result, float dx, const char* what)
+{
+    test::Check(result.WidthAfter == result.WidthBefore + dx && result.PositionAfter.x == result.PositionBefore.x && result.PositionAfter.y == result.PositionBefore.y,
+        "%s by %g px resizes: width %g -> %g, position (%g, %g) -> (%g, %g)", what, dx, result.WidthBefore, result.WidthAfter,
+        result.PositionBefore.x, result.PositionBefore.y, result.PositionAfter.x, result.PositionAfter.y);
+}
+
+} // namespace
+
+TEST_CASE(GroupResizeFastFirstMove, "interaction.group_resize_after_fast_first_move", "INT-3", test::TestFlags_None)
+{
+    for (float dx : { 3.0f, 14.0f, -18.0f })
+    {
+        test::Storage storage;
+        CheckResized(ResizeRightEdge(test::MakeConfig(&storage), 0, dx), dx, "a first move from the right edge");
+    }
+}
+
+TEST_CASE(GroupResizeDragButton, "interaction.group_resize_follows_drag_button", "INT-4", test::TestFlags_None)
+{
+    test::Storage storage;
+    auto config = test::MakeConfig(&storage);
+    config.DragButtonIndex        = 1;
+    config.NavigateButtonIndex    = 2;
+    config.ContextMenuButtonIndex = 2;
+    CheckResized(ResizeRightEdge(config, 1, 40.0f), 40.0f, "a right-button drag of the right edge");
 }
 
 TEST_CASE(FractionalWheelZooms, "interaction.fractional_wheel_zooms", "INT-8", test::TestFlags_KnownFailure)
