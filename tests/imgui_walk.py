@@ -93,8 +93,11 @@ def walk(args, revision):
     summary = re.search(r"\d+% tests passed(?:, (\d+) tests? failed)? out of (\d+)", output)
     if not summary:
         return revision, "TESTS DID NOT RUN", output[-2000:]
-    failed = re.findall(r"^\s*\d+ - (\S+) \(", output, re.M)
-    status = f"{int(summary.group(2)) - int(summary.group(1) or 0)}/{summary.group(2)} passed"
+    # CTest lists failed and skipped tests the same way, and counts skipped ones as passed.
+    failed  = re.findall(r"^\s*\d+ - (\S+) \((?!Skipped\))", output, re.M)
+    skipped = re.findall(r"^\s*\d+ - (\S+) \(Skipped\)", output, re.M)
+    passed  = int(summary.group(2)) - int(summary.group(1) or 0) - len(skipped)
+    status  = f"{passed}/{summary.group(2)} passed" + (f", {len(skipped)} skipped" if skipped else "")
     return revision, status if not failed else status + " FAILED", "\n".join(failed)
 
 
