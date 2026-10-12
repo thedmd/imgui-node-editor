@@ -176,6 +176,9 @@ v0.9.4 (WIP):
     BUGFIX: Editor: Find link and line intersections when the cubic term vanishes
         Rectangle selection missed links whose control points are evenly spaced along an edge it crosses.
 
+    BUGFIX: Editor: Find link bounds' extremes when the derivative is linear
+        Links between pins aligned on an axis and facing the same way along it were culled while on screen, and could not be hovered or selected along their bulge.
+
 v0.9.3 (2023-10-14):
 
     CHANGE: Canvas: Use ImDrawCallback_ImCanvas macro as draw callback sentinel (#256), thanks @nspitko
