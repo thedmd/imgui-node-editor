@@ -224,9 +224,9 @@ inline ImCubicBezierSplitResultT<T> ImCubicBezierSplit(const T& p0, const T& p1,
         },
         ImCubicBezierPointsT<T>
         {
-            z3 * p0 - 3 * z2 * s1 * p1 + 3 * z1 * s2 * p2 - s3 * p3,
-                          z2      * p1 - 2 * z1 * s1 * p2 + s2 * p3,
-                                             z1      * p2 - s1 * p3,
+            z3 * p3 - 3 * z2 * s1 * p2 + 3 * z1 * s2 * p1 - s3 * p0,
+                          z2      * p3 - 2 * z1 * s1 * p2 + s2 * p1,
+                                             z1      * p3 - s1 * p2,
                                                                  p3,
         }
     };
