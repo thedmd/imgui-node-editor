@@ -94,6 +94,48 @@ TEST_CASE(GlobalCppLocale, "settings.global_cpp_locale_round_trip", "JSON-1", te
         test::Skip("no locale with a decimal comma is installed");
 }
 
+TEST_CASE(MalformedSettings, "settings.malformed_settings_load_safely", "CORE-12", test::TestFlags_None)
+{
+    // Each document has one problem, and a valid entry for node 2 the editor must apply.
+    const char* const c_Node2 = R"("node:2":{"location":{"x":300,"y":40}})";
+    const std::string documents[] =
+    {
+        std::string(R"({"nodes":{"node:1":{},)") + c_Node2 + "}}",
+        std::string(R"({"nodes":{"node:1":{"location":{"y":1}},)") + c_Node2 + "}}",
+        std::string(R"({"nodes":{"node:1":{"location":5},)") + c_Node2 + "}}",
+        std::string(R"({"nodes":{"pin:1":{"location":{"x":5,"y":5}},"link:1":{},"node:x":{},)") + c_Node2 + "}}",
+        std::string(R"({"nodes":{)") + c_Node2 + R"(},"view":{"scroll":{"x":0,"y":0},"zoom":0}})",
+        std::string(R"({"nodes":{)") + c_Node2 + R"(},"view":{"scroll":{"x":0,"y":0},"zoom":-1}})",
+        std::string(R"({"nodes":{)") + c_Node2 + R"(},"view":{"scroll":{"x":0,"y":0},"zoom":1e-6}})",
+        std::string(R"({"nodes":{)") + c_Node2 + R"(},"view":{"visible_rect":5}})",
+        std::string(R"({"nodes":{)") + c_Node2 + R"(},"view":{"visible_rect":{"min":{"x":10,"y":10},"max":{"x":10,"y":20}}}})",
+        std::string(R"({"nodes":{)") + c_Node2 + R"(},"view":{"visible_rect":{"min":{"x":0,"y":0},"max":{"x":1e-9,"y":1e-9}}}})",
+        std::string(R"({"nodes":{)") + c_Node2 + R"(},"selection":["pin:2","node:2",5],"view":[]})",
+    };
+
+    for (auto& document : documents)
+    {
+        test::Storage storage;
+        storage.Global = document;
+        test::Session session(&storage);
+        for (int i = 0; i < 3; ++i)
+            session.Frame([](int)
+            {
+                for (uintptr_t id : { 1, 2 })
+                {
+                    ed::BeginNode(id);
+                    ImGui::TextUnformatted("Node");
+                    ed::EndNode();
+                }
+            });
+
+        const ImVec2 position = session.Use([] { return ed::GetNodePosition(2); });
+        const float  zoom     = 1.0f / session.Use([] { return ed::GetCurrentZoom(); });
+        test::Check(position.x == 300.0f && position.y == 40.0f && zoom >= 0.1f && zoom <= 8.0f,
+            "node 2 at (%g, %g), zoom %g, from %s", position.x, position.y, zoom, document.c_str());
+    }
+}
+
 TEST_CASE(CLocalePreserved, "settings.c_locale_is_preserved", "JSON-2", test::TestFlags_None)
 {
     int tested = 0;

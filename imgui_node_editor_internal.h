@@ -891,6 +891,8 @@ struct NavigateAction final: EditorAction
     void SetViewRect(const ImRect& rect);
     ImRect GetViewRect() const;
 
+    void ClampZoom();
+
 private:
     ImGuiEx::Canvas&   m_Canvas;
     ImVec2             m_WindowScreenPos;
