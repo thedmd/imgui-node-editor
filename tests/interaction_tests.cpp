@@ -872,3 +872,41 @@ TEST_CASE(ContextMenuClickOnNothing, "interaction.context_menu_click_on_nothing_
 
     test::Check(scene.Copies == 1, "Ctrl+C in the frame a right-click on nothing ends copies: %d copies", scene.Copies);
 }
+
+TEST_CASE(FocusInnermostGroup, "interaction.f_centers_innermost_group_under_mouse", "INT-18", test::TestFlags_None)
+{
+    // Group 1 holds group 2. F over the inside of group 2 centers group 2.
+    test::Storage storage;
+    test::Session session(&storage);
+    ImVec2 innerCenter, outerCenter, insideInner;
+    session.DefaultContent = [&](int frame)
+    {
+        if (frame == 0)
+        {
+            ed::SetNodePosition(1, ImVec2(0.0f, 0.0f));
+            ed::SetNodePosition(2, ImVec2(300.0f, 250.0f));
+        }
+        ed::BeginNode(1);
+        ImGui::TextUnformatted("Outer");
+        ed::Group(ImVec2(900.0f, 700.0f));
+        ed::EndNode();
+        ed::BeginNode(2);
+        ImGui::TextUnformatted("Inner");
+        ed::Group(ImVec2(200.0f, 150.0f));
+        ed::EndNode();
+        outerCenter = ed::GetNodePosition(1) + ed::GetNodeSize(1) * 0.5f;
+        innerCenter = ed::GetNodePosition(2) + ed::GetNodeSize(2) * 0.5f;
+        insideInner = ed::CanvasToScreen(innerCenter + ImVec2(0.0f, 20.0f));
+    };
+    session.Run(3);
+    const auto screenCenter = session.Use([] { return ed::CanvasToScreen(ImVec2(0.0f, 0.0f)) + ed::GetScreenSize() * 0.5f; });
+
+    session.Click(insideInner);
+    session.PressKey(ImGuiKey_F);
+    session.Run(30);
+
+    const auto inner = session.Use([&] { return ed::CanvasToScreen(innerCenter); });
+    const auto outer = session.Use([&] { return ed::CanvasToScreen(outerCenter); });
+    test::Check(ImFabs(inner.x - screenCenter.x) < 1.0f && ImFabs(inner.y - screenCenter.y) < 1.0f,
+        "F centers the inner group at (%g, %g): it is at (%g, %g), the outer group at (%g, %g)", screenCenter.x, screenCenter.y, inner.x, inner.y, outer.x, outer.y);
+}
