@@ -246,7 +246,7 @@ struct Style
         PivotSize                = ImVec2(0.0f, 0.0f);
         PivotScale               = ImVec2(1, 1);
 #if IMGUI_VERSION_NUM > 18101
-        PinCorners               = ImDrawFlags_RoundCornersAll;
+        PinCorners               = 0xF0; // ImDrawFlags_RoundCornersAll, ImDrawFlags_RoundAll since ImGui 1.93
 #else
         PinCorners               = ImDrawCornerFlags_All;
 #endif
