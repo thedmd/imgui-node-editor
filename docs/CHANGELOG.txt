@@ -56,6 +56,10 @@ v0.9.4 (WIP):
 
     BUGFIX: Editor: Return no node background draw list between frames
 
+    BUGFIX: Editor: Keep node sizes and the view while the host window skips items
+        A collapsed host, a hidden dock tab or a child window scrolled out of view overwrote group sizes
+        and squeezed the view, and both were saved.
+
 v0.9.3 (2023-10-14):
 
     CHANGE: Canvas: Use ImDrawCallback_ImCanvas macro as draw callback sentinel (#256), thanks @nspitko

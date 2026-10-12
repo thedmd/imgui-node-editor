@@ -301,6 +301,9 @@ IMGUI_NODE_EDITOR_API void PushStyleVar(StyleVar varIndex, const ImVec2& value);
 IMGUI_NODE_EDITOR_API void PushStyleVar(StyleVar varIndex, const ImVec4& value);
 IMGUI_NODE_EDITOR_API void PopStyleVar(int count = 1);
 
+// Call inside a visible host window. While the host skips items (collapsed,
+// a hidden dock tab, a child window out of view) the editor measures nothing
+// and changes no state, so calling it then is harmless.
 IMGUI_NODE_EDITOR_API void Begin(const char* id, const ImVec2& size = ImVec2(0, 0));
 IMGUI_NODE_EDITOR_API void End();
 

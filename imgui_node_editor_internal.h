@@ -1402,6 +1402,10 @@ struct EditorContext
     bool IsHoveredWithoutOverlapp() const;
     bool CanAcceptUserInput() const;
 
+    // True for a frame whose host window skips items. Item rectangles are stale
+    // then, so nothing is measured, interacted with or saved.
+    bool IsFrozen() const { return m_IsFrozen; }
+
     void MakeDirty(SaveReasonFlags reason);
     void MakeDirty(SaveReasonFlags reason, Node* node);
 
@@ -1506,6 +1510,7 @@ struct EditorContext
 
 private:
     void LoadSettings();
+    void RestoreView();
     void SaveSettings();
 
     void ForgetDeletedObjects();
@@ -1520,6 +1525,7 @@ private:
 
     ImGuiID             m_EditorActiveId;
     bool                m_IsFirstFrame;
+    bool                m_IsFrozen;
     bool                m_IsFocused;
     bool                m_IsHovered;
     bool                m_IsHoveredWithoutOverlapp;
@@ -1570,6 +1576,7 @@ private:
     int                 m_BackgroundClickButtonIndex;
     int                 m_BackgroundDoubleClickButtonIndex;
 
+    bool                m_IsSettingsLoaded;
     bool                m_IsInitialized;
     Settings            m_Settings;
 

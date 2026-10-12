@@ -1117,6 +1117,7 @@ ed::EditorContext::EditorContext(const ax::NodeEditor::Config* config)
     : m_Config(config)
     , m_EditorActiveId(0)
     , m_IsFirstFrame(true)
+    , m_IsFrozen(false)
     , m_IsFocused(false)
     , m_IsHovered(false)
     , m_IsHoveredWithoutOverlapp(false)
@@ -1150,6 +1151,7 @@ ed::EditorContext::EditorContext(const ax::NodeEditor::Config* config)
     , m_DoubleClickedLink(0)
     , m_BackgroundClickButtonIndex(-1)
     , m_BackgroundDoubleClickButtonIndex(-1)
+    , m_IsSettingsLoaded(false)
     , m_IsInitialized(false)
     , m_Settings()
     , m_DrawList(nullptr)
@@ -1181,13 +1183,26 @@ void ed::EditorContext::Begin(const char* id, const ImVec2& size)
     if (canvasSize.y <= 0.0f)
         canvasSize.y = ImMax(4.0f, availableContentSize.y);
 
-    if (!m_IsInitialized)
+    // A collapsed host window, a hidden dock tab or a child window scrolled out
+    // of view skips items, and leaves no room for the canvas.
+    m_IsFrozen = ImGui::GetCurrentWindow()->SkipItems
+        || (size.x <= 0.0f && availableContentSize.x <= 0.0f)
+        || (size.y <= 0.0f && availableContentSize.y <= 0.0f);
+
+    // Nodes may be created in a frozen frame, so settings must be there first.
+    if (!m_IsSettingsLoaded)
     {
-        // Cycle canvas, so it has a chance to initialize its size before settings are loaded
+        LoadSettings();
+        m_IsSettingsLoaded = true;
+    }
+
+    if (!m_IsInitialized && !m_IsFrozen)
+    {
+        // Cycle canvas, so it has a chance to initialize its size before the view is restored
         if (m_Canvas.Begin(id, canvasSize))
             m_Canvas.End();
 
-        LoadSettings();
+        RestoreView();
         m_IsInitialized = true;
     }
 
@@ -1228,7 +1243,7 @@ void ed::EditorContext::Begin(const char* id, const ImVec2& size)
     ImDrawList_SwapSplitter(m_DrawList, m_Splitter);
     m_ExternalChannel = m_DrawList->_Splitter._Current;
 
-    if (m_CurrentAction && m_CurrentAction->IsDragging() && m_NavigateAction.MoveOverEdge(canvasSize))
+    if (!m_IsFrozen && m_CurrentAction && m_CurrentAction->IsDragging() && m_NavigateAction.MoveOverEdge(canvasSize))
     {
         auto& io = ImGui::GetIO();
         auto offset = m_NavigateAction.GetMoveScreenOffset();
@@ -1238,9 +1253,10 @@ void ed::EditorContext::Begin(const char* id, const ImVec2& size)
     else
         m_NavigateAction.StopMoveOverEdge();
 
+    // A frozen frame leaves the canvas as the last visible frame set it up.
     auto previousSize        = m_Canvas.Rect().GetSize();
     auto previousVisibleRect = m_Canvas.ViewRect();
-    m_IsCanvasVisible = m_Canvas.Begin(id, canvasSize);
+    m_IsCanvasVisible = !m_IsFrozen && m_Canvas.Begin(id, canvasSize);
 
     //ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0, 0, 0, 0));
     //ImGui::BeginChild(id, size, false,
@@ -1254,7 +1270,7 @@ void ed::EditorContext::Begin(const char* id, const ImVec2& size)
     m_NavigateAction.SetWindow(m_Canvas.ViewRect().Min, m_Canvas.ViewRect().GetSize());
 
     // Handle canvas size change. Scale to Y axis, center on X.
-    if (!ImRect_IsEmpty(previousVisibleRect) && previousSize != canvasSize)
+    if (!m_IsFrozen && !ImRect_IsEmpty(previousVisibleRect) && previousSize != canvasSize)
     {
         m_NavigateAction.FinishNavigation();
 
@@ -1385,15 +1401,19 @@ void ed::EditorContext::End()
     for (auto controller : m_AnimationControllers)
         controller->Draw(m_DrawList);
 
-    if (m_CurrentAction && !m_CurrentAction->Process(control))
+    // Actions are paused in a frozen frame.
+    if (!m_IsFrozen && m_CurrentAction && !m_CurrentAction->Process(control))
         m_CurrentAction = nullptr;
 
-    if (m_NavigateAction.m_IsActive)
-        m_NavigateAction.Process(control);
-    else
-        m_NavigateAction.Accept(control);
+    if (!m_IsFrozen)
+    {
+        if (m_NavigateAction.m_IsActive)
+            m_NavigateAction.Process(control);
+        else
+            m_NavigateAction.Accept(control);
+    }
 
-    if (nullptr == m_CurrentAction)
+    if (!m_IsFrozen && nullptr == m_CurrentAction)
     {
         EditorAction* possibleAction   = nullptr;
 
@@ -1433,7 +1453,7 @@ void ed::EditorContext::End()
             possibleAction->Reject();
     }
 
-    if (m_CurrentAction)
+    if (!m_IsFrozen && m_CurrentAction)
         ImGui::SetMouseCursor(m_CurrentAction->GetCursor());
 
     // Draw selection rectangle
@@ -1657,7 +1677,7 @@ void ed::EditorContext::End()
     if (HasSelectionChanged())
         MakeDirty(SaveReasonFlags::Selection);
 
-    if (m_Settings.m_IsDirty && !m_CurrentAction)
+    if (m_Settings.m_IsDirty && !m_CurrentAction && !m_IsFrozen)
         SaveSettings();
 
     m_DrawList = nullptr;
@@ -2268,7 +2288,10 @@ ed::Link* ed::EditorContext::GetLink(LinkId id)
 void ed::EditorContext::LoadSettings()
 {
     ed::Settings::Parse(m_Config.Load(), m_Settings);
+}
 
+void ed::EditorContext::RestoreView()
+{
     if (ImRect_IsEmpty(m_Settings.m_VisibleRect))
     {
         m_NavigateAction.m_Scroll = m_Settings.m_ViewScroll;
@@ -2429,6 +2452,9 @@ ed::Control ed::EditorContext::BuildControl(bool allowOffscreen)
 {
     m_IsHovered = false;
     m_IsHoveredWithoutOverlapp = false;
+
+    if (m_IsFrozen)
+        return Control();
 
     const auto windowHovered = ImGui::IsWindowHovered();
     const auto widgetHovered = ImGui::IsMouseHoveringRect(m_Canvas.ViewRect().Min, m_Canvas.ViewRect().Max, true);
@@ -5419,7 +5445,7 @@ void ed::NodeBuilder::Begin(NodeId nodeId)
 
     Editor->UpdateNodeState(m_CurrentNode);
 
-    if (m_CurrentNode->m_CenterOnScreen)
+    if (m_CurrentNode->m_CenterOnScreen && !Editor->IsFrozen())
     {
         auto bounds = Editor->GetViewRect();
         auto offset = bounds.GetCenter() - m_CurrentNode->m_Bounds.GetCenter();
@@ -5522,7 +5548,10 @@ void ed::NodeBuilder::End()
     m_NodeRect = ImGui_GetItemRect();
     FloorRect(m_NodeRect);
 
-    if (m_CurrentNode->m_Bounds.GetSize() != m_NodeRect.GetSize())
+    // A frozen frame measured stale item rectangles, so the node keeps its bounds.
+    const bool measured = !Editor->IsFrozen();
+
+    if (measured && m_CurrentNode->m_Bounds.GetSize() != m_NodeRect.GetSize())
     {
         m_CurrentNode->m_Bounds.Max = m_CurrentNode->m_Bounds.Min + m_NodeRect.GetSize();
         Editor->MakeDirty(SaveReasonFlags::Size, m_CurrentNode);
@@ -5535,7 +5564,8 @@ void ed::NodeBuilder::End()
             pin->Reset();
 
         m_CurrentNode->m_Type        = NodeType::Group;
-        m_CurrentNode->m_GroupBounds = m_GroupBounds;
+        if (measured)
+            m_CurrentNode->m_GroupBounds = m_GroupBounds;
         m_CurrentNode->m_LastPin     = nullptr;
     }
     else
