@@ -466,3 +466,30 @@ TEST_CASE(PanStopsZoomAnimation, "interaction.pan_after_wheel_doesnt_drift", "IN
 
     test::Check(drift < 0.5f, "the point under a still mouse doesn't move once the pan started: %g canvas units", drift);
 }
+
+TEST_CASE(ZoomAnchorDuringAnimation, "interaction.second_wheel_notch_zooms_at_the_mouse", "INT-12", test::TestFlags_None)
+{
+    test::Storage storage;
+    test::Session session(&storage);
+    ViewProbe probe;
+    session.DefaultContent = [&](int frame) { probe.Submit(frame); };
+    probe.Mouse = ImVec2(400.0f, 300.0f);
+    test::MouseMove(probe.Mouse);
+    session.Run(5);
+
+    test::MouseWheel(1.0f);
+    session.Run(2);
+    probe.Mouse = ImVec2(600.0f, 350.0f);
+    test::MouseMove(probe.Mouse);
+    session.Run(1);
+
+    // ImGui handles a wheel event queued after a mouse move one frame later, so
+    // this notch comes 3 frames after the first one, with the animation running.
+    test::MouseWheel(1.0f);
+    session.Run(1);
+    const auto anchor = probe.UnderMouse;
+    session.Run(30);
+
+    const float error = Distance(probe.UnderMouse, anchor);
+    test::Check(error < 0.5f, "the second notch zooms around the point under the mouse: off by %g canvas units", error);
+}
