@@ -95,6 +95,8 @@ ctest --test-dir build-tests -C Debug
 ```
 `-DIMGUI_DIR=<path>` tests against another copy of Dear ImGui. `-DIMGUI_NODE_EDITOR_TESTS_SANITIZE=ON` builds with AddressSanitizer and adds the tests that detect memory errors. Tests of open issues are expected to fail until the issue is fixed.
 
+`python tests/imgui_walk.py --imgui-repo <clone of Dear ImGui> --work <directory>` runs the suite against every Dear ImGui release from 1.89 on, and accepts `-strict` and docking variants of revisions.
+
 ### Quick Start
 
 Main node editor header is located in [imgui_node_editor.h](../imgui_node_editor.h).
