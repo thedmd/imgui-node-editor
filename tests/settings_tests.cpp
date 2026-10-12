@@ -373,6 +373,46 @@ TEST_CASE(FractionalPositionChangesOnce, "settings.fractional_position_changes_s
     test::Check(changes == 1, "a fractional position and group size set on every frame change the settings once: %d changes in 30 frames", changes);
 }
 
+TEST_CASE(EntriesOfNodesNotSubmitted, "settings.nodes_not_submitted_keep_their_entries", "CORE-11", test::TestFlags_None)
+{
+    const char* const c_Settings = R"({"nodes":{"node:1":{"location":{"x":10,"y":10}},"node:2":{"location":{"x":200,"y":20}},"node:3":{"location":{"x":300,"y":30}}}})";
+
+    test::Session session(UnnamedConfig());
+    session.Use([&] { ed::LoadSettingsFromMemory(c_Settings); });
+
+    // Shows nodes 1 and 2 but not 3, moves node 1, and deletes node 2.
+    bool deleted = false;
+    session.DefaultContent = [&](int frame)
+    {
+        if (frame == 2)
+            ed::SetNodePosition(1, ImVec2(50.0f, 60.0f));
+        for (uintptr_t id : { 1, 2 })
+        {
+            if (id == 2 && deleted)
+                continue;
+            ed::BeginNode(id);
+            ImGui::TextUnformatted("Node");
+            ed::EndNode();
+        }
+        if (frame == 3)
+            ed::DeleteNode(2);
+        if (ed::BeginDelete())
+        {
+            ed::NodeId nodeId;
+            while (ed::QueryDeletedNode(&nodeId))
+                deleted = ed::AcceptDeletedItem() || deleted;
+            ed::EndDelete();
+        }
+    };
+    session.Run(8);
+
+    const auto saved = session.Use([] { return std::string(ed::SaveSettingsToMemory()); });
+    test::Check(deleted, "node 2 deleted");
+    test::Check(saved.find(R"("node:3":{"location":{"x":300,"y":30}})") != std::string::npos, "node 3, never submitted, keeps its entry: %s", saved.c_str());
+    test::Check(saved.find(R"("node:1":{"location":{"x":50,"y":60}})") != std::string::npos, "node 1 is saved where it was moved: %s", saved.c_str());
+    test::Check(saved.find(R"("node:2")") == std::string::npos, "node 2, deleted, has no entry: %s", saved.c_str());
+}
+
 TEST_CASE(ContentWithoutNodes, "settings.content_without_nodes_leaves_layout_out", "API-9", test::TestFlags_None)
 {
     auto config = UnnamedConfig();

@@ -518,6 +518,7 @@ struct NodeSettings
     ImVec2 m_Size;
     ImVec2 m_GroupSize;
     bool   m_WasUsed;
+    bool   m_WasLoaded;
 
     bool            m_Saved;
     bool            m_IsDirty;
@@ -529,6 +530,7 @@ struct NodeSettings
         , m_Size(0, 0)
         , m_GroupSize(0, 0)
         , m_WasUsed(false)
+        , m_WasLoaded(false)
         , m_Saved(false)
         , m_IsDirty(false)
         , m_DirtyReason(SaveReasonFlags::None)
