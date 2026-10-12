@@ -48,6 +48,9 @@ v0.9.4 (WIP):
         Finished animations are reused. Style::FlowMarkerDistance is at least one canvas pixel; a negative
         value drew markers without end.
 
+    BUGFIX: Editor: Clear the current editor when DestroyEditor() destroys it
+        API calls without a current editor assert instead of dereferencing null.
+
 v0.9.3 (2023-10-14):
 
     CHANGE: Canvas: Use ImDrawCallback_ImCanvas macro as draw callback sentinel (#256), thanks @nspitko
