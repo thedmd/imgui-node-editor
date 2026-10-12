@@ -683,7 +683,8 @@ struct Example:
         ImGui::EndHorizontal();
 
         static ImGuiTextFilter filter;
-        filter.Draw("##filter", paneWidth);
+        ImGui::SetNextItemWidth(paneWidth);
+        filter.Draw("##filter");
 
         ImGui::Spacing();
 
@@ -1108,7 +1109,7 @@ struct Example:
 
                         ed::PushStyleVar(ed::StyleVar_PinArrowSize, 10.0f);
                         ed::PushStyleVar(ed::StyleVar_PinArrowWidth, 10.0f);
-                        ed::PushStyleVar(ed::StyleVar_PinCorners, ImDrawFlags_RoundCornersBottom);
+                        ed::PushStyleVar(ed::StyleVar_PinCorners, ImDrawFlags_RoundBottom);
                         ed::BeginPin(pin.ID, ed::PinKind::Input);
                         ed::PinPivotRect(inputsRect.GetTL(), inputsRect.GetBR());
                         ed::PinRect(inputsRect.GetTL(), inputsRect.GetBR());
@@ -1150,7 +1151,7 @@ struct Example:
                     ImGui::Spring(1, 0);
                     outputsRect = ImGui_GetItemRect();
 
-                    ed::PushStyleVar(ed::StyleVar_PinCorners, ImDrawFlags_RoundCornersTop);
+                    ed::PushStyleVar(ed::StyleVar_PinCorners, ImDrawFlags_RoundTop);
                     ed::BeginPin(pin.ID, ed::PinKind::Output);
                     ed::PinPivotRect(outputsRect.GetTL(), outputsRect.GetBR());
                     ed::PinRect(outputsRect.GetTL(), outputsRect.GetBR());
@@ -1185,8 +1186,8 @@ struct Example:
                 //    drawList->PathStroke(col, true, thickness);
                 //};
 
-                const auto    topRoundCornersFlags = ImDrawFlags_RoundCornersTop;
-                const auto bottomRoundCornersFlags = ImDrawFlags_RoundCornersBottom;
+                const auto    topRoundCornersFlags = ImDrawFlags_RoundTop;
+                const auto bottomRoundCornersFlags = ImDrawFlags_RoundBottom;
 
                 drawList->AddRectFilled(inputsRect.GetTL() + ImVec2(0, 1), inputsRect.GetBR(),
                     IM_COL32((int)(255 * pinBackground.x), (int)(255 * pinBackground.y), (int)(255 * pinBackground.z), inputAlpha), 4.0f, bottomRoundCornersFlags);
@@ -1250,7 +1251,7 @@ struct Example:
                         inputsRect.Min.y -= padding;
                         inputsRect.Max.y -= padding;
 
-                        const auto allRoundCornersFlags = ImDrawFlags_RoundCornersAll;
+                        const auto allRoundCornersFlags = ImDrawFlags_RoundAll;
                         //ed::PushStyleVar(ed::StyleVar_PinArrowSize, 10.0f);
                         //ed::PushStyleVar(ed::StyleVar_PinArrowWidth, 10.0f);
                         ed::PushStyleVar(ed::StyleVar_PinCorners, allRoundCornersFlags);
@@ -1307,8 +1308,8 @@ struct Example:
                         outputsRect.Min.y += padding;
                         outputsRect.Max.y += padding;
 
-                        const auto allRoundCornersFlags = ImDrawFlags_RoundCornersAll;
-                        const auto topRoundCornersFlags = ImDrawFlags_RoundCornersTop;
+                        const auto allRoundCornersFlags = ImDrawFlags_RoundAll;
+                        const auto topRoundCornersFlags = ImDrawFlags_RoundTop;
 
                         ed::PushStyleVar(ed::StyleVar_PinCorners, topRoundCornersFlags);
                         ed::BeginPin(pin.ID, ed::PinKind::Output);
@@ -1778,8 +1779,8 @@ struct Example:
 
                 auto widgetPosition = ImVec2(p1.x, p0.y) + ImVec2(0.0f, -widgetSize.y);
 
-                drawList->AddRectFilled(widgetPosition, widgetPosition + widgetSize, IM_COL32(100, 80, 80, 190), 3.0f, ImDrawFlags_RoundCornersAll);
-                drawList->AddRect(widgetPosition, widgetPosition + widgetSize, IM_COL32(200, 160, 160, 190), 3.0f, 1.0f, ImDrawFlags_RoundCornersAll);
+                drawList->AddRectFilled(widgetPosition, widgetPosition + widgetSize, IM_COL32(100, 80, 80, 190), 3.0f, ImDrawFlags_RoundAll);
+                drawList->AddRect(widgetPosition, widgetPosition + widgetSize, IM_COL32(200, 160, 160, 190), 3.0f, 1.0f, ImDrawFlags_RoundAll);
                 drawList->AddText(widgetPosition + padding, IM_COL32(255, 255, 255, 255), builder.c_str());
             }
 
