@@ -316,6 +316,9 @@ v0.10.0 (WIP):
     BUGFIX: Editor: Return the magnitude from ImLength(float)
         It returned its argument, so the length of a one-dimensional curve could come out negative.
 
+    BUGFIX: Editor: Sample the cubic Bezier curve itself when control points meet its ends
+        ImCubicBezierSample() switched to a different, lower degree curve then; the editor doesn't use it.
+
 v0.9.2 (2023-09-01):
 
     NEW: Editor: Add offset of hover/select to style (thanks @MultiPain)

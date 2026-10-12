@@ -73,17 +73,7 @@ inline T ImCubicBezierDt(const T& p0, const T& p1, const T& p2, const T& p3, flo
 template <typename T>
 inline T ImCubicBezierSample(const T& p0, const T& p1, const T& p2, const T& p3, float t)
 {
-    const auto cp0_zero = ImLengthSqr(p1 - p0) < 1e-5f;
-    const auto cp1_zero = ImLengthSqr(p3 - p2) < 1e-5f;
-
-    if (cp0_zero && cp1_zero)
-        return ImLinearBezier(p0, p3, t);
-    else if (cp0_zero)
-        return ImQuadraticBezier(p0, p2, p3, t);
-    else if (cp1_zero)
-        return ImQuadraticBezier(p0, p1, p3, t);
-    else
-        return ImCubicBezier(p0, p1, p2, p3, t);
+    return ImCubicBezier(p0, p1, p2, p3, t);
 }
 
 template <typename T>
