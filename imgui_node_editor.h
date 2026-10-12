@@ -338,6 +338,11 @@ IMGUI_NODE_EDITOR_API void RejectNewItem();
 IMGUI_NODE_EDITOR_API void RejectNewItem(const ImVec4& color, float thickness = 1.0f);
 IMGUI_NODE_EDITOR_API void EndCreate();
 
+// Links attached to a node deleted with its dependencies are deleted with it.
+// QueryDeletedLink() reports each of them, with the pins it connected: in the
+// same interaction when queried after the node, otherwise in one more
+// interaction in the next frame. They are already deleted: AcceptDeletedItem()
+// only acknowledges them, and RejectDeletedItem() asserts.
 IMGUI_NODE_EDITOR_API bool BeginDelete();
 IMGUI_NODE_EDITOR_API bool QueryDeletedLink(LinkId* linkId, PinId* startId = nullptr, PinId* endId = nullptr);
 IMGUI_NODE_EDITOR_API bool QueryDeletedNode(NodeId* nodeId);

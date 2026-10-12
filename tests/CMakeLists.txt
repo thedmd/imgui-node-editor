@@ -71,6 +71,7 @@ endif()
 
 set(_TestSources
     canvas_tests.cpp
+    deletion_tests.cpp
     draw_order_tests.cpp
     geometry_tests.cpp
     interaction_tests.cpp
