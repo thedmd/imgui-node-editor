@@ -209,6 +209,9 @@ v0.9.4 (WIP):
     BUGFIX: Editor: Snap points inside a rectangle to its nearest edge when asked
         ImRect_ClosestPoint() returned them unchanged whether snapping or not; the editor doesn't snap such points.
 
+    BUGFIX: Editor: Cull links by everything they draw
+        A link whose centerline left the screen was culled although its stroke, border or arrow was still on it.
+
 v0.9.3 (2023-10-14):
 
     CHANGE: Canvas: Use ImDrawCallback_ImCanvas macro as draw callback sentinel (#256), thanks @nspitko

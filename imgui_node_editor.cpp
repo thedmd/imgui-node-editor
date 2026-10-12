@@ -136,6 +136,9 @@ static const int c_NodeContentChannel        = 4;
 
 static const float c_GroupSelectThickness       = 6.0f;  // canvas pixels
 static const float c_LinkSelectThickness        = 5.0f;  // canvas pixels
+static const float c_LinkSelectedBorder         = 4.5f;  // canvas pixels
+static const float c_LinkHighlightedBorder      = 3.5f;  // canvas pixels
+static const float c_LinkHoveredBorder          = 2.0f;  // canvas pixels
 static const float c_NavigationZoomMargin       = 0.1f;  // percentage of visible bounds
 static const float c_MouseZoomDuration          = 0.15f; // seconds
 static const float c_SelectionFadeOutDuration   = 0.15f; // seconds
@@ -956,7 +959,7 @@ void ed::Link::Draw(ImDrawList* drawList, DrawFlags flags)
 
         drawList->ChannelsSetCurrent(c_LinkChannel_Selection);
 
-        Draw(drawList, borderColor, 4.5f);
+        Draw(drawList, borderColor, c_LinkSelectedBorder);
     }
     else if (flags & Hovered)
     {
@@ -964,13 +967,13 @@ void ed::Link::Draw(ImDrawList* drawList, DrawFlags flags)
 
         drawList->ChannelsSetCurrent(c_LinkChannel_Selection);
 
-        Draw(drawList, borderColor, 2.0f);
+        Draw(drawList, borderColor, c_LinkHoveredBorder);
     }
     else if (flags & Highlighted)
     {
         drawList->ChannelsSetCurrent(c_LinkChannel_Selection);
 
-        Draw(drawList, m_HighlightColor, 3.5f);
+        Draw(drawList, m_HighlightColor, c_LinkHighlightedBorder);
     }
 }
 
@@ -1032,7 +1035,7 @@ bool ed::Link::TestHit(const ImVec2& point, float extraThickness) const
     if (!m_IsLive)
         return false;
 
-    auto bounds = GetBounds();
+    auto bounds = GetCurveBounds();
     if (extraThickness > 0.0f)
         bounds.Expand(extraThickness);
 
@@ -1050,7 +1053,7 @@ bool ed::Link::TestHit(const ImRect& rect, bool allowIntersect) const
     if (!m_IsLive)
         return false;
 
-    const auto bounds = GetBounds();
+    const auto bounds = GetCurveBounds();
 
     if (rect.Contains(bounds))
         return true;
@@ -1078,6 +1081,24 @@ bool ed::Link::TestHit(const ImRect& rect, bool allowIntersect) const
 }
 
 ImRect ed::Link::GetBounds() const
+{
+    if (!m_IsLive)
+        return ImRect();
+
+    // What Draw() covers with the widest border.
+    const auto border = ImMax(c_LinkSelectedBorder, ImMax(c_LinkHighlightedBorder, c_LinkHoveredBorder));
+
+    auto extent = (m_Thickness + border) * 0.5f;
+    for (auto pin : { m_StartPin, m_EndPin })
+        if (pin->m_ArrowSize > 0.0f)
+            extent = ImMax(extent, ImMax((pin->m_ArrowWidth + border) * 0.5f, border));
+
+    auto bounds = GetCurveBounds();
+    bounds.Expand(extent);
+    return bounds;
+}
+
+ImRect ed::Link::GetCurveBounds() const
 {
     if (m_IsLive)
     {
