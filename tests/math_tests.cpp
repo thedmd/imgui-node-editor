@@ -355,3 +355,78 @@ TEST_CASE(ProjectionSweep, "math.projection_finds_the_closest_point", "MATH-4", 
 
     test::Check(misses == 0 && worst < 0.1, "points within the band are found: %d of %d missed, distances off by up to %g", misses, points, worst);
 }
+
+TEST_CASE(ClosestLineRadii, "math.closest_line_endpoints_do_not_cross", "MATH-5", test::TestFlags_None)
+{
+    // Pivots up to 40 apart with radii that fit between them or don't.
+    const float radii[] = { 0.0f, 1.0f, 5.0f, 15.0f, 30.0f };
+    int crossed = 0, cases = 0;
+    for (int i = 1; i <= 160; ++i)
+    {
+        const float length = i * 0.25f;
+        for (auto radiusA : radii)
+            for (auto radiusB : radii)
+            {
+                const auto line = ImRect_ClosestLine(ImRect(0, 0, 0, 0), ImRect(length, 0, length, 0), radiusA, radiusB);
+                const auto expectedA = radiusA + radiusB > length ? length * radiusA / (radiusA + radiusB) : radiusA;
+                if (line.B.x < line.A.x - 1e-4f || ImFabs(line.A.x - expectedA) > 1e-4f)
+                    ++crossed;
+                ++cases;
+            }
+    }
+
+    test::Check(crossed == 0, "the endpoints stay apart, or meet where the radii overlap: %d of %d cases differ", crossed, cases);
+}
+
+TEST_CASE(StraightLinkArrow, "math.straight_link_arrow_does_not_flip", "MATH-5", test::TestFlags_None)
+{
+    // Pins 16 apart, with radius 5 and radius 5 plus a 10 long arrow, as the blueprints
+    // example's tree nodes have; a straight link between them.
+    const ImU32 linkColor = IM_COL32(255, 0, 0, 255);
+    test::Storage storage;
+    test::Session session(&storage);
+    session.DefaultContent = [&](int frame)
+    {
+        const ImVec2 pivots[2] = { ImVec2(100.0f, 100.0f), ImVec2(116.0f, 100.0f) };
+        ed::PushStyleVar(ed::StyleVar_LinkStrength, 0.0f);
+        ed::PushStyleVar(ed::StyleVar_PinRadius, 5.0f);
+        for (int n = 0; n < 2; ++n)
+        {
+            if (frame == 0)
+                ed::SetNodePosition(n + 1, ImVec2(n * 300.0f, 300.0f));
+            ed::BeginNode(n + 1);
+            if (n == 1)
+            {
+                ed::PushStyleVar(ed::StyleVar_PinArrowSize, 10.0f);
+                ed::PushStyleVar(ed::StyleVar_PinArrowWidth, 10.0f);
+            }
+            ed::BeginPin(11 + n, n == 0 ? ed::PinKind::Output : ed::PinKind::Input);
+            ImGui::TextUnformatted("Pin");
+            ed::PinPivotRect(pivots[n], pivots[n]);
+            ed::EndPin();
+            if (n == 1)
+                ed::PopStyleVar(2);
+            ed::EndNode();
+        }
+        ed::PopStyleVar(2);
+        ed::Link(100, 11, 12, ImColor(linkColor));
+    };
+    session.Run(3);
+
+    const auto left  = session.Use([] { return ed::CanvasToScreen(ImVec2(100.0f, 100.0f)); });
+    const auto right = session.Use([] { return ed::CanvasToScreen(ImVec2(116.0f, 100.0f)); });
+    const auto geometry = test::Capture(session.DrawList);
+    int vertices = 0, outside = 0;
+    float minX = FLT_MAX;
+    for (size_t i = 0; i < geometry.Colors.size(); ++i)
+    {
+        if (geometry.Colors[i] != linkColor)
+            continue;
+        ++vertices;
+        minX = ImMin(minX, geometry.Positions[i].x);
+        if (geometry.Positions[i].x < left.x - 1.0f || geometry.Positions[i].x > right.x + 1.0f)
+            ++outside;
+    }
+
+    test::Check(vertices > 0 && outside == 0, "the link and its arrow stay between the pins: %d of %d vertices outside, the leftmost at %+g from the left pin", outside, vertices, minX - left.x);
+}

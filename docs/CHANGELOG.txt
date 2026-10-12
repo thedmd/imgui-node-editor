@@ -301,6 +301,9 @@ v0.10.0 (WIP):
     BUGFIX: Editor: Refine link projections at the ends and at every local minimum
         Links were not hovered near their ends, or where they bend back, although the mouse was within the hover distance.
 
+    BUGFIX: Editor: Shrink link endpoint radii whenever they overlap
+        Links between pins closer than their radii and arrows together crossed over, and a straight one's arrow pointed back.
+
 v0.9.2 (2023-09-01):
 
     NEW: Editor: Add offset of hover/select to style (thanks @MultiPain)
