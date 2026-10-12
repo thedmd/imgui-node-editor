@@ -134,6 +134,11 @@ static bool IsSameObject(const ed::ObjectId& lhs, const ed::ObjectId& rhs)
     return lhs.Type() == rhs.Type() && lhs == rhs;
 }
 
+static bool HasContent(ed::SettingsContentFlags content, ed::SettingsContentFlags flag)
+{
+    return (content & flag) != ed::SettingsContentFlags::None;
+}
+
 
 //------------------------------------------------------------------------------
 static void ImRect_Floor(ImRect& rect)
@@ -2372,7 +2377,7 @@ void ed::EditorContext::LoadSettings()
 
     auto section = store->Sections.find(m_SettingsName);
     if (!m_HasMemorySettings && section != store->Sections.end())
-        Settings::Parse(section->second, m_Settings);
+        Settings::Parse(section->second, m_Settings, m_Config.SettingsContent);
 }
 
 void ed::EditorContext::RestoreView()
@@ -2449,7 +2454,7 @@ bool ed::EditorContext::StoreSettings()
     if (!m_SettingsStore || !m_IsInitialized)
         return false;
 
-    auto  settings = m_Settings.Serialize();
+    auto  settings = m_Settings.Serialize(m_Config.SettingsContent);
     auto& section  = m_SettingsStore->Sections[m_SettingsName];
     if (section == settings)
         return false;
@@ -2462,7 +2467,7 @@ void ed::EditorContext::ApplySettings(const string& data)
 {
     // Entries the data leaves out keep the current state.
     UpdateSettings();
-    if (!Settings::Parse(data, m_Settings))
+    if (!Settings::Parse(data, m_Settings, m_Config.SettingsContent))
         return;
 
     for (auto& node : m_Nodes)
@@ -2487,13 +2492,13 @@ void ed::EditorContext::LoadSettingsFromMemory(const char* data, size_t size)
 
     if (m_IsSettingsLoaded)
         ApplySettings(settings);
-    else if (Settings::Parse(settings, m_Settings))
+    else if (Settings::Parse(settings, m_Settings, m_Config.SettingsContent))
         m_HasMemorySettings = true;
 }
 
 const char* ed::EditorContext::SaveSettingsToMemory(size_t* outSize)
 {
-    m_SettingsMemory = m_Settings.Serialize();
+    m_SettingsMemory = m_Settings.Serialize(m_Config.SettingsContent);
     if (outSize)
         *outSize = m_SettingsMemory.size();
     return m_SettingsMemory.c_str();
@@ -3095,9 +3100,9 @@ void ed::Settings::MakeDirty(SaveReasonFlags reason, Node* node)
     }
 }
 
-std::string ed::Settings::Serialize()
+std::string ed::Settings::Serialize(SettingsContentFlags content)
 {
-    json::value result;
+    json::value result(json::type_t::object);
 
     auto serializeObjectId = [](ObjectId id)
     {
@@ -3112,30 +3117,39 @@ std::string ed::Settings::Serialize()
         }
     };
 
-    auto& nodes = result["nodes"];
-    for (auto& node : m_Nodes)
+    if (HasContent(content, SettingsContentFlags::Nodes))
     {
-        if (node.m_WasUsed)
-            nodes[serializeObjectId(node.m_ID)] = node.Serialize();
+        auto& nodes = result["nodes"];
+        for (auto& node : m_Nodes)
+        {
+            if (node.m_WasUsed)
+                nodes[serializeObjectId(node.m_ID)] = node.Serialize();
+        }
     }
 
-    auto& selection = result["selection"];
-    for (auto& id : m_Selection)
-        selection.push_back(serializeObjectId(id));
+    if (HasContent(content, SettingsContentFlags::Selection))
+    {
+        auto& selection = result["selection"];
+        for (auto& id : m_Selection)
+            selection.push_back(serializeObjectId(id));
+    }
 
-    auto& view = result["view"];
-    view["scroll"]["x"] = m_ViewScroll.x;
-    view["scroll"]["y"] = m_ViewScroll.y;
-    view["zoom"]   = m_ViewZoom;
-    view["visible_rect"]["min"]["x"] = m_VisibleRect.Min.x;
-    view["visible_rect"]["min"]["y"] = m_VisibleRect.Min.y;
-    view["visible_rect"]["max"]["x"] = m_VisibleRect.Max.x;
-    view["visible_rect"]["max"]["y"] = m_VisibleRect.Max.y;
+    if (HasContent(content, SettingsContentFlags::View))
+    {
+        auto& view = result["view"];
+        view["scroll"]["x"] = m_ViewScroll.x;
+        view["scroll"]["y"] = m_ViewScroll.y;
+        view["zoom"]   = m_ViewZoom;
+        view["visible_rect"]["min"]["x"] = m_VisibleRect.Min.x;
+        view["visible_rect"]["min"]["y"] = m_VisibleRect.Min.y;
+        view["visible_rect"]["max"]["x"] = m_VisibleRect.Max.x;
+        view["visible_rect"]["max"]["y"] = m_VisibleRect.Max.y;
+    }
 
     return result.dump();
 }
 
-bool ed::Settings::Parse(const std::string& string, Settings& settings)
+bool ed::Settings::Parse(const std::string& string, Settings& settings, SettingsContentFlags content)
 {
     Settings result = settings;
 
@@ -3169,7 +3183,7 @@ bool ed::Settings::Parse(const std::string& string, Settings& settings)
     };
 
     const auto& nodesValue = settingsValue["nodes"];
-    if (nodesValue.is_object())
+    if (HasContent(content, SettingsContentFlags::Nodes) && nodesValue.is_object())
     {
         for (auto& node : nodesValue.get<json::object>())
         {
@@ -3190,7 +3204,7 @@ bool ed::Settings::Parse(const std::string& string, Settings& settings)
     }
 
     const auto& selectionValue = settingsValue["selection"];
-    if (selectionValue.is_array())
+    if (HasContent(content, SettingsContentFlags::Selection) && selectionValue.is_array())
     {
         result.m_Selection.resize(0);
         for (auto& selection : selectionValue.get<json::array>())
@@ -3202,7 +3216,7 @@ bool ed::Settings::Parse(const std::string& string, Settings& settings)
     }
 
     const auto& viewValue = settingsValue["view"];
-    if (viewValue.is_object())
+    if (HasContent(content, SettingsContentFlags::View) && viewValue.is_object())
     {
         if (!ParseVector(viewValue["scroll"], result.m_ViewScroll))
             result.m_ViewScroll = ImVec2(0, 0);
