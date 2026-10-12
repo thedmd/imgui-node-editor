@@ -1410,7 +1410,7 @@ struct EditorContext
     void NotifyLinkDeleted(Link* link);
 
     void Suspend(SuspendFlags flags = SuspendFlags::None);
-    void Resume(SuspendFlags flags = SuspendFlags::None);
+    void Resume();
     bool IsSuspended();
 
     bool IsFocused();
@@ -1566,6 +1566,8 @@ private:
 
     ImGuiEx::Canvas     m_Canvas;
     bool                m_IsCanvasVisible;
+    int                 m_SuspendCounter;
+    SuspendFlags        m_SuspendFlags;
 
     NodeBuilder         m_NodeBuilder;
     HintBuilder         m_HintBuilder;

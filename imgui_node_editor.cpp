@@ -1079,6 +1079,8 @@ ed::EditorContext::EditorContext(const ax::NodeEditor::Config* config)
     , m_LastActiveLink(nullptr)
     , m_Canvas()
     , m_IsCanvasVisible(false)
+    , m_SuspendCounter(0)
+    , m_SuspendFlags(SuspendFlags::None)
     , m_NodeBuilder(this)
     , m_HintBuilder(this)
     , m_CurrentAction(nullptr)
@@ -1273,6 +1275,8 @@ void ed::EditorContext::Begin(const char* id, const ImVec2& size)
 
 void ed::EditorContext::End()
 {
+    IM_ASSERT(m_SuspendCounter == 0 && "Each Suspend() needs a Resume() before End().");
+
     //auto& io          = ImGui::GetIO();
     auto  control     = BuildControl(m_CurrentAction && m_CurrentAction->IsDragging()); // NavigateAction.IsMovingOverEdge()
     //auto& editorStyle = GetStyle();
@@ -2043,6 +2047,12 @@ void ed::EditorContext::Suspend(SuspendFlags flags)
 {
     IM_ASSERT(m_DrawList != nullptr && "Suspend was called outiside of Begin/End.");
 
+    // Only the outermost pair leaves the editor and comes back, with the flags of its Suspend().
+    if (m_SuspendCounter++ > 0)
+        return;
+
+    m_SuspendFlags = flags;
+
     if (m_NodeBuilder.m_CurrentNode)
         ImDrawList_SwapSplitter(m_DrawList, m_NodeBuilder.m_Splitter);
 
@@ -2055,10 +2065,14 @@ void ed::EditorContext::Suspend(SuspendFlags flags)
         ImDrawList_SwapSplitter(m_DrawList, m_Splitter);
 }
 
-void ed::EditorContext::Resume(SuspendFlags flags)
+void ed::EditorContext::Resume()
 {
     IM_ASSERT(m_DrawList != nullptr && "Reasume was called outiside of Begin/End.");
-    if ((flags & SuspendFlags::KeepSplitter) != SuspendFlags::KeepSplitter)
+    IM_ASSERT(m_SuspendCounter > 0 && "Resume() without Suspend().");
+    if (m_SuspendCounter == 0 || --m_SuspendCounter > 0)
+        return;
+
+    if ((m_SuspendFlags & SuspendFlags::KeepSplitter) != SuspendFlags::KeepSplitter)
         ImDrawList_SwapSplitter(m_DrawList, m_Splitter);
     auto lastChannel = m_DrawList->_Splitter._Current;
     m_DrawList->ChannelsSetCurrent(m_ExternalChannel);
@@ -2072,7 +2086,7 @@ void ed::EditorContext::Resume(SuspendFlags flags)
 
 bool ed::EditorContext::IsSuspended()
 {
-    return m_Canvas.IsSuspended();
+    return m_SuspendCounter > 0;
 }
 
 bool ed::EditorContext::IsFocused()
@@ -4948,7 +4962,7 @@ void ed::CreateItemAction::End()
     if (m_IsInGlobalSpace)
     {
         ImGui::PopClipRect();
-        Editor->Resume(SuspendFlags::KeepSplitter);
+        Editor->Resume();
 
         auto currentChannel = Editor->GetDrawList()->_Splitter._Current;
         if (currentChannel != m_LastChannel)
@@ -5793,7 +5807,7 @@ void ed::HintBuilder::End()
 
     Editor->GetDrawList()->ChannelsSetCurrent(m_LastChannel);
 
-    Editor->Resume(SuspendFlags::KeepSplitter);
+    Editor->Resume();
 
     m_IsActive    = false;
     m_CurrentNode = nullptr;
