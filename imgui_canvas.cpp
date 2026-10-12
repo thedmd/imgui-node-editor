@@ -110,8 +110,9 @@ bool ImGuiEx::Canvas::Begin(ImGuiID id, const ImVec2& size)
 
     UpdateViewTransformPosition();
 
-    if (ImGui::IsClippedEx(m_WidgetRect, id))
-        return false;
+    // A clipped canvas still enters local space: its content is clipped away there,
+    // instead of being drawn untransformed, and End() reserves its layout space.
+    m_IsVisible = !ImGui::IsClippedEx(m_WidgetRect, id);
 
     // Save current channel, so we can assert when user
     // call canvas API with different one.
@@ -152,8 +153,7 @@ bool ImGuiEx::Canvas::Begin(ImGuiID id, const ImVec2& size)
 
 void ImGuiEx::Canvas::End()
 {
-    // If you're here your call to Begin() returned false,
-    // or Begin() wasn't called at all.
+    // If you're here, Begin() wasn't called.
     IM_ASSERT(m_InBeginEnd == true);
 
     // If you're here, please make sure you do not interleave
@@ -406,6 +406,13 @@ void ImGuiEx::Canvas::EnterLocalSpace()
     ImGui::PushClipRect(m_WidgetPosition, m_WidgetPosition + m_WidgetSize, true);
     auto clipped_clip_rect = m_DrawList->_ClipRectStack.back();
     ImGui::PopClipRect();
+
+    // Nothing of a canvas out of view can be seen or hovered.
+    if (!m_IsVisible)
+    {
+        clipped_clip_rect.z = clipped_clip_rect.x;
+        clipped_clip_rect.w = clipped_clip_rect.y;
+    }
 
 # if IMGUI_EX_CANVAS_DEFERED()
     m_Ranges.resize(m_Ranges.Size + 1);

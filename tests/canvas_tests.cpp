@@ -6,7 +6,7 @@
 # include <cstring>
 # include <functional>
 
-TEST_CASE(ClippedEditor, "canvas.clipped_editor_is_not_drawn_untransformed", "CNV-2", test::TestFlags_KnownFailure)
+TEST_CASE(ClippedEditor, "canvas.clipped_editor_is_not_drawn_untransformed", "CNV-2", test::TestFlags_None)
 {
     test::Storage storage;
     test::Session session(&storage);
@@ -41,20 +41,25 @@ TEST_CASE(ClippedEditor, "canvas.clipped_editor_is_not_drawn_untransformed", "CN
         }
     };
 
+    bool suspended = false;
     test::MouseMove(ImVec2(140.0f, 120.0f));
     for (int i = 0; i < 6; ++i)
-        session.Frame([](int frame)
+        session.Frame([&](int frame)
         {
             if (frame == 0)
                 ed::SetNodePosition(1, ImVec2(100.0f, 100.0f));
             ed::BeginNode(1);
             ImGui::TextUnformatted("Node 1");
             ed::EndNode();
+            ed::Suspend();
+            suspended = ed::IsSuspended();
+            ed::Resume();
         });
 
     test::Check(editorMin.y >= editorTop, "editor draws nothing above its widget: geometry starts at y=%.0f, widget at y=%.0f", editorMin.y, editorTop);
     test::Check(!hovered, "node isn't hovered through the visible part of the host window: hovered node %d", (int)hovered.Get());
     test::Check(cursorAfter.y >= editorTop + session.EditorSize.y, "layout continues below the editor: cursor at y=%.0f, editor ends at y=%.0f", cursorAfter.y, editorTop + session.EditorSize.y);
+    test::Check(suspended, "IsSuspended() is true after Suspend()");
 }
 
 namespace {
