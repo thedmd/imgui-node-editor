@@ -259,6 +259,9 @@ v0.10.0 (WIP):
     BUGFIX: Editor: Don't pan when a drag enters the editor from another window (#238)
         A right-drag started in another window panned the editor once the mouse entered it.
 
+    BUGFIX: Editor: Measure nodes and pins without items correctly on ImGui 1.91
+        A node without items grew toward the item submitted before it, and an empty pin took hover far away.
+
 v0.9.2 (2023-09-01):
 
     NEW: Editor: Add offset of hover/select to style (thanks @MultiPain)
