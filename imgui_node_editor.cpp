@@ -4535,20 +4535,21 @@ bool ed::DragAction::Process(const Control& control)
             float x = FLT_MAX;
             float y = FLT_MAX;
 
+            // The pivot closest to the grid moves the node the least away from the mouse.
             auto testPivot = [this, &x, &y, &draggedOrigin, &dragOffset, &alignPivot](const ImVec2& pivot)
             {
-                auto initial   = draggedOrigin + dragOffset + pivot;
-                auto candidate = Editor->AlignPointToGrid(initial) - draggedOrigin - pivot;
+                const auto initial = draggedOrigin + dragOffset + pivot;
+                const auto snap    = Editor->AlignPointToGrid(initial) - initial;
 
-                if (ImFabs(candidate.x) < ImFabs(ImMin(x, FLT_MAX)))
+                if (ImFabs(snap.x) < x)
                 {
-                    x = candidate.x;
+                    x = ImFabs(snap.x);
                     alignPivot.x = pivot.x;
                 }
 
-                if (ImFabs(candidate.y) < ImFabs(ImMin(y, FLT_MAX)))
+                if (ImFabs(snap.y) < y)
                 {
-                    y = candidate.y;
+                    y = ImFabs(snap.y);
                     alignPivot.y = pivot.y;
                 }
             };
