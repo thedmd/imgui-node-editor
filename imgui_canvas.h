@@ -248,6 +248,7 @@ private:
     int m_SuspendCounter = 0;
 
     float m_LastFringeScale = 1.0f;
+    float m_LastPixelDensity = 1.0f;
 
     ImVec2 m_MousePosBackup;
     ImVec2 m_MousePosPrevBackup;

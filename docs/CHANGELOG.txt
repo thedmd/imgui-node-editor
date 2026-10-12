@@ -24,6 +24,9 @@ v0.9.4 (WIP):
 
     BUGFIX: Editor: Don't use ImDrawFlags_RoundCornersAll renamed in ImGui 1.93
 
+    BUGFIX: Canvas: Set draw list pixel density with _SetPixelDensity() since ImGui r19292
+        Zoomed canvas lost anti-aliasing with ImGui 1.93.
+
 v0.9.3 (2023-10-14):
 
     CHANGE: Canvas: Use ImDrawCallback_ImCanvas macro as draw callback sentinel (#256), thanks @nspitko
