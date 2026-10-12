@@ -9,13 +9,12 @@
 //------------------------------------------------------------------------------
 # include "imgui_node_editor_internal.h"
 # include <cstdio> // snprintf
+# include <cstring> // strlen, strncmp
 # include <string>
-# include <fstream>
 # include <bitset>
 # include <climits>
 # include <algorithm>
 # include <sstream>
-# include <streambuf>
 # include <type_traits>
 
 // https://stackoverflow.com/a/8597498
@@ -80,6 +79,8 @@ static const auto  c_MaxMoveOverEdgeDistance    = 300.0f;
 
 static const ImDrawFlags c_AllRoundCornersFlags = 0;
 
+static const char* const c_SettingsHandlerName  = "NodeEditor";
+
 
 //------------------------------------------------------------------------------
 # if defined(_DEBUG) && defined(_WIN32)
@@ -141,6 +142,25 @@ static void ImRect_Floor(ImRect& rect)
     rect.Min.y = static_cast<float>(static_cast<int>(rect.Min.y));
     rect.Max.x = static_cast<float>(static_cast<int>(rect.Max.x));
     rect.Max.y = static_cast<float>(static_cast<int>(rect.Max.y));
+}
+
+
+//------------------------------------------------------------------------------
+static void ApplyNodeSettings(ed::Node* node, const ed::NodeSettings& settings)
+{
+    node->m_Bounds.Min      = settings.m_Location;
+    node->m_Bounds.Max      = node->m_Bounds.Min + settings.m_Size;
+    ImRect_Floor(node->m_Bounds);
+    node->m_GroupBounds.Min = settings.m_Location;
+    node->m_GroupBounds.Max = node->m_GroupBounds.Min + settings.m_GroupSize;
+    ImRect_Floor(node->m_GroupBounds);
+}
+
+// ImGui::MarkIniSettingsDirty() for a context that needn't be the current one.
+static void MarkIniSettingsDirty(ImGuiContext* context)
+{
+    if (context->SettingsDirtyTimer <= 0.0f)
+        context->SettingsDirtyTimer = context->IO.IniSavingRate;
 }
 
 
@@ -1114,15 +1134,33 @@ ed::EditorContext::EditorContext(const ax::NodeEditor::Config* config)
     , m_IsSettingsLoaded(false)
     , m_IsInitialized(false)
     , m_Settings()
+    , m_SettingsName(m_Config.SettingsName ? m_Config.SettingsName : "")
+    , m_SettingsStore(nullptr)
+    , m_HasMemorySettings(false)
+    , m_HasSettingsChanged(false)
+    , m_SettingsChangeReason(SaveReasonFlags::None)
+    , m_SettingsChangeTime(0.0)
+    , m_FrameTime(0.0)
     , m_DrawList(nullptr)
     , m_ExternalChannel(0)
 {
+    IM_ASSERT(m_SettingsName.find_first_of("\r\n") == string::npos && "Config::SettingsName must fit on one line of imgui.ini.");
+    m_Config.SettingsName = m_SettingsName.empty() ? nullptr : m_SettingsName.c_str();
 }
 
 ed::EditorContext::~EditorContext()
 {
-    if (m_IsInitialized)
+    if (m_IsInitialized && m_Settings.m_IsDirty)
         SaveSettings();
+
+    if (m_SettingsStore)
+    {
+        if (StoreSettings())
+            MarkIniSettingsDirty(m_SettingsStore->Context);
+
+        auto& editors = m_SettingsStore->Editors;
+        editors.erase(std::find(editors.begin(), editors.end(), this));
+    }
 
     for (auto link  : m_Links)  delete link.m_Object;
     for (auto pin   : m_Pins)   delete pin.m_Object;
@@ -1135,6 +1173,8 @@ void ed::EditorContext::Begin(const char* id, const ImVec2& size)
 {
     m_EditorActiveId = ImGui::GetID(id);
     ImGui::PushID(id);
+
+    m_FrameTime = ImGui::GetTime();
 
     m_BeginColorStackSize = m_Style.GetColorStackSize();
     m_BeginVarStackSize   = m_Style.GetVarStackSize();
@@ -1683,6 +1723,7 @@ void ed::EditorContext::End()
             if (auto object = FindObject(id))
                 SelectObject(object);
     }
+    m_IsFirstFrame = false;
 
     if (HasSelectionChanged())
         MakeDirty(SaveReasonFlags::Selection);
@@ -1691,7 +1732,6 @@ void ed::EditorContext::End()
         SaveSettings();
 
     m_DrawList = nullptr;
-    m_IsFirstFrame = false;
 }
 
 bool ed::EditorContext::DoLink(LinkId id, PinId startPinId, PinId endPinId, ImU32 color, float thickness)
@@ -1828,12 +1868,7 @@ void ed::EditorContext::UpdateNodeState(Node* node)
             *settings = newSettings;
     }
 
-    node->m_Bounds.Min      = settings->m_Location;
-    node->m_Bounds.Max      = node->m_Bounds.Min + settings->m_Size;
-    ImRect_Floor(node->m_Bounds);
-    node->m_GroupBounds.Min = settings->m_Location;
-    node->m_GroupBounds.Max = node->m_GroupBounds.Min + settings->m_GroupSize;
-    ImRect_Floor(node->m_GroupBounds);
+    ApplyNodeSettings(node, *settings);
 }
 
 void ed::EditorContext::RemoveSettings(Object* object)
@@ -2319,7 +2354,25 @@ ed::Link* ed::EditorContext::GetLink(LinkId id)
 
 void ed::EditorContext::LoadSettings()
 {
-    ed::Settings::Parse(m_Config.Load(), m_Settings);
+    auto handler = m_SettingsName.empty() ? nullptr : ImGui::FindSettingsHandler(c_SettingsHandlerName);
+    if (!handler)
+        return;
+
+    auto store = static_cast<SettingsStore*>(handler->UserData);
+    const auto isNameTaken = std::any_of(store->Editors.begin(), store->Editors.end(), [this](EditorContext* editor)
+    {
+        return editor->m_SettingsName == m_SettingsName;
+    });
+    IM_ASSERT(!isNameTaken && "Another live editor has the same Config::SettingsName.");
+    if (isNameTaken)
+        return;
+
+    store->Editors.push_back(this);
+    m_SettingsStore = store;
+
+    auto section = store->Sections.find(m_SettingsName);
+    if (!m_HasMemorySettings && section != store->Sections.end())
+        Settings::Parse(section->second, m_Settings);
 }
 
 void ed::EditorContext::RestoreView()
@@ -2337,10 +2390,8 @@ void ed::EditorContext::RestoreView()
     m_NavigateAction.ClampZoom();
 }
 
-void ed::EditorContext::SaveSettings()
+void ed::EditorContext::UpdateSettings()
 {
-    m_Config.BeginSave();
-
     for (auto& node : m_Nodes)
     {
         auto settings = m_Settings.FindNode(node->m_ID);
@@ -2348,26 +2399,115 @@ void ed::EditorContext::SaveSettings()
         settings->m_Size     = node->m_Bounds.GetSize();
         if (IsGroup(node))
             settings->m_GroupSize = node->m_GroupBounds.GetSize();
+    }
 
-        if (!node->m_RestoreState && settings->m_IsDirty && m_Config.SaveNodeSettings)
+    // Until the first End() selects them, the selection holds the loaded IDs.
+    if (!m_IsFirstFrame)
+    {
+        m_Settings.m_Selection.resize(0);
+        for (auto& object : m_SelectedObjects)
+            m_Settings.m_Selection.push_back(object->ID());
+    }
+
+    // Until the first visible frame restores it, the view holds the loaded one.
+    if (m_IsInitialized)
+    {
+        m_Settings.m_ViewScroll  = m_NavigateAction.m_Scroll;
+        m_Settings.m_ViewZoom    = m_NavigateAction.m_Zoom;
+        m_Settings.m_VisibleRect = m_NavigateAction.m_VisibleRect;
+    }
+}
+
+void ed::EditorContext::SaveSettings()
+{
+    UpdateSettings();
+
+    if (m_Config.SaveNodeSettings)
+    {
+        for (auto& node : m_Nodes)
         {
-            if (m_Config.SaveNode(node->m_ID, settings->Serialize().dump(), settings->m_DirtyReason))
-                settings->ClearDirty();
+            auto settings = m_Settings.FindNode(node->m_ID);
+            if (!node->m_RestoreState && settings->m_IsDirty)
+                m_Config.SaveNode(node->m_ID, settings->Serialize().dump(), settings->m_DirtyReason);
         }
     }
 
-    m_Settings.m_Selection.resize(0);
-    for (auto& object : m_SelectedObjects)
-        m_Settings.m_Selection.push_back(object->ID());
+    if (!m_HasSettingsChanged)
+    {
+        m_HasSettingsChanged = true;
+        m_SettingsChangeTime = m_FrameTime;
+    }
+    m_SettingsChangeReason = m_SettingsChangeReason | m_Settings.m_DirtyReason;
+    m_Settings.ClearDirty();
 
-    m_Settings.m_ViewScroll  = m_NavigateAction.m_Scroll;
-    m_Settings.m_ViewZoom    = m_NavigateAction.m_Zoom;
-    m_Settings.m_VisibleRect = m_NavigateAction.m_VisibleRect;
+    if (m_SettingsStore)
+        MarkIniSettingsDirty(m_SettingsStore->Context);
+}
 
-    if (m_Config.Save(m_Settings.Serialize(), m_Settings.m_DirtyReason))
-        m_Settings.ClearDirty();
+bool ed::EditorContext::StoreSettings()
+{
+    if (!m_SettingsStore || !m_IsInitialized)
+        return false;
 
-    m_Config.EndSave();
+    auto  settings = m_Settings.Serialize();
+    auto& section  = m_SettingsStore->Sections[m_SettingsName];
+    if (section == settings)
+        return false;
+
+    section = std::move(settings);
+    return true;
+}
+
+void ed::EditorContext::ApplySettings(const string& data)
+{
+    // Entries the data leaves out keep the current state.
+    UpdateSettings();
+    if (!Settings::Parse(data, m_Settings))
+        return;
+
+    for (auto& node : m_Nodes)
+        ApplyNodeSettings(node, *m_Settings.FindNode(node->m_ID));
+
+    if (!m_IsFirstFrame)
+    {
+        ClearSelection();
+        for (auto id : m_Settings.m_Selection)
+            if (auto object = FindObject(id))
+                SelectObject(object);
+    }
+
+    if (m_IsInitialized)
+        RestoreView();
+}
+
+void ed::EditorContext::LoadSettingsFromMemory(const char* data, size_t size)
+{
+    IM_ASSERT(data);
+    const string settings(data, size > 0 ? size : strlen(data));
+
+    if (m_IsSettingsLoaded)
+        ApplySettings(settings);
+    else if (Settings::Parse(settings, m_Settings))
+        m_HasMemorySettings = true;
+}
+
+const char* ed::EditorContext::SaveSettingsToMemory(size_t* outSize)
+{
+    m_SettingsMemory = m_Settings.Serialize();
+    if (outSize)
+        *outSize = m_SettingsMemory.size();
+    return m_SettingsMemory.c_str();
+}
+
+bool ed::EditorContext::WantSaveSettings() const
+{
+    return m_HasSettingsChanged && ImGui::GetTime() - m_SettingsChangeTime >= ImGui::GetIO().IniSavingRate;
+}
+
+void ed::EditorContext::ClearWantSaveSettings()
+{
+    m_HasSettingsChanged   = false;
+    m_SettingsChangeReason = SaveReasonFlags::None;
 }
 
 void ed::EditorContext::MakeDirty(SaveReasonFlags reason)
@@ -3083,6 +3223,117 @@ bool ed::Settings::Parse(const std::string& string, Settings& settings)
     settings = std::move(result);
 
     return true;
+}
+
+
+
+//------------------------------------------------------------------------------
+//
+// Settings Handler
+//
+//------------------------------------------------------------------------------
+static ed::SettingsStore* GetSettingsStore(ImGuiSettingsHandler* handler)
+{
+    return static_cast<ed::SettingsStore*>(handler->UserData);
+}
+
+static void SettingsHandler_ClearAll(ImGuiContext*, ImGuiSettingsHandler* handler)
+{
+    GetSettingsStore(handler)->Sections.clear();
+}
+
+static void SettingsHandler_ReadInit(ImGuiContext*, ImGuiSettingsHandler* handler)
+{
+    GetSettingsStore(handler)->ReadSections.clear();
+}
+
+static void* SettingsHandler_ReadOpen(ImGuiContext*, ImGuiSettingsHandler* handler, const char* name)
+{
+    auto store = GetSettingsStore(handler);
+    store->ReadSections.push_back(name);
+
+    auto& section = store->Sections[name];
+    section.clear();
+    return &section;
+}
+
+static void SettingsHandler_ReadLine(ImGuiContext*, ImGuiSettingsHandler*, void* entry, const char* line)
+{
+    if (strncmp(line, "Data=", 5) == 0)
+        *static_cast<std::string*>(entry) = line + 5;
+}
+
+static void SettingsHandler_ApplyAll(ImGuiContext*, ImGuiSettingsHandler* handler)
+{
+    auto store = GetSettingsStore(handler);
+    for (auto editor : store->Editors)
+    {
+        auto& name = editor->GetSettingsName();
+        if (std::find(store->ReadSections.begin(), store->ReadSections.end(), name) != store->ReadSections.end())
+            editor->ApplySettings(store->Sections[name]);
+    }
+    store->ReadSections.clear();
+}
+
+static void SettingsHandler_WriteAll(ImGuiContext*, ImGuiSettingsHandler* handler, ImGuiTextBuffer* buffer)
+{
+    auto store = GetSettingsStore(handler);
+    for (auto editor : store->Editors)
+        editor->StoreSettings();
+
+    for (auto& section : store->Sections)
+        if (!section.second.empty())
+            buffer->appendf("[%s][%s]\nData=%s\n\n", handler->TypeName, section.first.c_str(), section.second.c_str());
+}
+
+static void SettingsHandler_Shutdown(ImGuiContext*, ImGuiContextHook* hook)
+{
+    auto store = static_cast<ed::SettingsStore*>(hook->UserData);
+    for (auto editor : store->Editors)
+        editor->DetachSettingsStore();
+    delete store;
+}
+
+void ed::InstallSettingsHandler(ImGuiContext* context)
+{
+    auto previousContext = ImGui::GetCurrentContext();
+    if (!context)
+        context = previousContext;
+    IM_ASSERT(context && "No ImGui context to install the settings handler in.");
+    if (!context)
+        return;
+
+    ImGui::SetCurrentContext(context);
+
+    IM_ASSERT(context->SettingsIniData.empty() && !(context->SettingsLoaded && context->IO.IniFilename) && "Install the settings handler before ImGui reads .ini data.");
+
+    const auto isInstalled = ImGui::FindSettingsHandler(c_SettingsHandlerName) != nullptr;
+    IM_ASSERT(!isInstalled && "The settings handler is already installed in this ImGui context.");
+    if (!isInstalled)
+    {
+        auto store = new SettingsStore();
+        store->Context = context;
+
+        ImGuiSettingsHandler handler;
+        handler.TypeName   = c_SettingsHandlerName;
+        handler.TypeHash   = ImHashStr(c_SettingsHandlerName);
+        handler.ClearAllFn = SettingsHandler_ClearAll;
+        handler.ReadInitFn = SettingsHandler_ReadInit;
+        handler.ReadOpenFn = SettingsHandler_ReadOpen;
+        handler.ReadLineFn = SettingsHandler_ReadLine;
+        handler.ApplyAllFn = SettingsHandler_ApplyAll;
+        handler.WriteAllFn = SettingsHandler_WriteAll;
+        handler.UserData   = store;
+        ImGui::AddSettingsHandler(&handler);
+
+        ImGuiContextHook hook;
+        hook.Type     = ImGuiContextHookType_Shutdown;
+        hook.Callback = SettingsHandler_Shutdown;
+        hook.UserData = store;
+        ImGui::AddContextHook(context, &hook);
+    }
+
+    ImGui::SetCurrentContext(previousContext);
 }
 
 
@@ -6074,36 +6325,6 @@ ed::Config::Config(const ax::NodeEditor::Config* config)
         *static_cast<ax::NodeEditor::Config*>(this) = *config;
 }
 
-std::string ed::Config::Load()
-{
-    std::string data;
-
-    if (LoadSettings)
-    {
-        const auto size = LoadSettings(nullptr, UserPointer);
-        if (size > 0)
-        {
-            data.resize(size);
-            LoadSettings(const_cast<char*>(data.data()), UserPointer);
-        }
-    }
-    else if (SettingsFile)
-    {
-        std::ifstream file(SettingsFile);
-        if (file)
-        {
-            file.seekg(0, std::ios_base::end);
-            auto size = static_cast<size_t>(file.tellg());
-            file.seekg(0, std::ios_base::beg);
-
-            data.reserve(size);
-            data.assign(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
-        }
-    }
-
-    return data;
-}
-
 std::string ed::Config::LoadNode(NodeId nodeId)
 {
     std::string data;
@@ -6121,40 +6342,10 @@ std::string ed::Config::LoadNode(NodeId nodeId)
     return data;
 }
 
-void ed::Config::BeginSave()
-{
-    if (BeginSaveSession)
-        BeginSaveSession(UserPointer);
-}
-
-bool ed::Config::Save(const std::string& data, SaveReasonFlags flags)
-{
-    if (SaveSettings)
-    {
-        return SaveSettings(data.c_str(), data.size(), flags, UserPointer);
-    }
-    else if (SettingsFile)
-    {
-        std::ofstream settingsFile(SettingsFile);
-        if (settingsFile)
-            settingsFile << data;
-
-        return !!settingsFile;
-    }
-
-    return false;
-}
-
 bool ed::Config::SaveNode(NodeId nodeId, const std::string& data, SaveReasonFlags flags)
 {
     if (SaveNodeSettings)
         return SaveNodeSettings(nodeId, data.c_str(), data.size(), flags, UserPointer);
 
     return false;
-}
-
-void ed::Config::EndSave()
-{
-    if (EndSaveSession)
-        EndSaveSession(UserPointer);
 }

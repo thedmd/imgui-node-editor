@@ -11,9 +11,8 @@ struct Example:
 
     void OnStart() override
     {
-        ed::Config config;
-        config.SettingsFile = "Simple.json";
-        m_Context = ed::CreateEditor(&config);
+        ed::InstallSettingsHandler();
+        m_Context = ed::CreateEditor();
     }
 
     void OnStop() override
