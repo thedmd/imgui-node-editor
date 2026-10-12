@@ -4,6 +4,7 @@
 # include "harness.h"
 # include <cfloat>
 # include <cstring>
+# include <functional>
 
 TEST_CASE(ClippedEditor, "canvas.clipped_editor_is_not_drawn_untransformed", "CNV-2", test::TestFlags_KnownFailure)
 {
@@ -56,16 +57,15 @@ TEST_CASE(ClippedEditor, "canvas.clipped_editor_is_not_drawn_untransformed", "CN
     test::Check(cursorAfter.y >= editorTop + session.EditorSize.y, "layout continues below the editor: cursor at y=%.0f, editor ends at y=%.0f", cursorAfter.y, editorTop + session.EditorSize.y);
 }
 
-TEST_CASE(CollapsedHost, "canvas.collapsed_host_keeps_group_size", "CORE-2", test::TestFlags_KnownFailure)
-{
-    test::Storage storage;
-    test::Session session(&storage);
-    session.HostPos   = ImVec2(0.0f, 0.0f);
-    session.HostSize  = ImVec2(1000.0f, 700.0f);
-    session.HostFlags = ImGuiWindowFlags_NoSavedSettings;
+namespace {
 
+// Shows a 400 x 250 group, hides the editor with 'setHidden' for a few frames
+// while the application keeps submitting it, and checks the group afterwards.
+void CheckGroupSurvivesHiding(test::Session& session, test::Storage& storage, const std::function<void(bool hidden)>& setHidden)
+{
     ImVec2 size;
-    auto scene = [&size](int frame)
+    float  zoom = 0.0f;
+    auto scene = [&](int frame)
     {
         if (frame == 0)
             ed::SetNodePosition(1, ImVec2(100.0f, 100.0f));
@@ -74,21 +74,96 @@ TEST_CASE(CollapsedHost, "canvas.collapsed_host_keeps_group_size", "CORE-2", tes
         ed::Group(ImVec2(400.0f, 250.0f));
         ed::EndNode();
         size = ed::GetNodeSize(1);
+        zoom = ed::GetCurrentZoom();
     };
 
     for (int i = 0; i < 5; ++i)
         session.Frame(scene);
-    const ImVec2 before = size;
-    const std::string savedBefore = storage.Global;
+    const ImVec2 sizeBefore = size;
+    const float  zoomBefore = zoom;
 
-    // The host window is collapsed for two frames; the application keeps submitting the editor.
-    session.HostCollapsed = true;
-    for (int i = 0; i < 2; ++i)
+    setHidden(true);
+    for (int i = 0; i < 3; ++i)
         session.Frame(scene);
-    session.HostCollapsed = false;
+    const float zoomHidden = zoom;
+    setHidden(false);
     for (int i = 0; i < 5; ++i)
         session.Frame(scene);
 
-    test::Check(size.x == before.x && size.y == before.y, "group size after the host was collapsed: (%g, %g), before (%g, %g)", size.x, size.y, before.x, before.y);
+    test::Check(zoomHidden == zoomBefore && zoom == zoomBefore, "view zoom kept while hidden: %g, before %g, after %g", zoomHidden, zoomBefore, zoom);
+    test::Check(size.x == sizeBefore.x && size.y == sizeBefore.y, "group size after the editor was hidden: (%g, %g), before (%g, %g)", size.x, size.y, sizeBefore.x, sizeBefore.y);
     test::Check(strstr(storage.Global.c_str(), "\"group_size\":{\"x\":400") != nullptr, "saved group size unchanged: %s", storage.Global.c_str());
+}
+
+} // namespace
+
+TEST_CASE(CollapsedHost, "canvas.collapsed_host_keeps_group_size", "CORE-2", test::TestFlags_None)
+{
+    test::Storage storage;
+    test::Session session(&storage);
+    session.HostPos   = ImVec2(0.0f, 0.0f);
+    session.HostSize  = ImVec2(1000.0f, 700.0f);
+    session.HostFlags = ImGuiWindowFlags_NoSavedSettings;
+
+    CheckGroupSurvivesHiding(session, storage, [&](bool hidden) { session.HostCollapsed = hidden; });
+}
+
+TEST_CASE(ScrolledOutChild, "canvas.child_scrolled_out_of_view_keeps_group_size", "CORE-2", test::TestFlags_None)
+{
+    // The editor sits in a child window, which content above it pushes out of view.
+    test::Storage storage;
+    test::Session session(&storage);
+    session.HostPos  = ImVec2(0.0f, 0.0f);
+    session.HostSize = ImVec2(1000.0f, 700.0f);
+
+    bool pushedOut = false;
+    session.BeforeEditor = [&]
+    {
+        if (pushedOut)
+            ImGui::Dummy(ImVec2(10.0f, 2000.0f));
+        ImGui::BeginChild("Child", ImVec2(900.0f, 600.0f));
+    };
+    session.AfterEditor = []
+    {
+        ImGui::EndChild();
+    };
+
+    CheckGroupSurvivesHiding(session, storage, [&](bool hidden) { pushedOut = hidden; });
+}
+
+TEST_CASE(HiddenDockTab, "canvas.hidden_dock_tab_keeps_group_size", "CORE-2", test::TestFlags_None)
+{
+# if defined(IMGUI_HAS_DOCK)
+    // The host window is docked with another one, whose tab is selected for a while.
+    test::Storage storage;
+    test::Session session(&storage);
+    session.PlaceHost = false;
+    ImGui::SetCurrentContext(session.HostContext.Context);
+    ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+
+    // Docked in the second frame, once both windows exist.
+    bool showOther = false;
+    session.BeforeHost = [&]
+    {
+        if (session.FrameIndex != 1)
+            return;
+        const ImGuiID node = ImGui::DockBuilderAddNode();
+        ImGui::DockBuilderSetNodePos(node, ImVec2(0.0f, 0.0f));
+        ImGui::DockBuilderSetNodeSize(node, ImVec2(1000.0f, 700.0f));
+        ImGui::DockBuilderDockWindow("Host", node);
+        ImGui::DockBuilderDockWindow("Other", node);
+        ImGui::DockBuilderFinish(node);
+    };
+    session.AfterHost = [&]
+    {
+        ImGui::Begin("Other");
+        ImGui::TextUnformatted("Other tab");
+        ImGui::End();
+        ImGui::SetWindowFocus(showOther ? "Other" : "Host");
+    };
+
+    CheckGroupSurvivesHiding(session, storage, [&](bool hidden) { showOther = hidden; });
+# else
+    test::Skip("needs a docking build of Dear ImGui");
+# endif
 }
