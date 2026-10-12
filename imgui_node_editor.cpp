@@ -5477,10 +5477,9 @@ ed::CreateItemAction::Result ed::CreateItemAction::QueryLink(PinId* startId, Pin
     *startId = linkStartId;
     *endId   = linkEndId;
 
-    Editor->SetUserContext(true);
-
     if (!m_IsInGlobalSpace)
     {
+        Editor->SetUserContext(true);
         Editor->Suspend(SuspendFlags::KeepSplitter);
 
         auto rect = Editor->GetRect();
@@ -5500,10 +5499,9 @@ ed::CreateItemAction::Result ed::CreateItemAction::QueryNode(PinId* pinId)
 
     *pinId = m_LinkStart ? m_LinkStart->m_ID : 0;
 
-    Editor->SetUserContext(true);
-
     if (!m_IsInGlobalSpace)
     {
+        Editor->SetUserContext(true);
         Editor->Suspend(SuspendFlags::KeepSplitter);
 
         auto rect = Editor->GetRect();
