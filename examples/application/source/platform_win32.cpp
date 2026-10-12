@@ -243,17 +243,18 @@ bool PlatformWin32::ProcessMainWindowEvents()
     if (m_MainWindowHandle == nullptr)
         return false;
 
-    auto fetchMessage = [this](MSG* msg) -> bool
-    {
-        if (!m_IsMinimized)
-            return PeekMessage(msg, nullptr, 0U, 0U, PM_REMOVE) != 0;
-        else
-            return GetMessage(msg, nullptr, 0U, 0U) != 0;
-    };
-
     MSG msg = {};
-    while (fetchMessage(&msg))
+    while (true)
     {
+        // While minimized, wait for messages. GetMessage() returns 0 for WM_QUIT.
+        if (!m_IsMinimized)
+        {
+            if (!PeekMessage(&msg, nullptr, 0U, 0U, PM_REMOVE))
+                break;
+        }
+        else if (GetMessage(&msg, nullptr, 0U, 0U) <= 0)
+            return false;
+
         if (msg.message == WM_KEYDOWN && (msg.wParam == VK_ESCAPE))
             PostQuitMessage(0);
 
@@ -382,6 +383,8 @@ LRESULT PlatformWin32::WinProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam
         }
 
         case WM_DESTROY:
+            m_MainWindowHandle = nullptr;
+            m_IsMinimized      = false;
             PostQuitMessage(0);
             return 0;
     }

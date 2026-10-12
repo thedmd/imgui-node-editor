@@ -271,6 +271,9 @@ v0.10.0 (WIP):
     BUGFIX: Editor: Draw the new link preview with the requested thickness
         It was 1 pixel thicker, with arrows enlarged by the requested thickness.
 
+    BUGFIX: Examples: Exit when closed while minimized on Win32
+        The process kept running without a window, and never saved its state.
+
 v0.9.2 (2023-09-01):
 
     NEW: Editor: Add offset of hover/select to style (thanks @MultiPain)
