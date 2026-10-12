@@ -203,6 +203,9 @@ v0.9.4 (WIP):
     BUGFIX: Editor: Keep sub-curves that reach the subdivision depth limit
         ImCubicBezierSubdivide() dropped them, so fine tolerances cut curves short; the editor's tolerance doesn't reach the limit.
 
+    BUGFIX: Editor: Subdivide curves with the default tolerance when given none
+        ImCubicBezierSubdivide() took a tolerance of 0 or NaN as given, which no sub-curve meets.
+
 v0.9.3 (2023-10-14):
 
     CHANGE: Canvas: Use ImDrawCallback_ImCanvas macro as draw callback sentinel (#256), thanks @nspitko

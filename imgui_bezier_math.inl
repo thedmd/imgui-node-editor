@@ -553,7 +553,7 @@ inline void ImCubicBezierSubdivide(ImCubicBezierSubdivideCallback callback, void
         }
     };
 
-    if (tess_tol < 0)
+    if (!(tess_tol > 0))
         tess_tol = 1.118f; // sqrtf(1.25f)
 
     Tesselator tesselator;
