@@ -292,6 +292,9 @@ v0.10.0 (WIP):
     BUGFIX: Editor: Grow small groups' interaction regions to the minimum size only
         They reached past the group by twice as much, taking hover from what lies next to it.
 
+    BUGFIX: Editor: Find link and line intersections when the cubic term vanishes
+        Rectangle selection missed links whose control points are evenly spaced along an edge it crosses.
+
 v0.9.2 (2023-09-01):
 
     NEW: Editor: Add offset of hover/select to style (thanks @MultiPain)
