@@ -8,7 +8,7 @@ FetchContent_Declare(
     glfw
     GIT_REPOSITORY https://github.com/glfw/glfw.git
     GIT_TAG        7b6aead9fb88b3623e3b3725ebb42670cbe4c579 # 3.4
-    FIND_PACKAGE_ARGS NAMES glfw3
+    FIND_PACKAGE_ARGS 3.4 NAMES glfw3
 )
 
 set(GLFW_BUILD_EXAMPLES OFF CACHE INTERNAL "Build the GLFW example programs")
