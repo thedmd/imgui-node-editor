@@ -410,3 +410,59 @@ TEST_CASE(DragAnchorSurvivesZoom, "interaction.dragged_node_stays_under_mouse_wh
     test::Check(zoom > 1.0f, "zoomed in during the drag: zoom %g", zoom);
     test::Check(ImFabs(after.x - before.x) < 0.5f && ImFabs(after.y - before.y) < 0.5f, "the node stays where the mouse holds it: offset (%g, %g) -> (%g, %g)", before.x, before.y, after.x, after.y);
 }
+
+namespace {
+
+// Node 1, and the canvas point under 'Mouse' in each frame's view, measured
+// between ed::Begin() and ed::End(), where the editor reads the mouse.
+struct ViewProbe
+{
+    ShortcutScene Scene;
+    ImVec2        Mouse = ImVec2(500.0f, 300.0f);
+    ImVec2        UnderMouse;
+
+    void Submit(int frame)
+    {
+        Scene.Submit(frame);
+        UnderMouse = ed::ScreenToCanvas(Mouse);
+    }
+};
+
+float Distance(const ImVec2& a, const ImVec2& b)
+{
+    return ImSqrt(ImLengthSqr(a - b));
+}
+
+} // namespace
+
+TEST_CASE(PanStopsZoomAnimation, "interaction.pan_after_wheel_doesnt_drift", "INT-6", test::TestFlags_None)
+{
+    test::Storage storage;
+    test::Session session(&storage);
+    ViewProbe probe;
+    session.DefaultContent = [&](int frame) { probe.Submit(frame); };
+    test::MouseMove(probe.Mouse);
+    session.Run(5);
+
+    // A right-drag starts while the zoom animation of a wheel notch is playing.
+    test::MouseWheel(1.0f);
+    session.Run(1);
+    test::MouseButton(1, true);
+    session.Run(1);
+    probe.Mouse = probe.Mouse + ImVec2(40.0f, 0.0f);
+    test::MouseMove(probe.Mouse);
+    session.Run(2);
+
+    // The mouse holds still: so does the view.
+    const auto held = probe.UnderMouse;
+    float drift = 0.0f;
+    for (int i = 0; i < 15; ++i)
+    {
+        session.Run(1);
+        drift = ImMax(drift, Distance(probe.UnderMouse, held));
+    }
+    test::MouseButton(1, false);
+    session.Run(2);
+
+    test::Check(drift < 0.5f, "the point under a still mouse doesn't move once the pan started: %g canvas units", drift);
+}
