@@ -84,6 +84,10 @@ v0.9.4 (WIP):
         GetNodeBackgroundDrawList() and BeginGroupHint() inside BeginNode()/EndNode() corrupted memory;
         they assert and return nothing now. The background draw list is available after EndNode().
 
+    BUGFIX: Editor: Validate the style stacks
+        An extra PopStyleColor()/PopStyleVar() or a PushStyleVar() of the wrong type crashed release builds;
+        they assert and do nothing now. End() asserts when pushes and pops don't balance within the frame.
+
 v0.9.3 (2023-10-14):
 
     CHANGE: Canvas: Use ImDrawCallback_ImCanvas macro as draw callback sentinel (#256), thanks @nspitko

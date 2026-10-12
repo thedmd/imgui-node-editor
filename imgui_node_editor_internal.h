@@ -1273,6 +1273,9 @@ struct Style: ax::NodeEditor::Style
     void PushVar(StyleVar varIndex, const ImVec4& value);
     void PopVar(int count = 1);
 
+    int GetColorStackSize() const { return static_cast<int>(m_ColorStack.size()); }
+    int GetVarStackSize()   const { return static_cast<int>(m_VarStack.size()); }
+
     const char* GetColorName(StyleColor colorIndex) const;
 
 private:
@@ -1532,6 +1535,8 @@ private:
     bool                m_ShortcutsEnabled;
 
     Style               m_Style;
+    int                 m_BeginColorStackSize;
+    int                 m_BeginVarStackSize;
 
     vector<ObjectWrapper<Node>> m_Nodes;
     vector<ObjectWrapper<Pin>>  m_Pins;

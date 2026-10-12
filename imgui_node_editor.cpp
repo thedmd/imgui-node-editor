@@ -1123,6 +1123,8 @@ ed::EditorContext::EditorContext(const ax::NodeEditor::Config* config)
     , m_IsHoveredWithoutOverlapp(false)
     , m_ShortcutsEnabled(true)
     , m_Style()
+    , m_BeginColorStackSize(0)
+    , m_BeginVarStackSize(0)
     , m_Nodes()
     , m_Pins()
     , m_Links()
@@ -1177,6 +1179,9 @@ void ed::EditorContext::Begin(const char* id, const ImVec2& size)
 {
     m_EditorActiveId = ImGui::GetID(id);
     ImGui::PushID(id);
+
+    m_BeginColorStackSize = m_Style.GetColorStackSize();
+    m_BeginVarStackSize   = m_Style.GetVarStackSize();
 
     auto availableContentSize = ImGui::GetContentRegionAvail();
     ImVec2 canvasSize = ImFloor(size);
@@ -1327,6 +1332,8 @@ void ed::EditorContext::Begin(const char* id, const ImVec2& size)
 void ed::EditorContext::End()
 {
     IM_ASSERT(m_SuspendCounter == 0 && "Each Suspend() needs a Resume() before End().");
+    IM_ASSERT(m_Style.GetColorStackSize() == m_BeginColorStackSize && "PushStyleColor() and PopStyleColor() calls don't match between Begin() and End().");
+    IM_ASSERT(m_Style.GetVarStackSize() == m_BeginVarStackSize && "PushStyleVar() and PopStyleVar() calls don't match between Begin() and End().");
 
     //auto& io          = ImGui::GetIO();
     auto  control     = BuildControl(m_CurrentAction && m_CurrentAction->IsDragging()); // NavigateAction.IsMovingOverEdge()
@@ -5892,6 +5899,9 @@ void ed::Style::PushColor(StyleColor colorIndex, const ImVec4& color)
 
 void ed::Style::PopColor(int count)
 {
+    IM_ASSERT(count <= static_cast<int>(m_ColorStack.size()) && "Calling PopStyleColor() too many times.");
+    count = ImMin(count, static_cast<int>(m_ColorStack.size()));
+
     while (count > 0)
     {
         auto& modifier = m_ColorStack.back();
@@ -5904,7 +5914,9 @@ void ed::Style::PopColor(int count)
 void ed::Style::PushVar(StyleVar varIndex, float value)
 {
     auto* var = GetVarFloatAddr(varIndex);
-    IM_ASSERT(var != nullptr);
+    IM_ASSERT(var != nullptr && "Calling PushStyleVar() variant with wrong type.");
+    if (!var)
+        return;
     VarModifier modifier;
     modifier.Index = varIndex;
     modifier.Value = ImVec4(*var, 0, 0, 0);
@@ -5915,7 +5927,9 @@ void ed::Style::PushVar(StyleVar varIndex, float value)
 void ed::Style::PushVar(StyleVar varIndex, const ImVec2& value)
 {
     auto* var = GetVarVec2Addr(varIndex);
-    IM_ASSERT(var != nullptr);
+    IM_ASSERT(var != nullptr && "Calling PushStyleVar() variant with wrong type.");
+    if (!var)
+        return;
     VarModifier modifier;
     modifier.Index = varIndex;
     modifier.Value = ImVec4(var->x, var->y, 0, 0);
@@ -5926,7 +5940,9 @@ void ed::Style::PushVar(StyleVar varIndex, const ImVec2& value)
 void ed::Style::PushVar(StyleVar varIndex, const ImVec4& value)
 {
     auto* var = GetVarVec4Addr(varIndex);
-    IM_ASSERT(var != nullptr);
+    IM_ASSERT(var != nullptr && "Calling PushStyleVar() variant with wrong type.");
+    if (!var)
+        return;
     VarModifier modifier;
     modifier.Index = varIndex;
     modifier.Value = *var;
@@ -5936,6 +5952,9 @@ void ed::Style::PushVar(StyleVar varIndex, const ImVec4& value)
 
 void ed::Style::PopVar(int count)
 {
+    IM_ASSERT(count <= static_cast<int>(m_VarStack.size()) && "Calling PopStyleVar() too many times.");
+    count = ImMin(count, static_cast<int>(m_VarStack.size()));
+
     while (count > 0)
     {
         auto& modifier = m_VarStack.back();
