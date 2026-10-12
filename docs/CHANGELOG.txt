@@ -71,6 +71,10 @@ v0.9.4 (WIP):
     BUGFIX: Editor: Count nested Suspend()/Resume() pairs
         A second Suspend() brought back the editor's own draw list splitter in screen space.
 
+    BUGFIX: Editor: Accept or reject only the deletion candidate a query returned
+        A second AcceptDeletedItem() deleted the next, unreported candidate, and RejectDeletedItem() after
+        the query loop read out of bounds. Both assert now without a current candidate.
+
 v0.9.3 (2023-10-14):
 
     CHANGE: Canvas: Use ImDrawCallback_ImCanvas macro as draw callback sentinel (#256), thanks @nspitko

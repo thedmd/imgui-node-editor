@@ -1184,7 +1184,6 @@ struct DeleteItemsAction final: EditorAction
 
 private:
     enum IteratorType { Unknown, Link, Node };
-    enum UserAction { Undetermined, Accepted, Rejected };
 
     void DeleteDeadLinks(NodeId nodeId);
     void DeleteDeadPins(NodeId nodeId);
@@ -1196,7 +1195,7 @@ private:
     vector<Object*> m_ManuallyDeletedObjects;
 
     IteratorType    m_CurrentItemType;
-    UserAction      m_UserAction;
+    bool            m_HasCurrentItem; // returned by a query, and neither accepted nor rejected yet
     vector<Object*> m_CandidateObjects;
     int             m_CandidateItemIndex;
 };
