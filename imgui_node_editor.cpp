@@ -3970,19 +3970,17 @@ ed::EditorAction::AcceptResult ed::SizeAction::Accept(const Control& control)
     if (m_IsActive)
         return False;
 
-    if (control.ActiveNode && IsGroup(control.ActiveNode) && ImGui::IsMouseDragging(Editor->GetConfig().DragButtonIndex, 1))
+    const auto dragButtonIndex = Editor->GetConfig().DragButtonIndex;
+    if (control.ActiveNode && IsGroup(control.ActiveNode) && ImGui::IsMouseDragging(dragButtonIndex, 1))
     {
-        //const auto mousePos     = to_point(ImGui::GetMousePos());
-        //const auto closestPoint = control.ActiveNode->Bounds.get_closest_point_hollow(mousePos, static_cast<int>(control.ActiveNode->Rounding));
-
-        auto pivot = GetRegion(control.ActiveNode);
-        if (pivot != NodeRegion::Header && pivot != NodeRegion::Center)
+        // The press picks the edge: the first dragging frame may be well past it.
+        auto pivot = control.ActiveNode->GetRegion(ImGui_GetMouseClickPos(dragButtonIndex));
+        if (pivot != NodeRegion::None && pivot != NodeRegion::Header && pivot != NodeRegion::Center)
         {
             m_StartBounds      = control.ActiveNode->m_Bounds;
             m_StartGroupBounds = control.ActiveNode->m_GroupBounds;
             m_LastSize         = control.ActiveNode->m_Bounds.GetSize();
             m_MinimumSize      = ImVec2(0, 0);
-            m_LastDragOffset   = ImVec2(0, 0);
             m_Pivot            = pivot;
             m_Cursor           = ChooseCursor(m_Pivot);
             m_SizedNode        = control.ActiveNode;
@@ -4018,8 +4016,7 @@ bool ed::SizeAction::Process(const Control& control)
 
     if (control.ActiveNode == m_SizedNode)
     {
-        const auto dragOffset = (control.ActiveNode == m_SizedNode) ? ImGui::GetMouseDragDelta(0, 0.0f) : m_LastDragOffset;
-        m_LastDragOffset = dragOffset;
+        const auto dragOffset = ImGui::GetMouseDragDelta(Editor->GetConfig().DragButtonIndex, 0.0f);
 
         if (m_MinimumSize.x == 0.0f && m_LastSize.x != m_SizedNode->m_Bounds.GetWidth())
             m_MinimumSize.x = m_SizedNode->m_Bounds.GetWidth();

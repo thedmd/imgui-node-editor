@@ -116,6 +116,10 @@ v0.9.4 (WIP):
     BUGFIX: Editor: Don't change settings when a fractional position is set again
         SetNodePosition() and SetGroupSize() called with the same fractional value changed them on every call.
 
+    BUGFIX: Editor: Pick the group edge to resize where the drag started
+        A fast first move did nothing or moved the group, and a resize with DragButtonIndex other than 0
+        didn't follow the mouse.
+
 v0.9.3 (2023-10-14):
 
     CHANGE: Canvas: Use ImDrawCallback_ImCanvas macro as draw callback sentinel (#256), thanks @nspitko
