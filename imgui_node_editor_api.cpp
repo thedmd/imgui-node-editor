@@ -718,7 +718,7 @@ ImGuiMouseButton ax::NodeEditor::GetBackgroundDoubleClickButtonIndex()
 bool ax::NodeEditor::GetLinkPins(LinkId linkId, PinId* startPinId, PinId* endPinId)
 {
     auto link = s_Editor->FindLink(linkId);
-    if (!link)
+    if (!link || !link->m_StartPin || !link->m_EndPin)
         return false;
 
     if (startPinId)
