@@ -348,6 +348,7 @@ IMGUI_NODE_EDITOR_API void Flow(LinkId linkId, FlowDirection direction = FlowDir
 // Call EndCreate(), EndDelete() and EndShortcut() only when the matching Begin
 // function returned true, as with Dear ImGui's BeginXXX()/EndXXX() pairs.
 IMGUI_NODE_EDITOR_API bool BeginCreate(const ImVec4& color = ImVec4(1, 1, 1, 1), float thickness = 1.0f);
+// startId is the pin the drag started from and endId the one it is over, of either kind.
 IMGUI_NODE_EDITOR_API bool QueryNewLink(PinId* startId, PinId* endId);
 IMGUI_NODE_EDITOR_API bool QueryNewLink(PinId* startId, PinId* endId, const ImVec4& color, float thickness = 1.0f);
 IMGUI_NODE_EDITOR_API bool QueryNewNode(PinId* pinId);

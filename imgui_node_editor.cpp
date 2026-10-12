@@ -5238,7 +5238,7 @@ bool ed::CreateItemAction::Process(const Control& control)
 
         ed::Pin*& freePin  = draggingFromSource ? candidate.m_EndPin : candidate.m_StartPin;
 
-        if (control.HotPin)
+        if (control.HotPin && control.HotPin != m_DraggedPin)
         {
             DropPin(control.HotPin);
 
