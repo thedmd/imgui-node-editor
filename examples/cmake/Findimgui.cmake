@@ -3,11 +3,8 @@ if (NOT TARGET imgui)
 
     FetchContent_Declare(
         imgui
-        #GIT_REPOSITORY     https://github.com/ocornut/imgui.git
-        #GIT_TAG            12a3c77c2f4671813c2a09197234d5672f8ab5f3
-
         GIT_REPOSITORY      https://github.com/thedmd/imgui.git
-        GIT_TAG             layouts
+        GIT_TAG             b085dd8feac1595915d85243b5515af34a10a394 # feature/layout-external: Dear ImGui 1.93.0 WIP with Stack Layout v2.1
     )
 
     FetchContent_MakeAvailable(imgui)

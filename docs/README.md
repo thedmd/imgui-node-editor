@@ -53,7 +53,11 @@ Please report issues or questions if something isn't clear.
  * C++14
 
 ### Dependencies for examples:
- * https://github.com/thedmd/imgui/tree/feature/layout (used in blueprints sample only)
+
+ * [thedmd/imgui feature/layout-external](https://github.com/thedmd/imgui/tree/feature/layout-external) (Dear ImGui 1.93.0 WIP with Stack Layout, used in blueprints sample)
+ * stb, and GLFW on macOS and Linux
+
+CMake fetches all of them at revisions pinned in [examples/cmake](../examples/cmake). An installed GLFW package is used when found.
 
 ### Optional extension you can pull into your local copy of ImGui node editor can take advantage of:
  * ~~https://github.com/thedmd/imgui/tree/feature/draw-list-fringe-scale (for sharp rendering, while zooming)~~ It is part of ImGui since 1.80 release
@@ -78,7 +82,9 @@ Linux:
 Build:
     cmake --build build --config Release
 ```
-Executables will be located in `build\bin` directory.
+Executables will be located in `build\bin` directory. CMake 3.24 or newer is required.
+
+To build offline or against a local checkout of a dependency, point FetchContent at it, for example `-DFETCHCONTENT_SOURCE_DIR_IMGUI=<path>`. `FETCHCONTENT_SOURCE_DIR_STB` and `FETCHCONTENT_SOURCE_DIR_GLFW` work the same way.
 
 ### Quick Start
 
