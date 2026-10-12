@@ -185,6 +185,9 @@ v0.9.4 (WIP):
     BUGFIX: Editor: Shrink link endpoint radii whenever they overlap
         Links between pins closer than their radii and arrows together crossed over, and a straight one's arrow pointed back.
 
+    BUGFIX: Editor: Compute the right half of a split cubic Bezier curve
+        ImCubicBezierSplit() swapped t and 1 - t in it; the editor uses only the left half.
+
 v0.9.3 (2023-10-14):
 
     CHANGE: Canvas: Use ImDrawCallback_ImCanvas macro as draw callback sentinel (#256), thanks @nspitko
