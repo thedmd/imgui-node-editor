@@ -102,6 +102,29 @@ bool ReachesOutsideBounds(const ImCubicBezierPoints& curve)
     return false;
 }
 
+// Distance from the point to the curve: the closest of the samples, refined by
+// ternary search between its neighbors.
+double ReferenceDistance(const ImCubicBezierPoints& curve, const std::vector<Point2>& samples, const ImVec2& point)
+{
+    const int last = static_cast<int>(samples.size()) - 1;
+    int closest = 0;
+    for (int i = 1; i <= last; ++i)
+        if (Distance(samples[i], point) < Distance(samples[closest], point))
+            closest = i;
+
+    double t0 = static_cast<double>(ImMax(closest - 1, 0)) / last;
+    double t1 = static_cast<double>(ImMin(closest + 1, last)) / last;
+    for (int i = 0; i < 60; ++i)
+    {
+        const double m0 = t0 + (t1 - t0) / 3, m1 = t1 - (t1 - t0) / 3;
+        if (Distance(Cubic(curve, m0), point) < Distance(Cubic(curve, m1), point))
+            t1 = m1;
+        else
+            t0 = m0;
+    }
+    return Distance(Cubic(curve, (t0 + t1) / 2), point);
+}
+
 } // namespace
 
 TEST_CASE(LineIntersectionFlatCubic, "math.line_intersection_with_a_vanishing_cubic_term", "MATH-2", test::TestFlags_None)
@@ -243,4 +266,92 @@ TEST_CASE(BoundsNearlyLinear, "math.bounds_where_the_derivative_is_nearly_linear
     }
 
     test::Check(outside == 0, "every curve lies within its bounds: %d of 4000 reach outside", outside);
+}
+
+TEST_CASE(ProjectionNearEnd, "math.projection_near_a_curve_end", "MATH-4", test::TestFlags_None)
+{
+    // A link from (0, 0) to (600, 0) with the default strength; the closest point lies
+    // between the first two samples.
+    const auto result = ImProjectOnCubicBezier(ImVec2(3.15f, 5.50f), ImVec2(0, 0), ImVec2(100, 0), ImVec2(500, 0), ImVec2(600, 0), 50);
+    test::Check(ImFabs(result.Distance - 5.50f) < 0.01f && ImFabs(result.Point.x - 3.15f) < 0.01f,
+        "(3.15, 5.50) projects to (3.15, 0) at 5.5: (%g, %g) at %g", result.Point.x, result.Point.y, result.Distance);
+}
+
+TEST_CASE(HoverNearLinkStart, "math.link_is_hovered_near_its_start", "MATH-4", test::TestFlags_None)
+{
+    // Link 100 runs 600 to the right of its start; the mouse is (3.15, 5.40) from it,
+    // inside the box that precedes the distance check.
+    test::Storage storage;
+    test::Session session(&storage);
+    ImVec2 start(100.0f, 100.0f);
+    session.DefaultContent = [&start](int frame)
+    {
+        const ImVec2 pivots[2] = { start, start + ImVec2(600.0f, 0.0f) };
+        for (int n = 0; n < 2; ++n)
+        {
+            if (frame == 0)
+                ed::SetNodePosition(n + 1, ImVec2(n * 600.0f, 400.0f));
+            ed::BeginNode(n + 1);
+            ed::BeginPin(11 + n, n == 0 ? ed::PinKind::Output : ed::PinKind::Input);
+            ImGui::TextUnformatted("Pin");
+            ed::PinPivotRect(pivots[n], pivots[n]);
+            ed::EndPin();
+            ed::EndNode();
+        }
+        ed::Link(100, 11, 12);
+    };
+    session.Run(3);
+
+    const auto mouse = session.Use([] { return ImFloor(ed::CanvasToScreen(ImVec2(200.0f, 200.0f))); });
+    start = session.Use([&mouse] { return ed::ScreenToCanvas(mouse); }) - ImVec2(3.15f, 5.40f);
+    test::MouseMove(mouse);
+    session.Run(2);
+
+    const bool hovered = session.Use([] { return ed::GetHoveredLink() == ed::LinkId(100); });
+    test::Check(hovered, "link 100 is hovered 5.4 from it");
+}
+
+TEST_CASE(ProjectionSweep, "math.projection_finds_the_closest_point", "MATH-4", test::TestFlags_None)
+{
+    // Points around links shaped as the editor shapes them and around general curves,
+    // against the editor's hover band: link thickness 1 and 5 to spare.
+    const double band = 6.0;
+    Random random;
+    int points = 0, misses = 0;
+    double worst = 0.0;
+    for (int i = 0; i < 400; ++i)
+    {
+        ImCubicBezierPoints curve;
+        if (i % 2 == 0)
+        {
+            const auto a = random.Point(0, 1000);
+            const auto b = random.Point(0, 600);
+            const auto start = ImVec2(std::floor(a.x), std::floor(a.y));
+            const auto end   = ImVec2(std::floor(b.x), std::floor(b.y));
+            const auto half  = ImLength(end - start) * 0.5f;
+            const auto strength = half < 100.0f ? 100.0f * ImSin(IM_PI * 0.5f * half / 100.0f) : 100.0f;
+            curve = ImCubicBezierPoints{ start, start + ImVec2(strength, 0), end - ImVec2(strength, 0), end };
+        }
+        else
+            curve = ImCubicBezierPoints{ random.Point(0, 600), random.Point(0, 600), random.Point(0, 600), random.Point(0, 600) };
+
+        std::vector<Point2> samples(2001);
+        for (int k = 0; k <= 2000; ++k)
+            samples[k] = Cubic(curve, k / 2000.0);
+
+        for (int k = 0; k < 100; ++k)
+        {
+            const auto on     = Cubic(curve, random.Next());
+            const auto offset = random.Point(-8, 8);
+            const auto point  = ImVec2(static_cast<float>(on.x) + offset.x, static_cast<float>(on.y) + offset.y);
+            const auto reference = ReferenceDistance(curve, samples, point);
+            const auto result    = ImProjectOnCubicBezier(point, curve, 50);
+            if (reference <= band - 0.01 && result.Distance > band)
+                ++misses;
+            worst = ImMax(worst, std::fabs(result.Distance - reference));
+            ++points;
+        }
+    }
+
+    test::Check(misses == 0 && worst < 0.1, "points within the band are found: %d of %d missed, distances off by up to %g", misses, points, worst);
 }
