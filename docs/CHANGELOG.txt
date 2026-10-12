@@ -123,6 +123,9 @@ v0.9.4 (WIP):
     BUGFIX: Editor: Keep a dragged node under the mouse when the view zooms
         Zooming during a drag or a group resize moved the node or the edge away from the mouse.
 
+    BUGFIX: Editor: Stop a navigation animation when a pan starts
+        A pan right after a wheel notch drifted, then jumped, while the zoom animation went on.
+
 v0.9.3 (2023-10-14):
 
     CHANGE: Canvas: Use ImDrawCallback_ImCanvas macro as draw callback sentinel (#256), thanks @nspitko

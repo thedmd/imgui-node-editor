@@ -3553,6 +3553,8 @@ ed::EditorAction::AcceptResult ed::NavigateAction::Accept(const Control& control
 
     if (Editor->CanAcceptUserInput() /*&& !ImGui::IsAnyItemActive()*/ && ImGui::IsMouseDragging(Editor->GetConfig().NavigateButtonIndex, 0.0f))
     {
+        m_Animation.Stop();
+
         m_IsActive    = true;
         m_ScrollStart = m_Scroll;
         m_ScrollDelta = ImGui::GetMouseDragDelta(Editor->GetConfig().NavigateButtonIndex);
