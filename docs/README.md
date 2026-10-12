@@ -86,6 +86,15 @@ Executables will be located in `build\bin` directory. CMake 3.24 or newer is req
 
 To build offline or against a local checkout of a dependency, point FetchContent at it, for example `-DFETCHCONTENT_SOURCE_DIR_IMGUI=<path>`. `FETCHCONTENT_SOURCE_DIR_STB` and `FETCHCONTENT_SOURCE_DIR_GLFW` work the same way.
 
+### Tests
+The headless [test suite](../tests) runs with CTest:
+```
+cmake -S tests -B build-tests
+cmake --build build-tests --config Debug
+ctest --test-dir build-tests -C Debug
+```
+`-DIMGUI_DIR=<path>` tests against another copy of Dear ImGui. `-DIMGUI_NODE_EDITOR_TESTS_SANITIZE=ON` builds with AddressSanitizer and adds the tests that detect memory errors. Tests of open issues are expected to fail until the issue is fixed.
+
 ### Quick Start
 
 Main node editor header is located in [imgui_node_editor.h](../imgui_node_editor.h).
