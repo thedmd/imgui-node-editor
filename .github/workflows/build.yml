@@ -37,7 +37,9 @@ jobs:
       matrix:
         include:
           - { name: MSVC,                  os: windows-2025 }
+          - { name: MSVC C++17,            os: windows-2025, std: 17 }
           - { name: GCC,                   os: ubuntu-24.04, cxx: g++ }
+          - { name: GCC C++17,             os: ubuntu-24.04, cxx: g++, std: 17 }
           - { name: Clang,                 os: ubuntu-24.04, cxx: clang++ }
           - { name: Apple Clang,           os: macos-15 }
           - { name: Clang with sanitizers, os: ubuntu-24.04, cxx: clang++, sanitize: 'ON' }
@@ -53,7 +55,7 @@ jobs:
     - name: Configure
       env:
         CXX: ${{ matrix.cxx }}
-      run: cmake -S tests -B build -DCMAKE_BUILD_TYPE=Debug -DIMGUI_NODE_EDITOR_WARNINGS_AS_ERRORS=ON -DIMGUI_NODE_EDITOR_TESTS_SANITIZE=${{ matrix.sanitize || 'OFF' }}
+      run: cmake -S tests -B build -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_STANDARD=${{ matrix.std || 14 }} -DIMGUI_NODE_EDITOR_WARNINGS_AS_ERRORS=ON -DIMGUI_NODE_EDITOR_TESTS_SANITIZE=${{ matrix.sanitize || 'OFF' }}
     - name: Build
       run: cmake --build build --config Debug --parallel
     - name: Test
