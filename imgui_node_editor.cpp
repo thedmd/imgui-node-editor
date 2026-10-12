@@ -1823,6 +1823,9 @@ bool ed::EditorContext::DoLink(LinkId id, PinId startPinId, PinId endPinId, ImU3
 
 void ed::EditorContext::SetNodePosition(NodeId nodeId, const ImVec2& position)
 {
+    if (!std::isfinite(position.x) || !std::isfinite(position.y))
+        return;
+
     auto node = FindNode(nodeId);
     if (!node)
     {
@@ -1842,6 +1845,9 @@ void ed::EditorContext::SetNodePosition(NodeId nodeId, const ImVec2& position)
 
 void ed::EditorContext::SetGroupSize(NodeId nodeId, const ImVec2& size)
 {
+    if (!std::isfinite(size.x) || !std::isfinite(size.y))
+        return;
+
     auto node = FindNode(nodeId);
     if (!node)
     {

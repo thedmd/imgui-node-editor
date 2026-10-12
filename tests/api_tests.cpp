@@ -2,6 +2,7 @@
 // Public API misuse.
 //------------------------------------------------------------------------------
 # include "harness.h"
+# include <limits>
 
 TEST_CASE(DestroyCurrentEditor, "api.destroying_current_editor_clears_it", "API-8", test::TestFlags_None)
 {
@@ -220,4 +221,40 @@ TEST_CASE(CallWithoutEditor, "api.call_without_current_editor_asserts", "API-8",
         asserted = true;
     }
     test::Check(asserted, "ed::GetStyle() without a current editor asserts");
+}
+
+TEST_CASE(NonFinitePositions, "api.non_finite_positions_are_ignored", "CORE-17", test::TestFlags_None)
+{
+    test::Storage storage;
+    test::Session session(&storage);
+    session.DefaultContent = [](int frame)
+    {
+        if (frame == 0)
+        {
+            ed::SetNodePosition(1, ImVec2(100.0f, 50.0f));
+            ed::SetGroupSize(1, ImVec2(200.0f, 120.0f));
+        }
+        ed::BeginNode(1);
+        ImGui::TextUnformatted("Group");
+        ed::Group(ImVec2(200.0f, 120.0f));
+        ed::EndNode();
+    };
+    session.Run(3);
+    const auto before = session.Use([] { return ed::GetNodePosition(1); });
+
+    session.Use([]
+    {
+        const auto nan = std::numeric_limits<float>::quiet_NaN();
+        const auto inf = std::numeric_limits<float>::infinity();
+        ed::SetNodePosition(1, ImVec2(nan, 0.0f));
+        ed::SetNodePosition(1, ImVec2(0.0f, inf));
+        ed::SetNodePosition(2, ImVec2(-inf, nan));
+        ed::SetGroupSize(1, ImVec2(nan, nan));
+    });
+    session.Run(2);
+
+    const auto after = session.Use([] { return ed::GetNodePosition(1); });
+    const auto other = session.Use([] { return ed::GetNodePosition(2); });
+    test::Check(after.x == before.x && after.y == before.y, "node 1 stays at (%g, %g): at (%g, %g)", before.x, before.y, after.x, after.y);
+    test::Check(other.x == FLT_MAX && other.y == FLT_MAX, "node 2 isn't created: GetNodePosition() reports (%g, %g)", other.x, other.y);
 }
