@@ -134,7 +134,7 @@ TEST_CASE(EndCreateAfterFailedBegin, "protocols.end_create_after_failed_begin_as
     });
 }
 
-TEST_CASE(EndDeleteAfterFailedBegin, "protocols.end_delete_after_failed_begin_asserts", "DEV-2", test::TestFlags_KnownFailure)
+TEST_CASE(EndDeleteAfterFailedBegin, "protocols.end_delete_after_failed_begin_asserts", "DEV-2", test::TestFlags_None)
 {
     test::ExpectAsserts(1);
     test::Storage storage;
@@ -146,7 +146,7 @@ TEST_CASE(EndDeleteAfterFailedBegin, "protocols.end_delete_after_failed_begin_as
     });
 }
 
-TEST_CASE(EndShortcutAfterFailedBegin, "protocols.end_shortcut_after_failed_begin_asserts", "DEV-2", test::TestFlags_KnownFailure)
+TEST_CASE(EndShortcutAfterFailedBegin, "protocols.end_shortcut_after_failed_begin_asserts", "DEV-2", test::TestFlags_None)
 {
     test::ExpectAsserts(1);
     test::Storage storage;

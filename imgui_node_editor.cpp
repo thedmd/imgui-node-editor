@@ -4532,8 +4532,11 @@ bool ed::ShortcutAction::Begin()
 
 void ed::ShortcutAction::End()
 {
-    if (m_IsActive)
-        m_InAction = false;
+    IM_ASSERT(m_InAction && "Please call End() only when Begin() was successful");
+    if (!m_InAction)
+        return;
+
+    m_InAction = false;
 }
 
 bool ed::ShortcutAction::AcceptCut()
@@ -5040,10 +5043,10 @@ bool ed::DeleteItemsAction::Begin()
 
 void ed::DeleteItemsAction::End()
 {
-    if (!m_IsActive)
+    IM_ASSERT(m_InInteraction && "Please call End() only when Begin() was successful");
+    if (!m_InInteraction)
         return;
 
-    IM_ASSERT(m_InInteraction);
     m_InInteraction = false;
 }
 
