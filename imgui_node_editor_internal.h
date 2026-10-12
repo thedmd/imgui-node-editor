@@ -114,7 +114,21 @@ static inline float& ImFringeScaleRef(ImDrawList* drawList)
 
 struct FringeScaleScope
 {
+# if IMGUI_VERSION_NUM >= 19292
+    FringeScaleScope(float scale)
+        : m_LastPixelDensity(ImGui::GetWindowDrawList()->_InvFringeScale)
+    {
+        ImGui::GetWindowDrawList()->_SetPixelDensity(1.0f / scale);
+    }
 
+    ~FringeScaleScope()
+    {
+        ImGui::GetWindowDrawList()->_SetPixelDensity(m_LastPixelDensity);
+    }
+
+private:
+    float m_LastPixelDensity;
+# else
     FringeScaleScope(float scale)
         : m_LastFringeScale(ImFringeScaleRef(ImGui::GetWindowDrawList()))
     {
@@ -128,6 +142,7 @@ struct FringeScaleScope
 
 private:
     float m_LastFringeScale;
+# endif
 };
 
 
