@@ -10,6 +10,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED YES)
 set(IMGUI_DIR "" CACHE PATH "Dear ImGui sources to test against. When empty, the pinned revision the examples use is fetched.")
 set(IMGUI_NODE_EDITOR_TESTS_DEFINITIONS "" CACHE STRING "Definitions for Dear ImGui and the editor, for example IMGUI_DISABLE_OBSOLETE_FUNCTIONS")
 option(IMGUI_NODE_EDITOR_TESTS_SANITIZE "Build with AddressSanitizer and run the tests that need it" OFF)
+option(IMGUI_NODE_EDITOR_WARNINGS_AS_ERRORS "Treat warnings in the node editor sources as errors" OFF)
 
 if (NOT IMGUI_DIR)
     include(FetchContent)
@@ -48,7 +49,7 @@ file(GLOB _ImGuiSources
     ${IMGUI_DIR}/imgui_stacklayout.cpp
 )
 add_library(imgui_for_tests STATIC ${_ImGuiSources})
-target_include_directories(imgui_for_tests PUBLIC ${IMGUI_DIR})
+target_include_directories(imgui_for_tests SYSTEM PUBLIC ${IMGUI_DIR})
 target_compile_options(imgui_for_tests PUBLIC ${_ForceInclude})
 target_compile_definitions(imgui_for_tests PUBLIC ${IMGUI_NODE_EDITOR_TESTS_DEFINITIONS})
 
@@ -60,6 +61,13 @@ add_library(imgui_node_editor_for_tests STATIC
 )
 target_include_directories(imgui_node_editor_for_tests PUBLIC ${IMGUI_NODE_EDITOR_ROOT_DIR})
 target_link_libraries(imgui_node_editor_for_tests PUBLIC imgui_for_tests)
+if (IMGUI_NODE_EDITOR_WARNINGS_AS_ERRORS)
+    if (MSVC)
+        target_compile_options(imgui_node_editor_for_tests PRIVATE /W4 /WX)
+    else()
+        target_compile_options(imgui_node_editor_for_tests PRIVATE -Wall -Wextra -Werror)
+    endif()
+endif()
 
 set(_TestSources
     canvas_tests.cpp
