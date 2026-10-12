@@ -503,6 +503,11 @@ void ImGuiEx::Canvas::EnterLocalSpace()
     auto& fringeScale = ImFringeScaleRef(m_DrawList);
     m_LastFringeScale = fringeScale;
     fringeScale *= m_View.InvScale;
+
+    // ImDrawList::_Data points to const before ImGui 1.89.
+    auto& sharedData = *const_cast<ImDrawListSharedData*>(m_DrawList->_Data);
+    m_LastCurveTessellationTol = sharedData.CurveTessellationTol;
+    sharedData.CurveTessellationTol *= m_View.InvScale * m_View.InvScale; // a squared distance
 # endif
 }
 
@@ -581,6 +586,8 @@ void ImGuiEx::Canvas::LeaveLocalSpace()
 # else
     auto& fringeScale = ImFringeScaleRef(m_DrawList);
     fringeScale = m_LastFringeScale;
+
+    const_cast<ImDrawListSharedData*>(m_DrawList->_Data)->CurveTessellationTol = m_LastCurveTessellationTol;
 # endif
 
     // And pop \o/

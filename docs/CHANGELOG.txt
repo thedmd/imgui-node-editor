@@ -215,6 +215,9 @@ v0.9.4 (WIP):
     BUGFIX: Editor: Hover horizontal and vertical links as far from them as other links
         Their hover band was cut to 5.5 by a box around the curve, for any thickness.
 
+    BUGFIX: Canvas: Tessellate curves for the zoom with ImGui before 1.93
+        Links looked faceted when zoomed in, tessellated as at zoom 1.
+
 v0.9.3 (2023-10-14):
 
     CHANGE: Canvas: Use ImDrawCallback_ImCanvas macro as draw callback sentinel (#256), thanks @nspitko
