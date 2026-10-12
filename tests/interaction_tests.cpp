@@ -748,3 +748,31 @@ TEST_CASE(BackgroundDoubleClickButtons, "interaction.background_double_click_rep
 
     test::Check(reported[0] == 0 && reported[1] == 1 && reported[2] == 2, "left, right and middle double-clicks report %d, %d and %d", reported[0], reported[1], reported[2]);
 }
+
+TEST_CASE(MiddleClickDoesntSelect, "interaction.only_the_select_button_selects", "INT-16", test::TestFlags_None)
+{
+    test::Storage storage;
+    test::Session session(&storage);
+    ImVec2 nodeOnScreen[2];
+    session.DefaultContent = [&](int frame)
+    {
+        for (int i = 0; i < 2; ++i)
+        {
+            const auto id = ed::NodeId(i + 1);
+            if (frame == 0)
+                ed::SetNodePosition(id, ImVec2(100.0f + 200.0f * i, 100.0f));
+            ed::BeginNode(id);
+            ImGui::TextUnformatted("Node");
+            ed::EndNode();
+            nodeOnScreen[i] = ed::CanvasToScreen(ed::GetNodePosition(id) + ed::GetNodeSize(id) * 0.5f);
+        }
+    };
+    session.Run(3);
+
+    session.Click(nodeOnScreen[0]);
+    session.Click(nodeOnScreen[1], 2);
+    const bool first  = session.Use([] { return ed::IsNodeSelected(1); });
+    const bool second = session.Use([] { return ed::IsNodeSelected(2); });
+
+    test::Check(first && !second, "a middle-click on node 2 keeps node 1 selected: %d, %d", first, second);
+}

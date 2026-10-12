@@ -583,6 +583,7 @@ struct Control
     Object* HotObject;
     Object* ActiveObject;
     Object* ClickedObject;
+    int     ClickedButtonIndex; // of ClickedObject, or -1
     Object* DoubleClickedObject;
     Node*   HotNode;
     Node*   ActiveNode;
@@ -602,15 +603,16 @@ struct Control
     int     BackgroundDoubleClickButtonIndex;
 
     Control()
-        : Control(nullptr, nullptr, nullptr, nullptr, false, false, -1, -1)
+        : Control(nullptr, nullptr, nullptr, -1, nullptr, false, false, -1, -1)
     {
     }
 
-    Control(Object* hotObject, Object* activeObject, Object* clickedObject, Object* doubleClickedObject,
+    Control(Object* hotObject, Object* activeObject, Object* clickedObject, int clickedButtonIndex, Object* doubleClickedObject,
         bool backgroundHot, bool backgroundActive, int backgroundClickButtonIndex, int backgroundDoubleClickButtonIndex)
         : HotObject(hotObject)
         , ActiveObject(activeObject)
         , ClickedObject(clickedObject)
+        , ClickedButtonIndex(clickedButtonIndex)
         , DoubleClickedObject(doubleClickedObject)
         , HotNode(nullptr)
         , ActiveNode(nullptr)

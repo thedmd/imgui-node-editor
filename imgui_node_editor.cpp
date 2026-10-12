@@ -2691,6 +2691,7 @@ ed::Control ed::EditorContext::BuildControl(bool allowOffscreen)
     Object* activeObject        = nullptr;
     Object* clickedObject       = nullptr;
     Object* doubleClickedObject = nullptr;
+    int     clickedButtonIndex  = -1;
 
     ImGuiButtonFlags extraFlags = ImGuiButtonFlags_None;
     extraFlags |= ImGuiButtonFlags_MouseButtonLeft;
@@ -2751,14 +2752,18 @@ ed::Control ed::EditorContext::BuildControl(bool allowOffscreen)
     };
 
     // Check input interactions over area.
-    auto checkInteractionsInArea = [this, &emitInteractiveArea, &hotObject, &activeObject, &clickedObject, &doubleClickedObject](ObjectId id, const ImRect& rect, Object* object)
+    auto checkInteractionsInArea = [this, &emitInteractiveArea, &hotObject, &activeObject, &clickedObject, &clickedButtonIndex, &doubleClickedObject](ObjectId id, const ImRect& rect, Object* object)
     {
         // An empty area adds no item, and the item queries would answer for the previous one.
         if (rect.GetWidth() <= 0.0f || rect.GetHeight() <= 0.0f)
             return;
 
-        if (emitInteractiveArea(id, rect) >= 0)
-            clickedObject = object;
+        const auto buttonIndex = emitInteractiveArea(id, rect);
+        if (buttonIndex >= 0)
+        {
+            clickedObject      = object;
+            clickedButtonIndex = buttonIndex;
+        }
         if (!doubleClickedObject && ImGui::IsMouseDoubleClicked(m_Config.DragButtonIndex) && ImGui::IsItemHovered())
             doubleClickedObject = object;
 
@@ -2887,6 +2892,7 @@ ed::Control ed::EditorContext::BuildControl(bool allowOffscreen)
     if (!isDragging && backgroundClickButonIndex >= 0 && hotLink)
     {
         clickedObject             = hotLink;
+        clickedButtonIndex        = backgroundClickButonIndex;
         backgroundClickButonIndex = -1;
     }
 
@@ -2916,7 +2922,7 @@ ed::Control ed::EditorContext::BuildControl(bool allowOffscreen)
         ImGui::SetItemUsingMouseWheel();
 # endif
 
-    return Control(hotObject, activeObject, clickedObject, doubleClickedObject,
+    return Control(hotObject, activeObject, clickedObject, clickedButtonIndex, doubleClickedObject,
         isBackgroundHot, isBackgroundActive, backgroundClickButonIndex, backgroundDoubleClickButtonIndex);
 }
 
@@ -4615,7 +4621,7 @@ ed::EditorAction::AcceptResult ed::SelectAction::Accept(const Control& control)
     {
         Object* clickedObject = control.ClickedNode ? static_cast<Object*>(control.ClickedNode) : static_cast<Object*>(control.ClickedLink);
 
-        if (clickedObject)
+        if (clickedObject && control.ClickedButtonIndex == Editor->GetConfig().SelectButtonIndex)
         {
             // Links and nodes cannot be selected together
             if ((clickedObject->AsLink() && Editor->IsAnyNodeSelected()) ||
