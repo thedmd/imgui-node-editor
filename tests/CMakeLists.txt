@@ -76,6 +76,7 @@ set(_TestSources
     draw_order_tests.cpp
     flow_tests.cpp
     geometry_tests.cpp
+    group_tests.cpp
     interaction_tests.cpp
     lifetime_tests.cpp
     node_state_tests.cpp

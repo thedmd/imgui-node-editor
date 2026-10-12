@@ -149,6 +149,10 @@ v0.10.0 (WIP):
         An extra PopStyleColor()/PopStyleVar() or a PushStyleVar() of the wrong type crashed release builds;
         they assert and do nothing now. End() asserts when pushes and pops don't balance within the frame.
 
+    BUGFIX: Editor: Collect group content once, and center a group with all of it
+        A group fitting inside its own group area overflowed the stack, nested content was moved twice,
+        and CenterNodeOnScreen() left content submitted after the group in place.
+
 v0.9.2 (2023-09-01):
 
     NEW: Editor: Add offset of hover/select to style (thanks @MultiPain)
