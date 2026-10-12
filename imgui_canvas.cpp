@@ -75,6 +75,7 @@ struct VtxCurrentOffsetRef
 
 } // namespace ImCanvasDetails
 
+# if IMGUI_VERSION_NUM < 19292
 // Returns a reference to _FringeScale extension to ImDrawList
 //
 // If ImDrawList does not have _FringeScale a placeholder is returned.
@@ -83,6 +84,7 @@ static inline float& ImFringeScaleRef(ImDrawList* drawList)
     using namespace ImCanvasDetails;
     return FringeScaleRef::Get<ImDrawList>(drawList);
 }
+# endif
 
 static inline unsigned int& ImVtxOffsetRef(ImDrawList* drawList)
 {

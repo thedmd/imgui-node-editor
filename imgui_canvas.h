@@ -247,8 +247,11 @@ private:
 
     int m_SuspendCounter = 0;
 
-    float m_LastFringeScale = 1.0f;
+# if IMGUI_VERSION_NUM >= 19292
     float m_LastPixelDensity = 1.0f;
+# else
+    float m_LastFringeScale = 1.0f;
+# endif
 
     ImVec2 m_MousePosBackup;
     ImVec2 m_MousePosPrevBackup;
