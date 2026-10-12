@@ -33,6 +33,7 @@
 
 # include "crude_json.h"
 
+# include <cmath>
 # include <vector>
 # include <string>
 # include <map>
@@ -1546,7 +1547,7 @@ struct EditorContext
     float AlignPointToGrid(float p) const
     {
         if (!ImGui::GetIO().KeyAlt)
-            return p - ImFmod(p, 16.0f);
+            return std::floor(p / 16.0f) * 16.0f;
         else
             return p;
     }
