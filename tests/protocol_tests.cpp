@@ -3,6 +3,7 @@
 //------------------------------------------------------------------------------
 # include "harness.h"
 # include <map>
+# include <vector>
 
 namespace {
 
@@ -230,4 +231,47 @@ TEST_CASE(RepeatedQueries, "protocols.second_query_leaves_the_cursor", "API-11",
 
     test::Check(queriedTwice && afterSecond.x == afterFirst.x && afterSecond.y == afterFirst.y,
         "a second QueryNewLink() leaves the cursor below the text: (%g, %g), was (%g, %g)", afterSecond.x, afterSecond.y, afterFirst.x, afterFirst.y);
+}
+
+TEST_CASE(PreviewThickness, "protocols.new_link_preview_has_the_requested_thickness", "API-11", test::TestFlags_None)
+{
+    // Link 100 joins the pins the preview snaps to, 3 px thick like the preview.
+    const ImU32 linkColor    = IM_COL32(255, 0, 0, 255);
+    const ImU32 previewColor = IM_COL32(0, 0, 255, 255);
+    test::Storage storage;
+    test::Session session(&storage);
+    std::map<int, ImVec2> pins;
+    session.DefaultContent = [&](int frame)
+    {
+        TwoNodes(frame, pins);
+        ed::Link(100, 12, 21, ImColor(linkColor), 3.0f);
+        if (ed::BeginCreate(ImColor(previewColor), 3.0f))
+        {
+            ed::PinId start, end;
+            if (ed::QueryNewLink(&start, &end))
+                ed::AcceptNewItem(ImColor(previewColor), 3.0f);
+            ed::EndCreate();
+        }
+    };
+    session.Run(3);
+    DragLinkOverTarget(session, pins);
+
+    auto positionsOf = [](const test::Geometry& geometry, ImU32 color)
+    {
+        std::vector<ImVec2> positions;
+        for (size_t i = 0; i < geometry.Colors.size(); ++i)
+            if ((geometry.Colors[i] & ~IM_COL32_A_MASK) == (color & ~IM_COL32_A_MASK))
+                positions.push_back(geometry.Positions[i]);
+        return positions;
+    };
+    const auto geometry = test::Capture(session.DrawList);
+    const auto link     = positionsOf(geometry, linkColor);
+    const auto preview  = positionsOf(geometry, previewColor);
+    test::MouseButton(0, false);
+    session.Run(2);
+
+    bool same = !link.empty() && link.size() == preview.size();
+    for (size_t i = 0; same && i < link.size(); ++i)
+        same = ImFabs(link[i].x - preview[i].x) < 0.01f && ImFabs(link[i].y - preview[i].y) < 0.01f;
+    test::Check(same, "the preview is drawn like a link of the requested thickness: %d and %d vertices", (int)preview.size(), (int)link.size());
 }
