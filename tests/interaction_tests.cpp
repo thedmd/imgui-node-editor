@@ -1058,3 +1058,50 @@ TEST_CASE(PanFromAnotherWindow, "interaction.drag_from_another_window_doesnt_pan
     test::Check(afterOutside.x == before.x && afterOutside.y == before.y, "a right-drag from another window doesn't pan the editor: origin (%g, %g) -> (%g, %g)", before.x, before.y, afterOutside.x, afterOutside.y);
     test::Check(afterInside.x == afterOutside.x + 60.0f && afterInside.y == afterOutside.y + 30.0f, "a right-drag from the editor pans it from its first move: origin (%g, %g) -> (%g, %g)", afterOutside.x, afterOutside.y, afterInside.x, afterInside.y);
 }
+
+namespace {
+
+// Drags node 1 by 'offset' from (0, 0), with (0, 0) shown in the middle of the editor.
+// With 'pivots', the node has an input pin pivot at each of those distances below its
+// top. Returns where the grid put the node.
+ImVec2 DragNodeOnGrid(ImVec2 offset, std::vector<float> pivots = {})
+{
+    test::Storage storage;
+    storage.Global = R"({"view":{"scroll":{"x":-400,"y":-300},"zoom":1}})";
+    test::Session session(&storage);
+    ImVec2 titleOnScreen;
+    session.DefaultContent = [&](int frame)
+    {
+        if (frame == 0)
+            ed::SetNodePosition(1, ImVec2(0.0f, 0.0f));
+        ed::BeginNode(1);
+        ImGui::TextUnformatted("Node");
+        titleOnScreen = ed::CanvasToScreen((ImGui::GetItemRectMin() + ImGui::GetItemRectMax()) * 0.5f);
+        const auto top = ed::GetNodePosition(1);
+        for (size_t i = 0; i < pivots.size(); ++i)
+        {
+            ed::BeginPin(11 + i, ed::PinKind::Input);
+            ImGui::TextUnformatted("In");
+            ed::PinPivotRect(top + ImVec2(0.0f, pivots[i]), top + ImVec2(0.0f, pivots[i]));
+            ed::EndPin();
+        }
+        ed::EndNode();
+    };
+    session.Run(3);
+    const auto press = titleOnScreen;
+    session.Drag(press, press + offset);
+    return session.Use([] { return ed::GetNodePosition(1); });
+}
+
+} // namespace
+
+TEST_CASE(GridAroundZero, "interaction.grid_snaps_down_on_both_sides_of_zero", "INT-18", test::TestFlags_None)
+{
+    const float targets[]  = { -40.0f, -8.0f, 8.0f, 40.0f };
+    const float expected[] = { -48.0f, -16.0f, 0.0f, 32.0f };
+    for (int i = 0; i < 4; ++i)
+    {
+        const auto position = DragNodeOnGrid(ImVec2(targets[i], targets[i]));
+        test::Check(position.x == expected[i] && position.y == expected[i], "a node dragged to (%g, %g) snaps to (%g, %g): at (%g, %g)", targets[i], targets[i], expected[i], expected[i], position.x, position.y);
+    }
+}
