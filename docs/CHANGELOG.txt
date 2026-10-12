@@ -322,6 +322,9 @@ v0.10.0 (WIP):
     BUGFIX: Editor: Keep sub-curves that reach the subdivision depth limit
         ImCubicBezierSubdivide() dropped them, so fine tolerances cut curves short; the editor's tolerance doesn't reach the limit.
 
+    BUGFIX: Editor: Subdivide curves with the default tolerance when given none
+        ImCubicBezierSubdivide() took a tolerance of 0 or NaN as given, which no sub-curve meets.
+
 v0.9.2 (2023-09-01):
 
     NEW: Editor: Add offset of hover/select to style (thanks @MultiPain)

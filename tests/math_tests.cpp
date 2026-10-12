@@ -643,3 +643,24 @@ TEST_CASE(SubdivisionDepthLimit, "math.subdivision_reaches_the_curve_end", "MATH
     test::Check(end.x == curve.P3.x && end.y == curve.P3.y && deviation < 0.01,
         "the points follow the curve to its end: %d points, the last at (%g, %g), the curve up to %g away", static_cast<int>(points.size()), end.x, end.y, deviation);
 }
+
+TEST_CASE(SubdivisionTolerance, "math.subdivision_without_tolerance_uses_the_default", "MATH-8", test::TestFlags_None)
+{
+    // A tolerance of 0 can't be met; one that isn't a number can't be compared.
+    const ImCubicBezierPoints curve{ ImVec2(0, 0), ImVec2(100, 0), ImVec2(200, 150), ImVec2(300, 150) };
+    const auto defaults = Subdivide(curve, -1.0f);
+    const auto zero     = Subdivide(curve, 0.0f);
+    const auto nan      = Subdivide(curve, std::nanf(""));
+    auto same = [&defaults](const std::vector<ImVec2>& points)
+    {
+        if (points.size() != defaults.size())
+            return false;
+        for (size_t i = 0; i < points.size(); ++i)
+            if (points[i].x != defaults[i].x || points[i].y != defaults[i].y)
+                return false;
+        return true;
+    };
+
+    test::Check(same(zero) && same(nan), "tolerances of 0 and NaN subdivide as the default does into %d points: %d and %d points",
+        static_cast<int>(defaults.size()), static_cast<int>(zero.size()), static_cast<int>(nan.size()));
+}
