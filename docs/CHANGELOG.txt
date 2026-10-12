@@ -6,7 +6,7 @@ v0.10.0 (WIP):
 
     BREAKING: Editor: Minimum supported version is now Dear ImGui 1.89 (November 2022)
 
-    BREAKING: Canvas: Minimum supported version is now Dear ImGui 1.89 (August 2022)
+    BREAKING: Canvas: Minimum supported version is now Dear ImGui 1.89 (November 2022)
 
     BREAKING: Examples: Minimum supported version is now Dear ImGui 1.89 (August 2022)
 
@@ -73,6 +73,8 @@ v0.10.0 (WIP):
     BUGFIX: Examples: Copy data files without racing in parallel builds
 
     BUGFIX: Editor: Check minimum ImGui version in every translation unit
+
+    BUGFIX: Canvas: Check minimum ImGui version
 
 v0.9.2 (2023-09-01):
 
