@@ -132,6 +132,10 @@ v0.9.4 (WIP):
     BUGFIX: Editor: Give nodes and pins separate hit-test IDs
         Dragging node 1 above pin 1 of another node started a link from the pin.
 
+    BUGFIX: Editor: Don't report empty nodes and pins as clicked
+        An item-less pin made the node above it start a link instead of moving, and with ImGui before 1.91
+        an empty node was selected on every frame.
+
 v0.9.3 (2023-10-14):
 
     CHANGE: Canvas: Use ImDrawCallback_ImCanvas macro as draw callback sentinel (#256), thanks @nspitko
