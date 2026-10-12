@@ -2726,8 +2726,9 @@ ed::Control ed::EditorContext::BuildControl(bool allowOffscreen)
     // Emits invisible button and returns true if it is clicked.
     auto emitInteractiveAreaEx = [&activeId](ObjectId id, const ImRect& rect, ImGuiButtonFlags extraFlags) -> int
     {
-        char idString[33] = { 0 }; // itoa can output 33 bytes maximum
-        snprintf(idString, 32, "%p", id.AsPointer());
+        // Node 1 and pin 1 are different objects, so the kind is part of the button's ID.
+        char idString[40] = { 0 };
+        snprintf(idString, sizeof(idString), "%d:%p", static_cast<int>(id.Type()), id.AsPointer());
         ImGui::SetCursorScreenPos(rect.Min);
 
         // debug
@@ -2851,7 +2852,7 @@ ed::Control ed::EditorContext::BuildControl(bool allowOffscreen)
     };
 
     // Check for interaction with background.
-    auto backgroundClickButonIndex        = emitInteractiveAreaEx(NodeId(0), editorRect, backgroundExtraFlags);
+    auto backgroundClickButonIndex        = emitInteractiveAreaEx(ObjectId(), editorRect, backgroundExtraFlags);
     auto backgroundDoubleClickButtonIndex = isMouseDoubleClickOverBackground();
     auto isBackgroundActive               = ImGui::IsItemActive();
     auto isBackgroundHot                  = !hotObject;

@@ -629,3 +629,67 @@ TEST_CASE(ZoomAnchorDuringAnimation, "interaction.second_wheel_notch_zooms_at_th
     const float error = Distance(probe.UnderMouse, anchor);
     test::Check(error < 0.5f, "the second notch zooms around the point under the mouse: off by %g canvas units", error);
 }
+
+namespace {
+
+// Node 2 holds pin 'pinId' in front of 'pinContent'; node 1, submitted after it and
+// drawn on top, is dragged by its title. Reports whether node 1 moved and a link was offered.
+struct DragOverPinResult
+{
+    bool Moved   = false;
+    bool Offered = false;
+};
+
+DragOverPinResult DragNodeAbovePin(uintptr_t pinId, bool emptyPin)
+{
+    test::Storage storage;
+    test::Session session(&storage);
+    ImVec2 titleOnScreen;
+    bool   offered = false;
+    session.DefaultContent = [&](int frame)
+    {
+        if (frame == 0)
+        {
+            ed::SetNodePosition(2, ImVec2(400.0f, 100.0f));
+            ed::SetNodePosition(1, ImVec2(100.0f, 100.0f));
+        }
+        ed::BeginNode(2);
+        ImGui::TextUnformatted("Node 2");
+        ed::BeginPin(pinId, ed::PinKind::Input);
+        if (!emptyPin)
+            ImGui::TextUnformatted("In");
+        ed::EndPin();
+        ed::EndNode();
+
+        ed::BeginNode(1);
+        ImGui::TextUnformatted("Node 1");
+        titleOnScreen = ed::CanvasToScreen((ImGui::GetItemRectMin() + ImGui::GetItemRectMax()) * 0.5f);
+        ed::EndNode();
+
+        if (ed::BeginCreate())
+        {
+            ed::PinId start, end;
+            if (ed::QueryNewLink(&start, &end) || ed::QueryNewNode(&start))
+                offered = true;
+            ed::EndCreate();
+        }
+    };
+    session.Run(3);
+
+    const auto before = session.Use([] { return ed::GetNodePosition(1); });
+    session.Drag(titleOnScreen, titleOnScreen + ImVec2(64.0f, 32.0f));
+    const auto after = session.Use([] { return ed::GetNodePosition(1); });
+
+    DragOverPinResult result;
+    result.Moved   = after.x != before.x || after.y != before.y;
+    result.Offered = offered;
+    return result;
+}
+
+} // namespace
+
+TEST_CASE(NodeAndPinWithSameId, "interaction.node_and_pin_with_same_id", "CORE-3", test::TestFlags_None)
+{
+    const auto result = DragNodeAbovePin(1, false);
+    test::Check(result.Moved && !result.Offered, "dragging node 1 above pin 1 of node 2 moves the node (%d), without a link from the pin (%d)", result.Moved, result.Offered);
+}
