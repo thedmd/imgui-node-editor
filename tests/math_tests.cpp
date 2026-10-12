@@ -547,3 +547,29 @@ TEST_CASE(FixedStepSpacing, "math.fixed_step_keeps_its_spacing", "MATH-7", test:
 
     test::Check(miscounted == 0 && off == 0, "samples lie every 10 along the links: %d of 50 links miscounted, %d of %d samples off", miscounted, off, samples);
 }
+
+TEST_CASE(LengthAwayFromOrigin, "math.curve_length_does_not_depend_on_position", "MATH-7", test::TestFlags_None)
+{
+    // Far from the origin, a curve without length kept a length of rounding errors,
+    // enough to send the fixed step search past the curve when overshooting.
+    int lengthy = 0, overshot = 0;
+    double worst = 0.0;
+    const ImCubicBezierPoints link{ ImVec2(0, 0), ImVec2(100, 0), ImVec2(200, 150), ImVec2(300, 150) };
+    const auto length = ImCubicBezierLength(link);
+    for (float c : { 25000.0f, 100000.0f, 123457.0f, 250000.0f })
+    {
+        const auto offset = ImVec2(c, -0.7f * c);
+        const ImCubicBezierPoints point{ offset, offset, offset, offset };
+        if (ImCubicBezierLength(point) != 0.0f)
+            ++lengthy;
+        if (FixedSteps(point, 10.0f, true, 0.5f, 0.001f).size() != 1)
+            ++overshot;
+
+        const ImCubicBezierPoints moved{ link.P0 + offset, link.P1 + offset, link.P2 + offset, link.P3 + offset };
+        worst = ImMax(worst, static_cast<double>(ImFabs(ImCubicBezierLength(moved) - length)));
+    }
+
+    test::Check(lengthy == 0 && overshot == 0 && worst < 0.01,
+        "lengths don't change with position: %d of 4 points have length, %d of 4 yield more than their start, a link's length changes by up to %g",
+        lengthy, overshot, worst);
+}
