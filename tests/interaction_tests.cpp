@@ -719,3 +719,32 @@ TEST_CASE(EmptyNodeDoesntClick, "interaction.empty_node_isnt_clicked", "CORE-4",
     const bool selected = session.Use([] { return ed::IsNodeSelected(3); });
     test::Check(!selected, "without any click, an empty node isn't selected");
 }
+
+TEST_CASE(BackgroundDoubleClickButtons, "interaction.background_double_click_reports_button_index", "CORE-6", test::TestFlags_None)
+{
+    test::Storage storage;
+    auto config = test::MakeConfig(&storage);
+    config.SelectButtonIndex   = 1;
+    config.NavigateButtonIndex = 2;
+    test::Session session(config);
+    session.DefaultContent = SmallNode;
+    test::MouseMove(ImVec2(900.0f, 600.0f));
+    session.Run(3);
+
+    int reported[3] = { -2, -2, -2 };
+    for (int button = 0; button < 3; ++button)
+    {
+        for (int click = 0; click < 2; ++click)
+        {
+            test::MouseButton(button, true);
+            session.Run(1);
+            if (click == 1)
+                reported[button] = session.Use([] { return ed::IsBackgroundDoubleClicked() ? (int)ed::GetBackgroundDoubleClickButtonIndex() : -1; });
+            test::MouseButton(button, false);
+            session.Run(1);
+        }
+        session.Run(30);
+    }
+
+    test::Check(reported[0] == 0 && reported[1] == 1 && reported[2] == 2, "left, right and middle double-clicks report %d, %d and %d", reported[0], reported[1], reported[2]);
+}
