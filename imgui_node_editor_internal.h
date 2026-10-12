@@ -1174,8 +1174,6 @@ struct DeleteItemsAction final: EditorAction
 
     virtual void ShowMetrics() override final;
 
-    virtual void ForgetDeletedObjects() override final;
-
     virtual DeleteItemsAction* AsDeleteItems() override final { return this; }
 
     bool Add(Object* object);
@@ -1203,7 +1201,7 @@ private:
         PinId    EndPinId;
     };
 
-    void SetCandidates(const vector<Object*>& objects);
+    void AddCandidate(Object* object);
     void DeleteDeadPins(ed::Node* node);
     void DeleteDeadLinks();
 
@@ -1211,7 +1209,7 @@ private:
     void RemoveItem(bool deleteDependencies);
     Candidate DropCurrentItem();
 
-    vector<Object*>   m_ManuallyDeletedObjects;
+    vector<ObjectId>  m_ManuallyDeletedObjects;
 
     IteratorType      m_CurrentItemType;
     UserAction        m_UserAction;

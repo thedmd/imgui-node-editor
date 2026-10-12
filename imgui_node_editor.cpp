@@ -126,6 +126,11 @@ static bool IsDeleted(const ed::Object* object)
     return object && object->m_DeleteOnNewFrame;
 }
 
+static bool IsSameObject(const ed::ObjectId& lhs, const ed::ObjectId& rhs)
+{
+    return lhs.Type() == rhs.Type() && lhs == rhs;
+}
+
 
 //------------------------------------------------------------------------------
 static void ImRect_Floor(ImRect& rect)
@@ -5061,11 +5066,15 @@ ed::DeleteItemsAction::DeleteItemsAction(EditorContext* editor):
 {
 }
 
-void ed::DeleteItemsAction::SetCandidates(const vector<Object*>& objects)
+void ed::DeleteItemsAction::AddCandidate(Object* object)
 {
-    m_Candidates.clear();
-    for (auto object : objects)
-        m_Candidates.emplace_back(object->ID());
+    if (!object || IsDeleted(object))
+        return;
+
+    const auto id     = object->ID();
+    const auto isSame = [&id](const Candidate& candidate) { return IsSameObject(candidate.ID, id); };
+    if (std::none_of(m_Candidates.begin(), m_Candidates.end(), isSame))
+        m_Candidates.emplace_back(id);
 }
 
 void ed::DeleteItemsAction::DeleteDeadPins(ed::Node* node)
@@ -5111,33 +5120,28 @@ ed::EditorAction::AcceptResult ed::DeleteItemsAction::Accept(const Control& cont
     if (m_IsActive)
         return False;
 
+    m_Candidates.clear();
+
     auto& io = ImGui::GetIO();
     if (Editor->CanAcceptUserInput() && ImGui::IsKeyPressed(ImGuiKey_Delete) && Editor->AreShortcutsEnabled())
     {
-        auto& selection = Editor->GetSelectedObjects();
-        if (!selection.empty())
-        {
-            SetCandidates(selection);
-            m_IsActive = true;
-            return True;
-        }
+        for (auto object : Editor->GetSelectedObjects())
+            AddCandidate(object);
     }
     else if (control.ClickedLink && io.KeyAlt)
     {
-        SetCandidates({ control.ClickedLink });
-        m_IsActive = true;
-        return True;
+        AddCandidate(control.ClickedLink);
     }
 
-    else if (!m_ManuallyDeletedObjects.empty())
-    {
-        SetCandidates(m_ManuallyDeletedObjects);
-        m_ManuallyDeletedObjects.clear();
-        m_IsActive = true;
-        return True;
-    }
+    for (auto id : m_ManuallyDeletedObjects)
+        AddCandidate(Editor->FindObject(id));
+    m_ManuallyDeletedObjects.clear();
 
-    return m_IsActive ? True : False;
+    if (m_Candidates.empty())
+        return False;
+
+    m_IsActive = true;
+    return True;
 }
 
 bool ed::DeleteItemsAction::Process(const Control& control)
@@ -5178,17 +5182,15 @@ void ed::DeleteItemsAction::ShowMetrics()
     //ImGui::Text("    Node: %s (%d)", getObjectName(DeleteItemsgedNode), DeleteItemsgedNode ? DeleteItemsgedNode->ID : 0);
 }
 
-void ed::DeleteItemsAction::ForgetDeletedObjects()
-{
-    m_ManuallyDeletedObjects.erase(std::remove_if(m_ManuallyDeletedObjects.begin(), m_ManuallyDeletedObjects.end(), IsDeleted), m_ManuallyDeletedObjects.end());
-}
-
 bool ed::DeleteItemsAction::Add(Object* object)
 {
-    if (Editor->GetCurrentAction() != nullptr)
+    if (IsDeleted(object))
         return false;
 
-    m_ManuallyDeletedObjects.push_back(object);
+    const auto id     = object->ID();
+    const auto isSame = [&id](const ObjectId& queuedId) { return IsSameObject(queuedId, id); };
+    if (std::none_of(m_ManuallyDeletedObjects.begin(), m_ManuallyDeletedObjects.end(), isSame))
+        m_ManuallyDeletedObjects.push_back(id);
 
     return true;
 }

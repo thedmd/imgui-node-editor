@@ -4,6 +4,7 @@
 # include "harness.h"
 # include <algorithm>
 # include <cstdio>
+# include <functional>
 # include <string>
 # include <vector>
 
@@ -22,6 +23,9 @@ struct Document
     bool LinksFirst        = true;  // query order inside BeginDelete()/EndDelete()
     bool DeleteBeforeLinks = false; // handle deletions before the links are submitted
     int  RejectLink        = 0;     // reject this link the first time it is reported
+
+    std::function<void()>          BeforeQueries; // runs inside BeginDelete()/EndDelete()
+    std::function<void(uintptr_t)> NodeDeleted;
 
     std::vector<std::string> Log;
     std::vector<uintptr_t>   FailedLinks; // ed::Link() calls of the last frame that returned false
@@ -67,6 +71,8 @@ struct Document
     {
         if (!ed::BeginDelete())
             return;
+        if (BeforeQueries)
+            BeforeQueries();
         if (LinksFirst)
         {
             DeleteLinks(frame);
@@ -111,6 +117,8 @@ struct Document
             {
                 Nodes.erase(std::remove(Nodes.begin(), Nodes.end(), nodeId.Get()), Nodes.end());
                 Log.push_back("frame " + std::to_string(frame) + ": node " + std::to_string(nodeId.Get()) + " accepted");
+                if (NodeDeleted)
+                    NodeDeleted(nodeId.Get());
             }
         }
     }
@@ -118,6 +126,19 @@ struct Document
     bool HasLink(uintptr_t id) const
     {
         return std::any_of(Links.begin(), Links.end(), [id](const LinkData& link) { return link.ID == id; });
+    }
+
+    int Reports(const char* item) const
+    {
+        return (int)std::count_if(Log.begin(), Log.end(), [item](const std::string& entry) { return entry.find(item) != std::string::npos; });
+    }
+
+    int FrameOf(const char* item) const
+    {
+        for (auto& entry : Log)
+            if (entry.find(item) != std::string::npos)
+                return std::stoi(entry.substr(6)); // "frame N: ..."
+        return -1;
     }
 
     void PrintLog() const
@@ -257,4 +278,91 @@ TEST_CASE(DependentLinkDeselected, "deletion.dependent_link_deselected_when_dele
 
     test::Check(Contains(document.Log, "frame 4: node 11 accepted"), "node 11 deleted");
     test::Check(!selectedAfterDelete, "link 100 deselected in the frame it was deleted with its node");
+}
+
+TEST_CASE(QueueJoinsDeleteKey, "deletion.queued_items_join_the_delete_key_interaction", "API-1", test::TestFlags_None)
+{
+    // The application's own Delete key command deletes node 1, while the editor's
+    // Delete shortcut deletes the selected node 21.
+    test::Storage storage;
+    test::Session session(&storage);
+    Document document;
+    session.DefaultContent = [&](int frame)
+    {
+        if (ImGui::IsKeyPressed(ImGuiKey_Delete, false))
+            ed::DeleteNode(1);
+        document.Frame(frame);
+    };
+
+    session.Run(3);
+    session.Click(ImVec2(500.0f, 500.0f));
+    session.Use([] { ed::SelectNode(21); });
+    session.PressKey(ImGuiKey_Delete);
+    session.Run(10);
+    document.PrintLog();
+
+    const int node1 = document.FrameOf("node 1 accepted"), node21 = document.FrameOf("node 21 accepted");
+    test::Check(node1 >= 0 && node1 == node21, "both nodes offered in one interaction: frames %d and %d", node1, node21);
+    test::Check(document.Reports("node 1 ") == 1 && document.Reports("node 21") == 1, "each node offered once");
+}
+
+TEST_CASE(BreakLinksTwice, "deletion.break_links_twice_reports_each_link_once", "CORE-14", test::TestFlags_None)
+{
+    test::Storage storage;
+    test::Session session(&storage);
+    Document document;
+    int broken[2] = {};
+    for (int i = 0; i < 10; ++i)
+        session.Frame([&](int frame)
+        {
+            document.Frame(frame);
+            if (frame == 3)
+            {
+                broken[0] = ed::BreakLinks(ed::PinId(12));
+                broken[1] = ed::BreakLinks(ed::PinId(12));
+            }
+        });
+    document.PrintLog();
+
+    test::Check(broken[0] == 1 && broken[1] == 1, "both calls count link 100: %d and %d", broken[0], broken[1]);
+    test::Check(document.Reports("link 100") == 1, "link 100 reported once: %d times", document.Reports("link 100"));
+    test::Check(!document.HasLink(100) && document.HasLink(101), "only link 100 deleted");
+}
+
+TEST_CASE(DeleteDuringInteraction, "deletion.delete_node_during_interaction_is_queued", "API-13", test::TestFlags_None)
+{
+    // While node 11 is deleted, the application also deletes node 21.
+    test::Storage storage;
+    test::Session session(&storage);
+    Document document;
+    bool queued = false;
+    document.NodeDeleted = [&](uintptr_t id)
+    {
+        if (id == 11)
+            queued = ed::DeleteNode(21);
+    };
+    DeleteMiddleNode(session, document, 12);
+
+    test::Check(queued, "DeleteNode() queues node 21 while the delete interaction is in progress");
+    test::Check(document.Reports("node 21 accepted") == 1 && document.FrameOf("node 21 accepted") > document.FrameOf("node 11 accepted"),
+        "node 21 offered once, after node 11");
+}
+
+TEST_CASE(QueuedLinkDeletedMeanwhile, "deletion.queued_link_deleted_meanwhile_reported_once", "API-1", test::TestFlags_None)
+{
+    // Link 101 is queued, then deleted together with node 11 before the queue is consumed.
+    test::Storage storage;
+    test::Session session(&storage);
+    Document document;
+    bool queued = false;
+    document.BeforeQueries = [&]
+    {
+        if (!queued)
+            queued = ed::DeleteLink(101);
+    };
+    DeleteMiddleNode(session, document, 12);
+
+    test::Check(queued, "DeleteLink() queues link 101 while the delete interaction is in progress");
+    test::Check(document.Reports("link 101") == 1, "link 101 reported once: %d times", document.Reports("link 101"));
+    test::Check(document.Links.empty() && document.FailedLinks.empty(), "document and editor agree on links: %d in document, %d rejected by the editor", (int)document.Links.size(), (int)document.FailedLinks.size());
 }
