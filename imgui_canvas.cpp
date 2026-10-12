@@ -468,9 +468,14 @@ void ImGuiEx::Canvas::EnterLocalSpace()
 
     m_ViewRect = CalcViewRect(m_View);;
 
+# if IMGUI_VERSION_NUM >= 19292
+    m_LastPixelDensity = m_DrawList->_InvFringeScale;
+    m_DrawList->_SetPixelDensity(m_LastPixelDensity * m_View.Scale);
+# else
     auto& fringeScale = ImFringeScaleRef(m_DrawList);
     m_LastFringeScale = fringeScale;
     fringeScale *= m_View.InvScale;
+# endif
 }
 
 void ImGuiEx::Canvas::LeaveLocalSpace()
@@ -543,8 +548,12 @@ void ImGuiEx::Canvas::LeaveLocalSpace()
             m_DrawList->CmdBuffer.erase(m_DrawList->CmdBuffer.Data + m_DrawListCommadBufferSize - 1);
     }
 
+# if IMGUI_VERSION_NUM >= 19292
+    m_DrawList->_SetPixelDensity(m_LastPixelDensity);
+# else
     auto& fringeScale = ImFringeScaleRef(m_DrawList);
     fringeScale = m_LastFringeScale;
+# endif
 
     // And pop \o/
     ImGui::PopClipRect();
