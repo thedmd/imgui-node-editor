@@ -89,6 +89,19 @@ std::vector<Point2> ReferenceIntersections(const ImCubicBezierPoints& curve, con
     return result;
 }
 
+// Whether any of 1001 points along the curve lies more than 0.01 outside its bounds.
+bool ReachesOutsideBounds(const ImCubicBezierPoints& curve)
+{
+    const auto bounds = ImCubicBezierBoundingRect(curve);
+    for (int k = 0; k <= 1000; ++k)
+    {
+        const auto p = Cubic(curve, k / 1000.0);
+        if (p.x < bounds.Min.x - 0.01 || p.x > bounds.Max.x + 0.01 || p.y < bounds.Min.y - 0.01 || p.y > bounds.Max.y + 0.01)
+            return true;
+    }
+    return false;
+}
+
 } // namespace
 
 TEST_CASE(LineIntersectionFlatCubic, "math.line_intersection_with_a_vanishing_cubic_term", "MATH-2", test::TestFlags_None)
@@ -175,4 +188,59 @@ TEST_CASE(LineIntersectionSweep, "math.line_intersection_finds_every_crossing", 
     }
 
     test::Check(crossings > 1000 && misses == 0, "every crossing is found: %d missed of %d", misses, crossings);
+}
+
+TEST_CASE(BoundsWithLinearDerivative, "math.bounds_where_the_derivative_is_linear", "MATH-3", test::TestFlags_None)
+{
+    // Pins at (0, 0) and (0, 200), both facing (1, 0), strength 100: x peaks at 75.
+    const auto bounds = ImCubicBezierBoundingRect(ImVec2(0, 0), ImVec2(100, 0), ImVec2(100, 200), ImVec2(0, 200));
+    test::Check(ImFabs(bounds.Max.x - 75.0f) < 0.01f, "the bounds reach x = 75: (%g, %g) - (%g, %g)", bounds.Min.x, bounds.Min.y, bounds.Max.x, bounds.Max.y);
+}
+
+TEST_CASE(BoundsSweep, "math.bounds_contain_the_curve", "MATH-3", test::TestFlags_None)
+{
+    // Links between pins on whole units, aligned on an axis and both facing the same
+    // way along it, which makes the derivative linear in that axis; and general curves.
+    Random random;
+    auto wholePoint = [&random] { const auto p = random.Point(-200, 200); return ImVec2(std::floor(p.x), std::floor(p.y)); };
+
+    int alignedOutside = 0, generalOutside = 0;
+    for (int i = 0; i < 4000; ++i)
+    {
+        const int axis = i % 2;
+        const auto start = wholePoint();
+        auto end = wholePoint();
+        (&end.x)[axis] = (&start.x)[axis];
+        ImVec2 direction(0, 0);
+        (&direction.x)[axis] = random.Next() < 0.5 ? -1.0f : 1.0f;
+        const auto strength = std::floor(random.Range(10, 200));
+        if (ReachesOutsideBounds(ImCubicBezierPoints{ start, start + direction * strength, end + direction * strength, end }))
+            ++alignedOutside;
+
+        if (ReachesOutsideBounds(ImCubicBezierPoints{ wholePoint(), wholePoint(), wholePoint(), wholePoint() }))
+            ++generalOutside;
+    }
+
+    test::Check(alignedOutside == 0 && generalOutside == 0, "every curve lies within its bounds: %d of 4000 aligned links and %d of 4000 general curves reach outside", alignedOutside, generalOutside);
+}
+
+TEST_CASE(BoundsNearlyLinear, "math.bounds_where_the_derivative_is_nearly_linear", "MATH-3", test::TestFlags_None)
+{
+    // The quadratic coefficient of the derivative in x is 1e-6 to 1e-3 of the linear
+    // one, where the textbook quadratic formula cancels.
+    Random random;
+    int outside = 0;
+    for (int i = 0; i < 4000; ++i)
+    {
+        const double p0 = random.Range(-200, 200), p1 = random.Range(-200, 200), p2 = random.Range(-200, 200);
+        const double b = 6 * p0 - 12 * p1 + 6 * p2;
+        const double magnitude = std::pow(10.0, -6.0 + 3.0 * random.Next());
+        const double ratio = random.Next() < 0.5 ? -magnitude : magnitude;
+        const double p3 = (ratio * std::fabs(b) + 9 * p2 - 9 * p1 + 3 * p0) / 3;
+        const ImCubicBezierPoints curve{ ImVec2(static_cast<float>(p0), 0), ImVec2(static_cast<float>(p1), 100), ImVec2(static_cast<float>(p2), 200), ImVec2(static_cast<float>(p3), 300) };
+        if (ReachesOutsideBounds(curve))
+            ++outside;
+    }
+
+    test::Check(outside == 0, "every curve lies within its bounds: %d of 4000 reach outside", outside);
 }
