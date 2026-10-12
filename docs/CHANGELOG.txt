@@ -233,6 +233,9 @@ v0.10.0 (WIP):
     BUGFIX: Editor: Report background double-clicks with mouse button indices
         GetBackgroundDoubleClickButtonIndex() returned 1, 2 and 4, and a right double-click went unnoticed.
 
+    CHANGE: Editor: Select nodes and links only with Config::SelectButtonIndex
+        A right or middle click on an object selected it. The context menu functions still report the object.
+
 v0.9.2 (2023-09-01):
 
     NEW: Editor: Add offset of hover/select to style (thanks @MultiPain)
