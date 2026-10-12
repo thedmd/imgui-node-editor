@@ -206,6 +206,17 @@ static bool IsShortcutModDown()
 
 
 //------------------------------------------------------------------------------
+// Since ImGui 1.91, EndGroup() also reaches the last item, which a group without
+// items of its own takes from before it. A zero-size item at the start of the
+// group keeps that one inside.
+static void ImGui_AddEmptyItemAtCursor()
+{
+    const auto cursor = ImGui::GetCursorScreenPos();
+    ImGui::ItemAdd(ImRect(cursor, cursor), 0);
+}
+
+
+//------------------------------------------------------------------------------
 static void ImDrawListSplitter_Grow(ImDrawList* draw_list, ImDrawListSplitter* splitter, int channels_count)
 {
     IM_ASSERT(splitter != nullptr);
@@ -5895,6 +5906,7 @@ void ed::NodeBuilder::Begin(NodeId nodeId)
         ImGui::SetCursorPos(ImGui::GetCursorPos() + ImVec2(m_NodePadding.x, m_NodePadding.y));
         ImGui::BeginGroup();
     }
+    ImGui_AddEmptyItemAtCursor();
 
     // ImGui gives hover to the first item submitted under the mouse, whatever node is
     // drawn above. Where another node covers this one, a hovered ID that no item has
@@ -6018,6 +6030,7 @@ void ed::NodeBuilder::BeginPin(PinId pinId, PinKind kind)
     }
 
     ImGui::BeginGroup();
+    ImGui_AddEmptyItemAtCursor();
 }
 
 void ed::NodeBuilder::EndPin()
