@@ -75,6 +75,7 @@ endif()
 set(_TestSources
     api_tests.cpp
     canvas_tests.cpp
+    crude_json_tests.cpp
     deletion_tests.cpp
     draw_order_tests.cpp
     flow_tests.cpp

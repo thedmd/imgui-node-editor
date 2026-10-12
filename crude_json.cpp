@@ -347,7 +347,11 @@ void value::dump(dump_context_t& context, int level) const
             break;
 
         case type_t::number:
-            context.out << *number_ptr(m_Storage);
+            // JSON has no NaN and no infinity.
+            if (std::isfinite(*number_ptr(m_Storage)))
+                context.out << *number_ptr(m_Storage);
+            else
+                context.out << "null";
             break;
 
         default:
