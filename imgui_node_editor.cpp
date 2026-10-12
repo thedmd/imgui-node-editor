@@ -3474,14 +3474,13 @@ void ed::NavigateAnimation::OnUpdate(float progress)
 
 void ed::NavigateAnimation::OnStop()
 {
+    Action.m_VisibleRect = Action.GetViewRect();
     Editor->MakeDirty(SaveReasonFlags::Navigation);
 }
 
 void ed::NavigateAnimation::OnFinish()
 {
     Action.SetViewRect(m_Target);
-
-    Editor->MakeDirty(SaveReasonFlags::Navigation);
 }
 
 
@@ -3841,7 +3840,10 @@ ed::EditorAction::AcceptResult ed::NavigateAction::Accept(const Control& control
     if (m_VisibleRect.Min != visibleRect.Min || m_VisibleRect.Max != visibleRect.Max)
     {
         m_VisibleRect = visibleRect;
-        Editor->MakeDirty(SaveReasonFlags::Navigation);
+
+        // An animation marks the settings dirty when it stops.
+        if (!m_Animation.IsPlaying())
+            Editor->MakeDirty(SaveReasonFlags::Navigation);
     }
 
     // // #debug
@@ -3913,16 +3915,8 @@ bool ed::NavigateAction::HandleZoom(const Control& control)
     auto offset       = (canvasPos - mousePos) * m_Zoom;
     auto targetScroll = m_Scroll - offset;
 
-    auto visibleRect = GetViewRect();
-
-    if (m_Scroll != savedScroll || m_Zoom != savedZoom || m_VisibleRect.Min != visibleRect.Min || m_VisibleRect.Max != visibleRect.Max)
-    {
-        m_Scroll      = savedScroll;
-        m_Zoom        = savedZoom;
-        m_VisibleRect = visibleRect;
-
-        Editor->MakeDirty(SaveReasonFlags::Navigation);
-    }
+    m_Scroll = savedScroll;
+    m_Zoom   = savedZoom;
 
     auto targetRect = m_Canvas.CalcViewRect(ImGuiEx::CanvasView(-targetScroll, newZoom));
 

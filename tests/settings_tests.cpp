@@ -267,6 +267,84 @@ TEST_CASE(Version09Settings, "settings.settings_written_by_0_9_load", "API-9", t
     test::Check(origin.x == corner.x + 120.0f && origin.y == corner.y + 40.0f, "view loaded: canvas origin at (%g, %g), editor corner at (%g, %g)", origin.x, origin.y, corner.x, corner.y);
 }
 
+namespace {
+
+// Whether the settings changed since the last call.
+bool TakeSettingsChange(test::Session& session)
+{
+    return session.Use([]
+    {
+        const bool changed = ed::GetSettingsChangeReason() != ed::SaveReasonFlags::None;
+        ed::ClearWantSaveSettings();
+        return changed;
+    });
+}
+
+} // namespace
+
+TEST_CASE(WheelNotchSavesOnce, "settings.wheel_notch_saves_once_after_saving_rate", "INT-9", test::TestFlags_None)
+{
+    test::Session session(UnnamedConfig());
+    session.DefaultContent = NodesOneAndTwo;
+    test::MouseMove(ImVec2(500.0f, 300.0f));
+    session.Run(10);
+    session.Use([] { ed::ClearWantSaveSettings(); });
+
+    test::MouseWheel(1.0f);
+    std::vector<int> saveFrames;
+    for (int frame = 0; frame < 400; ++frame)
+    {
+        session.Frame();
+        session.Use([&]
+        {
+            if (!ed::WantSaveSettings())
+                return;
+            ed::SaveSettingsToMemory();
+            ed::ClearWantSaveSettings();
+            saveFrames.push_back(frame);
+        });
+    }
+
+    test::Check(saveFrames.size() == 1 && saveFrames[0] >= 300, "one wheel notch is saved once, after io.IniSavingRate: %d saves, first in frame %d", (int)saveFrames.size(), saveFrames.empty() ? -1 : saveFrames[0]);
+}
+
+TEST_CASE(NavigationSettles, "settings.navigation_changes_settings_when_it_settles", "INT-9", test::TestFlags_None)
+{
+    test::Session session(UnnamedConfig());
+    session.DefaultContent = NodesOneAndTwo;
+    session.Frame([](int frame) { ed::SetNodePosition(2, ImVec2(1500.0f, 900.0f)); NodesOneAndTwo(frame); });
+    test::MouseMove(ImVec2(500.0f, 300.0f));
+    session.Run(10);
+    TakeSettingsChange(session);
+
+    // Counts the changes over 60 frames, and keeps the settings of the last one.
+    auto countChanges = [&](std::string& changed)
+    {
+        int changes = 0;
+        for (int i = 0; i < 60; ++i)
+        {
+            session.Frame();
+            if (TakeSettingsChange(session))
+            {
+                ++changes;
+                changed = session.Use([] { return std::string(ed::SaveSettingsToMemory()); });
+            }
+        }
+        return changes;
+    };
+
+    std::string changed;
+    test::MouseWheel(1.0f);
+    const int wheelChanges = countChanges(changed);
+    const auto wheelSettled = session.Use([] { return std::string(ed::SaveSettingsToMemory()); });
+    test::Check(wheelChanges == 1 && changed == wheelSettled, "one wheel notch changes the settings once, when the zoom settles: %d changes, to %s, settled %s", wheelChanges, changed.c_str(), wheelSettled.c_str());
+
+    session.Use([] { ed::NavigateToContent(); });
+    const int contentChanges = countChanges(changed);
+    const auto contentSettled = session.Use([] { return std::string(ed::SaveSettingsToMemory()); });
+    test::Check(contentChanges == 1 && changed == contentSettled, "NavigateToContent() changes the settings once, when the view settles: %d changes, to %s, settled %s", contentChanges, changed.c_str(), contentSettled.c_str());
+}
+
 TEST_CASE(ContentWithoutNodes, "settings.content_without_nodes_leaves_layout_out", "API-9", test::TestFlags_None)
 {
     auto config = UnnamedConfig();
