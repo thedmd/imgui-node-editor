@@ -182,6 +182,9 @@ v0.9.4 (WIP):
     BUGFIX: Editor: Refine link projections at the ends and at every local minimum
         Links were not hovered near their ends, or where they bend back, although the mouse was within the hover distance.
 
+    BUGFIX: Editor: Shrink link endpoint radii whenever they overlap
+        Links between pins closer than their radii and arrows together crossed over, and a straight one's arrow pointed back.
+
 v0.9.3 (2023-10-14):
 
     CHANGE: Canvas: Use ImDrawCallback_ImCanvas macro as draw callback sentinel (#256), thanks @nspitko
