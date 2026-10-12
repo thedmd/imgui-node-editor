@@ -778,11 +778,17 @@ void ed::Node::GetGroupedNodes(std::vector<Node*>& result, bool append)
     if (!IsGroup(this))
         return;
 
-    const auto firstNodeIndex = result.size();
+    // Containment is transitive, so one search finds the content of nested groups
+    // too. It also finds a group whose bounds lie inside its own group area.
+    const auto firstNodeIndex = static_cast<std::ptrdiff_t>(result.size());
     Editor->FindNodesInRect(m_GroupBounds, result, true, false);
 
-    for (auto index = firstNodeIndex; index < result.size(); ++index)
-        result[index]->GetGroupedNodes(result, true);
+    auto isCollected = [this, &result, firstNodeIndex](Node* node)
+    {
+        return node == this || std::find(result.begin(), result.begin() + firstNodeIndex, node) != result.begin() + firstNodeIndex;
+    };
+
+    result.erase(std::remove_if(result.begin() + firstNodeIndex, result.end(), isCollected), result.end());
 }
 
 ImRect ed::Node::GetRegionBounds(NodeRegion region) const
@@ -1680,6 +1686,34 @@ void ed::EditorContext::End()
     // ShowMetrics(control);
 
     ImGui::PopID();
+
+    // Centering waits for the end of the frame, when a group's whole content is submitted,
+    // so the group and its content move together, in the next frame.
+    if (m_IsCanvasVisible)
+    {
+        for (auto node : m_Nodes)
+        {
+            if (!node->m_CenterOnScreen || !node->m_IsLive)
+                continue;
+
+            node->m_CenterOnScreen = false;
+
+            const auto offset = ImFloor(GetViewRect().GetCenter() - node->m_Bounds.GetCenter());
+            if (ImLengthSqr(offset) <= 0)
+                continue;
+
+            std::vector<Node*> movedNodes;
+            node->GetGroupedNodes(movedNodes);
+            movedNodes.push_back(node);
+
+            for (auto movedNode : movedNodes)
+            {
+                movedNode->m_Bounds.Translate(offset);
+                movedNode->m_GroupBounds.Translate(offset);
+                MakeDirty(SaveReasonFlags::Position | SaveReasonFlags::User, movedNode);
+            }
+        }
+    }
 
     if (!m_CurrentAction && m_IsFirstFrame && !m_Settings.m_Selection.empty())
     {
@@ -5476,37 +5510,6 @@ void ed::NodeBuilder::Begin(NodeId nodeId)
     m_CurrentNode = Editor->GetNode(nodeId);
 
     Editor->UpdateNodeState(m_CurrentNode);
-
-    if (m_CurrentNode->m_CenterOnScreen && !Editor->IsFrozen())
-    {
-        auto bounds = Editor->GetViewRect();
-        auto offset = bounds.GetCenter() - m_CurrentNode->m_Bounds.GetCenter();
-
-        if (ImLengthSqr(offset) > 0)
-        {
-            if (::IsGroup(m_CurrentNode))
-            {
-                std::vector<Node*> groupedNodes;
-                m_CurrentNode->GetGroupedNodes(groupedNodes);
-                groupedNodes.push_back(m_CurrentNode);
-
-                for (auto node : groupedNodes)
-                {
-                    node->m_Bounds.Translate(ImFloor(offset));
-                    node->m_GroupBounds.Translate(ImFloor(offset));
-                    Editor->MakeDirty(SaveReasonFlags::Position | SaveReasonFlags::User, node);
-                }
-            }
-            else
-            {
-                m_CurrentNode->m_Bounds.Translate(ImFloor(offset));
-                m_CurrentNode->m_GroupBounds.Translate(ImFloor(offset));
-                Editor->MakeDirty(SaveReasonFlags::Position | SaveReasonFlags::User, m_CurrentNode);
-            }
-        }
-
-        m_CurrentNode->m_CenterOnScreen = false;
-    }
 
     // Position node on screen
     ImGui::SetCursorScreenPos(m_CurrentNode->m_Bounds.Min);

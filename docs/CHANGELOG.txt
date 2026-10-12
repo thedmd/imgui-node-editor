@@ -88,6 +88,10 @@ v0.9.4 (WIP):
         An extra PopStyleColor()/PopStyleVar() or a PushStyleVar() of the wrong type crashed release builds;
         they assert and do nothing now. End() asserts when pushes and pops don't balance within the frame.
 
+    BUGFIX: Editor: Collect group content once, and center a group with all of it
+        A group fitting inside its own group area overflowed the stack, nested content was moved twice,
+        and CenterNodeOnScreen() left content submitted after the group in place.
+
 v0.9.3 (2023-10-14):
 
     CHANGE: Canvas: Use ImDrawCallback_ImCanvas macro as draw callback sentinel (#256), thanks @nspitko
