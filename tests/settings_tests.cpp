@@ -267,6 +267,26 @@ TEST_CASE(Version09Settings, "settings.settings_written_by_0_9_load", "API-9", t
     test::Check(origin.x == corner.x + 120.0f && origin.y == corner.y + 40.0f, "view loaded: canvas origin at (%g, %g), editor corner at (%g, %g)", origin.x, origin.y, corner.x, corner.y);
 }
 
+TEST_CASE(ContentWithoutNodes, "settings.content_without_nodes_leaves_layout_out", "API-9", test::TestFlags_None)
+{
+    auto config = UnnamedConfig();
+    config.SettingsContent = ed::SettingsContentFlags::Selection | ed::SettingsContentFlags::View;
+    test::Session session(config);
+    session.DefaultContent = NodesOneAndTwo;
+    session.Frame([](int frame) { ed::SetNodePosition(1, ImVec2(500.0f, 300.0f)); NodesOneAndTwo(frame); });
+    session.Run(2);
+    const auto saved = session.Use([] { return std::string(ed::SaveSettingsToMemory()); });
+
+    session.Use([] { ed::LoadSettingsFromMemory(R"({"nodes":{"node:1":{"location":{"x":10,"y":20}}},"view":{"scroll":{"x":0,"y":0},"zoom":2}})"); });
+    session.Run(2);
+    const auto position = session.Use([] { return ed::GetNodePosition(1); });
+    const auto zoom     = 1.0f / session.Use([] { return ed::GetCurrentZoom(); });
+
+    test::Check(saved.find("\"nodes\"") == std::string::npos && saved.find("\"view\"") != std::string::npos, "saved settings hold the view but no node layout: %s", saved.c_str());
+    test::Check(position.x == 500.0f && position.y == 300.0f, "loaded settings leave nodes in place: (%g, %g)", position.x, position.y);
+    test::Check(zoom == 2.0f, "and apply the view: zoom %g", zoom);
+}
+
 TEST_CASE(CLocalePreserved, "settings.c_locale_is_preserved", "JSON-2", test::TestFlags_None)
 {
     int tested = 0;

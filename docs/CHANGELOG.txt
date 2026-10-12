@@ -184,6 +184,9 @@ v0.10.0 (WIP):
 
     CHANGE: Examples: Keep editor state in the example's .ini file through InstallSettingsHandler()
 
+    NEW: Editor: Add Config::SettingsContent to choose what the settings hold
+        Applications that keep node layout in their own documents leave SettingsContentFlags::Nodes out.
+
 v0.9.2 (2023-09-01):
 
     NEW: Editor: Add offset of hover/select to style (thanks @MultiPain)

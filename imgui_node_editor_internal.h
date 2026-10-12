@@ -163,6 +163,7 @@ using ax::NodeEditor::PinKind;
 using ax::NodeEditor::StyleColor;
 using ax::NodeEditor::StyleVar;
 using ax::NodeEditor::SaveReasonFlags;
+using ax::NodeEditor::SettingsContentFlags;
 
 using ax::NodeEditor::NodeId;
 using ax::NodeEditor::PinId;
@@ -570,9 +571,9 @@ struct Settings
     void ClearDirty(Node* node = nullptr);
     void MakeDirty(SaveReasonFlags reason, Node* node = nullptr);
 
-    std::string Serialize();
+    std::string Serialize(SettingsContentFlags content);
 
-    static bool Parse(const std::string& string, Settings& settings);
+    static bool Parse(const std::string& string, Settings& settings, SettingsContentFlags content);
 };
 
 struct Control

@@ -77,6 +77,18 @@ enum class SaveReasonFlags: uint32_t
 inline SaveReasonFlags operator |(SaveReasonFlags lhs, SaveReasonFlags rhs) { return static_cast<SaveReasonFlags>(static_cast<uint32_t>(lhs) | static_cast<uint32_t>(rhs)); }
 inline SaveReasonFlags operator &(SaveReasonFlags lhs, SaveReasonFlags rhs) { return static_cast<SaveReasonFlags>(static_cast<uint32_t>(lhs) & static_cast<uint32_t>(rhs)); }
 
+enum class SettingsContentFlags: uint32_t
+{
+    None      = 0x00000000,
+    Nodes     = 0x00000001,
+    Selection = 0x00000002,
+    View      = 0x00000004,
+    All       = 0x00000007
+};
+
+inline SettingsContentFlags operator |(SettingsContentFlags lhs, SettingsContentFlags rhs) { return static_cast<SettingsContentFlags>(static_cast<uint32_t>(lhs) | static_cast<uint32_t>(rhs)); }
+inline SettingsContentFlags operator &(SettingsContentFlags lhs, SettingsContentFlags rhs) { return static_cast<SettingsContentFlags>(static_cast<uint32_t>(lhs) & static_cast<uint32_t>(rhs)); }
+
 using ConfigSaveNodeSettings = bool   (*)(NodeId nodeId, const char* data, size_t size, SaveReasonFlags reason, void* userPointer);
 using ConfigLoadNodeSettings = size_t (*)(NodeId nodeId, char* data, void* userPointer);
 
@@ -85,6 +97,7 @@ struct Config
     using CanvasSizeModeAlias = ax::NodeEditor::CanvasSizeMode;
 
     const char*             SettingsName;           // Section [NodeEditor][SettingsName] in imgui.ini, see InstallSettingsHandler(); copied by CreateEditor(); nullptr keeps the editor out of imgui.ini
+    SettingsContentFlags    SettingsContent;        // What the settings hold: node layout, the selection and the view; leave Nodes out when the application keeps node layout itself
     ConfigSaveNodeSettings  SaveNodeSettings;
     ConfigLoadNodeSettings  LoadNodeSettings;
     void*                   UserPointer;
@@ -99,6 +112,7 @@ struct Config
 
     Config()
         : SettingsName("NodeEditor")
+        , SettingsContent(SettingsContentFlags::All)
         , SaveNodeSettings(nullptr)
         , LoadNodeSettings(nullptr)
         , UserPointer(nullptr)
