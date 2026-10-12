@@ -580,3 +580,30 @@ TEST_CASE(FloatLength, "math.float_curve_length_is_positive", "MATH-8", test::Te
     const auto length = ImCubicBezierLength(0.0f, 0.0f, 0.0f, -1.0f);
     test::Check(ImFabs(length - 1.0f) < 1e-5f && ImLength(-2.0f) == 2.0f, "lengths are positive: the curve is %g long, and ImLength(-2) is %g", length, ImLength(-2.0f));
 }
+
+TEST_CASE(SampleCoincidingControlPoints, "math.sample_follows_the_curve", "MATH-8", test::TestFlags_None)
+{
+    // Curves with a control point on its end point, or both.
+    Random random;
+    int off = 0;
+    double worst = 0.0;
+    for (int i = 0; i < 300; ++i)
+    {
+        ImCubicBezierPoints curve{ random.Point(-400, 400), random.Point(-400, 400), random.Point(-400, 400), random.Point(-400, 400) };
+        if (i % 3 != 1)
+            curve.P1 = curve.P0;
+        if (i % 3 != 0)
+            curve.P2 = curve.P3;
+        for (int k = 0; k <= 10; ++k)
+        {
+            const auto sample   = ImCubicBezierSample(curve, k / 10.0f);
+            const auto expected = Cubic(curve, k / 10.0);
+            const auto distance = Distance(expected, sample);
+            worst = ImMax(worst, distance);
+            if (distance > 0.01)
+                ++off;
+        }
+    }
+
+    test::Check(off == 0, "samples lie on the curve: %d of 3300 off, by up to %g", off, worst);
+}
