@@ -184,14 +184,17 @@ struct Session
     int                   FrameIndex   = 0;
     Content               DefaultContent;
 
+    bool                  PlaceHost     = true; // false for a docked host, which SetNextWindowPos() would undock
     ImVec2                HostPos       = ImVec2(60.0f, 40.0f);
     ImVec2                HostSize      = ImVec2(1000.0f, 640.0f);
     ImGuiWindowFlags      HostFlags     = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus;
     bool                  HostCollapsed = false;
     bool                  BareHost      = false; // transparent host without padding, rounding or border, as in issue #282
     ImVec2                EditorSize    = ImVec2(0.0f, 0.0f);
+    std::function<void()> BeforeHost;   // runs before the host window
     std::function<void()> BeforeEditor; // host window content emitted before ed::Begin()
     std::function<void()> AfterEditor;  // host window content emitted after ed::End()
+    std::function<void()> AfterHost;    // runs after the host window
 };
 
 } // namespace test

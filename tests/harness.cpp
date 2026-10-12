@@ -414,8 +414,14 @@ void Session::Frame(const Content& content)
 {
     HostContext.NewFrame();
 
-    ImGui::SetNextWindowPos(HostPos);
-    ImGui::SetNextWindowSize(HostSize);
+    if (BeforeHost)
+        BeforeHost();
+
+    if (PlaceHost)
+    {
+        ImGui::SetNextWindowPos(HostPos);
+        ImGui::SetNextWindowSize(HostSize);
+    }
     if (!(HostFlags & ImGuiWindowFlags_NoTitleBar))
         ImGui::SetNextWindowCollapsed(HostCollapsed);
     if (BareHost)
@@ -445,6 +451,10 @@ void Session::Frame(const Content& content)
         AfterEditor();
 
     ImGui::End();
+
+    if (AfterHost)
+        AfterHost();
+
     HostContext.Render();
     ++FrameIndex;
 }
