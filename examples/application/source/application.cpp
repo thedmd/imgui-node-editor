@@ -135,29 +135,7 @@ void Application::Frame()
     m_Renderer->Clear(ImColor(32, 32, 32, 255));
     ImGui::Render();
 
-    // Manually scale the draw data, because ImGui backends are not yet
-    // consistent in handling FramebufferScale
-    auto drawData = ImGui::GetDrawData();
-
-    drawData->DisplaySize.x *= framebufferScale;
-    drawData->DisplaySize.y *= framebufferScale;
-
-    for (int i = 0; i < drawData->CmdListsCount; i++)
-    {
-        auto& cmdList = drawData->CmdLists[i];
-        for (auto& vtx : cmdList->VtxBuffer)
-        {
-            vtx.pos.x *= framebufferScale;
-            vtx.pos.y *= framebufferScale;
-        }
-    }
-
-    drawData->ScaleClipRects(drawData->FramebufferScale);
-
-    drawData->FramebufferScale.x = 1.0f;
-    drawData->FramebufferScale.y = 1.0f;
-
-    m_Renderer->RenderDrawData(drawData);
+    m_Renderer->RenderDrawData(ImGui::GetDrawData());
 
     m_Platform->FinishFrame();
 }
