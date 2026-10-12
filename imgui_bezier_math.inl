@@ -301,55 +301,80 @@ inline ImProjectResult ImProjectOnCubicBezier(const ImVec2& point, const ImVec2&
 {
     // http://pomax.github.io/bezierinfo/#projections
 
-    const float epsilon    = 1e-5f;
-    const float fixed_step = 1.0f / static_cast<float>(subdivisions - 1);
+    IM_ASSERT(subdivisions >= 2);
+
+    const auto last_sample = static_cast<float>(subdivisions - 1);
+
+    auto distance_squared = [&](float t)
+    {
+        const auto s = point - ImCubicBezier(p0, p1, p2, p3, t);
+        return ImDot(s, s);
+    };
 
     ImProjectResult result;
-    result.Point    = point;
     result.Time     = 0.0f;
     result.Distance = FLT_MAX;
 
-    // Step 1: Coarse check
+    auto refine = [&](int i, float d)
+    {
+        // Step 2: Fine check between the neighboring samples
+        const auto left  = ImMax((i - 1) / last_sample, 0.0f);
+        const auto right = ImMin((i + 1) / last_sample, 1.0f);
+
+        auto best_t = i / last_sample;
+        auto best_d = d;
+        for (int k = 0; k <= 20; ++k)
+        {
+            const auto t  = left + (right - left) * (k / 20.0f);
+            const auto dt = distance_squared(t);
+            if (dt < best_d)
+            {
+                best_t = t;
+                best_d = dt;
+            }
+        }
+
+        // Step 3: Newton's method on the derivative of the squared distance
+        for (int k = 0; k < 4; ++k)
+        {
+            const auto s   = ImCubicBezier(p0, p1, p2, p3, best_t) - point;
+            const auto dp  = ImCubicBezierDt(p0, p1, p2, p3, best_t);
+            const auto ddp = 6 * (1 - best_t) * (p2 - 2 * p1 + p0) + 6 * best_t * (p3 - 2 * p2 + p1);
+            const auto f   = ImDot(s, dp);
+            const auto df  = ImDot(dp, dp) + ImDot(s, ddp);
+            if (df <= 0)
+                break;
+
+            const auto t  = ImClamp(best_t - f / df, 0.0f, 1.0f);
+            const auto dt = distance_squared(t);
+            if (dt >= best_d)
+                break;
+
+            best_t = t;
+            best_d = dt;
+        }
+
+        if (best_d < result.Distance)
+        {
+            result.Time     = best_t;
+            result.Distance = best_d;
+        }
+    };
+
+    // Step 1: Coarse check, refined around every local minimum
+    auto previous = FLT_MAX;
+    auto current  = distance_squared(0.0f);
     for (int i = 0; i < subdivisions; ++i)
     {
-        auto t = i * fixed_step;
-        auto p = ImCubicBezier(p0, p1, p2, p3, t);
-        auto s = point - p;
-        auto d = ImDot(s, s);
+        const auto next = i + 1 < subdivisions ? distance_squared((i + 1) / last_sample) : FLT_MAX;
+        if (current < previous && current <= next)
+            refine(i, current);
 
-        if (d < result.Distance)
-        {
-            result.Point    = p;
-            result.Time     = t;
-            result.Distance = d;
-        }
+        previous = current;
+        current  = next;
     }
 
-    if (result.Time == 0.0f || ImFabs(result.Time - 1.0f) <= epsilon)
-    {
-        result.Distance = ImSqrt(result.Distance);
-        return result;
-    }
-
-    // Step 2: Fine check
-    auto left  = result.Time - fixed_step;
-    auto right = result.Time + fixed_step;
-    auto step  = fixed_step * 0.1f;
-
-    for (auto t = left; t < right + step; t += step)
-    {
-        auto p = ImCubicBezier(p0, p1, p2, p3, t);
-        auto s = point - p;
-        auto d = ImDot(s, s);
-
-        if (d < result.Distance)
-        {
-            result.Point    = p;
-            result.Time     = t;
-            result.Distance = d;
-        }
-    }
-
+    result.Point    = ImCubicBezier(p0, p1, p2, p3, result.Time);
     result.Distance = ImSqrt(result.Distance);
 
     return result;
