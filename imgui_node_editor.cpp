@@ -72,6 +72,7 @@ static const float c_LinkSelectThickness        = 5.0f;  // canvas pixels
 static const float c_NavigationZoomMargin       = 0.1f;  // percentage of visible bounds
 static const float c_MouseZoomDuration          = 0.15f; // seconds
 static const float c_SelectionFadeOutDuration   = 0.15f; // seconds
+static const float c_MinFlowMarkerDistance      = 1.0f;  // canvas pixels
 
 static const auto  c_MaxMoveOverEdgeSpeed       = 10.0f;
 static const auto  c_MaxMoveOverEdgeDistance    = 300.0f;
@@ -1971,6 +1972,8 @@ void ed::EditorContext::NotifyLinkDeleted(Link* link)
 {
     if (m_LastActiveLink == link)
         m_LastActiveLink = nullptr;
+
+    m_FlowAnimationController.Remove(link);
 }
 
 void ed::EditorContext::ForgetDeletedObjects()
@@ -3140,6 +3143,8 @@ ed::FlowAnimation::FlowAnimation(FlowAnimationController* controller):
     Animation(controller->Editor),
     Controller(controller),
     m_Link(nullptr),
+    m_Speed(0.0f),
+    m_MarkerDistance(0.0f),
     m_Offset(0.0f),
     m_PathLength(0.0f)
 {
@@ -3263,11 +3268,6 @@ void ed::FlowAnimation::OnUpdate(float progress)
     m_Offset += m_Speed * ImGui::GetIO().DeltaTime;
 }
 
-void ed::FlowAnimation::OnStop()
-{
-    Controller->Release(this);
-}
-
 
 
 
@@ -3285,14 +3285,21 @@ ed::FlowAnimationController::~FlowAnimationController()
 {
     for (auto animation : m_Animations)
         delete animation;
+    for (auto animation : m_FreePool)
+        delete animation;
 }
 
 void ed::FlowAnimationController::Flow(Link* link, FlowDirection direction)
 {
-    if (!link || !link->m_IsLive)
+    if (!link || !link->m_IsLive || IsDeleted(link))
         return;
 
     auto& editorStyle = GetStyle();
+
+    // Markers are drawn every 'markerDistance' along the link, which never ends unless it is positive.
+    auto markerDistance = editorStyle.FlowMarkerDistance;
+    if (!(markerDistance >= c_MinFlowMarkerDistance))
+        markerDistance = c_MinFlowMarkerDistance;
 
     auto animation = GetOrCreate(link);
 
@@ -3300,11 +3307,33 @@ void ed::FlowAnimationController::Flow(Link* link, FlowDirection direction)
     if (direction == FlowDirection::Backward)
         speedDirection = -1.0f;
 
-    animation->Flow(link, editorStyle.FlowMarkerDistance, editorStyle.FlowSpeed * speedDirection, editorStyle.FlowDuration);
+    animation->Flow(link, markerDistance, editorStyle.FlowSpeed * speedDirection, editorStyle.FlowDuration);
+}
+
+void ed::FlowAnimationController::Remove(Link* link)
+{
+    for (auto animation : m_Animations)
+    {
+        if (animation->m_Link != link)
+            continue;
+
+        animation->Stop();
+        animation->m_Link = nullptr;
+    }
 }
 
 void ed::FlowAnimationController::Draw(ImDrawList* drawList)
 {
+    // Stopped animations return to the pool. Pooled animations hold no link, so
+    // a link allocated at the address of a deleted one can't match them.
+    auto stoppedIt = std::stable_partition(m_Animations.begin(), m_Animations.end(), [](FlowAnimation* animation) { return animation->IsPlaying(); });
+    for (auto it = stoppedIt; it != m_Animations.end(); ++it)
+    {
+        (*it)->m_Link = nullptr;
+        m_FreePool.push_back(*it);
+    }
+    m_Animations.erase(stoppedIt, m_Animations.end());
+
     if (m_Animations.empty())
         return;
 
@@ -3324,34 +3353,29 @@ ed::FlowAnimation* ed::FlowAnimationController::GetOrCreate(Link* link)
     }
 
     // There are no live animations for target link, try to reuse inactive old one
+    FlowAnimation* animation = nullptr;
     if (!m_FreePool.empty())
     {
-        auto animation = m_FreePool.back();
+        animation = m_FreePool.back();
         m_FreePool.pop_back();
-        return animation;
+    }
+    else
+    {
+        // Cache miss, allocate new one
+        animation = new FlowAnimation(this);
     }
 
-    // Cache miss, allocate new one
-    auto animation = new FlowAnimation(this);
     m_Animations.push_back(animation);
 
     return animation;
-}
-
-void ed::FlowAnimationController::Release(FlowAnimation* animation)
-{
-    IM_UNUSED(animation);
 }
 
 void ed::FlowAnimationController::ForgetDeletedObjects()
 {
     for (auto animation : m_Animations)
     {
-        if (!IsDeleted(animation->m_Link))
-            continue;
-
-        animation->Stop();
-        animation->m_Link = nullptr;
+        if (IsDeleted(animation->m_Link))
+            Remove(animation->m_Link);
     }
 }
 
