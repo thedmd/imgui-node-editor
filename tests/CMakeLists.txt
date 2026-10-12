@@ -83,6 +83,7 @@ set(_TestSources
     group_tests.cpp
     interaction_tests.cpp
     lifetime_tests.cpp
+    link_tests.cpp
     math_tests.cpp
     node_state_tests.cpp
     protocol_tests.cpp
