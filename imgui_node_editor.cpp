@@ -359,6 +359,26 @@ static void ImDrawList_SwapSplitter(ImDrawList* drawList, ImDrawListSplitter& sp
 //        drawList->ChannelsSetCurrent(lastCurrentChannel);
 //}
 
+static void ImDrawList_AddRectCompat(ImDrawList* drawList, const ImVec2& a, const ImVec2& b, ImU32 col, float rounding, int flags, float thickness)
+{
+# if IMGUI_VERSION_NUM >= 19298
+    drawList->AddRect(a, b, col, rounding, thickness, flags | ImDrawFlags_StrokeLegacy);
+# elif IMGUI_VERSION_NUM >= 19276
+    drawList->AddRect(a, b, col, rounding, thickness, flags);
+# else
+    drawList->AddRect(a, b, col, rounding, flags, thickness);
+# endif
+}
+
+static void ImDrawList_AddLineCompat(ImDrawList* drawList, const ImVec2& a, const ImVec2& b, ImU32 col)
+{
+# if IMGUI_VERSION_NUM >= 19298
+    drawList->AddLine(a, b, col, 1.0f, ImDrawFlags_StrokeLegacy);
+# else
+    drawList->AddLine(a, b, col);
+# endif
+}
+
 static void ImDrawList_PathBezierOffset(ImDrawList* drawList, float offset, const ImVec2& p0, const ImVec2& p1, const ImVec2& p2, const ImVec2& p3)
 {
     using namespace ed;
@@ -585,13 +605,8 @@ void ed::Pin::Draw(ImDrawList* drawList, DrawFlags flags)
         if (m_BorderWidth > 0.0f)
         {
             FringeScaleScope fringe(1.0f);
-# if IMGUI_VERSION_NUM < 19276
-            drawList->AddRect(m_Bounds.Min, m_Bounds.Max,
+            ImDrawList_AddRectCompat(drawList, m_Bounds.Min, m_Bounds.Max,
                 m_BorderColor, m_Rounding, m_Corners, m_BorderWidth);
-# else
-            drawList->AddRect(m_Bounds.Min, m_Bounds.Max,
-                m_BorderColor, m_Rounding, m_BorderWidth, m_Corners);
-# endif
         }
 
         if (!Editor->IsSelected(m_Node))
@@ -689,17 +704,10 @@ void ed::Node::Draw(ImDrawList* drawList, DrawFlags flags)
             {
                 FringeScaleScope fringe(1.0f);
 
-# if IMGUI_VERSION_NUM < 19276
-                drawList->AddRect(
+                ImDrawList_AddRectCompat(drawList,
                     m_GroupBounds.Min,
                     m_GroupBounds.Max,
                     m_GroupBorderColor, m_GroupRounding, c_AllRoundCornersFlags, m_GroupBorderWidth);
-# else
-                drawList->AddRect(
-                    m_GroupBounds.Min,
-                    m_GroupBounds.Max,
-                    m_GroupBorderColor, m_GroupRounding, m_GroupBorderWidth, c_AllRoundCornersFlags);
-# endif
             }
         }
 
@@ -751,13 +759,8 @@ void ed::Node::DrawBorder(ImDrawList* drawList, ImU32 color, float thickness, fl
     {
         const ImVec2 extraOffset = ImVec2(offset, offset);
 
-# if IMGUI_VERSION_NUM < 19276
-        drawList->AddRect(m_Bounds.Min - extraOffset, m_Bounds.Max + extraOffset,
+        ImDrawList_AddRectCompat(drawList, m_Bounds.Min - extraOffset, m_Bounds.Max + extraOffset,
             color, ImMax(0.0f, m_Rounding + offset), c_AllRoundCornersFlags, thickness);
-# else
-        drawList->AddRect(m_Bounds.Min - extraOffset, m_Bounds.Max + extraOffset,
-            color, ImMax(0.0f, m_Rounding + offset), thickness, c_AllRoundCornersFlags);
-# endif
     }
 }
 
@@ -1530,9 +1533,9 @@ void ed::EditorContext::End()
         m_DrawList->AddRectFilled(VIEW_POS, VIEW_POS + VIEW_SIZE, GetColor(StyleColor_Bg));
 
         for (float x = fmodf(offset.x, GRID_SX); x < VIEW_SIZE.x; x += GRID_SX)
-            m_DrawList->AddLine(ImVec2(x, 0.0f) + VIEW_POS, ImVec2(x, VIEW_SIZE.y) + VIEW_POS, GRID_COLOR);
+            ImDrawList_AddLineCompat(m_DrawList, ImVec2(x, 0.0f) + VIEW_POS, ImVec2(x, VIEW_SIZE.y) + VIEW_POS, GRID_COLOR);
         for (float y = fmodf(offset.y, GRID_SY); y < VIEW_SIZE.y; y += GRID_SY)
-            m_DrawList->AddLine(ImVec2(0.0f, y) + VIEW_POS, ImVec2(VIEW_SIZE.x, y) + VIEW_POS, GRID_COLOR);
+            ImDrawList_AddLineCompat(m_DrawList, ImVec2(0.0f, y) + VIEW_POS, ImVec2(VIEW_SIZE.x, y) + VIEW_POS, GRID_COLOR);
     }
 # endif
 
