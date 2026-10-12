@@ -170,6 +170,30 @@ static void MarkIniSettingsDirty(ImGuiContext* context)
 
 
 //------------------------------------------------------------------------------
+// Ctrl, or Cmd on macOS.
+# if IMGUI_VERSION_NUM >= 19070
+static const ImGuiKeyChord c_ShortcutMod = ImGuiMod_Ctrl;
+# else
+static const ImGuiKeyChord c_ShortcutMod = ImGuiMod_Shortcut;
+# endif
+
+// Routed to the focused window, where an active text field takes the chords it
+// uses, and pressed without repeat. Call it on every frame: a route claimed in
+// one frame applies from the next.
+static bool IsShortcutPressed(ImGuiKeyChord chord)
+{
+# if IMGUI_VERSION_NUM >= 19070
+    return ImGui::Shortcut(chord);
+# elif IMGUI_VERSION_NUM >= 19010 && IMGUI_VERSION_NUM < 19020
+    // 1.90.1's Shortcut() repeats every chord, fixed in 1.90.2.
+    return ImGui::SetShortcutRouting(chord, 0, ImGuiInputFlags_RouteFocused) && ImGui::IsKeyChordPressed(chord, 0, 0);
+# else
+    return ImGui::Shortcut(chord, 0, 0);
+# endif
+}
+
+
+//------------------------------------------------------------------------------
 static void ImDrawListSplitter_Grow(ImDrawList* draw_list, ImDrawListSplitter* splitter, int channels_count)
 {
     IM_ASSERT(splitter != nullptr);
@@ -2204,6 +2228,11 @@ bool ed::EditorContext::CanAcceptUserInput() const
     return m_IsFocused && m_IsHovered;
 }
 
+bool ed::EditorContext::IsOtherItemActive() const
+{
+    return ImGui::IsAnyItemActive() && ImGui::GetActiveID() != m_EditorActiveId;
+}
+
 int ed::EditorContext::CountLiveNodes() const
 {
     return (int)std::count_if(m_Nodes.begin(),  m_Nodes.end(),  [](const Node* node)  { return node->m_IsLive; });
@@ -2866,7 +2895,7 @@ ed::Control ed::EditorContext::BuildControl(bool allowOffscreen)
     if (activeId)
         m_EditorActiveId = activeId;
 
-    if (ImGui::IsAnyItemActive() && ImGui::GetActiveID() != m_EditorActiveId)
+    if (IsOtherItemActive())
         return Control();
 
     m_IsHovered = ImGui::IsItemHovered(ImGuiHoveredFlags_RectOnly);
@@ -3788,9 +3817,11 @@ ed::EditorAction::AcceptResult ed::NavigateAction::Accept(const Control& control
 
     auto& io = ImGui::GetIO();
 
-    if (Editor->CanAcceptUserInput() && ImGui::IsKeyPressed(ImGuiKey_F) && Editor->AreShortcutsEnabled())
+    const auto isFocusPressed           = IsShortcutPressed(ImGuiKey_F);
+    const auto isFocusWithMarginPressed = IsShortcutPressed(ImGuiMod_Shift | ImGuiKey_F);
+    if ((isFocusPressed || isFocusWithMarginPressed) && Editor->CanAcceptUserInput() && Editor->AreShortcutsEnabled() && !Editor->IsOtherItemActive())
     {
-        const auto zoomMode = io.KeyShift ? NavigateAction::ZoomMode::WithMargin : NavigateAction::ZoomMode::None;
+        const auto zoomMode = isFocusWithMarginPressed ? NavigateAction::ZoomMode::WithMargin : NavigateAction::ZoomMode::None;
 
         auto findHotObjectToZoom = [this, &control, &io]() -> Object*
         {
@@ -4890,17 +4921,20 @@ ed::EditorAction::AcceptResult ed::ShortcutAction::Accept(const Control& control
 
     Action candidateAction = None;
 
-    auto& io = ImGui::GetIO();
-    if (io.KeyCtrl && !io.KeyShift && !io.KeyAlt && ImGui::IsKeyPressed(ImGuiKey_X))
+    if (IsShortcutPressed(c_ShortcutMod | ImGuiKey_X))
         candidateAction = Cut;
-    if (io.KeyCtrl && !io.KeyShift && !io.KeyAlt && ImGui::IsKeyPressed(ImGuiKey_C))
+    if (IsShortcutPressed(c_ShortcutMod | ImGuiKey_C))
         candidateAction = Copy;
-    if (io.KeyCtrl && !io.KeyShift && !io.KeyAlt && ImGui::IsKeyPressed(ImGuiKey_V))
+    if (IsShortcutPressed(c_ShortcutMod | ImGuiKey_V))
         candidateAction = Paste;
-    if (io.KeyCtrl && !io.KeyShift && !io.KeyAlt && ImGui::IsKeyPressed(ImGuiKey_D))
+    if (IsShortcutPressed(c_ShortcutMod | ImGuiKey_D))
         candidateAction = Duplicate;
-    if (!io.KeyCtrl && !io.KeyShift && !io.KeyAlt && ImGui::IsKeyPressed(ImGuiKey_Space))
+    if (IsShortcutPressed(ImGuiKey_Space))
         candidateAction = CreateNode;
+
+    // Routing leaves out chords an active text field doesn't use, such as Ctrl+D.
+    if (Editor->IsOtherItemActive())
+        return False;
 
     if (candidateAction != None)
     {
@@ -5510,7 +5544,7 @@ ed::EditorAction::AcceptResult ed::DeleteItemsAction::Accept(const Control& cont
     m_Candidates.clear();
 
     auto& io = ImGui::GetIO();
-    if (Editor->CanAcceptUserInput() && ImGui::IsKeyPressed(ImGuiKey_Delete) && Editor->AreShortcutsEnabled())
+    if (IsShortcutPressed(ImGuiKey_Delete) && Editor->CanAcceptUserInput() && Editor->AreShortcutsEnabled() && !Editor->IsOtherItemActive())
     {
         for (auto object : Editor->GetSelectedObjects())
             AddCandidate(object);

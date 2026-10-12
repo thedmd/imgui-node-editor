@@ -1443,6 +1443,7 @@ struct EditorContext
     bool IsHovered() const;
     bool IsHoveredWithoutOverlapp() const;
     bool CanAcceptUserInput() const;
+    bool IsOtherItemActive() const; // an item other than the editor's own, such as a text field in a node
 
     // True for a frame whose host window skips items. Item rectangles are stale
     // then, so nothing is measured, interacted with or saved.
