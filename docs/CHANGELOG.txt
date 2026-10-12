@@ -138,6 +138,9 @@ v0.10.0 (WIP):
 
     BUGFIX: Editor: Assert on a pin submitted twice in one frame instead of hanging in ed::End()
 
+    BUGFIX: Editor: Use the node padding BeginNode() saw in EndNode()
+        Pushing StyleVar_NodePadding around only one of the two calls broke ImGui's group stack.
+
 v0.9.2 (2023-09-01):
 
     NEW: Editor: Add offset of hover/select to style (thanks @MultiPain)
