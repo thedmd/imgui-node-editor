@@ -101,6 +101,10 @@ v0.10.0 (WIP):
         next frame. They are already deleted: AcceptDeletedItem() returns true and does nothing,
         RejectDeletedItem() asserts. Links not submitted yet in that frame are deleted too.
 
+    CHANGE: Editor: Accept DeleteNode(), DeleteLink() and BreakLinks() while another action is in progress
+        They returned false until the editor was idle. Queued items now join the next delete interaction,
+        also one the Delete key or Alt+click starts, and each is offered once.
+
 v0.9.2 (2023-09-01):
 
     NEW: Editor: Add offset of hover/select to style (thanks @MultiPain)
