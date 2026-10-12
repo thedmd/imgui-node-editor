@@ -194,6 +194,9 @@ v0.9.4 (WIP):
     BUGFIX: Editor: Compute cubic Bezier derivatives from control point differences
         Far from the origin, curve lengths and tangents picked up the rounding of the coordinates.
 
+    BUGFIX: Editor: Return the magnitude from ImLength(float)
+        It returned its argument, so the length of a one-dimensional curve could come out negative.
+
 v0.9.3 (2023-10-14):
 
     CHANGE: Canvas: Use ImDrawCallback_ImCanvas macro as draw callback sentinel (#256), thanks @nspitko

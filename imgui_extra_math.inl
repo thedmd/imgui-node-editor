@@ -47,7 +47,7 @@ inline ImVec2 operator-(const ImVec2& lhs)
 //------------------------------------------------------------------------------
 inline float ImLength(float v)
 {
-    return v;
+    return ImFabs(v);
 }
 
 inline float ImLength(const ImVec2& v)
