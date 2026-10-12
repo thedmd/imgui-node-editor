@@ -1,11 +1,9 @@
 # pragma once
 # include "setup.h"
+# include <imgui.h>
 # include <memory>
 
 struct Platform;
-struct ImDrawData;
-struct ImVec4;
-using ImTextureID= void*;
 
 struct Renderer
 {
