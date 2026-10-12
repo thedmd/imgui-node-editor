@@ -430,3 +430,30 @@ TEST_CASE(StraightLinkArrow, "math.straight_link_arrow_does_not_flip", "MATH-5",
 
     test::Check(vertices > 0 && outside == 0, "the link and its arrow stay between the pins: %d of %d vertices outside, the leftmost at %+g from the left pin", outside, vertices, minX - left.x);
 }
+
+TEST_CASE(SplitHalves, "math.split_halves_follow_the_curve", "MATH-6", test::TestFlags_None)
+{
+    // The left half at u is the curve at t u, the right half at u the curve at t + (1 - t) u.
+    Random random;
+    int leftOff = 0, rightOff = 0;
+    for (int i = 0; i < 1000; ++i)
+    {
+        const ImCubicBezierPoints curve{ random.Point(-400, 400), random.Point(-400, 400), random.Point(-400, 400), random.Point(-400, 400) };
+        const auto t = random.Range(0.05f, 0.95f);
+        const auto split = ImCubicBezierSplit(curve, t);
+        for (int k = 0; k <= 4; ++k)
+        {
+            const double u = k / 4.0;
+            const auto left  = Cubic(split.Left, u);
+            const auto right = Cubic(split.Right, u);
+            const auto expectedLeft  = Cubic(curve, t * u);
+            const auto expectedRight = Cubic(curve, t + (1 - t) * u);
+            if (std::hypot(left.x - expectedLeft.x, left.y - expectedLeft.y) > 0.01)
+                ++leftOff;
+            if (std::hypot(right.x - expectedRight.x, right.y - expectedRight.y) > 0.01)
+                ++rightOff;
+        }
+    }
+
+    test::Check(leftOff == 0 && rightOff == 0, "both halves follow the curve: %d of 5000 left and %d of 5000 right samples are off", leftOff, rightOff);
+}
