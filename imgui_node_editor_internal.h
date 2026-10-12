@@ -945,6 +945,7 @@ private:
     NodeRegion GetRegion(Node* node);
     ImGuiMouseCursor ChooseCursor(NodeRegion region);
 
+    ImVec2           m_StartPoint;   // in canvas space
     ImRect           m_StartBounds;
     ImRect           m_StartGroupBounds;
     ImVec2           m_LastSize;
@@ -959,6 +960,7 @@ struct DragAction final: EditorAction
     bool            m_Clear;
     Object*         m_DraggedObject;
     vector<Object*> m_Objects;
+    ImVec2          m_StartPoint;   // in canvas space
 
     DragAction(EditorContext* editor);
 

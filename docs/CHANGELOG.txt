@@ -120,6 +120,9 @@ v0.9.4 (WIP):
         A fast first move did nothing or moved the group, and a resize with DragButtonIndex other than 0
         didn't follow the mouse.
 
+    BUGFIX: Editor: Keep a dragged node under the mouse when the view zooms
+        Zooming during a drag or a group resize moved the node or the edge away from the mouse.
+
 v0.9.3 (2023-10-14):
 
     CHANGE: Canvas: Use ImDrawCallback_ImCanvas macro as draw callback sentinel (#256), thanks @nspitko
