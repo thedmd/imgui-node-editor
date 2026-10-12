@@ -93,7 +93,7 @@ static const float c_SelectionFadeOutDuration   = 0.15f; // seconds
 static const auto  c_MaxMoveOverEdgeSpeed       = 10.0f;
 static const auto  c_MaxMoveOverEdgeDistance    = 300.0f;
 
-static const auto  c_AllRoundCornersFlags = ImDrawFlags_RoundCornersAll;
+static const ImDrawFlags c_AllRoundCornersFlags = 0;
 
 
 //------------------------------------------------------------------------------

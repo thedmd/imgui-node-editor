@@ -44,6 +44,9 @@ v0.10.0 (WIP):
 
     BUGFIX: Editor: Pass AddRect() and PathStroke() arguments in order used since ImGui r19276
 
+    BUGFIX: Editor: Don't use ImDrawFlags_RoundCornersAll renamed in ImGui 1.93
+        Style::PinCorners now defaults to 0, which ImGui draws with all corners rounded.
+
 v0.9.2 (2023-09-01):
 
     NEW: Editor: Add offset of hover/select to style (thanks @MultiPain)
