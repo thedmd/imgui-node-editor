@@ -108,7 +108,7 @@ namespace ed = ax::NodeEditor::Detail;
 //------------------------------------------------------------------------------
 static const int c_BackgroundChannelCount = 1;
 static const int c_LinkChannelCount       = 4;
-static const int c_UserLayersCount        = 6;
+static const int c_UserLayersCount        = 7;
 
 static const int c_UserLayerChannelStart  = 0;
 static const int c_BackgroundChannelStart = c_UserLayerChannelStart  + c_UserLayersCount;
@@ -122,6 +122,7 @@ static const int c_UserChannel_Grid            = c_UserLayerChannelStart + 2;
 static const int c_UserChannel_HintsBackground = c_UserLayerChannelStart + 3;
 static const int c_UserChannel_Hints           = c_UserLayerChannelStart + 4;
 static const int c_UserChannel_Underlay        = c_UserLayerChannelStart + 5;
+static const int c_UserChannel_Overlay         = c_UserLayerChannelStart + 6;
 
 static const int c_LinkChannel_Selection  = c_LinkStartChannel + 0;
 static const int c_LinkChannel_Links      = c_LinkStartChannel + 1;
@@ -1682,9 +1683,9 @@ void ed::EditorContext::End()
     // Move user and hint channels to top
     {
         // Clip plane is transformed to global space.
-        // These channels already have clip planes in global space, so
+        // Hint and content channels already have clip planes in global space, so
         // we move them to clip plane. Batch transformation in canvas
-        // will bring them back to global space.
+        // will bring them back to global space. The overlay is in canvas space.
         auto preTransformClipRect = [this](int channelIndex)
         {
             ImDrawChannel& channel = m_DrawList->_Splitter._Channels[channelIndex];
@@ -1699,10 +1700,11 @@ void ed::EditorContext::End()
         m_DrawList->ChannelsSetCurrent(0);
 
         auto channelCount = m_DrawList->_Splitter._Count;
-        ImDrawList_ChannelsGrow(m_DrawList, channelCount + 3);
+        ImDrawList_ChannelsGrow(m_DrawList, channelCount + 4);
         ImDrawList_SwapChannels(m_DrawList, c_UserChannel_HintsBackground, channelCount + 0);
         ImDrawList_SwapChannels(m_DrawList, c_UserChannel_Hints,           channelCount + 1);
         ImDrawList_SwapChannels(m_DrawList, c_UserChannel_Content,         channelCount + 2);
+        ImDrawList_SwapChannels(m_DrawList, c_UserChannel_Overlay,         channelCount + 3);
 
         preTransformClipRect(channelCount + 0);
         preTransformClipRect(channelCount + 1);
@@ -2565,9 +2567,10 @@ void ed::EditorContext::SetUserContext(bool globalSpace)
         //ImGui::SetCursorScreenPos(ImFloor(mousePos));
         //ImGui::SetCursorScreenPos(ImVec2(floorf(mousePos.x), floorf(mousePos.y)));
 
+    // Content in global space is drawn while suspended, which keeps the splitter.
     if (!IsSuspended())
     {
-        m_DrawList->ChannelsSetCurrent(c_UserChannel_Content);
+        m_DrawList->ChannelsSetCurrent(globalSpace ? c_UserChannel_Content : c_UserChannel_Overlay);
     }
 
     // #debug
