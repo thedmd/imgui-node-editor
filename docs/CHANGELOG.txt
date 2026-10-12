@@ -96,6 +96,9 @@ v0.9.4 (WIP):
         Under a locale with a decimal comma positions were saved wrong, and the first ed::Begin()
         switched LC_NUMERIC to "C" for good.
 
+    BUGFIX: Editor: Write non-finite numbers in settings as null
+        A single NaN or infinity, such as a zoom, made the saved settings unreadable.
+
 v0.9.3 (2023-10-14):
 
     CHANGE: Canvas: Use ImDrawCallback_ImCanvas macro as draw callback sentinel (#256), thanks @nspitko
