@@ -143,3 +143,47 @@ TEST_CASE(DrawOrderContentBeforeNodes, "draw_order.content_before_nodes_over_bac
     test::Check(content >= 0 && background >= 0 && window >= 0, "content, background and host window are drawn");
     test::Check(window < background && background < content, "content is drawn over the background, which is over the host window: window at index %ld, background at %ld, content at %ld", window, background, content);
 }
+
+TEST_CASE(DrawOrderOverlayAfterContextMenu, "draw_order.overlay_after_context_menu_is_not_clipped", "CORE-16", test::TestFlags_None)
+{
+    // At zoom 2, a rectangle drawn at the mouse in canvas space, without Suspend(), in
+    // the frame ShowBackgroundContextMenu() returns true.
+    test::Storage storage;
+    storage.Global = R"({"view":{"scroll":{"x":0,"y":0},"zoom":2}})";
+    test::Session session(&storage);
+    bool shown = false;
+    session.DefaultContent = [&shown](int)
+    {
+        shown = ed::ShowBackgroundContextMenu();
+        if (shown)
+        {
+            const auto mouse = ImGui::GetMousePos();
+            ImGui::GetWindowDrawList()->AddRectFilled(mouse, mouse + ImVec2(20.0f, 20.0f), c_Red);
+        }
+    };
+    session.Run(2);
+
+    test::MouseMove(session.Use([] { return ed::CanvasToScreen(ImVec2(200.0f, 120.0f)); }));
+    session.Run(2);
+    test::MouseButton(1, true);
+    session.Run(2);
+    test::MouseButton(1, false);
+    for (int i = 0; i < 4 && !shown; ++i)
+        session.Frame();
+
+    const auto geometry = test::Capture(session.DrawList);
+    int drawn = 0, outside = 0;
+    for (size_t i = 0; i < geometry.Colors.size(); ++i)
+    {
+        if (geometry.Colors[i] != c_Red)
+            continue;
+        ++drawn;
+        const auto& p    = geometry.Positions[i];
+        const auto& clip = geometry.ClipRects[i];
+        if (p.x < clip.x || p.y < clip.y || p.x > clip.z || p.y > clip.w)
+            ++outside;
+    }
+
+    test::Check(shown, "the background context menu is shown");
+    test::Check(drawn > 0 && outside == 0, "the overlay is inside its clip rectangle: %d of %d vertices outside", outside, drawn);
+}

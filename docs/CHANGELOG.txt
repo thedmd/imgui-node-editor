@@ -346,6 +346,9 @@ v0.10.0 (WIP):
     BUGFIX: Editor: Draw content added before the first node over the background
         It shared the host window's channel, which merges before the editor's background and grid.
 
+    BUGFIX: Editor: Keep the clip rectangles of content drawn after a context menu shows
+        Drawn in canvas space without Suspend(), it was clipped as if drawn in screen space, and hidden at zoom other than 1.
+
 v0.9.2 (2023-09-01):
 
     NEW: Editor: Add offset of hover/select to style (thanks @MultiPain)
