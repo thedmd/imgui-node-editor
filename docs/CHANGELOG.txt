@@ -334,6 +334,9 @@ v0.10.0 (WIP):
     BUGFIX: Editor: Hover horizontal and vertical links as far from them as other links
         Their hover band was cut to 5.5 by a box around the curve, for any thickness.
 
+    CHANGE: Editor: Hover links up to 5 screen pixels past their stroke at any zoom
+        The slack was 5 canvas pixels: about 1 screen pixel at zoom 0.25, and 20 at zoom 4.
+
 v0.9.2 (2023-09-01):
 
     NEW: Editor: Add offset of hover/select to style (thanks @MultiPain)
