@@ -573,3 +573,10 @@ TEST_CASE(LengthAwayFromOrigin, "math.curve_length_does_not_depend_on_position",
         "lengths don't change with position: %d of 4 points have length, %d of 4 yield more than their start, a link's length changes by up to %g",
         lengthy, overshot, worst);
 }
+
+TEST_CASE(FloatLength, "math.float_curve_length_is_positive", "MATH-8", test::TestFlags_None)
+{
+    // A one-dimensional curve from 0 to -1.
+    const auto length = ImCubicBezierLength(0.0f, 0.0f, 0.0f, -1.0f);
+    test::Check(ImFabs(length - 1.0f) < 1e-5f && ImLength(-2.0f) == 2.0f, "lengths are positive: the curve is %g long, and ImLength(-2) is %g", length, ImLength(-2.0f));
+}
