@@ -117,3 +117,29 @@ TEST_CASE(DrawOrderSelectionBorder, "draw_order.selection_border_over_lower_node
     test::Check(selection >= 0 && bottom >= 0, "selection border and lower node are drawn");
     test::Check(selection > bottom, "selection border of the upper node is drawn over the lower node: border at index %ld, node at %ld", selection, bottom);
 }
+
+TEST_CASE(DrawOrderContentBeforeNodes, "draw_order.content_before_nodes_over_background", "CORE-16", test::TestFlags_None)
+{
+    // A rectangle drawn right after ed::Begin(), before any node, on a blue background
+    // in a green host window.
+    const auto geometry = RunScene([](int frame)
+    {
+        if (frame == 0)
+        {
+            ImGui::GetStyle().Colors[ImGuiCol_WindowBg] = ImVec4(0.0f, 1.0f, 0.0f, 1.0f);
+            ed::GetStyle().Colors[ed::StyleColor_Bg] = ImVec4(0.0f, 0.0f, 1.0f, 1.0f);
+        }
+
+        ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(10.0f, 10.0f), ImVec2(60.0f, 60.0f), c_Red);
+
+        ed::BeginNode(1);
+        ImGui::Text("Node");
+        ed::EndNode();
+    });
+
+    const auto content    = test::FirstIndexOf(geometry, c_Red);
+    const auto background = test::FirstIndexOf(geometry, c_Blue);
+    const auto window     = test::FirstIndexOf(geometry, c_Green);
+    test::Check(content >= 0 && background >= 0 && window >= 0, "content, background and host window are drawn");
+    test::Check(window < background && background < content, "content is drawn over the background, which is over the host window: window at index %ld, background at %ld, content at %ld", window, background, content);
+}
