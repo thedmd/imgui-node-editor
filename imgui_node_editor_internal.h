@@ -753,7 +753,6 @@ private:
     ImVec2 SamplePath(float distance) const;
 
     void OnUpdate(float progress) override final;
-    void OnStop() override final;
 };
 
 struct AnimationController
@@ -783,12 +782,11 @@ struct FlowAnimationController final : AnimationController
     virtual ~FlowAnimationController();
 
     void Flow(Link* link, FlowDirection direction = FlowDirection::Forward);
+    void Remove(Link* link);
 
     virtual void Draw(ImDrawList* drawList) override final;
 
     virtual void ForgetDeletedObjects() override final;
-
-    void Release(FlowAnimation* animation);
 
 private:
     FlowAnimation* GetOrCreate(Link* link);
