@@ -4232,9 +4232,11 @@ ed::EditorAction::AcceptResult ed::SizeAction::Accept(const Control& control)
     if (control.ActiveNode && IsGroup(control.ActiveNode) && ImGui::IsMouseDragging(dragButtonIndex, 1))
     {
         // The press picks the edge: the first dragging frame may be well past it.
-        auto pivot = control.ActiveNode->GetRegion(ImGui_GetMouseClickPos(dragButtonIndex));
+        const auto startPoint = ImGui_GetMouseClickPos(dragButtonIndex);
+        auto pivot = control.ActiveNode->GetRegion(startPoint);
         if (pivot != NodeRegion::None && pivot != NodeRegion::Header && pivot != NodeRegion::Center)
         {
+            m_StartPoint       = startPoint;
             m_StartBounds      = control.ActiveNode->m_Bounds;
             m_StartGroupBounds = control.ActiveNode->m_GroupBounds;
             m_LastSize         = control.ActiveNode->m_Bounds.GetSize();
@@ -4274,7 +4276,7 @@ bool ed::SizeAction::Process(const Control& control)
 
     if (control.ActiveNode == m_SizedNode)
     {
-        const auto dragOffset = ImGui::GetMouseDragDelta(Editor->GetConfig().DragButtonIndex, 0.0f);
+        const auto dragOffset = ImGui::GetMousePos() - m_StartPoint;
 
         if (m_MinimumSize.x == 0.0f && m_LastSize.x != m_SizedNode->m_Bounds.GetWidth())
             m_MinimumSize.x = m_SizedNode->m_Bounds.GetWidth();
@@ -4413,6 +4415,7 @@ ed::EditorAction::AcceptResult ed::DragAction::Accept(const Control& control)
             return False;
 
         m_DraggedObject = control.ActiveObject;
+        m_StartPoint    = ImGui_GetMouseClickPos(Editor->GetConfig().DragButtonIndex);
 
         m_Objects.resize(0);
         m_Objects.push_back(m_DraggedObject);
@@ -4475,7 +4478,7 @@ bool ed::DragAction::Process(const Control& control)
 
     if (control.ActiveObject == m_DraggedObject)
     {
-        auto dragOffset = ImGui::GetMouseDragDelta(Editor->GetConfig().DragButtonIndex, 0.0f);
+        auto dragOffset = ImGui::GetMousePos() - m_StartPoint;
 
         auto draggedOrigin  = m_DraggedObject->DragStartLocation();
         auto alignPivot     = ImVec2(0, 0);
