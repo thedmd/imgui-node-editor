@@ -112,6 +112,9 @@ v0.10.0 (WIP):
     BUGFIX: Editor: Clear the current editor when DestroyEditor() destroys it
         API calls without a current editor assert instead of dereferencing null.
 
+    BUGFIX: Editor: Don't select an object twice
+        Selecting a selected node with append, then deselecting it, left it drawn as selected.
+
 v0.9.2 (2023-09-01):
 
     NEW: Editor: Add offset of hover/select to style (thanks @MultiPain)
