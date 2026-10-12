@@ -943,3 +943,70 @@ TEST_CASE(MacCommandClick, "interaction.macos_command_click_adds_to_selection", 
     const bool second = session.Use([] { return ed::IsNodeSelected(2); });
     test::Check(first && second, "Cmd+click on node 2 adds it to the selection: %d, %d", first, second);
 }
+
+TEST_CASE(FrontNodeWidgetsTakeHover, "interaction.widgets_of_a_front_node_take_the_click", "PR-337", test::TestFlags_None)
+{
+    // Node 2, drawn above node 1, covers part of node 1's button with its own.
+    test::Storage storage;
+    test::Session session(&storage);
+    bool   pressed[2] = {};
+    ImVec2 overlap;
+    session.DefaultContent = [&](int frame)
+    {
+        for (int i = 0; i < 2; ++i)
+        {
+            const auto id = ed::NodeId(i + 1);
+            if (frame == 0)
+                ed::SetNodePosition(id, ImVec2(100.0f + 50.0f * i, 100.0f + 20.0f * i));
+            ed::BeginNode(id);
+            if (ImGui::Button(i == 0 ? "Back" : "Front", ImVec2(120.0f, 40.0f)))
+                pressed[i] = true;
+            ed::EndNode();
+        }
+        overlap = ed::CanvasToScreen(ImVec2(190.0f, 138.0f));
+    };
+    session.Run(3);
+    session.Click(overlap);
+
+    test::Check(pressed[1] && !pressed[0], "a click where node 2 covers node 1 presses node 2's button: back %d, front %d", pressed[0], pressed[1]);
+}
+
+TEST_CASE(PopupOverFrontNode, "interaction.popup_of_a_back_node_over_a_front_node_takes_the_click", "PR-337", test::TestFlags_None)
+{
+    // Node 1 opens a popup that lies over node 2, which is drawn above node 1.
+    test::Storage storage;
+    test::Session session(&storage);
+    bool   pressed = false;
+    ImVec2 overNode2;
+    session.DefaultContent = [&](int frame)
+    {
+        for (int i = 0; i < 2; ++i)
+        {
+            const auto id = ed::NodeId(i + 1);
+            if (frame == 0)
+                ed::SetNodePosition(id, ImVec2(100.0f + 300.0f * i, 100.0f));
+            ed::BeginNode(id);
+            ImGui::Button(i == 0 ? "Back" : "Front", ImVec2(120.0f, 40.0f));
+            if (i == 0)
+            {
+                ed::Suspend();
+                if (frame == 3)
+                    ImGui::OpenPopup("Menu");
+                ImGui::SetNextWindowPos(overNode2);
+                if (ImGui::BeginPopup("Menu"))
+                {
+                    if (ImGui::Button("Item", ImVec2(100.0f, 30.0f)))
+                        pressed = true;
+                    ImGui::EndPopup();
+                }
+                ed::Resume();
+            }
+            ed::EndNode();
+        }
+        overNode2 = ed::CanvasToScreen(ImVec2(410.0f, 105.0f));
+    };
+    session.Run(6);
+    session.Click(overNode2 + ImVec2(50.0f, 20.0f));
+
+    test::Check(pressed, "the popup's button over node 2 takes the click");
+}
