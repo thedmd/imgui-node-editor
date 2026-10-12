@@ -1105,3 +1105,11 @@ TEST_CASE(GridAroundZero, "interaction.grid_snaps_down_on_both_sides_of_zero", "
         test::Check(position.x == expected[i] && position.y == expected[i], "a node dragged to (%g, %g) snaps to (%g, %g): at (%g, %g)", targets[i], targets[i], expected[i], expected[i], position.x, position.y);
     }
 }
+
+TEST_CASE(PivotClosestToGrid, "interaction.drag_snaps_the_pin_closest_to_the_grid", "INT-18", test::TestFlags_None)
+{
+    // Dragged down by 12, the pivot 20 below the top lands on the grid exactly, and
+    // the node follows the mouse. Snapping the pivot 10 below would hold it 6 back.
+    const auto position = DragNodeOnGrid(ImVec2(0.0f, 12.0f), { 10.0f, 20.0f });
+    test::Check(position.x == 0.0f && position.y == 12.0f, "the node dragged down by 12 snaps by its pin at 20 to (0, 12): at (%g, %g)", position.x, position.y);
+}
