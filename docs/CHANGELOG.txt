@@ -110,6 +110,9 @@ v0.9.4 (WIP):
         A view wider than 2^29 canvas units, such as navigating to content 10^9 units across, hung the frame.
         Grid lines less than 2 pixels apart, or fully transparent, are not drawn.
 
+    BUGFIX: Editor: Change settings once a navigation settles, not on each of its frames
+        One wheel notch changed them 10 times, and NavigateToContent() 21 times.
+
 v0.9.3 (2023-10-14):
 
     CHANGE: Canvas: Use ImDrawCallback_ImCanvas macro as draw callback sentinel (#256), thanks @nspitko
