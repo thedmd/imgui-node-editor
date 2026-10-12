@@ -366,3 +366,80 @@ TEST_CASE(QueuedLinkDeletedMeanwhile, "deletion.queued_link_deleted_meanwhile_re
     test::Check(document.Reports("link 101") == 1, "link 101 reported once: %d times", document.Reports("link 101"));
     test::Check(document.Links.empty() && document.FailedLinks.empty(), "document and editor agree on links: %d in document, %d rejected by the editor", (int)document.Links.size(), (int)document.FailedLinks.size());
 }
+
+TEST_CASE(AcceptTwice, "deletion.second_accept_leaves_next_candidate", "API-2", test::TestFlags_None)
+{
+    // Nodes 1 and 21 are deleted together. The application accepts node 1 twice
+    // and keeps node 21.
+    test::ExpectAsserts(1);
+    test::Storage storage;
+    test::Session session(&storage);
+    Document document;
+    document.Links.clear();
+    bool secondAccept = true;
+    std::string offered;
+    for (int i = 0; i < 8; ++i)
+        session.Frame([&](int frame)
+        {
+            document.SubmitNodes(frame);
+            if (frame == 3)
+            {
+                ed::DeleteNode(1);
+                ed::DeleteNode(21);
+            }
+            if (ed::BeginDelete())
+            {
+                ed::NodeId nodeId;
+                while (ed::QueryDeletedNode(&nodeId))
+                {
+                    offered += " " + std::to_string(nodeId.Get());
+                    if (nodeId.Get() == 1 && ed::AcceptDeletedItem())
+                    {
+                        document.Nodes.erase(std::remove(document.Nodes.begin(), document.Nodes.end(), 1), document.Nodes.end());
+                        secondAccept = ed::AcceptDeletedItem();
+                    }
+                    else
+                        ed::RejectDeletedItem();
+                }
+                ed::EndDelete();
+            }
+        });
+
+    const ImVec2 position = session.Use([] { return ed::GetNodePosition(21); });
+    test::Check(!secondAccept, "second AcceptDeletedItem() for node 1 returns false");
+    test::Check(offered == " 1 21", "both nodes offered:%s", offered.c_str());
+    test::Check(position.x == 600.0f && position.y == 100.0f, "node 21 kept in place: (%g, %g)", position.x, position.y);
+}
+
+TEST_CASE(RejectAfterLoop, "deletion.reject_after_query_loop_does_nothing", "API-2", test::TestFlags_None)
+{
+    test::ExpectAsserts(1);
+    test::Storage storage;
+    test::Session session(&storage);
+    Document document;
+    document.LinksFirst = false;
+    bool rejected = false;
+    for (int i = 0; i < 8; ++i)
+        session.Frame([&](int frame)
+        {
+            document.SubmitNodes(frame);
+            document.SubmitLinks();
+            if (frame == 3)
+                ed::DeleteNode(11);
+            if (ed::BeginDelete())
+            {
+                document.DeleteNodes(frame);
+                document.DeleteLinks(frame);
+                if (!rejected)
+                {
+                    ed::RejectDeletedItem();
+                    rejected = true;
+                }
+                ed::EndDelete();
+            }
+        });
+    document.PrintLog();
+
+    test::Check(rejected && document.Reports("node 11 accepted") == 1, "node 11 deleted, then RejectDeletedItem() called");
+    test::Check(document.Links.empty(), "links of node 11 deleted with it: %d left", (int)document.Links.size());
+}

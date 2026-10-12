@@ -132,6 +132,10 @@ v0.10.0 (WIP):
     BUGFIX: Editor: Count nested Suspend()/Resume() pairs
         A second Suspend() brought back the editor's own draw list splitter in screen space.
 
+    BUGFIX: Editor: Accept or reject only the deletion candidate a query returned
+        A second AcceptDeletedItem() deleted the next, unreported candidate, and RejectDeletedItem() after
+        the query loop read out of bounds. Both assert now without a current candidate.
+
 v0.9.2 (2023-09-01):
 
     NEW: Editor: Add offset of hover/select to style (thanks @MultiPain)

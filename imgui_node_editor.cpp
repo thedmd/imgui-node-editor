@@ -5127,7 +5127,7 @@ ed::DeleteItemsAction::DeleteItemsAction(EditorContext* editor):
     m_IsActive(false),
     m_InInteraction(false),
     m_CurrentItemType(Unknown),
-    m_UserAction(Undetermined),
+    m_HasCurrentItem(false),
     m_CandidateItemIndex(0),
     m_IsReportingDeletedLinks(false)
 {
@@ -5271,7 +5271,7 @@ bool ed::DeleteItemsAction::Begin()
     m_InInteraction = true;
 
     m_CurrentItemType = Unknown;
-    m_UserAction      = Undetermined;
+    m_HasCurrentItem  = false;
 
     return m_IsActive;
 }
@@ -5342,13 +5342,13 @@ bool ed::DeleteItemsAction::QueryItem(ObjectId* itemId, IteratorType itemType)
         m_CurrentItemType    = itemType;
         m_CandidateItemIndex = 0;
     }
-    else if (m_UserAction == Undetermined)
+    else if (m_HasCurrentItem)
     {
         // An undecided item is kept, as if rejected, without the assert for deleted links.
         DropCurrentItem();
     }
 
-    m_UserAction = Undetermined;
+    m_HasCurrentItem = false;
 
     auto itemCount = (int)m_Candidates.size();
     while (m_CandidateItemIndex < itemCount)
@@ -5357,6 +5357,7 @@ bool ed::DeleteItemsAction::QueryItem(ObjectId* itemId, IteratorType itemType)
         if (itemType == Node ? candidate.ID.IsNodeId() : candidate.ID.IsLinkId())
         {
             *itemId = candidate.ID;
+            m_HasCurrentItem = true;
             return true;
         }
 
@@ -5371,10 +5372,11 @@ bool ed::DeleteItemsAction::QueryItem(ObjectId* itemId, IteratorType itemType)
 
 bool ed::DeleteItemsAction::AcceptItem(bool deleteDependencies)
 {
-    if (!m_InInteraction)
+    IM_ASSERT(m_HasCurrentItem && "Please accept only an item QueryDeletedLink() or QueryDeletedNode() has just returned");
+    if (!m_InInteraction || !m_HasCurrentItem)
         return false;
 
-    m_UserAction = Accepted;
+    m_HasCurrentItem = false;
 
     RemoveItem(deleteDependencies);
 
@@ -5383,10 +5385,11 @@ bool ed::DeleteItemsAction::AcceptItem(bool deleteDependencies)
 
 void ed::DeleteItemsAction::RejectItem()
 {
-    if (!m_InInteraction)
+    IM_ASSERT(m_HasCurrentItem && "Please reject only an item QueryDeletedLink() or QueryDeletedNode() has just returned");
+    if (!m_InInteraction || !m_HasCurrentItem)
         return;
 
-    m_UserAction = Rejected;
+    m_HasCurrentItem = false;
 
     const bool isDeleted = DropCurrentItem().IsDeleted;
     IM_ASSERT(!isDeleted && "Link was deleted together with its node and can't be kept.");
@@ -5421,6 +5424,8 @@ void ed::DeleteItemsAction::RemoveItem(bool deleteDependencies)
 
 ed::DeleteItemsAction::Candidate ed::DeleteItemsAction::DropCurrentItem()
 {
+    IM_ASSERT(m_CandidateItemIndex >= 0 && m_CandidateItemIndex < (int)m_Candidates.size());
+
     auto candidate = m_Candidates[m_CandidateItemIndex];
     m_Candidates.erase(m_Candidates.begin() + m_CandidateItemIndex);
 
