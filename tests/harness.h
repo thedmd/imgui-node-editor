@@ -59,6 +59,19 @@ int  AssertCount();
 int  CheckFailures();
 void ResetResults();
 
+// While a ThrowOnAssert exists, a failed IM_ASSERT throws AssertFailure. For an
+// assert that guards code which would crash past it.
+struct AssertFailure {};
+
+struct ThrowOnAssert
+{
+    ThrowOnAssert();
+    ~ThrowOnAssert();
+
+    ThrowOnAssert(const ThrowOnAssert&) = delete;
+    ThrowOnAssert& operator=(const ThrowOnAssert&) = delete;
+};
+
 
 //------------------------------------------------------------------------------
 // Headless Dear ImGui context. Plays the role of a platform and renderer backend:
