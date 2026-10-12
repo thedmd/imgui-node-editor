@@ -99,6 +99,17 @@ namespace test {
 
 
 //------------------------------------------------------------------------------
+static bool IsResetRenderState(ImDrawCallback callback)
+{
+# if IMGUI_VERSION_NUM >= 19280
+    return callback == ImGui::GetPlatformIO().DrawCallback_ResetRenderState;
+# else
+    return callback == ImDrawCallback_ResetRenderState;
+# endif
+}
+
+
+//------------------------------------------------------------------------------
 # if IMGUI_VERSION_NUM >= 19110
 static const char* GetClipboardText(ImGuiContext*)
 {
@@ -214,7 +225,7 @@ void Host::Render()
         {
             if (command.UserCallback)
             {
-                if (command.UserCallback != ImDrawCallback_ResetRenderState)
+                if (!IsResetRenderState(command.UserCallback))
                 {
                     if (StrayCallbacks++ == 0)
                         Fail("draw list '%s' has a callback (%p) the renderer would call", drawList->_OwnerName ? drawList->_OwnerName : "?", (void*)command.UserCallback);
@@ -264,7 +275,7 @@ Geometry Capture(const ImDrawList* drawList)
     {
         if (command.UserCallback != nullptr)
         {
-            if (command.UserCallback != ImDrawCallback_ResetRenderState)
+            if (!IsResetRenderState(command.UserCallback))
                 ++geometry.Callbacks;
             continue;
         }
