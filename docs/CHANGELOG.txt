@@ -50,6 +50,8 @@ v0.10.0 (WIP):
     BUGFIX: Canvas: Set draw list pixel density with _SetPixelDensity() since ImGui r19292
         Zoomed canvas lost anti-aliasing with ImGui 1.93.
 
+    BUGFIX: Editor: Set draw list pixel density with _SetPixelDensity() since ImGui r19292
+
 v0.9.2 (2023-09-01):
 
     NEW: Editor: Add offset of hover/select to style (thanks @MultiPain)
