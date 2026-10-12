@@ -196,3 +196,38 @@ TEST_CASE(NoSelfLink, "protocols.dropping_on_the_source_pin_offers_nothing", "AP
 
     test::Check(selfLinks == 0, "pin 12 isn't offered a link to itself: %d frames did", selfLinks);
 }
+
+TEST_CASE(RepeatedQueries, "protocols.second_query_leaves_the_cursor", "API-11", test::TestFlags_None)
+{
+    test::Storage storage;
+    test::Session session(&storage);
+    std::map<int, ImVec2> pins;
+    bool   queriedTwice = false;
+    ImVec2 afterFirst, afterSecond;
+    session.DefaultContent = [&](int frame)
+    {
+        TwoNodes(frame, pins);
+        if (ed::BeginCreate())
+        {
+            ed::PinId start, end;
+            if (ed::QueryNewLink(&start, &end))
+            {
+                ImGui::TextUnformatted("Link");
+                afterFirst = ImGui::GetCursorScreenPos();
+                if (ed::QueryNewLink(&start, &end))
+                {
+                    afterSecond  = ImGui::GetCursorScreenPos();
+                    queriedTwice = true;
+                }
+            }
+            ed::EndCreate();
+        }
+    };
+    session.Run(3);
+    DragLinkOverTarget(session, pins);
+    test::MouseButton(0, false);
+    session.Run(2);
+
+    test::Check(queriedTwice && afterSecond.x == afterFirst.x && afterSecond.y == afterFirst.y,
+        "a second QueryNewLink() leaves the cursor below the text: (%g, %g), was (%g, %g)", afterSecond.x, afterSecond.y, afterFirst.x, afterFirst.y);
+}
