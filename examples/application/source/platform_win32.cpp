@@ -255,9 +255,6 @@ bool PlatformWin32::ProcessMainWindowEvents()
         else if (GetMessage(&msg, nullptr, 0U, 0U) <= 0)
             return false;
 
-        if (msg.message == WM_KEYDOWN && (msg.wParam == VK_ESCAPE))
-            PostQuitMessage(0);
-
         if (msg.message == WM_QUIT)
             return false;
 
