@@ -79,6 +79,8 @@ v0.10.0 (WIP):
     BUGFIX: Editor: Write IMGUI_NODE_EDITOR_VERSION_NUM in decimal
         001000 was octal 512, so version checks against 1000 failed.
 
+    NEW: Tests: Add headless test suite, run with CTest from tests/
+
 v0.9.2 (2023-09-01):
 
     NEW: Editor: Add offset of hover/select to style (thanks @MultiPain)
