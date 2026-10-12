@@ -68,7 +68,7 @@ static const int c_NodePinChannel            = 3;
 static const int c_NodeContentChannel        = 4;
 
 static const float c_GroupSelectThickness       = 6.0f;  // canvas pixels
-static const float c_LinkSelectThickness        = 5.0f;  // canvas pixels
+static const float c_LinkSelectThickness        = 5.0f;  // screen pixels
 static const float c_LinkSelectedBorder         = 4.5f;  // canvas pixels
 static const float c_LinkHighlightedBorder      = 3.5f;  // canvas pixels
 static const float c_LinkHoveredBorder          = 2.0f;  // canvas pixels
@@ -2633,8 +2633,9 @@ void ed::EditorContext::MakeDirty(SaveReasonFlags reason, Node* node)
 
 ed::Link* ed::EditorContext::FindLinkAt(const ImVec2& p)
 {
+    const auto extraThickness = c_LinkSelectThickness * GetView().InvScale;
     for (auto& link : m_Links)
-        if (link->TestHit(p, c_LinkSelectThickness))
+        if (link->TestHit(p, extraThickness))
             return link;
 
     return nullptr;

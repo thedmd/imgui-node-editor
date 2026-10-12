@@ -2,6 +2,7 @@
 // What the editor draws, culls and hit tests of a link.
 //------------------------------------------------------------------------------
 # include "harness.h"
+# include <cstdio>
 
 namespace {
 
@@ -118,4 +119,46 @@ TEST_CASE(HitBand, "links.hit_band_is_the_same_in_every_direction", "CORE-15", t
     }
 
     test::Check(wrong == 0, "horizontal and vertical links are hovered up to their thickness and 5 from them");
+}
+
+TEST_CASE(HoverSlackAtZoom, "links.hover_slack_is_the_same_at_any_zoom", "CORE-15", test::TestFlags_None)
+{
+    // A link 1 thick is hovered up to 5 screen pixels past its stroke; the mouse is
+    // half a pixel inside or outside of that.
+    struct Case { float Zoom; float Slack; bool Hovered; };
+    const Case cases[] =
+    {
+        { 0.25f, 4.5f, true }, { 0.25f, 5.5f, false },
+        { 1.0f,  4.5f, true }, { 1.0f,  5.5f, false },
+        { 4.0f,  4.5f, true }, { 4.0f,  5.5f, false },
+    };
+    int wrong = 0;
+    for (const auto& c : cases)
+    {
+        char settings[128];
+        snprintf(settings, sizeof(settings), R"({"view":{"scroll":{"x":0,"y":0},"zoom":%g}})", c.Zoom);
+        test::Storage storage;
+        storage.Global = settings;
+        test::Session session(&storage);
+        LinkScene scene;
+        session.DefaultContent = [&scene](int frame) { scene.Submit(frame); };
+        session.Run(2);
+
+        const auto mouse = session.Use([] { return ImFloor(ed::CanvasToScreen(ImVec2(0.0f, 0.0f)) + ed::GetScreenSize() * 0.5f); });
+        const auto at    = session.Use([&mouse] { return ed::ScreenToCanvas(mouse); });
+        const auto distance = (c.Zoom * scene.Thickness + c.Slack) / c.Zoom;
+        scene.Start = ImVec2(at.x - 200.0f, at.y - distance);
+        scene.End   = ImVec2(at.x + 200.0f, at.y - distance);
+        test::MouseMove(mouse);
+        session.Run(2);
+
+        const bool hovered = session.Use([] { return ed::GetHoveredLink() == ed::LinkId(100); });
+        if (hovered != c.Hovered)
+        {
+            ++wrong;
+            test::Check(false, "at zoom %g the link is %s %g screen pixels past its stroke", c.Zoom, hovered ? "hovered" : "not hovered", c.Slack);
+        }
+    }
+
+    test::Check(wrong == 0, "links are hovered up to 5 screen pixels past their stroke at any zoom");
 }
