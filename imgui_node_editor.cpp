@@ -1978,6 +1978,20 @@ ed::Node* ed::EditorContext::FindNodeAt(const ImVec2& p)
     return nullptr;
 }
 
+bool ed::EditorContext::IsNodeCoveredAt(Node* node, const ImVec2& p) const
+{
+    // Nodes after 'node' are drawn above it. They aren't submitted yet while 'node' is
+    // built, so their bounds are the last frame's.
+    auto nodeIt = std::find_if(m_Nodes.begin(), m_Nodes.end(), [node](const ObjectWrapper<Node>& wrapper) { return wrapper.m_Object == node; });
+    if (nodeIt == m_Nodes.end())
+        return false;
+
+    return std::any_of(nodeIt + 1, m_Nodes.end(), [&p](const ObjectWrapper<Node>& other)
+    {
+        return !ImRect_IsEmpty(other.m_Object->m_Bounds) && other.m_Object->m_Bounds.Contains(p);
+    });
+}
+
 void ed::EditorContext::FindNodesInRect(const ImRect& r, vector<Node*>& result, bool append, bool includeIntersecting)
 {
     if (!append)
@@ -5520,7 +5534,9 @@ ed::Object* ed::DeleteItemsAction::DropCurrentItem()
 ed::NodeBuilder::NodeBuilder(EditorContext* editor):
     Editor(editor),
     m_CurrentNode(nullptr),
-    m_CurrentPin(nullptr)
+    m_CurrentPin(nullptr),
+    m_IsHoverBlocked(false),
+    m_BlockedHoveredId(0)
 {
 }
 
@@ -5581,11 +5597,30 @@ void ed::NodeBuilder::Begin(NodeId nodeId)
         ImGui::SetCursorPos(ImGui::GetCursorPos() + ImVec2(m_NodePadding.x, m_NodePadding.y));
         ImGui::BeginGroup();
     }
+
+    // ImGui gives hover to the first item submitted under the mouse, whatever node is
+    // drawn above. Where another node covers this one, a hovered ID that no item has
+    // keeps its widgets from being hovered until End(). Not where another window is
+    // under the mouse, such as a popup opened from this node: ImGui handles that.
+    auto& g = *ImGui::GetCurrentContext();
+    const auto mousePos = ImGui::GetMousePos();
+    m_IsHoverBlocked = g.HoveredWindow == ImGui::GetCurrentWindow() && m_CurrentNode->m_Bounds.Contains(mousePos) && Editor->IsNodeCoveredAt(m_CurrentNode, mousePos);
+    if (m_IsHoverBlocked)
+    {
+        m_BlockedHoveredId = g.HoveredId;
+        g.HoveredId        = ~ImGuiID(0);
+    }
 }
 
 void ed::NodeBuilder::End()
 {
     IM_ASSERT(nullptr != m_CurrentNode);
+
+    if (m_IsHoverBlocked)
+    {
+        ImGui::GetCurrentContext()->HoveredId = m_BlockedHoveredId;
+        m_IsHoverBlocked = false;
+    }
 
     if (auto drawList = Editor->GetDrawList())
     {

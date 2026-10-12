@@ -1226,6 +1226,9 @@ struct NodeBuilder
     ImDrawListSplitter m_Splitter;
     ImDrawListSplitter m_PinSplitter;
 
+    bool    m_IsHoverBlocked;
+    ImGuiID m_BlockedHoveredId;
+
     NodeBuilder(EditorContext* editor);
     ~NodeBuilder();
 
@@ -1382,6 +1385,7 @@ struct EditorContext
     Node* FindNodeAt(const ImVec2& p);
     void FindNodesInRect(const ImRect& r, vector<Node*>& result, bool append = false, bool includeIntersecting = true);
     void FindLinksInRect(const ImRect& r, vector<Link*>& result, bool append = false);
+    bool IsNodeCoveredAt(Node* node, const ImVec2& p) const; // by a node drawn above it
 
     bool HasAnyLinks(NodeId nodeId) const;
     bool HasAnyLinks(PinId pinId) const;
