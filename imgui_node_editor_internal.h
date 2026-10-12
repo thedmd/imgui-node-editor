@@ -509,6 +509,9 @@ struct Link final: Object
 
     virtual ImRect GetBounds() const override final;
 
+    // The curve and the axes of its arrows.
+    ImRect GetCurveBounds() const;
+
     virtual Link* AsLink() override final { return this; }
 };
 
