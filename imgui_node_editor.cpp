@@ -121,6 +121,11 @@ static bool IsGroup(const ed::Node* node)
         return false;
 }
 
+static bool IsDeleted(const ed::Object* object)
+{
+    return object && object->m_DeleteOnNewFrame;
+}
+
 
 //------------------------------------------------------------------------------
 static void ImRect_Floor(ImRect& rect)
@@ -1132,6 +1137,14 @@ void ed::EditorContext::Begin(const char* id, const ImVec2& size)
     //ImGui::LogToClipboard();
     //Log("---- begin ----");
 
+    static auto hasDeleted = [](const auto& objects)
+    {
+        return std::any_of(objects.begin(), objects.end(), [](const auto& objectWrapper) { return objectWrapper->m_DeleteOnNewFrame; });
+    };
+
+    if (hasDeleted(m_Nodes) || hasDeleted(m_Pins) || hasDeleted(m_Links))
+        ForgetDeletedObjects();
+
     static auto resetAndCollect = [](auto& objects)
     {
         objects.erase(std::remove_if(objects.begin(), objects.end(), [](auto objectWrapper)
@@ -1942,6 +1955,46 @@ void ed::EditorContext::NotifyLinkDeleted(Link* link)
 {
     if (m_LastActiveLink == link)
         m_LastActiveLink = nullptr;
+}
+
+void ed::EditorContext::ForgetDeletedObjects()
+{
+    m_SelectedObjects.erase(std::remove_if(m_SelectedObjects.begin(), m_SelectedObjects.end(), IsDeleted), m_SelectedObjects.end());
+
+    // Nulled instead of erased, so the selection still compares as changed.
+    std::replace_if(m_LastSelectedObjects.begin(), m_LastSelectedObjects.end(), IsDeleted, nullptr);
+
+    if (IsDeleted(m_LastActiveLink))
+        m_LastActiveLink = nullptr;
+
+    EditorAction* actions[] = { &m_NavigateAction, &m_SizeAction, &m_DragAction, &m_SelectAction, &m_ContextMenuAction, &m_ShortcutAction, &m_CreateItemAction, &m_DeleteItemsAction };
+    for (auto action : actions)
+        action->ForgetDeletedObjects();
+
+    for (auto controller : m_AnimationControllers)
+        controller->ForgetDeletedObjects();
+
+    for (auto& pin : m_Pins)
+    {
+        if (IsDeleted(pin->m_Node))
+            pin->m_Node = nullptr;
+        if (IsDeleted(pin->m_PreviousPin))
+            pin->m_PreviousPin = nullptr;
+    }
+
+    for (auto& node : m_Nodes)
+    {
+        if (IsDeleted(node->m_LastPin))
+            node->m_LastPin = nullptr;
+    }
+
+    for (auto& link : m_Links)
+    {
+        if (IsDeleted(link->m_StartPin))
+            link->m_StartPin = nullptr;
+        if (IsDeleted(link->m_EndPin))
+            link->m_EndPin = nullptr;
+    }
 }
 
 void ed::EditorContext::Suspend(SuspendFlags flags)
@@ -3274,6 +3327,18 @@ void ed::FlowAnimationController::Release(FlowAnimation* animation)
     IM_UNUSED(animation);
 }
 
+void ed::FlowAnimationController::ForgetDeletedObjects()
+{
+    for (auto animation : m_Animations)
+    {
+        if (!IsDeleted(animation->m_Link))
+            continue;
+
+        animation->Stop();
+        animation->m_Link = nullptr;
+    }
+}
+
 
 
 //------------------------------------------------------------------------------
@@ -3486,6 +3551,12 @@ void ed::NavigateAction::ShowMetrics()
         m_VisibleRect.Max.x, m_VisibleRect.Max.y,
         m_VisibleRect.Max.x - m_VisibleRect.Min.x,
         m_VisibleRect.Max.y - m_VisibleRect.Min.y);
+}
+
+void ed::NavigateAction::ForgetDeletedObjects()
+{
+    if (IsDeleted(m_LastObject))
+        m_LastObject = nullptr;
 }
 
 void ed::NavigateAction::NavigateTo(const ImRect& bounds, ZoomMode zoomMode, float duration, NavigationReason reason)
@@ -3841,6 +3912,16 @@ void ed::SizeAction::ShowMetrics()
     }
 }
 
+void ed::SizeAction::ForgetDeletedObjects()
+{
+    if (!IsDeleted(m_SizedNode))
+        return;
+
+    m_SizedNode = nullptr;
+    m_IsActive  = false;
+    m_Clean     = false;
+}
+
 ed::NodeRegion ed::SizeAction::GetRegion(Node* node)
 {
     return node->GetRegion(ImGui::GetMousePos());
@@ -4038,6 +4119,22 @@ void ed::DragAction::ShowMetrics()
     ImGui::Text("    Node: %s (%p)", getObjectName(m_DraggedObject), m_DraggedObject ? m_DraggedObject->ID().AsPointer() : nullptr);
 }
 
+void ed::DragAction::ForgetDeletedObjects()
+{
+    m_Objects.erase(std::remove_if(m_Objects.begin(), m_Objects.end(), IsDeleted), m_Objects.end());
+
+    if (!IsDeleted(m_DraggedObject))
+        return;
+
+    m_DraggedObject = nullptr;
+
+    if (m_IsActive)
+    {
+        m_IsActive = false;
+        m_Clear    = true;
+    }
+}
+
 
 
 
@@ -4195,6 +4292,12 @@ void ed::SelectAction::ShowMetrics()
 
     ImGui::Text("%s:", GetName());
     ImGui::Text("    Active: %s", m_IsActive ? "yes" : "no");
+}
+
+void ed::SelectAction::ForgetDeletedObjects()
+{
+    m_CandidateObjects.erase(std::remove_if(m_CandidateObjects.begin(), m_CandidateObjects.end(), IsDeleted), m_CandidateObjects.end());
+    m_SelectedObjectsAtStart.erase(std::remove_if(m_SelectedObjectsAtStart.begin(), m_SelectedObjectsAtStart.end(), IsDeleted), m_SelectedObjectsAtStart.end());
 }
 
 void ed::SelectAction::Draw(ImDrawList* drawList)
@@ -4525,6 +4628,11 @@ void ed::ShortcutAction::ShowMetrics()
     ImGui::Text("    Action: %s", getActionName(m_CurrentAction));
 }
 
+void ed::ShortcutAction::ForgetDeletedObjects()
+{
+    m_Context.erase(std::remove_if(m_Context.begin(), m_Context.end(), IsDeleted), m_Context.end());
+}
+
 bool ed::ShortcutAction::Begin()
 {
     if (m_IsActive)
@@ -4721,6 +4829,19 @@ void ed::CreateItemAction::ShowMetrics()
     ImGui::Text("    Stage: %s", getStageName(m_CurrentStage));
     ImGui::Text("    User Action: %s", getActionName(m_UserAction));
     ImGui::Text("    Item Type: %s", getItemName(m_ItemType));
+}
+
+void ed::CreateItemAction::ForgetDeletedObjects()
+{
+    if (!IsDeleted(m_DraggedPin) && !IsDeleted(m_LinkStart) && !IsDeleted(m_LinkEnd))
+        return;
+
+    // The item can't be created without its pins.
+    m_DraggedPin = nullptr;
+    m_NextStage  = None;
+    m_ItemType   = NoItem;
+    m_LinkStart  = nullptr;
+    m_LinkEnd    = nullptr;
 }
 
 void ed::CreateItemAction::SetStyle(ImU32 color, float thickness)
@@ -5019,6 +5140,12 @@ void ed::DeleteItemsAction::ShowMetrics()
     //ImGui::Text("    Node: %s (%d)", getObjectName(DeleteItemsgedNode), DeleteItemsgedNode ? DeleteItemsgedNode->ID : 0);
 }
 
+void ed::DeleteItemsAction::ForgetDeletedObjects()
+{
+    m_ManuallyDeletedObjects.erase(std::remove_if(m_ManuallyDeletedObjects.begin(), m_ManuallyDeletedObjects.end(), IsDeleted), m_ManuallyDeletedObjects.end());
+    m_CandidateObjects.erase(std::remove_if(m_CandidateObjects.begin(), m_CandidateObjects.end(), IsDeleted), m_CandidateObjects.end());
+}
+
 bool ed::DeleteItemsAction::Add(Object* object)
 {
     if (Editor->GetCurrentAction() != nullptr)
@@ -5067,9 +5194,9 @@ bool ed::DeleteItemsAction::QueryLink(LinkId* linkId, PinId* startId, PinId* end
     {
         auto link = Editor->FindLink(*linkId);
         if (startId)
-            *startId = link->m_StartPin->m_ID;
+            *startId = link->m_StartPin ? link->m_StartPin->m_ID : PinId();
         if (endId)
-            *endId = link->m_EndPin->m_ID;
+            *endId = link->m_EndPin ? link->m_EndPin->m_ID : PinId();
     }
 
     return true;
