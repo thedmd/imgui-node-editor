@@ -15,6 +15,30 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 set(CMAKE_CXX_STANDARD            14)
 set(CMAKE_CXX_STANDARD_REQUIRED   YES)
 
+# Copies each file to bin/data, keeping its path relative to 'root'. Every file is
+# copied by one command owned by 'target', so parallel builds don't race on it.
+function(add_example_data_target target root)
+    set(_outputs)
+    foreach(_source ${ARGN})
+        if ("${_source}" MATCHES "\\.DS_Store$")
+            continue()
+        endif()
+        file(RELATIVE_PATH _relative "${root}" "${_source}")
+        set(_output "${CMAKE_BINARY_DIR}/bin/data/${_relative}")
+        get_filename_component(_output_dir "${_output}" DIRECTORY)
+        add_custom_command(
+            OUTPUT "${_output}"
+            COMMAND ${CMAKE_COMMAND} -E make_directory "${_output_dir}"
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different "${_source}" "${_output}"
+            DEPENDS "${_source}"
+            VERBATIM
+        )
+        list(APPEND _outputs "${_output}")
+    endforeach()
+    add_custom_target(${target} DEPENDS ${_outputs})
+    set_target_properties(${target} PROPERTIES FOLDER "examples")
+endfunction()
+
 # Macro that will configure an example application
 macro(add_example_executable name)
     project(${name})
@@ -28,6 +52,7 @@ macro(add_example_executable name)
 
     file(GLOB _Example_CommonResources CONFIGURE_DEPENDS "${IMGUI_NODE_EDITOR_ROOT_DIR}/examples/data/*")
     file(GLOB _Example_Resources CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/data/*")
+    set(_Example_Data ${_Example_Resources})
     #message(FATAL_ERROR "_Example_Resources = ${_Example_Resources}")
 
     set(_Example_Type)
@@ -88,38 +113,16 @@ macro(add_example_executable name)
         MACOSX_BUNDLE_ICON_FILE                 Icon.icns
     )
 
-    add_custom_command(
-        TARGET ${name}
-        PRE_BUILD
-        COMMAND ${CMAKE_COMMAND} -E make_directory ARGS ${_ExampleBinDir}/data
-    )
-
-    set(_ResourceRoot ${CMAKE_CURRENT_SOURCE_DIR})
-    foreach(_Resource ROOT "${IMGUI_NODE_EDITOR_ROOT_DIR}/examples/data" ${_Example_CommonResources} ROOT "${CMAKE_CURRENT_SOURCE_DIR}/data" ${_Example_Resources})
-        if (_Resource STREQUAL ROOT)
-            set(_ResourceRoot FALSE)
-            continue()
-        elseif(NOT _ResourceRoot)
-            set(_ResourceRoot ${_Resource})
-            continue()
-        endif()
-
-        if ("${_Resource}" MATCHES "\.DS_Store$")
-            list(REMOVE_ITEM _Example_Resources ${_Resource})
-            list(REMOVE_ITEM _Example_CommonResources ${_Resource})
-            continue()
-        endif()
-
-        file(RELATIVE_PATH _RelResource ${_ResourceRoot} ${_Resource})
-
-        add_custom_command(
-            TARGET ${name}
-            PRE_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different ARGS ${_Resource} ${_ExampleBinDir}/data/${_RelResource}
-        )
-    endforeach()
+    add_dependencies(${name} examples-data)
+    if (_Example_Data)
+        add_example_data_target(${name}-data "${CMAKE_CURRENT_SOURCE_DIR}/data" ${_Example_Data})
+        add_dependencies(${name} ${name}-data)
+    endif()
 
 endmacro()
+
+file(GLOB _Examples_CommonData CONFIGURE_DEPENDS "${IMGUI_NODE_EDITOR_ROOT_DIR}/examples/data/*")
+add_example_data_target(examples-data "${IMGUI_NODE_EDITOR_ROOT_DIR}/examples/data" ${_Examples_CommonData})
 
 add_subdirectory(application)
 
