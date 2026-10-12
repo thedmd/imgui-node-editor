@@ -1923,6 +1923,10 @@ void ed::EditorContext::NotifyLinkDeleted(Link* link)
 void ed::EditorContext::Suspend(SuspendFlags flags)
 {
     IM_ASSERT(m_DrawList != nullptr && "Suspend was called outiside of Begin/End.");
+
+    if (m_NodeBuilder.m_CurrentNode)
+        ImDrawList_SwapSplitter(m_DrawList, m_NodeBuilder.m_Splitter);
+
     auto lastChannel = m_DrawList->_Splitter._Current;
     m_DrawList->ChannelsSetCurrent(m_ExternalChannel);
     if (m_IsCanvasVisible)
@@ -1942,6 +1946,9 @@ void ed::EditorContext::Resume(SuspendFlags flags)
     if (m_IsCanvasVisible)
         m_Canvas.Resume();
     m_DrawList->ChannelsSetCurrent(lastChannel);
+
+    if (m_NodeBuilder.m_CurrentNode)
+        ImDrawList_SwapSplitter(m_DrawList, m_NodeBuilder.m_Splitter);
 }
 
 bool ed::EditorContext::IsSuspended()

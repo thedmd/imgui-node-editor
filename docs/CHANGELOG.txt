@@ -36,6 +36,8 @@ v0.10.0 (WIP):
         Since v0.9.1 state provided by application was ignored and overwritten
         by Config::SaveNodeSettings with default location.
 
+    BUGFIX: Editor: Make Suspend/Resume work inside BeginNode/EndNode (#282)
+
 v0.9.2 (2023-09-01):
 
     NEW: Editor: Add offset of hover/select to style (thanks @MultiPain)
