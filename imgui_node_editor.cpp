@@ -1942,6 +1942,17 @@ void ed::EditorContext::FindLinksForNode(NodeId nodeId, vector<Link*>& result, b
     }
 }
 
+void ed::EditorContext::FindLinksForDeletedPins(vector<Link*>& result)
+{
+    result.clear();
+
+    for (auto link : m_Links)
+    {
+        if (IsDeleted(link->m_StartPin) || IsDeleted(link->m_EndPin))
+            result.push_back(link);
+    }
+}
+
 bool ed::EditorContext::PinHadAnyLinks(PinId pinId)
 {
     auto pin = FindPin(pinId);
@@ -5044,34 +5055,53 @@ ed::DeleteItemsAction::DeleteItemsAction(EditorContext* editor):
     m_IsActive(false),
     m_InInteraction(false),
     m_CurrentItemType(Unknown),
-    m_UserAction(Undetermined)
+    m_UserAction(Undetermined),
+    m_CandidateItemIndex(0),
+    m_IsReportingDeletedLinks(false)
 {
 }
 
-void ed::DeleteItemsAction::DeleteDeadLinks(NodeId nodeId)
+void ed::DeleteItemsAction::SetCandidates(const vector<Object*>& objects)
 {
-    vector<ed::Link*> links;
-    Editor->FindLinksForNode(nodeId, links, true);
-    for (auto link : links)
-    {
-        link->m_DeleteOnNewFrame = true;
-
-        auto it = std::find(m_CandidateObjects.begin(), m_CandidateObjects.end(), link);
-        if (it != m_CandidateObjects.end())
-            continue;
-
-        m_CandidateObjects.push_back(link);
-    }
+    m_Candidates.clear();
+    for (auto object : objects)
+        m_Candidates.emplace_back(object->ID());
 }
 
-void ed::DeleteItemsAction::DeleteDeadPins(NodeId nodeId)
+void ed::DeleteItemsAction::DeleteDeadPins(ed::Node* node)
 {
-    auto node = Editor->FindNode(nodeId);
-    if (!node)
-        return;
-
     for (auto pin = node->m_LastPin; pin; pin = pin->m_PreviousPin)
         pin->m_DeleteOnNewFrame = true;
+}
+
+void ed::DeleteItemsAction::DeleteDeadLinks()
+{
+    vector<ed::Link*> links;
+    Editor->FindLinksForDeletedPins(links);
+    for (auto link : links)
+    {
+        if (link->m_DeleteOnNewFrame)
+            continue;
+
+        link->m_DeleteOnNewFrame = true;
+        Editor->DeselectObject(link);
+        Editor->NotifyLinkDeleted(link);
+
+        Candidate deleted(link->m_ID);
+        deleted.IsDeleted  = true;
+        deleted.StartPinId = link->m_StartPin ? link->m_StartPin->m_ID : PinId();
+        deleted.EndPinId   = link->m_EndPin   ? link->m_EndPin->m_ID   : PinId();
+
+        auto it = std::find_if(m_Candidates.begin(), m_Candidates.end(), [link](const Candidate& candidate)
+        {
+            return candidate.ID.IsLinkId() && candidate.ID.AsLinkId() == link->m_ID;
+        });
+
+        if (it != m_Candidates.end())
+            *it = deleted;
+        else
+            m_Candidates.push_back(deleted);
+    }
 }
 
 ed::EditorAction::AcceptResult ed::DeleteItemsAction::Accept(const Control& control)
@@ -5087,22 +5117,21 @@ ed::EditorAction::AcceptResult ed::DeleteItemsAction::Accept(const Control& cont
         auto& selection = Editor->GetSelectedObjects();
         if (!selection.empty())
         {
-            m_CandidateObjects = selection;
+            SetCandidates(selection);
             m_IsActive = true;
             return True;
         }
     }
     else if (control.ClickedLink && io.KeyAlt)
     {
-        m_CandidateObjects.clear();
-        m_CandidateObjects.push_back(control.ClickedLink);
+        SetCandidates({ control.ClickedLink });
         m_IsActive = true;
         return True;
     }
 
     else if (!m_ManuallyDeletedObjects.empty())
     {
-        m_CandidateObjects = m_ManuallyDeletedObjects;
+        SetCandidates(m_ManuallyDeletedObjects);
         m_ManuallyDeletedObjects.clear();
         m_IsActive = true;
         return True;
@@ -5118,7 +5147,16 @@ bool ed::DeleteItemsAction::Process(const Control& control)
     if (!m_IsActive)
         return false;
 
-    m_IsActive = false;
+    // Links deleted together with their node, which the application didn't
+    // query, are reported in one more interaction, in the next frame.
+    const bool reportDeletedLinks = !m_IsReportingDeletedLinks && std::any_of(m_Candidates.begin(), m_Candidates.end(), [](const Candidate& candidate) { return candidate.IsDeleted; });
+    if (reportDeletedLinks)
+        m_Candidates.erase(std::remove_if(m_Candidates.begin(), m_Candidates.end(), [](const Candidate& candidate) { return !candidate.IsDeleted; }), m_Candidates.end());
+    else
+        m_Candidates.clear();
+
+    m_IsReportingDeletedLinks = reportDeletedLinks;
+    m_IsActive                = reportDeletedLinks;
     return true;
 }
 
@@ -5143,7 +5181,6 @@ void ed::DeleteItemsAction::ShowMetrics()
 void ed::DeleteItemsAction::ForgetDeletedObjects()
 {
     m_ManuallyDeletedObjects.erase(std::remove_if(m_ManuallyDeletedObjects.begin(), m_ManuallyDeletedObjects.end(), IsDeleted), m_ManuallyDeletedObjects.end());
-    m_CandidateObjects.erase(std::remove_if(m_CandidateObjects.begin(), m_CandidateObjects.end(), IsDeleted), m_CandidateObjects.end());
 }
 
 bool ed::DeleteItemsAction::Add(Object* object)
@@ -5192,11 +5229,21 @@ bool ed::DeleteItemsAction::QueryLink(LinkId* linkId, PinId* startId, PinId* end
 
     if (startId || endId)
     {
-        auto link = Editor->FindLink(*linkId);
+        const auto& candidate = m_Candidates[m_CandidateItemIndex];
+
+        auto startPinId = candidate.StartPinId;
+        auto endPinId   = candidate.EndPinId;
+        if (!candidate.IsDeleted)
+        {
+            auto link = Editor->FindLink(*linkId);
+            startPinId = link && link->m_StartPin ? link->m_StartPin->m_ID : PinId();
+            endPinId   = link && link->m_EndPin   ? link->m_EndPin->m_ID   : PinId();
+        }
+
         if (startId)
-            *startId = link->m_StartPin ? link->m_StartPin->m_ID : PinId();
+            *startId = startPinId;
         if (endId)
-            *endId = link->m_EndPin ? link->m_EndPin->m_ID : PinId();
+            *endId = endPinId;
     }
 
     return true;
@@ -5228,30 +5275,20 @@ bool ed::DeleteItemsAction::QueryItem(ObjectId* itemId, IteratorType itemType)
     }
     else if (m_UserAction == Undetermined)
     {
-        RejectItem();
+        // An undecided item is kept, as if rejected, without the assert for deleted links.
+        DropCurrentItem();
     }
 
     m_UserAction = Undetermined;
 
-    auto itemCount = (int)m_CandidateObjects.size();
+    auto itemCount = (int)m_Candidates.size();
     while (m_CandidateItemIndex < itemCount)
     {
-        auto item = m_CandidateObjects[m_CandidateItemIndex];
-        if (itemType == Node)
+        const auto& candidate = m_Candidates[m_CandidateItemIndex];
+        if (itemType == Node ? candidate.ID.IsNodeId() : candidate.ID.IsLinkId())
         {
-            if (auto node = item->AsNode())
-            {
-                *itemId = node->m_ID;
-                return true;
-            }
-        }
-        else if (itemType == Link)
-        {
-            if (auto link = item->AsLink())
-            {
-                *itemId = link->m_ID;
-                return true;
-            }
+            *itemId = candidate.ID;
+            return true;
         }
 
         ++m_CandidateItemIndex;
@@ -5282,12 +5319,20 @@ void ed::DeleteItemsAction::RejectItem()
 
     m_UserAction = Rejected;
 
-    DropCurrentItem();
+    const bool isDeleted = DropCurrentItem().IsDeleted;
+    IM_ASSERT(!isDeleted && "Link was deleted together with its node and can't be kept.");
+    IM_UNUSED(isDeleted);
 }
 
 void ed::DeleteItemsAction::RemoveItem(bool deleteDependencies)
 {
-    auto item = DropCurrentItem();
+    const auto candidate = DropCurrentItem();
+    if (candidate.IsDeleted)
+        return;
+
+    auto item = Editor->FindObject(candidate.ID);
+    if (!item)
+        return;
 
     Editor->DeselectObject(item);
 
@@ -5297,21 +5342,20 @@ void ed::DeleteItemsAction::RemoveItem(bool deleteDependencies)
 
     if (deleteDependencies && m_CurrentItemType == Node)
     {
-        auto node = item->ID().AsNodeId();
-        DeleteDeadLinks(node);
-        DeleteDeadPins(node);
+        DeleteDeadPins(item->AsNode());
+        DeleteDeadLinks();
     }
 
     if (m_CurrentItemType == Link)
         Editor->NotifyLinkDeleted(item->AsLink());
 }
 
-ed::Object* ed::DeleteItemsAction::DropCurrentItem()
+ed::DeleteItemsAction::Candidate ed::DeleteItemsAction::DropCurrentItem()
 {
-    auto item = m_CandidateObjects[m_CandidateItemIndex];
-    m_CandidateObjects.erase(m_CandidateObjects.begin() + m_CandidateItemIndex);
+    auto candidate = m_Candidates[m_CandidateItemIndex];
+    m_Candidates.erase(m_Candidates.begin() + m_CandidateItemIndex);
 
-    return item;
+    return candidate;
 }
 
 

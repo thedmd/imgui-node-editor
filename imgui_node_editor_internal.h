@@ -1193,19 +1193,31 @@ private:
     enum IteratorType { Unknown, Link, Node };
     enum UserAction { Undetermined, Accepted, Rejected };
 
-    void DeleteDeadLinks(NodeId nodeId);
-    void DeleteDeadPins(NodeId nodeId);
+    struct Candidate
+    {
+        explicit Candidate(ObjectId id): ID(id) {}
+
+        ObjectId ID;
+        bool     IsDeleted = false; // link deleted together with its node, only reported
+        PinId    StartPinId;        // pins of a deleted link, which may be freed when it is reported
+        PinId    EndPinId;
+    };
+
+    void SetCandidates(const vector<Object*>& objects);
+    void DeleteDeadPins(ed::Node* node);
+    void DeleteDeadLinks();
 
     bool QueryItem(ObjectId* itemId, IteratorType itemType);
     void RemoveItem(bool deleteDependencies);
-    Object* DropCurrentItem();
+    Candidate DropCurrentItem();
 
-    vector<Object*> m_ManuallyDeletedObjects;
+    vector<Object*>   m_ManuallyDeletedObjects;
 
-    IteratorType    m_CurrentItemType;
-    UserAction      m_UserAction;
-    vector<Object*> m_CandidateObjects;
-    int             m_CandidateItemIndex;
+    IteratorType      m_CurrentItemType;
+    UserAction        m_UserAction;
+    vector<Candidate> m_Candidates;
+    int               m_CandidateItemIndex;
+    bool              m_IsReportingDeletedLinks;
 };
 
 struct NodeBuilder
@@ -1392,6 +1404,7 @@ struct EditorContext
     int BreakLinks(PinId pinId);
 
     void FindLinksForNode(NodeId nodeId, vector<Link*>& result, bool add = false);
+    void FindLinksForDeletedPins(vector<Link*>& result); // live or not
 
     bool PinHadAnyLinks(PinId pinId);
 

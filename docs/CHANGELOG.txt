@@ -95,6 +95,12 @@ v0.10.0 (WIP):
         flow animations, the DeleteNode()/DeleteLink() queue and pending new links.
         GetLinkPins() returns false for a link whose pins were deleted.
 
+    CHANGE: Editor: Report links deleted together with their node, whatever the order of queries
+        Such links are deselected at once and reported by QueryDeletedLink() with the pins they connected:
+        in the same interaction when queried after the node, otherwise in one more interaction in the
+        next frame. They are already deleted: AcceptDeletedItem() returns true and does nothing,
+        RejectDeletedItem() asserts. Links not submitted yet in that frame are deleted too.
+
 v0.9.2 (2023-09-01):
 
     NEW: Editor: Add offset of hover/select to style (thanks @MultiPain)
