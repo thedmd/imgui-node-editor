@@ -68,6 +68,9 @@ v0.9.4 (WIP):
     BUGFIX: Editor: Don't draw or hit-test the graph over the host window while the canvas is out of view
         Interactions and saving wait until the canvas is visible again.
 
+    BUGFIX: Editor: Count nested Suspend()/Resume() pairs
+        A second Suspend() brought back the editor's own draw list splitter in screen space.
+
 v0.9.3 (2023-10-14):
 
     CHANGE: Canvas: Use ImDrawCallback_ImCanvas macro as draw callback sentinel (#256), thanks @nspitko
