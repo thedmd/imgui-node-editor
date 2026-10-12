@@ -36,6 +36,7 @@ static int  s_AssertCount     = 0;
 static int  s_ExpectedAsserts = 0;
 static int  s_CheckFailures   = 0;
 static bool s_Skipped         = false;
+static int  s_ThrowOnAssert   = 0;
 
 static void Report(bool condition, const char* format, va_list args)
 {
@@ -82,6 +83,9 @@ void ResetResults()
     s_Skipped         = false;
 }
 
+ThrowOnAssert::ThrowOnAssert()  { ++s_ThrowOnAssert; }
+ThrowOnAssert::~ThrowOnAssert() { --s_ThrowOnAssert; }
+
 } // namespace test
 
 void NodeEditorTestAssert(const char* expression, const char* file, int line)
@@ -93,6 +97,9 @@ void NodeEditorTestAssert(const char* expression, const char* file, int line)
 
     if (++test::s_AssertCount <= 8)
         printf("    ASSERT %s(%d): %s\n", name, line, expression);
+
+    if (test::s_ThrowOnAssert > 0)
+        throw test::AssertFailure();
 }
 
 namespace test {

@@ -70,6 +70,7 @@ if (IMGUI_NODE_EDITOR_WARNINGS_AS_ERRORS)
 endif()
 
 set(_TestSources
+    api_tests.cpp
     canvas_tests.cpp
     deletion_tests.cpp
     draw_order_tests.cpp
