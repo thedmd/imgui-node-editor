@@ -79,6 +79,36 @@ TEST_CASE(BackgroundDrawListOutsideFrame, "api.node_background_draw_list_between
     test::Check(betweenFrames == nullptr, "nullptr between frames");
 }
 
+TEST_CASE(PinSubmittedTwice, "api.pin_submitted_twice_in_a_node", "API-4", test::TestFlags_None)
+{
+    // One pin ID used for an input and an output of the same node.
+    test::ExpectAsserts(4);
+    test::Storage storage;
+    test::Session session(&storage);
+    ImVec2 nodeCenter;
+    session.DefaultContent = [&](int frame)
+    {
+        if (frame == 0)
+            ed::SetNodePosition(1, ImVec2(100.0f, 100.0f));
+        ed::BeginNode(1);
+        ImGui::TextUnformatted("Node");
+        ed::BeginPin(2, ed::PinKind::Input);
+        ImGui::TextUnformatted("> in");
+        ed::EndPin();
+        ed::BeginPin(2, ed::PinKind::Output);
+        ImGui::TextUnformatted("out >");
+        ed::EndPin();
+        ed::EndNode();
+        nodeCenter = ed::CanvasToScreen(ed::GetNodePosition(1) + ed::GetNodeSize(1) * 0.5f);
+    };
+
+    // The editor walks the node's pins while the mouse is over it.
+    session.Run(2);
+    test::MouseMove(nodeCenter);
+    session.Run(2);
+    test::Check(true, "ed::End() returns with the mouse over the node");
+}
+
 TEST_CASE(CallWithoutEditor, "api.call_without_current_editor_asserts", "API-8", test::TestFlags_None)
 {
     test::ExpectAsserts(1);
