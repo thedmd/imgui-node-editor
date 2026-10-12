@@ -262,6 +262,9 @@ v0.10.0 (WIP):
     BUGFIX: Editor: Measure nodes and pins without items correctly on ImGui 1.91
         A node without items grew toward the item submitted before it, and an empty pin took hover far away.
 
+    BUGFIX: Editor: Don't offer a link from a pin to itself
+        Dragging back onto the source pin made QueryNewLink() report it as both ends.
+
 v0.9.2 (2023-09-01):
 
     NEW: Editor: Add offset of hover/select to style (thanks @MultiPain)

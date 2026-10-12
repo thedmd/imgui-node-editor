@@ -157,3 +157,42 @@ TEST_CASE(EndShortcutAfterFailedBegin, "protocols.end_shortcut_after_failed_begi
             ed::EndShortcut();
     });
 }
+
+TEST_CASE(NoSelfLink, "protocols.dropping_on_the_source_pin_offers_nothing", "API-11", test::TestFlags_None)
+{
+    test::Storage storage;
+    test::Session session(&storage);
+    std::map<int, ImVec2> pins;
+    int selfLinks = 0;
+    session.DefaultContent = [&](int frame)
+    {
+        TwoNodes(frame, pins);
+        if (ed::BeginCreate())
+        {
+            ed::PinId start, end;
+            if (ed::QueryNewLink(&start, &end) && start == end)
+            {
+                ++selfLinks;
+                ed::AcceptNewItem();
+            }
+            ed::EndCreate();
+        }
+    };
+    session.Run(3);
+
+    // Away from pin 12 and back onto it, then release.
+    test::MouseMove(pins[12]);
+    session.Run(2);
+    test::MouseButton(0, true);
+    session.Run(2);
+    for (int i = 1; i <= 10; ++i)
+    {
+        test::MouseMove(pins[12] + ImVec2(i <= 5 ? 12.0f * i : 12.0f * (10 - i), 0.0f));
+        session.Run(1);
+    }
+    session.Run(2);
+    test::MouseButton(0, false);
+    session.Run(3);
+
+    test::Check(selfLinks == 0, "pin 12 isn't offered a link to itself: %d frames did", selfLinks);
+}
