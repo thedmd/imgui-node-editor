@@ -136,6 +136,9 @@ v0.9.4 (WIP):
         An item-less pin made the node above it start a link instead of moving, and with ImGui before 1.91
         an empty node was selected on every frame.
 
+    BUGFIX: Editor: Report background double-clicks with mouse button indices
+        GetBackgroundDoubleClickButtonIndex() returned 1, 2 and 4, and a right double-click went unnoticed.
+
 v0.9.3 (2023-10-14):
 
     CHANGE: Canvas: Use ImDrawCallback_ImCanvas macro as draw callback sentinel (#256), thanks @nspitko

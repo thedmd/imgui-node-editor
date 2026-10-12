@@ -2712,11 +2712,11 @@ ed::Control ed::EditorContext::BuildControl(bool allowOffscreen)
             return -1;
 
         if ((backgroundExtraFlags & ImGuiButtonFlags_MouseButtonLeft) && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
-            return ImGuiButtonFlags_MouseButtonLeft;
-        if ((backgroundExtraFlags & ImGuiButtonFlags_MouseButtonRight) && ImGui::IsMouseDoubleClicked(ImGuiButtonFlags_MouseButtonRight))
-            return ImGuiButtonFlags_MouseButtonRight;
-        if ((backgroundExtraFlags & ImGuiButtonFlags_MouseButtonMiddle) && ImGui::IsMouseDoubleClicked(ImGuiButtonFlags_MouseButtonMiddle))
-            return ImGuiButtonFlags_MouseButtonMiddle;
+            return ImGuiMouseButton_Left;
+        if ((backgroundExtraFlags & ImGuiButtonFlags_MouseButtonRight) && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Right))
+            return ImGuiMouseButton_Right;
+        if ((backgroundExtraFlags & ImGuiButtonFlags_MouseButtonMiddle) && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Middle))
+            return ImGuiMouseButton_Middle;
 
         return -1;
     };
