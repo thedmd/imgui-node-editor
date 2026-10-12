@@ -5681,9 +5681,9 @@ ImDrawList* ed::NodeBuilder::GetUserBackgroundDrawList() const
 
 ImDrawList* ed::NodeBuilder::GetUserBackgroundDrawList(Node* node) const
 {
-    if (node && node->m_IsLive)
+    auto drawList = Editor->GetDrawList();
+    if (node && node->m_IsLive && drawList)
     {
-        auto drawList = Editor->GetDrawList();
         drawList->ChannelsSetCurrent(node->m_Channel + c_NodeUserBackgroundChannel);
         return drawList;
     }

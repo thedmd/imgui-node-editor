@@ -58,6 +58,27 @@ TEST_CASE(SelectTwiceDeselectOnce, "api.node_selected_twice_deselected_once", "C
     test::Check(selectionVertices == 0, "node 1 not drawn as selected: %d selection border vertices", selectionVertices);
 }
 
+TEST_CASE(BackgroundDrawListOutsideFrame, "api.node_background_draw_list_between_frames", "API-13", test::TestFlags_None)
+{
+    test::Storage storage;
+    test::Session session(&storage);
+    ImDrawList* inFrame = nullptr;
+    session.DefaultContent = [&](int frame)
+    {
+        if (frame == 0)
+            ed::SetNodePosition(1, ImVec2(100.0f, 100.0f));
+        ed::BeginNode(1);
+        ImGui::TextUnformatted("Node");
+        ed::EndNode();
+        inFrame = ed::GetNodeBackgroundDrawList(1);
+    };
+
+    session.Run(3);
+    ImDrawList* betweenFrames = session.Use([] { return ed::GetNodeBackgroundDrawList(1); });
+    test::Check(inFrame != nullptr, "available after EndNode()");
+    test::Check(betweenFrames == nullptr, "nullptr between frames");
+}
+
 TEST_CASE(CallWithoutEditor, "api.call_without_current_editor_asserts", "API-8", test::TestFlags_None)
 {
     test::ExpectAsserts(1);
