@@ -44,6 +44,10 @@ v0.9.4 (WIP):
         flow animations, the DeleteNode()/DeleteLink() queue and pending new links.
         GetLinkPins() returns false for a link whose pins were deleted.
 
+    BUGFIX: Editor: Stop flow animations when their link is deleted
+        Finished animations are reused. Style::FlowMarkerDistance is at least one canvas pixel; a negative
+        value drew markers without end.
+
 v0.9.3 (2023-10-14):
 
     CHANGE: Canvas: Use ImDrawCallback_ImCanvas macro as draw callback sentinel (#256), thanks @nspitko
