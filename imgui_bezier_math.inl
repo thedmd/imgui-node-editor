@@ -67,7 +67,7 @@ inline T ImCubicBezierDt(const T& p0, const T& p1, const T& p2, const T& p3, flo
     const auto c = t * t;
     const auto d = 2 * t * a;
 
-    return -3 * p0 * b + 3 * p1 * (b - d) + 3 * p2 * (d - c) + 3 * p3 * c;
+    return 3 * b * (p1 - p0) + 3 * d * (p2 - p1) + 3 * c * (p3 - p2);
 }
 
 template <typename T>
