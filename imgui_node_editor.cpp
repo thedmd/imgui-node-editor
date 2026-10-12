@@ -1256,7 +1256,9 @@ void ed::EditorContext::Begin(const char* id, const ImVec2& size)
     // A frozen frame leaves the canvas as the last visible frame set it up.
     auto previousSize        = m_Canvas.Rect().GetSize();
     auto previousVisibleRect = m_Canvas.ViewRect();
-    m_IsCanvasVisible = !m_IsFrozen && m_Canvas.Begin(id, canvasSize);
+    if (!m_IsFrozen)
+        m_Canvas.Begin(id, canvasSize);
+    m_IsCanvasVisible = !m_IsFrozen && m_Canvas.IsVisible();
 
     //ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0, 0, 0, 0));
     //ImGui::BeginChild(id, size, false,
@@ -1401,7 +1403,7 @@ void ed::EditorContext::End()
     for (auto controller : m_AnimationControllers)
         controller->Draw(m_DrawList);
 
-    // Actions are paused in a frozen frame.
+    // Actions are paused in a frozen frame, and none starts while the canvas is out of view.
     if (!m_IsFrozen && m_CurrentAction && !m_CurrentAction->Process(control))
         m_CurrentAction = nullptr;
 
@@ -1413,7 +1415,7 @@ void ed::EditorContext::End()
             m_NavigateAction.Accept(control);
     }
 
-    if (!m_IsFrozen && nullptr == m_CurrentAction)
+    if (!m_IsFrozen && m_IsCanvasVisible && nullptr == m_CurrentAction)
     {
         EditorAction* possibleAction   = nullptr;
 
@@ -1552,6 +1554,7 @@ void ed::EditorContext::End()
 
     // Draw grid
 # if 1 // #FIXME
+    if (m_IsCanvasVisible)
     {
         //auto& style = ImGui::GetStyle();
 
@@ -1647,12 +1650,13 @@ void ed::EditorContext::End()
 
     // ImGui::EndChild();
     // ImGui::PopStyleColor();
-    if (m_IsCanvasVisible)
+    if (!m_IsFrozen)
         m_Canvas.End();
 
     ImDrawList_SwapSplitter(m_DrawList, m_Splitter);
 
     // Draw border
+    if (m_IsCanvasVisible)
     {
         auto& style = ImGui::GetStyle();
         auto borderShadoColor = style.Colors[ImGuiCol_BorderShadow];
@@ -1677,7 +1681,7 @@ void ed::EditorContext::End()
     if (HasSelectionChanged())
         MakeDirty(SaveReasonFlags::Selection);
 
-    if (m_Settings.m_IsDirty && !m_CurrentAction && !m_IsFrozen)
+    if (m_Settings.m_IsDirty && !m_CurrentAction && m_IsCanvasVisible)
         SaveSettings();
 
     m_DrawList = nullptr;
@@ -2084,7 +2088,7 @@ void ed::EditorContext::Suspend(SuspendFlags flags)
 
     auto lastChannel = m_DrawList->_Splitter._Current;
     m_DrawList->ChannelsSetCurrent(m_ExternalChannel);
-    if (m_IsCanvasVisible)
+    if (!m_IsFrozen)
         m_Canvas.Suspend();
     m_DrawList->ChannelsSetCurrent(lastChannel);
     if ((flags & SuspendFlags::KeepSplitter) != SuspendFlags::KeepSplitter)
@@ -2098,7 +2102,7 @@ void ed::EditorContext::Resume(SuspendFlags flags)
         ImDrawList_SwapSplitter(m_DrawList, m_Splitter);
     auto lastChannel = m_DrawList->_Splitter._Current;
     m_DrawList->ChannelsSetCurrent(m_ExternalChannel);
-    if (m_IsCanvasVisible)
+    if (!m_IsFrozen)
         m_Canvas.Resume();
     m_DrawList->ChannelsSetCurrent(lastChannel);
 
@@ -2453,7 +2457,7 @@ ed::Control ed::EditorContext::BuildControl(bool allowOffscreen)
     m_IsHovered = false;
     m_IsHoveredWithoutOverlapp = false;
 
-    if (m_IsFrozen)
+    if (m_IsFrozen || !m_IsCanvasVisible)
         return Control();
 
     const auto windowHovered = ImGui::IsWindowHovered();

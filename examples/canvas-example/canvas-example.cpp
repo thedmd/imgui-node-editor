@@ -192,14 +192,18 @@ struct Example:
 
             viewRect = canvas.ViewRect();
 
-            if (viewRect.Max.x > 0.0f)
-                DrawScale(ImVec2(0.0f, 0.0f), ImVec2(viewRect.Max.x, 0.0f), 100.0f, 10.0f, 0.6f);
-            if (viewRect.Min.x < 0.0f)
-                DrawScale(ImVec2(0.0f, 0.0f), ImVec2(viewRect.Min.x, 0.0f), 100.0f, 10.0f, 0.6f, -1.0f);
-            if (viewRect.Max.y > 0.0f)
-                DrawScale(ImVec2(0.0f, 0.0f), ImVec2(0.0f, viewRect.Max.y), 100.0f, 10.0f, 0.6f);
-            if (viewRect.Min.y < 0.0f)
-                DrawScale(ImVec2(0.0f, 0.0f), ImVec2(0.0f, viewRect.Min.y), 100.0f, 10.0f, 0.6f, -1.0f);
+            // Custom drawing can be skipped while the canvas is out of view.
+            if (canvas.IsVisible())
+            {
+                if (viewRect.Max.x > 0.0f)
+                    DrawScale(ImVec2(0.0f, 0.0f), ImVec2(viewRect.Max.x, 0.0f), 100.0f, 10.0f, 0.6f);
+                if (viewRect.Min.x < 0.0f)
+                    DrawScale(ImVec2(0.0f, 0.0f), ImVec2(viewRect.Min.x, 0.0f), 100.0f, 10.0f, 0.6f, -1.0f);
+                if (viewRect.Max.y > 0.0f)
+                    DrawScale(ImVec2(0.0f, 0.0f), ImVec2(0.0f, viewRect.Max.y), 100.0f, 10.0f, 0.6f);
+                if (viewRect.Min.y < 0.0f)
+                    DrawScale(ImVec2(0.0f, 0.0f), ImVec2(0.0f, viewRect.Min.y), 100.0f, 10.0f, 0.6f, -1.0f);
+            }
 
             ImGui::Text("Hovered:     %d", ImGui::IsItemHovered() ? 1 : 0);
 

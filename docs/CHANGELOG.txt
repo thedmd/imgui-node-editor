@@ -2,6 +2,8 @@ v0.9.4 (WIP):
 
     NEW: Editor: Add smooth zoom (#266)
 
+    NEW: Canvas: Add IsVisible(); Begin() returns true also for a canvas out of view
+
     BUGFIX: Canvas: Remember index of first command buffer to not miss updating any used (#260)
 
     BUGFIX: Editor: Don't duplicated ImVec2/ImVec3 == != operators defined since ImGui r19002 (#268)
@@ -59,6 +61,12 @@ v0.9.4 (WIP):
     BUGFIX: Editor: Keep node sizes and the view while the host window skips items
         A collapsed host, a hidden dock tab or a child window scrolled out of view overwrote group sizes
         and squeezed the view, and both were saved.
+
+    BUGFIX: Canvas: Enter local space and reserve layout space also when the canvas is clipped
+        Content of a canvas out of view was drawn untransformed, and content below it moved up.
+
+    BUGFIX: Editor: Don't draw or hit-test the graph over the host window while the canvas is out of view
+        Interactions and saving wait until the canvas is visible again.
 
 v0.9.3 (2023-10-14):
 

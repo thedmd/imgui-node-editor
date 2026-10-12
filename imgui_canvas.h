@@ -98,9 +98,8 @@ struct Canvas
 {
     // Begins drawing content of canvas plane.
     //
-    // When false is returned that mean canvas is not visible to the
-    // user can drawing should be skipped and End() not called.
-    // When true is returned drawing must be ended with call to End().
+    // Returns true, and drawing must be ended with call to End(). A canvas
+    // out of view clips its content away; check IsVisible() to skip it.
     //
     // If any size component is equal to zero or less canvas will
     // automatically expand to all available area on that axis.
@@ -117,6 +116,12 @@ struct Canvas
     //
     // Must be called only when Begin() retuned true.
     IMGUIEX_CANVAS_API void End();
+
+    // Returns true if any part of the canvas is visible.
+    //
+    // Note:
+    //     Valid after call to Begin().
+    bool IsVisible() const { return m_IsVisible; }
 
     // Sets visible region of canvas plane.
     //
@@ -223,6 +228,7 @@ private:
     void LeaveLocalSpace();
 
     bool m_InBeginEnd = false;
+    bool m_IsVisible = false;
 
     ImVec2 m_WidgetPosition;
     ImVec2 m_WidgetSize;
