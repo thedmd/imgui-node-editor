@@ -4,6 +4,7 @@
 # include "harness.h"
 # include <cmath>
 # include <cstring>
+# include <vector>
 
 TEST_CASE(ShortcutsWhileTyping, "interaction.shortcuts_ignored_while_typing", "INT-2", test::TestFlags_None)
 {
@@ -177,35 +178,170 @@ TEST_CASE(GroupResizeDragButton, "interaction.group_resize_follows_drag_button",
     CheckResized(ResizeRightEdge(config, 1, 40.0f), 40.0f, "a right-button drag of the right edge");
 }
 
-TEST_CASE(FractionalWheelZooms, "interaction.fractional_wheel_zooms", "INT-8", test::TestFlags_KnownFailure)
+namespace {
+
+ed::Config ZoomConfig(bool smooth, std::initializer_list<float> levels = {})
+{
+    ed::Config config;
+    config.SettingsName     = nullptr;
+    config.EnableSmoothZoom = smooth;
+    config.SmoothZoomPower  = 1.3f;
+    for (auto level : levels)
+        config.CustomZoomLevels.push_back(level);
+    return config;
+}
+
+const char* ZoomMode(bool smooth)
+{
+    return smooth ? "smooth" : "stepped";
+}
+
+void SmallNode(int)
+{
+    ed::BeginNode(1);
+    ImGui::TextUnformatted("Node");
+    ed::EndNode();
+}
+
+// The editor's zoom, 1 at 100%.
+float Zoom(test::Session& session)
+{
+    return 1.0f / session.Use([] { return ed::GetCurrentZoom(); });
+}
+
+// One wheel event of 'delta' over the editor, and time to settle.
+void Wheel(test::Session& session, float delta)
+{
+    test::MouseWheel(delta);
+    session.Run(30);
+}
+
+} // namespace
+
+TEST_CASE(FractionalWheelZooms, "interaction.fractional_wheel_zooms", "INT-8", test::TestFlags_None)
 {
     // Precision touchpads and macOS trackpads send fractional wheel deltas.
-    test::Storage storage;
-    auto config = test::MakeConfig(&storage);
-    config.EnableSmoothZoom = false;
-    test::Session session(config);
-
-    float width = 0.0f;
-    session.DefaultContent = [&](int)
+    for (bool smooth : { false, true })
     {
-        ed::BeginNode(1);
-        ImGui::TextUnformatted("Node");
-        ImGui::Dummy(ImVec2(100.0f, 20.0f));
-        ed::EndNode();
-        width = ed::CanvasToScreen(ed::GetNodeSize(1)).x - ed::CanvasToScreen(ImVec2(0.0f, 0.0f)).x;
+        test::Session session(ZoomConfig(smooth));
+        session.DefaultContent = SmallNode;
+        test::MouseMove(ImVec2(500.0f, 300.0f));
+        session.Run(10);
+        const float before = Zoom(session);
+        for (int i = 0; i < 20; ++i)
+        {
+            test::MouseWheel(0.25f);
+            session.Run(1);
+        }
+        session.Run(40);
+        const float after = Zoom(session);
+
+        test::Check(after > before * 1.05f, "%s: 20 wheel deltas of +0.25 zoom in: %g -> %g", ZoomMode(smooth), before, after);
+    }
+}
+
+TEST_CASE(WheelFromOutsideZoomLevels, "interaction.wheel_moves_zoom_toward_levels", "INT-7", test::TestFlags_None)
+{
+    for (bool smooth : { false, true })
+    {
+        // One small node, fitted to the view, is zoomed in far past the largest level.
+        {
+            test::Session session(ZoomConfig(smooth));
+            session.DefaultContent = SmallNode;
+            test::MouseMove(ImVec2(500.0f, 300.0f));
+            session.Run(3);
+            session.Use([] { ed::NavigateToContent(0.0f); });
+            session.Run(3);
+            const float fitted = Zoom(session);
+            Wheel(session, 1.0f);
+            const float in = Zoom(session);
+            Wheel(session, -1.0f);
+            const float out = Zoom(session);
+
+            test::Check(fitted > 8.0f, "%s: a fitted small node is zoomed past the levels: %g", ZoomMode(smooth), fitted);
+            test::Check(in >= fitted && out < in, "%s: from there, the wheel zooms in its own direction: %g, in %g, out %g", ZoomMode(smooth), fitted, in, out);
+        }
+
+        // Content 20000 units across, fitted to the view, is below the smallest level.
+        {
+            test::Session session(ZoomConfig(smooth));
+            session.DefaultContent = [](int frame)
+            {
+                if (frame == 0)
+                    ed::SetNodePosition(2, ImVec2(20000.0f, 20000.0f));
+                SmallNode(frame);
+                ed::BeginNode(2);
+                ImGui::TextUnformatted("Node");
+                ed::EndNode();
+            };
+            test::MouseMove(ImVec2(500.0f, 300.0f));
+            session.Run(3);
+            session.Use([] { ed::NavigateToContent(0.0f); });
+            session.Run(3);
+            const float fitted = Zoom(session);
+            Wheel(session, -1.0f);
+            const float out = Zoom(session);
+            Wheel(session, 1.0f);
+            const float in = Zoom(session);
+
+            test::Check(fitted < 0.1f, "%s: fitted large content is zoomed out past the levels: %g", ZoomMode(smooth), fitted);
+            test::Check(out <= fitted && in > out, "%s: from there, the wheel zooms in its own direction: %g, out %g, in %g", ZoomMode(smooth), fitted, out, in);
+        }
+    }
+}
+
+TEST_CASE(ZoomLevelTables, "interaction.zoom_levels_step_in_order", "INT-13", test::TestFlags_None)
+{
+    struct Case
+    {
+        const char*         Name;
+        ed::Config          Config;
+        float               Start;
+        std::vector<float>  Expected; // after a wheel in, then three wheel outs
+    };
+    const Case cases[] =
+    {
+        { "duplicate levels {0.5, 1, 1, 2}", ZoomConfig(false, { 0.5f, 1.0f, 1.0f, 2.0f }), 1.0f, { 2.0f, 1.0f, 0.5f, 0.5f } },
+        { "descending levels {2, 1, 0.5}",   ZoomConfig(false, { 2.0f, 1.0f, 0.5f }),       1.0f, { 2.0f, 1.0f, 0.5f, 0.5f } },
+        { "default levels from 0.9",         ZoomConfig(false),                              0.9f, { 1.0f, 0.75f, 0.5f, 0.33f } },
     };
 
-    test::MouseMove(ImVec2(500.0f, 300.0f));
-    session.Run(10);
-    const float before = width;
-    for (int i = 0; i < 20; ++i)
+    for (auto& testCase : cases)
     {
-        test::MouseWheel(0.25f);
-        session.Run(1);
-    }
-    session.Run(40);
+        test::Session session(testCase.Config);
+        char settings[128];
+        snprintf(settings, sizeof(settings), R"({"view":{"scroll":{"x":0,"y":0},"zoom":%g}})", testCase.Start);
+        session.Use([&] { ed::LoadSettingsFromMemory(settings); });
+        session.DefaultContent = SmallNode;
+        test::MouseMove(ImVec2(500.0f, 300.0f));
+        session.Run(3);
 
-    test::Check(width > before * 1.05f, "20 wheel deltas of +0.25 zoom in: node width %g -> %g", before, width);
+        std::vector<float> zooms;
+        for (float delta : { 1.0f, -1.0f, -1.0f, -1.0f })
+        {
+            Wheel(session, delta);
+            zooms.push_back(Zoom(session));
+        }
+
+        bool matches = true;
+        for (size_t i = 0; i < zooms.size(); ++i)
+            matches = matches && ImFabs(zooms[i] - testCase.Expected[i]) < 0.001f;
+        test::Check(matches, "%s: wheel in, then out three times: %g, %g, %g, %g", testCase.Name, zooms[0], zooms[1], zooms[2], zooms[3]);
+    }
+}
+
+TEST_CASE(InvalidSmoothZoomPower, "interaction.invalid_smooth_zoom_power_asserts", "INT-13", test::TestFlags_None)
+{
+    test::ExpectAsserts(1);
+    auto config = ZoomConfig(true);
+    config.SmoothZoomPower = 1.0f;
+    test::Session session(config);
+    session.DefaultContent = SmallNode;
+    test::MouseMove(ImVec2(500.0f, 300.0f));
+    session.Run(3);
+    Wheel(session, 1.0f);
+
+    test::Check(Zoom(session) > 1.0f, "the wheel still zooms, with the default power: %g", Zoom(session));
 }
 
 namespace {

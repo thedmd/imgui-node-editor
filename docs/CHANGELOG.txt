@@ -213,6 +213,16 @@ v0.10.0 (WIP):
     BUGFIX: Editor: Zoom around the point under the mouse while a zoom animation plays
         Quick wheel notches zoomed around a point away from the mouse.
 
+    BUGFIX: Editor: Step wheel zoom through the zoom levels in the wheel's direction
+        Trackpads didn't zoom in stepped mode, a step skipped the nearest level or stuck on duplicate levels,
+        and from a zoom outside the levels the wheel zoomed the wrong way.
+
+    CHANGE: Editor: Sort Config::CustomZoomLevels and drop duplicate and non-positive levels
+        Config::SmoothZoomPower must be greater than 1.
+
+    CHANGE: Editor: Smooth zoom is on by default
+        0.9.x stepped through zoom levels; Config::EnableSmoothZoom = false keeps doing so.
+
 v0.9.2 (2023-09-01):
 
     NEW: Editor: Add offset of hover/select to style (thanks @MultiPain)
