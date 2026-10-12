@@ -140,6 +140,7 @@ static const float c_NavigationZoomMargin       = 0.1f;  // percentage of visibl
 static const float c_MouseZoomDuration          = 0.15f; // seconds
 static const float c_SelectionFadeOutDuration   = 0.15f; // seconds
 static const float c_MinFlowMarkerDistance      = 1.0f;  // canvas pixels
+static const float c_MinGridLineSpacing         = 2.0f;  // screen pixels
 
 static const auto  c_MaxMoveOverEdgeSpeed       = 10.0f;
 static const auto  c_MaxMoveOverEdgeDistance    = 300.0f;
@@ -1586,10 +1587,21 @@ void ed::EditorContext::End()
 
         m_DrawList->AddRectFilled(VIEW_POS, VIEW_POS + VIEW_SIZE, GetColor(StyleColor_Bg));
 
-        for (float x = fmodf(offset.x, GRID_SX); x < VIEW_SIZE.x; x += GRID_SX)
-            ImDrawList_AddLineCompat(m_DrawList, ImVec2(x, 0.0f) + VIEW_POS, ImVec2(x, VIEW_SIZE.y) + VIEW_POS, GRID_COLOR);
-        for (float y = fmodf(offset.y, GRID_SY); y < VIEW_SIZE.y; y += GRID_SY)
-            ImDrawList_AddLineCompat(m_DrawList, ImVec2(0.0f, y) + VIEW_POS, ImVec2(VIEW_SIZE.x, y) + VIEW_POS, GRID_COLOR);
+        if (ImMin(GRID_SX, GRID_SY) * m_Canvas.ViewScale() >= c_MinGridLineSpacing && (GRID_COLOR & IM_COL32_A_MASK) != 0)
+        {
+            const auto start     = ImVec2(fmodf(offset.x, GRID_SX), fmodf(offset.y, GRID_SY));
+            const auto lineCount = (VIEW_SIZE - start) / ImVec2(GRID_SX, GRID_SY);
+            for (int i = 0; static_cast<float>(i) < lineCount.x; ++i)
+            {
+                const auto x = start.x + i * GRID_SX;
+                ImDrawList_AddLineCompat(m_DrawList, ImVec2(x, 0.0f) + VIEW_POS, ImVec2(x, VIEW_SIZE.y) + VIEW_POS, GRID_COLOR);
+            }
+            for (int i = 0; static_cast<float>(i) < lineCount.y; ++i)
+            {
+                const auto y = start.y + i * GRID_SY;
+                ImDrawList_AddLineCompat(m_DrawList, ImVec2(0.0f, y) + VIEW_POS, ImVec2(VIEW_SIZE.x, y) + VIEW_POS, GRID_COLOR);
+            }
+        }
     }
 # endif
 

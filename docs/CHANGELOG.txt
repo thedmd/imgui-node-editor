@@ -106,6 +106,10 @@ v0.9.4 (WIP):
         Pin or link entries among the nodes asserted. A zoom of zero or less, or one outside the zoom
         levels, broke the view or hung the first frame; it is clamped to the zoom levels now.
 
+    BUGFIX: Editor: Bound the grid drawing loop
+        A view wider than 2^29 canvas units, such as navigating to content 10^9 units across, hung the frame.
+        Grid lines less than 2 pixels apart, or fully transparent, are not drawn.
+
 v0.9.3 (2023-10-14):
 
     CHANGE: Canvas: Use ImDrawCallback_ImCanvas macro as draw callback sentinel (#256), thanks @nspitko
