@@ -3571,7 +3571,9 @@ ed::EditorAction::AcceptResult ed::NavigateAction::Accept(const Control& control
     if (m_IsActive)
         return False;
 
-    if (Editor->CanAcceptUserInput() /*&& !ImGui::IsAnyItemActive()*/ && ImGui::IsMouseDragging(Editor->GetConfig().NavigateButtonIndex, 0.0f))
+    // A drag that enters the editor from another window was pressed on nothing of the editor's.
+    const auto isPressedOnEditor = control.BackgroundActive || control.ActiveObject != nullptr;
+    if (Editor->CanAcceptUserInput() && isPressedOnEditor && ImGui::IsMouseDragging(Editor->GetConfig().NavigateButtonIndex, 0.0f))
     {
         m_Animation.Stop();
 

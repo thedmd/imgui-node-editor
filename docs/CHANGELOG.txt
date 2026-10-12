@@ -153,6 +153,9 @@ v0.9.4 (WIP):
     BUGFIX: Editor: Give clicks on overlapping nodes to the widgets of the top one (#337), thanks @pthom
         Widgets of the node drawn below took hover and clicks.
 
+    BUGFIX: Editor: Don't pan when a drag enters the editor from another window (#238), thanks @JulesFouchy
+        A right-drag started in another window panned the editor once the mouse entered it.
+
 v0.9.3 (2023-10-14):
 
     CHANGE: Canvas: Use ImDrawCallback_ImCanvas macro as draw callback sentinel (#256), thanks @nspitko
