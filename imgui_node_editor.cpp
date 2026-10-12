@@ -3124,7 +3124,7 @@ std::string ed::Settings::Serialize(SettingsContentFlags content)
         auto& nodes = result["nodes"];
         for (auto& node : m_Nodes)
         {
-            if (node.m_WasUsed)
+            if (node.m_WasUsed || node.m_WasLoaded)
                 nodes[serializeObjectId(node.m_ID)] = node.Serialize();
         }
     }
@@ -3197,6 +3197,8 @@ bool ed::Settings::Parse(const std::string& string, Settings& settings, Settings
             auto parsed       = nodeSettings ? *nodeSettings : NodeSettings(id.AsNodeId());
             if (!NodeSettings::Parse(node.second, parsed))
                 continue;
+
+            parsed.m_WasLoaded = true;
 
             if (nodeSettings)
                 *nodeSettings = parsed;

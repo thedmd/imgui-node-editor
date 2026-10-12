@@ -193,6 +193,9 @@ v0.10.0 (WIP):
     BUGFIX: Editor: Don't change settings when a fractional position is set again
         SetNodePosition() and SetGroupSize() called with the same fractional value changed them on every call.
 
+    BUGFIX: Editor: Keep settings of nodes not submitted in a session
+        The first save dropped the layout of every node the application didn't show.
+
 v0.9.2 (2023-09-01):
 
     NEW: Editor: Add offset of hover/select to style (thanks @MultiPain)
