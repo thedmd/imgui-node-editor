@@ -345,6 +345,34 @@ TEST_CASE(NavigationSettles, "settings.navigation_changes_settings_when_it_settl
     test::Check(contentChanges == 1 && changed == contentSettled, "NavigateToContent() changes the settings once, when the view settles: %d changes, to %s, settled %s", contentChanges, changed.c_str(), contentSettled.c_str());
 }
 
+TEST_CASE(FractionalPositionChangesOnce, "settings.fractional_position_changes_settings_once", "PERF-4", test::TestFlags_None)
+{
+    test::Session session(UnnamedConfig());
+    session.DefaultContent = [](int frame)
+    {
+        ed::SetNodePosition(1, ImVec2(10.5f, 20.5f));
+        ed::SetGroupSize(2, ImVec2(300.5f, 200.5f));
+        NodesOneAndTwo(frame);
+    };
+    session.Run(10);
+    TakeSettingsChange(session);
+    session.DefaultContent = [](int frame)
+    {
+        ed::SetNodePosition(1, ImVec2(110.5f, 20.5f));
+        ed::SetGroupSize(2, ImVec2(400.5f, 200.5f));
+        NodesOneAndTwo(frame);
+    };
+
+    int changes = 0;
+    for (int i = 0; i < 30; ++i)
+    {
+        session.Frame();
+        if (TakeSettingsChange(session))
+            ++changes;
+    }
+    test::Check(changes == 1, "a fractional position and group size set on every frame change the settings once: %d changes in 30 frames", changes);
+}
+
 TEST_CASE(ContentWithoutNodes, "settings.content_without_nodes_leaves_layout_out", "API-9", test::TestFlags_None)
 {
     auto config = UnnamedConfig();
