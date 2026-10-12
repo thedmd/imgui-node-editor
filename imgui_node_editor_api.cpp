@@ -679,7 +679,7 @@ int ax::NodeEditor::GetActionContextSize()
 
 int ax::NodeEditor::GetActionContextNodes(NodeId* nodes, int size)
 {
-    return BuildIdList(CurrentEditor()->GetSelectedObjects(), nodes, size, [](auto object)
+    return BuildIdList(CurrentEditor()->GetShortcut().m_Context, nodes, size, [](auto object)
     {
         return object->AsNode() != nullptr;
     });
@@ -687,7 +687,7 @@ int ax::NodeEditor::GetActionContextNodes(NodeId* nodes, int size)
 
 int ax::NodeEditor::GetActionContextLinks(LinkId* links, int size)
 {
-    return BuildIdList(CurrentEditor()->GetSelectedObjects(), links, size, [](auto object)
+    return BuildIdList(CurrentEditor()->GetShortcut().m_Context, links, size, [](auto object)
     {
         return object->AsLink() != nullptr;
     });
