@@ -221,6 +221,9 @@ v0.9.4 (WIP):
     BUGFIX: Editor: Keep groups under links whatever the Z order of other nodes
         A regular node with a lower Z than the groups put every group above every link.
 
+    BUGFIX: Editor: Draw content added before the first node over the background
+        It shared the host window's channel, which merges before the editor's background and grid.
+
 v0.9.3 (2023-10-14):
 
     CHANGE: Canvas: Use ImDrawCallback_ImCanvas macro as draw callback sentinel (#256), thanks @nspitko

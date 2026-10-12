@@ -108,7 +108,7 @@ namespace ed = ax::NodeEditor::Detail;
 //------------------------------------------------------------------------------
 static const int c_BackgroundChannelCount = 1;
 static const int c_LinkChannelCount       = 4;
-static const int c_UserLayersCount        = 5;
+static const int c_UserLayersCount        = 6;
 
 static const int c_UserLayerChannelStart  = 0;
 static const int c_BackgroundChannelStart = c_UserLayerChannelStart  + c_UserLayersCount;
@@ -121,6 +121,7 @@ static const int c_UserChannel_Content         = c_UserLayerChannelStart + 1;
 static const int c_UserChannel_Grid            = c_UserLayerChannelStart + 2;
 static const int c_UserChannel_HintsBackground = c_UserLayerChannelStart + 3;
 static const int c_UserChannel_Hints           = c_UserLayerChannelStart + 4;
+static const int c_UserChannel_Underlay        = c_UserLayerChannelStart + 5;
 
 static const int c_LinkChannel_Selection  = c_LinkStartChannel + 0;
 static const int c_LinkChannel_Links      = c_LinkStartChannel + 1;
@@ -1362,6 +1363,9 @@ void ed::EditorContext::Begin(const char* id, const ImVec2& size)
 
     // Reserve channels for background and links
     ImDrawList_ChannelsGrow(m_DrawList, c_NodeStartChannel);
+
+    // Content drawn before the first node goes over the grid, under links and nodes.
+    m_DrawList->ChannelsSetCurrent(c_UserChannel_Underlay);
 
     if (HasSelectionChanged())
         ++m_SelectionId;
