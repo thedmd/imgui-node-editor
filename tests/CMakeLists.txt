@@ -68,6 +68,7 @@ set(_TestSources
     interaction_tests.cpp
     lifetime_tests.cpp
     node_state_tests.cpp
+    protocol_tests.cpp
     settings_tests.cpp
     smoke_tests.cpp
     suspend_tests.cpp

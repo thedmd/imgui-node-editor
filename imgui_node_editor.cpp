@@ -4734,6 +4734,8 @@ bool ed::CreateItemAction::Begin()
     m_InActive        = true;
     m_CurrentStage    = m_NextStage;
     m_UserAction      = Unknown;
+    if (m_CurrentStage == Create)
+        m_NextStage = None;
     m_LinkColor       = IM_COL32_WHITE;
     m_LinkThickness   = 1.0f;
 
@@ -4745,6 +4747,8 @@ bool ed::CreateItemAction::Begin()
 void ed::CreateItemAction::End()
 {
     IM_ASSERT(m_InActive && "Please call End() only when Begin() was successful");
+    if (!m_InActive)
+        return;
 
     if (m_IsInGlobalSpace)
     {
@@ -4756,6 +4760,13 @@ void ed::CreateItemAction::End()
             Editor->GetDrawList()->ChannelsSetCurrent(m_LastChannel);
 
         m_IsInGlobalSpace = false;
+    }
+
+    if (m_CurrentStage == Create)
+    {
+        m_ItemType  = NoItem;
+        m_LinkStart = nullptr;
+        m_LinkEnd   = nullptr;
     }
 
     m_InActive = false;
@@ -4774,7 +4785,7 @@ void ed::CreateItemAction::DragEnd()
 {
     IM_ASSERT(!m_InActive);
 
-    if (m_CurrentStage == Possible && m_UserAction == UserAccept)
+    if (m_CurrentStage == Possible && m_UserAction == UserAccept && m_ItemType != NoItem)
     {
         m_NextStage = Create;
     }
@@ -4848,7 +4859,7 @@ ed::CreateItemAction::Result ed::CreateItemAction::QueryLink(PinId* startId, Pin
 {
     IM_ASSERT(m_InActive);
 
-    if (!m_InActive || m_CurrentStage == None || m_ItemType != Link)
+    if (!m_InActive || m_CurrentStage == None || m_ItemType != Link || !m_LinkStart || !m_LinkEnd)
         return Indeterminate;
 
     auto linkStartId = m_LinkStart->m_ID;
