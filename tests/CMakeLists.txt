@@ -4,7 +4,10 @@ project(imgui-node-editor-tests CXX)
 
 get_filename_component(IMGUI_NODE_EDITOR_ROOT_DIR ${CMAKE_CURRENT_LIST_DIR}/.. ABSOLUTE)
 
-set(CMAKE_CXX_STANDARD          14)
+# 14 is the minimum; CI also builds with 17, where crude_json converts numbers with std::from_chars().
+if (NOT CMAKE_CXX_STANDARD)
+    set(CMAKE_CXX_STANDARD 14)
+endif()
 set(CMAKE_CXX_STANDARD_REQUIRED YES)
 
 set(IMGUI_DIR "" CACHE PATH "Dear ImGui sources to test against. When empty, the pinned revision the examples use is fetched.")
