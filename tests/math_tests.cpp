@@ -125,6 +125,35 @@ double ReferenceDistance(const ImCubicBezierPoints& curve, const std::vector<Poi
     return Distance(Cubic(curve, (t0 + t1) / 2), point);
 }
 
+std::vector<ImCubicBezierFixedStepSample> FixedSteps(const ImCubicBezierPoints& curve, float step, bool overshoot, float maxValueError, float maxTError)
+{
+    std::vector<ImCubicBezierFixedStepSample> samples;
+    auto collect = [&samples](ImCubicBezierFixedStepSample& sample) { samples.push_back(sample); };
+    ImCubicBezierFixedStep(collect, curve, step, overshoot, maxValueError, maxTError);
+    return samples;
+}
+
+// Length of the curve from its start at t = i / 20000, summed over chords.
+std::vector<double> ArcLengthTable(const ImCubicBezierPoints& curve)
+{
+    std::vector<double> table(20001, 0.0);
+    auto previous = Cubic(curve, 0.0);
+    for (int i = 1; i <= 20000; ++i)
+    {
+        const auto next = Cubic(curve, i / 20000.0);
+        table[i] = table[i - 1] + std::hypot(next.x - previous.x, next.y - previous.y);
+        previous = next;
+    }
+    return table;
+}
+
+double ArcLength(const std::vector<double>& table, double t)
+{
+    const double position = ImClamp(t, 0.0, 1.0) * 20000.0;
+    const int    i        = ImMin(static_cast<int>(position), 19999);
+    return table[i] + (table[i + 1] - table[i]) * (position - i);
+}
+
 } // namespace
 
 TEST_CASE(LineIntersectionFlatCubic, "math.line_intersection_with_a_vanishing_cubic_term", "MATH-2", test::TestFlags_None)
@@ -456,4 +485,65 @@ TEST_CASE(SplitHalves, "math.split_halves_follow_the_curve", "MATH-6", test::Tes
     }
 
     test::Check(leftOff == 0 && rightOff == 0, "both halves follow the curve: %d of 5000 left and %d of 5000 right samples are off", leftOff, rightOff);
+}
+
+TEST_CASE(FixedStepDegenerate, "math.fixed_step_ends_on_degenerate_input", "MATH-7", test::TestFlags_None)
+{
+    // The first three searched forever. A curve without length yields only its start.
+    auto pointCurve = [](ImVec2 p) { return ImCubicBezierPoints{ p, p, p, p }; };
+    const auto zero = FixedSteps(pointCurve(ImVec2(0, 0)), 10.0f, true, 0.5f, 0.001f);
+    const auto five = FixedSteps(pointCurve(ImVec2(5, 5)), 10.0f, true, 0.5f, 0.001f);
+    const auto tiny = FixedSteps(ImCubicBezierPoints{ ImVec2(5, 5), ImVec2(5, 5), ImVec2(5, 5), ImVec2(5.000001f, 5) }, 10.0f, true, 0.5f, 0.001f);
+    test::Check(zero.size() == 1 && five.size() == 1 && tiny.size() == 1,
+        "curves without length yield one sample: %d at (0, 0), %d at (5, 5), %d of length 1e-6",
+        static_cast<int>(zero.size()), static_cast<int>(five.size()), static_cast<int>(tiny.size()));
+
+    // Tolerances below float resolution.
+    const ImCubicBezierPoints link{ ImVec2(0, 0), ImVec2(100, 0), ImVec2(200, 150), ImVec2(300, 150) };
+    const auto table = ArcLengthTable(link);
+    const auto fine  = FixedSteps(link, 10.0f, false, 1e-9f, 1e-9f);
+    int off = 0;
+    for (size_t i = 0; i < fine.size(); ++i)
+        if (std::fabs(ArcLength(table, fine[i].T) - 10.0 * static_cast<double>(i)) > 0.01)
+            ++off;
+    const int expected = static_cast<int>(ImCubicBezierLength(link) / 10.0f) + 1;
+    test::Check(static_cast<int>(fine.size()) == expected && off == 0,
+        "a step of 10 with tolerances of 1e-9 yields %d samples, every 10 along the curve: %d samples, %d off", expected, static_cast<int>(fine.size()), off);
+
+    const auto nan = FixedSteps(link, std::nanf(""), false, 0.5f, 0.001f);
+    test::Check(nan.empty(), "a step that isn't a number yields nothing: %d samples", static_cast<int>(nan.size()));
+}
+
+TEST_CASE(FixedStepSpacing, "math.fixed_step_keeps_its_spacing", "MATH-7", test::TestFlags_None)
+{
+    // Links shaped as the editor shapes them, stepped as flow animation steps them. By
+    // the curve's own length measure, a sample is within 0.5 of its length, or the
+    // search narrowed t to within 0.001.
+    auto speed = [](const ImCubicBezierPoints& c, double t)
+    {
+        const double u = 1 - t;
+        const double x = 3 * u * u * (c.P1.x - c.P0.x) + 6 * u * t * (c.P2.x - c.P1.x) + 3 * t * t * (c.P3.x - c.P2.x);
+        const double y = 3 * u * u * (c.P1.y - c.P0.y) + 6 * u * t * (c.P2.y - c.P1.y) + 3 * t * t * (c.P3.y - c.P2.y);
+        return std::hypot(x, y);
+    };
+
+    Random random;
+    int samples = 0, off = 0, miscounted = 0;
+    for (int i = 0; i < 50; ++i)
+    {
+        const auto a = random.Point(0, 1000);
+        const auto b = random.Point(0, 600);
+        const ImCubicBezierPoints link{ a, a + ImVec2(100, 0), b - ImVec2(100, 0), b };
+        const auto steps = FixedSteps(link, 10.0f, false, 0.5f, 0.001f);
+        if (static_cast<int>(steps.size()) != static_cast<int>(ImCubicBezierLength(link) / 10.0f) + 1)
+            ++miscounted;
+        for (size_t k = 0; k < steps.size(); ++k, ++samples)
+        {
+            const double error = std::fabs(steps[k].Length - 10.0 * static_cast<double>(k));
+            if ((error > 0.5 && error > 0.0011 * speed(link, steps[k].T)) || (k > 0 && !(steps[k].T > steps[k - 1].T)))
+                ++off;
+        }
+    }
+
+    test::Check(miscounted == 0 && off == 0, "samples lie every 10 along the links: %d of 50 links miscounted, %d of %d samples off", miscounted, off, samples);
 }

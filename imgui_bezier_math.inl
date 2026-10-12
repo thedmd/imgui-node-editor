@@ -602,7 +602,7 @@ template <typename F> inline void ImCubicBezierSubdivide(F& callback, const ImCu
 
 inline void ImCubicBezierFixedStep(ImCubicBezierFixedStepCallback callback, void* user_pointer, const ImVec2& p0, const ImVec2& p1, const ImVec2& p2, const ImVec2& p3, float step, bool overshoot, float max_value_error, float max_t_error)
 {
-    if (step <= 0.0f || !callback || max_value_error <= 0 || max_t_error <= 0)
+    if (!(step > 0.0f) || !callback || !(max_value_error > 0) || !(max_t_error > 0))
         return;
 
     ImCubicBezierFixedStepSample sample;
@@ -616,7 +616,10 @@ inline void ImCubicBezierFixedStep(ImCubicBezierFixedStepCallback callback, void
         return;
 
     const auto total_length = ImCubicBezierLength(p0, p1, p2, p3);
-    const auto point_count  = static_cast<int>(total_length / step) + (overshoot ? 2 : 1);
+    if (!(total_length > 1e-3f && total_length <= FLT_MAX))
+        return;
+
+    const auto point_count  = static_cast<int>(ImMin(total_length / step, 16777216.0f)) + (overshoot ? 2 : 1);
     const auto t_min        = 0.0f;
     const auto t_max        = step * point_count / total_length;
     const auto t_0          = (t_min + t_max) * 0.5f;
@@ -630,8 +633,9 @@ inline void ImCubicBezierFixedStep(ImCubicBezierFixedStepCallback callback, void
         float t_start = t_min;
         float t_end   = t_max;
         float t       = t_0;
+        float length  = 0.0f;
 
-        while (true)
+        for (int iteration = 1; ; ++iteration)
         {
             auto cacheIt = cache.find(t);
             if (cacheIt == cache.end())
@@ -642,28 +646,30 @@ inline void ImCubicBezierFixedStep(ImCubicBezierFixedStepCallback callback, void
                 cacheIt = cache.emplace(t, split_length).first;
             }
 
-            const auto length   = cacheIt->second;
-            const auto error    = targetLength - length;
+            length = cacheIt->second;
+            const auto error = targetLength - length;
 
-            if (ImFabs(error) <= max_value_error || ImFabs(t_start - t_end) <= max_t_error)
-            {
-                sample.T      = t;
-                sample.Length = length;
-                sample.Point  = ImCubicBezier(p0, p1, p2, p3, t);
-
-                callback(sample, user_pointer);
-                if (sample.BreakSearch)
-                    return;
-
+            if (ImFabs(error) <= max_value_error || ImFabs(t_start - t_end) <= max_t_error || iteration == 50)
                 break;
-            }
             else if (error < 0.0f)
                 t_end = t;
             else // if (error > 0.0f)
                 t_start = t;
 
-            t = (t_start + t_end) * 0.5f;
+            const auto t_next = (t_start + t_end) * 0.5f;
+            if (t_next == t_start || t_next == t_end)
+                break;
+
+            t = t_next;
         }
+
+        sample.T      = t;
+        sample.Length = length;
+        sample.Point  = ImCubicBezier(p0, p1, p2, p3, t);
+
+        callback(sample, user_pointer);
+        if (sample.BreakSearch)
+            return;
     }
 }
 
