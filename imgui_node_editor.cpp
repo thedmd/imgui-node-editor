@@ -4543,6 +4543,15 @@ ed::EditorAction::AcceptResult ed::ContextMenuAction::Accept(const Control& cont
         else if (control.BackgroundHot)
             candidateMenu = Background;
 
+        // Outside the editor, a press or release has no menu to open.
+        if (candidateMenu == None)
+        {
+            m_CandidateMenu = None;
+            m_CurrentMenu   = None;
+            m_ContextId     = ObjectId();
+            return False;
+        }
+
         if (isPressed)
         {
             m_CandidateMenu = candidateMenu;
