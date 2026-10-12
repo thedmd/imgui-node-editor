@@ -41,7 +41,7 @@ struct Application
     virtual bool CanClose() { return true; }
 
 private:
-    void RecreateFontAtlas();
+    void LoadFonts();
 
     void Frame();
 
