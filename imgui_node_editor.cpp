@@ -2361,6 +2361,8 @@ void ed::EditorContext::RestoreView()
     {
         m_NavigateAction.NavigateTo(m_Settings.m_VisibleRect, NavigateAction::ZoomMode::Exact, 0.0f);
     }
+
+    m_NavigateAction.ClampZoom();
 }
 
 void ed::EditorContext::SaveSettings()
@@ -2852,6 +2854,21 @@ void ed::EditorContext::ShowMetrics(const Control& control)
 // Node Settings
 //
 //------------------------------------------------------------------------------
+static bool ParseVector(const ed::json::value& data, ImVec2& result)
+{
+    const auto& x = data["x"];
+    const auto& y = data["y"];
+    if (!x.is_number() || !y.is_number())
+        return false;
+
+    const auto vector = ImVec2(static_cast<float>(x.get<double>()), static_cast<float>(y.get<double>()));
+    if (!std::isfinite(vector.x) || !std::isfinite(vector.y))
+        return false;
+
+    result = vector;
+    return true;
+}
+
 void ed::NodeSettings::ClearDirty()
 {
     m_IsDirty     = false;
@@ -2893,29 +2910,10 @@ bool ed::NodeSettings::Parse(const json::value& data, NodeSettings& result)
     if (!data.is_object())
         return false;
 
-    auto tryParseVector = [](const json::value& v, ImVec2& result) -> bool
-    {
-        if (v.is_object())
-        {
-            auto xValue = v["x"];
-            auto yValue = v["y"];
-
-            if (xValue.is_number() && yValue.is_number())
-            {
-                result.x = static_cast<float>(xValue.get<double>());
-                result.y = static_cast<float>(yValue.get<double>());
-
-                return true;
-            }
-        }
-
-        return false;
-    };
-
-    if (!tryParseVector(data["location"], result.m_Location))
+    if (!ParseVector(data["location"], result.m_Location))
         return false;
 
-    if (data.contains("group_size") && !tryParseVector(data["group_size"], result.m_GroupSize))
+    if (data.contains("group_size") && !ParseVector(data["group_size"], result.m_GroupSize))
         return false;
 
     return true;
@@ -3029,92 +3027,85 @@ bool ed::Settings::Parse(const std::string& string, Settings& settings)
 {
     Settings result = settings;
 
-    auto settingsValue = json::value::parse(string);
-    if (settingsValue.is_discarded())
-        return false;
-
+    const auto settingsValue = json::value::parse(string);
     if (!settingsValue.is_object())
         return false;
 
-    auto tryParseVector = [](const json::value& v, ImVec2& result) -> bool
+    // Object IDs carry a type prefix. Files written before it had node IDs only.
+    auto parseObjectId = [](const std::string& str, ObjectId& result) -> bool
     {
-        if (v.is_object() && v.contains("x") && v.contains("y"))
-        {
-            auto xValue = v["x"];
-            auto yValue = v["y"];
+        const auto separator = str.find(':');
+        const auto type      = separator != std::string::npos ? str.substr(0, separator) : std::string("node");
+        const auto digits    = str.c_str() + (separator != std::string::npos ? separator + 1 : 0);
 
-            if (xValue.is_number() && yValue.is_number())
-            {
-                result.x = static_cast<float>(xValue.get<double>());
-                result.y = static_cast<float>(yValue.get<double>());
+        char* end = nullptr;
+        const auto value = strtoull(digits, &end, 10);
+        if (end == digits || *end != '\0')
+            return false;
 
-                return true;
-            }
-        }
-
-        return false;
-    };
-
-    auto deserializeObjectId = [](const std::string& str)
-    {
-        auto separator = str.find_first_of(':');
-        auto idStart   = str.c_str() + ((separator != std::string::npos) ? separator + 1 : 0);
-        auto id        = reinterpret_cast<void*>(strtoull(idStart, nullptr, 10));
-        if (str.compare(0, separator, "node") == 0)
-            return ObjectId(NodeId(id));
-        else if (str.compare(0, separator, "link") == 0)
-            return ObjectId(LinkId(id));
-        else if (str.compare(0, separator, "pin") == 0)
-            return ObjectId(PinId(id));
+        const auto id = reinterpret_cast<void*>(static_cast<uintptr_t>(value));
+        if (type == "node")
+            result = NodeId(id);
+        else if (type == "link")
+            result = LinkId(id);
+        else if (type == "pin")
+            result = PinId(id);
         else
-            // fallback to old format
-            return ObjectId(NodeId(id)); //return ObjectId();
+            return false;
+
+        return true;
     };
 
-    //auto& settingsObject = settingsValue.get<json::object>();
-
-    auto& nodesValue = settingsValue["nodes"];
+    const auto& nodesValue = settingsValue["nodes"];
     if (nodesValue.is_object())
     {
         for (auto& node : nodesValue.get<json::object>())
         {
-            auto id = deserializeObjectId(node.first.c_str()).AsNodeId();
+            ObjectId id;
+            if (!parseObjectId(node.first, id) || !id.IsNodeId())
+                continue;
 
-            auto nodeSettings = result.FindNode(id);
-            if (!nodeSettings)
-                nodeSettings = result.AddNode(id);
+            auto nodeSettings = result.FindNode(id.AsNodeId());
+            auto parsed       = nodeSettings ? *nodeSettings : NodeSettings(id.AsNodeId());
+            if (!NodeSettings::Parse(node.second, parsed))
+                continue;
 
-            NodeSettings::Parse(node.second, *nodeSettings);
+            if (nodeSettings)
+                *nodeSettings = parsed;
+            else
+                result.m_Nodes.push_back(parsed);
         }
     }
 
-    auto& selectionValue = settingsValue["selection"];
+    const auto& selectionValue = settingsValue["selection"];
     if (selectionValue.is_array())
     {
-        const auto selectionArray = selectionValue.get<json::array>();
-
-        result.m_Selection.reserve(selectionArray.size());
         result.m_Selection.resize(0);
-        for (auto& selection : selectionArray)
+        for (auto& selection : selectionValue.get<json::array>())
         {
-            if (selection.is_string())
-                result.m_Selection.push_back(deserializeObjectId(selection.get<json::string>()));
+            ObjectId id;
+            if (selection.is_string() && parseObjectId(selection.get<json::string>(), id) && (id.IsNodeId() || id.IsLinkId()))
+                result.m_Selection.push_back(id);
         }
     }
 
-    auto& viewValue = settingsValue["view"];
+    const auto& viewValue = settingsValue["view"];
     if (viewValue.is_object())
     {
-        auto& viewScrollValue = viewValue["scroll"];
-        auto& viewZoomValue   = viewValue["zoom"];
-
-        if (!tryParseVector(viewScrollValue, result.m_ViewScroll))
+        if (!ParseVector(viewValue["scroll"], result.m_ViewScroll))
             result.m_ViewScroll = ImVec2(0, 0);
 
-        result.m_ViewZoom = viewZoomValue.is_number() ? static_cast<float>(viewZoomValue.get<double>()) : 1.0f;
+        const auto& zoomValue = viewValue["zoom"];
+        const auto  zoom      = zoomValue.is_number() ? static_cast<float>(zoomValue.get<double>()) : 1.0f;
+        result.m_ViewZoom = std::isfinite(zoom) && zoom > 0.0f ? zoom : 1.0f;
 
-        if (!viewValue.contains("visible_rect") || !tryParseVector(viewValue["visible_rect"]["min"], result.m_VisibleRect.Min) || !tryParseVector(viewValue["visible_rect"]["max"], result.m_VisibleRect.Max))
-            result.m_VisibleRect = {};
+        const auto& visibleRectValue = viewValue["visible_rect"];
+        ImRect visibleRect;
+        if (ParseVector(visibleRectValue["min"], visibleRect.Min) && ParseVector(visibleRectValue["max"], visibleRect.Max) &&
+            visibleRect.Min.x < visibleRect.Max.x && visibleRect.Min.y < visibleRect.Max.y)
+            result.m_VisibleRect = visibleRect;
+        else
+            result.m_VisibleRect = ImRect();
     }
 
     settings = std::move(result);
@@ -3853,6 +3844,18 @@ void ed::NavigateAction::SetViewRect(const ImRect& rect)
 ImRect ed::NavigateAction::GetViewRect() const
 {
     return m_Canvas.CalcViewRect(GetView());
+}
+
+void ed::NavigateAction::ClampZoom()
+{
+    const auto zoom = ImClamp(m_Zoom, m_ZoomLevels[0], m_ZoomLevels[m_ZoomLevelCount - 1]);
+    if (zoom == m_Zoom)
+        return;
+
+    const auto halfSize = m_Canvas.Rect().GetSize() * 0.5f;
+    const auto center   = (m_Scroll + halfSize) / m_Zoom;
+    m_Scroll = center * zoom - halfSize;
+    m_Zoom   = zoom;
 }
 
 float ed::NavigateAction::GetNextZoom(float steps)

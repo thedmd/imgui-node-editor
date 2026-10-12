@@ -102,6 +102,10 @@ v0.9.4 (WIP):
     BUGFIX: Editor: Make crude_json lookups safe on unexpected documents
         Missing keys, wrong types and out-of-range indices crashed or terminated the process.
 
+    BUGFIX: Editor: Validate settings when loading them
+        Pin or link entries among the nodes asserted. A zoom of zero or less, or one outside the zoom
+        levels, broke the view or hung the first frame; it is clamped to the zoom levels now.
+
 v0.9.3 (2023-10-14):
 
     CHANGE: Canvas: Use ImDrawCallback_ImCanvas macro as draw callback sentinel (#256), thanks @nspitko
