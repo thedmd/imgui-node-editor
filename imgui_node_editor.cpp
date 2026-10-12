@@ -9,6 +9,7 @@
 //------------------------------------------------------------------------------
 # include "imgui_node_editor_internal.h"
 # include <cstdio> // snprintf
+# include <cmath>
 # include <cstring> // strlen, strncmp
 # include <string>
 # include <bitset>
@@ -141,12 +142,20 @@ static bool HasContent(ed::SettingsContentFlags content, ed::SettingsContentFlag
 
 
 //------------------------------------------------------------------------------
+// Rounds down, on both sides of zero alike: moving the input by whole units moves
+// the result by as much.
+static ImVec2 ImVec2_Floor(const ImVec2& point)
+{
+    return ImVec2(std::floor(point.x), std::floor(point.y));
+}
+
+// Rounds down the position and the size separately, so the size doesn't depend
+// on the position.
 static void ImRect_Floor(ImRect& rect)
 {
-    rect.Min.x = static_cast<float>(static_cast<int>(rect.Min.x));
-    rect.Min.y = static_cast<float>(static_cast<int>(rect.Min.y));
-    rect.Max.x = static_cast<float>(static_cast<int>(rect.Max.x));
-    rect.Max.y = static_cast<float>(static_cast<int>(rect.Max.y));
+    const auto size = ImVec2_Floor(rect.GetSize());
+    rect.Min = ImVec2_Floor(rect.Min);
+    rect.Max = rect.Min + size;
 }
 
 
@@ -701,7 +710,7 @@ bool ed::Node::AcceptDrag()
 void ed::Node::UpdateDrag(const ImVec2& offset)
 {
     auto size = m_Bounds.GetSize();
-    m_Bounds.Min = ImFloor(m_DragStart + offset);
+    m_Bounds.Min = ImVec2_Floor(m_DragStart + offset);
     m_Bounds.Max = m_Bounds.Min + size;
 }
 
@@ -1751,7 +1760,7 @@ void ed::EditorContext::End()
 
             node->m_CenterOnScreen = false;
 
-            const auto offset = ImFloor(GetViewRect().GetCenter() - node->m_Bounds.GetCenter());
+            const auto offset = ImVec2_Floor(GetViewRect().GetCenter() - node->m_Bounds.GetCenter());
             if (ImLengthSqr(offset) <= 0)
                 continue;
 
