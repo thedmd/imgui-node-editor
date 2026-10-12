@@ -12,16 +12,34 @@
 # include "crude_json.h"
 # include <iomanip>
 # include <limits>
+# include <locale>
 # include <cstdlib>
-# include <clocale>
 # include <cmath>
 # include <cstring>
+# if __cplusplus >= 201703L || (defined(_MSVC_LANG) && _MSVC_LANG >= 201703L)
+#     include <charconv>
+# endif
 # if CRUDE_JSON_IO
 #     include <stdio.h>
 #     include <memory>
 # endif
 
 namespace crude_json {
+
+// Numbers are converted independently of the global C and C++ locales.
+static bool parse_number(const string& text, number& result)
+{
+# if defined(__cpp_lib_to_chars) && __cpp_lib_to_chars >= 201611L
+    const auto end = text.data() + text.size();
+    const auto converted = std::from_chars(text.data(), end, result);
+    return converted.ec == std::errc() && converted.ptr == end;
+# else
+    std::istringstream stream(text);
+    stream.imbue(std::locale::classic());
+    stream >> result;
+    return !stream.fail() && stream.peek() == std::char_traits<char>::eof();
+# endif
+}
 
 value::value(value&& other)
     : m_Type(other.m_Type)
@@ -198,6 +216,7 @@ string value::dump(const int indent, const char indent_char) const
 {
     dump_context_t context(indent, indent_char);
 
+    context.out.imbue(std::locale::classic());
     context.out.precision(std::numeric_limits<double>::max_digits10 + 1);
     context.out << std::defaultfloat;
 
@@ -348,15 +367,9 @@ struct value::parser
     {
         value v;
 
-        // Switch to C locale to make strtod and strtol work as expected
-        auto previous_locale = std::setlocale(LC_NUMERIC, "C");
-
         // Accept single value only when end of the stream is reached.
         if (!accept_element(v) || !eof())
             v = value(type_t::discarded);
-
-        if (previous_locale && strcmp(previous_locale, "C") != 0)
-            std::setlocale(LC_NUMERIC, previous_locale);
 
         return v;
     }
@@ -591,9 +604,8 @@ private:
         string n;
         if (s(accept_int(n) && accept_frac(n) && accept_exp(n)))
         {
-            char* end = nullptr;
-            auto v = std::strtod(n.c_str(), &end);
-            if (end != n.c_str() + n.size())
+            number v = 0;
+            if (!parse_number(n, v))
                 return false;
 
             if (v != 0 && !std::isnormal(v))
