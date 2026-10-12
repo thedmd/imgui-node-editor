@@ -776,3 +776,71 @@ TEST_CASE(MiddleClickDoesntSelect, "interaction.only_the_select_button_selects",
 
     test::Check(first && !second, "a middle-click on node 2 keeps node 1 selected: %d, %d", first, second);
 }
+
+TEST_CASE(ActionContextLists, "interaction.action_context_lists_match_its_size", "INT-10", test::TestFlags_None)
+{
+    // Group 3 holds node 1, linked to node 2 by link 100.
+    struct Context { int Size = -1, Nodes = -1, Links = -1; };
+    Context copied;
+    ImVec2  nodeOnScreen;
+    test::Storage storage;
+    test::Session session(&storage);
+    session.DefaultContent = [&](int frame)
+    {
+        if (frame == 0)
+        {
+            ed::SetNodePosition(3, ImVec2(50.0f, 50.0f));
+            ed::SetNodePosition(1, ImVec2(100.0f, 120.0f));
+            ed::SetNodePosition(2, ImVec2(300.0f, 120.0f));
+        }
+        ed::BeginNode(3);
+        ImGui::TextUnformatted("Group");
+        ed::Group(ImVec2(450.0f, 200.0f));
+        ed::EndNode();
+
+        ed::BeginNode(1);
+        ImGui::TextUnformatted("Node 1");
+        ed::BeginPin(11, ed::PinKind::Output);
+        ImGui::TextUnformatted("Out");
+        ed::EndPin();
+        ed::EndNode();
+        nodeOnScreen = ed::CanvasToScreen(ed::GetNodePosition(1) + ImVec2(10.0f, 8.0f));
+
+        ed::BeginNode(2);
+        ImGui::TextUnformatted("Node 2");
+        ed::BeginPin(21, ed::PinKind::Input);
+        ImGui::TextUnformatted("In");
+        ed::EndPin();
+        ed::EndNode();
+
+        ed::Link(100, 11, 21);
+
+        if (ed::BeginShortcut())
+        {
+            if (ed::AcceptCopy())
+                copied = { ed::GetActionContextSize(), ed::GetActionContextNodes(nullptr, 0), ed::GetActionContextLinks(nullptr, 0) };
+            ed::EndShortcut();
+        }
+    };
+    session.Run(3);
+    session.Click(ImVec2(900.0f, 600.0f));
+
+    auto copy = [&]
+    {
+        copied = Context();
+        session.PressKey(ImGuiKey_C, true);
+        return copied;
+    };
+
+    test::MouseMove(nodeOnScreen);
+    session.Run(2);
+    const auto hovered = copy();
+    session.Use([] { ed::SelectNode(1); ed::SelectNode(2, true); });
+    const auto selected = copy();
+    session.Use([] { ed::SelectNode(3); });
+    const auto group = copy();
+
+    test::Check(hovered.Size == 1 && hovered.Nodes == 1 && hovered.Links == 0, "nothing selected, node 1 hovered: size %d, %d nodes, %d links", hovered.Size, hovered.Nodes, hovered.Links);
+    test::Check(selected.Size == 3 && selected.Nodes == 2 && selected.Links == 1, "nodes 1 and 2 selected: size %d, %d nodes, %d links", selected.Size, selected.Nodes, selected.Links);
+    test::Check(group.Size == 4 && group.Nodes == 3 && group.Links == 1, "group 3 selected: size %d, %d nodes, %d links", group.Size, group.Nodes, group.Links);
+}
