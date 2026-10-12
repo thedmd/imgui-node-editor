@@ -163,10 +163,8 @@ inline ImLine ImRect_ClosestLine(const ImRect& rect_a, const ImRect& rect_b, flo
     if (radius_a == 0 && radius_b == 0)
         return line;
 
-    const auto offset      = line.B - line.A;
-    const auto length_sq   = offset.x * offset.x + offset.y * offset.y;
-    const auto radius_a_sq = radius_a * radius_a;
-    const auto radius_b_sq = radius_b * radius_b;
+    const auto offset    = line.B - line.A;
+    const auto length_sq = offset.x * offset.x + offset.y * offset.y;
 
     if (length_sq <= 0)
         return line;
@@ -174,8 +172,7 @@ inline ImLine ImRect_ClosestLine(const ImRect& rect_a, const ImRect& rect_b, flo
     const auto length    = ImSqrt(length_sq);
     const auto direction = ImVec2(offset.x / length, offset.y / length);
 
-    const auto total_radius_sq = radius_a_sq + radius_b_sq;
-    if (total_radius_sq > length_sq)
+    if (radius_a + radius_b > length)
     {
         const auto scale = length / (radius_a + radius_b);
         radius_a *= scale;
