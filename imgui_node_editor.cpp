@@ -4965,7 +4965,8 @@ bool ed::CreateItemAction::Process(const Control& control)
         cursorPin.m_Strength =  m_DraggedPin->m_Strength;
 
         ed::Link candidate(Editor, 0);
-        candidate.m_Color    = m_LinkColor;
+        candidate.m_Color     = m_LinkColor;
+        candidate.m_Thickness = m_LinkThickness;
         candidate.m_StartPin = draggingFromSource ? m_DraggedPin : &cursorPin;
         candidate.m_EndPin   = draggingFromSource ? &cursorPin : m_DraggedPin;
 
@@ -4987,7 +4988,7 @@ bool ed::CreateItemAction::Process(const Control& control)
         drawList->ChannelsSetCurrent(c_LinkChannel_NewLink);
 
         candidate.UpdateEndpoints();
-        candidate.Draw(drawList, m_LinkColor, m_LinkThickness);
+        candidate.Draw(drawList, m_LinkColor);
     }
     else if (m_CurrentStage == Possible || !control.ActivePin)
     {
