@@ -844,3 +844,31 @@ TEST_CASE(ActionContextLists, "interaction.action_context_lists_match_its_size",
     test::Check(selected.Size == 3 && selected.Nodes == 2 && selected.Links == 1, "nodes 1 and 2 selected: size %d, %d nodes, %d links", selected.Size, selected.Nodes, selected.Links);
     test::Check(group.Size == 4 && group.Nodes == 3 && group.Links == 1, "group 3 selected: size %d, %d nodes, %d links", group.Size, group.Nodes, group.Links);
 }
+
+TEST_CASE(ContextMenuClickOnNothing, "interaction.context_menu_click_on_nothing_blocks_nothing", "INT-15", test::TestFlags_None)
+{
+    test::Storage storage;
+    test::Session session(&storage);
+    session.HostContext.Context->IO.ConfigInputTrickleEventQueue = false; // a release and a key press in one frame
+    ShortcutScene scene;
+    session.DefaultContent = [&](int frame) { scene.Submit(frame); };
+    session.Run(3);
+    session.Click(scene.NodeOnScreen);
+
+    // Right-click outside the host window, which keeps its focus, and press Ctrl+C
+    // in the frame of the release.
+    test::MouseMove(ImVec2(1200.0f, 700.0f));
+    session.Run(2);
+    test::MouseButton(1, true);
+    session.Run(2);
+    test::Ctrl(true);
+    session.Run(2);
+    test::MouseButton(1, false);
+    test::Key(ImGuiKey_C, true);
+    session.Run(1);
+    test::Key(ImGuiKey_C, false);
+    test::Ctrl(false);
+    session.Run(2);
+
+    test::Check(scene.Copies == 1, "Ctrl+C in the frame a right-click on nothing ends copies: %d copies", scene.Copies);
+}
