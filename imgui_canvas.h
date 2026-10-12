@@ -262,6 +262,7 @@ private:
     float m_LastPixelDensity = 1.0f;
 # else
     float m_LastFringeScale = 1.0f;
+    float m_LastCurveTessellationTol = 1.25f;
 # endif
 
     ImVec2 m_MousePosBackup;

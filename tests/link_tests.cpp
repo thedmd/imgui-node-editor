@@ -162,3 +162,31 @@ TEST_CASE(HoverSlackAtZoom, "links.hover_slack_is_the_same_at_any_zoom", "CORE-1
 
     test::Check(wrong == 0, "links are hovered up to 5 screen pixels past their stroke at any zoom");
 }
+
+TEST_CASE(TessellationAtZoom, "links.tessellation_follows_zoom", "CORE-15", test::TestFlags_None)
+{
+    // An S-shaped link in the middle of the view, 8 times larger on screen at zoom 8.
+    // Without anti-aliasing a line has 4 vertices per segment at any thickness.
+    const float zooms[2] = { 1.0f, 8.0f };
+    int vertices[2] = {};
+    for (int i = 0; i < 2; ++i)
+    {
+        char settings[128];
+        snprintf(settings, sizeof(settings), R"({"view":{"scroll":{"x":0,"y":0},"zoom":%g}})", zooms[i]);
+        test::Storage storage;
+        storage.Global = settings;
+        test::Session session(&storage);
+        ImGui::GetStyle().AntiAliasedLines = false;
+        LinkScene scene;
+        session.DefaultContent = [&scene](int frame) { scene.Submit(frame); };
+        session.Run(2);
+
+        const auto center = session.Use([] { return ed::ScreenToCanvas(ed::CanvasToScreen(ImVec2(0.0f, 0.0f)) + ed::GetScreenSize() * 0.5f); });
+        scene.Start = center - ImVec2(50.0f, 30.0f);
+        scene.End   = center + ImVec2(50.0f, 30.0f);
+        session.Run(2);
+        vertices[i] = CountLinkVertices(session);
+    }
+
+    test::Check(vertices[0] > 0 && vertices[1] >= 2 * vertices[0], "the link has at least twice the vertices at zoom 8: %d at zoom 1, %d at zoom 8", vertices[0], vertices[1]);
+}

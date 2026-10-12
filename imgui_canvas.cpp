@@ -484,6 +484,9 @@ void ImGuiEx::Canvas::EnterLocalSpace()
     auto& fringeScale = ImFringeScaleRef(m_DrawList);
     m_LastFringeScale = fringeScale;
     fringeScale *= m_View.InvScale;
+
+    m_LastCurveTessellationTol = m_DrawList->_Data->CurveTessellationTol;
+    m_DrawList->_Data->CurveTessellationTol *= m_View.InvScale * m_View.InvScale; // a squared distance
 # endif
 }
 
@@ -562,6 +565,8 @@ void ImGuiEx::Canvas::LeaveLocalSpace()
 # else
     auto& fringeScale = ImFringeScaleRef(m_DrawList);
     fringeScale = m_LastFringeScale;
+
+    m_DrawList->_Data->CurveTessellationTol = m_LastCurveTessellationTol;
 # endif
 
     // And pop \o/
