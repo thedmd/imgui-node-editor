@@ -315,10 +315,21 @@ static void ImDrawList_SwapSplitter(ImDrawList* drawList, ImDrawListSplitter& sp
 
 static void ImDrawList_AddRectCompat(ImDrawList* drawList, const ImVec2& a, const ImVec2& b, ImU32 col, float rounding, ImDrawFlags flags, float thickness)
 {
-# if IMGUI_VERSION_NUM >= 19276
+# if IMGUI_VERSION_NUM >= 19298
+    drawList->AddRect(a, b, col, rounding, thickness, flags | ImDrawFlags_StrokeLegacy);
+# elif IMGUI_VERSION_NUM >= 19276
     drawList->AddRect(a, b, col, rounding, thickness, flags);
 # else
     drawList->AddRect(a, b, col, rounding, flags, thickness);
+# endif
+}
+
+static void ImDrawList_AddLineCompat(ImDrawList* drawList, const ImVec2& a, const ImVec2& b, ImU32 col)
+{
+# if IMGUI_VERSION_NUM >= 19298
+    drawList->AddLine(a, b, col, 1.0f, ImDrawFlags_StrokeLegacy);
+# else
+    drawList->AddLine(a, b, col);
 # endif
 }
 
@@ -1481,9 +1492,9 @@ void ed::EditorContext::End()
         m_DrawList->AddRectFilled(VIEW_POS, VIEW_POS + VIEW_SIZE, GetColor(StyleColor_Bg));
 
         for (float x = fmodf(offset.x, GRID_SX); x < VIEW_SIZE.x; x += GRID_SX)
-            m_DrawList->AddLine(ImVec2(x, 0.0f) + VIEW_POS, ImVec2(x, VIEW_SIZE.y) + VIEW_POS, GRID_COLOR);
+            ImDrawList_AddLineCompat(m_DrawList, ImVec2(x, 0.0f) + VIEW_POS, ImVec2(x, VIEW_SIZE.y) + VIEW_POS, GRID_COLOR);
         for (float y = fmodf(offset.y, GRID_SY); y < VIEW_SIZE.y; y += GRID_SY)
-            m_DrawList->AddLine(ImVec2(0.0f, y) + VIEW_POS, ImVec2(VIEW_SIZE.x, y) + VIEW_POS, GRID_COLOR);
+            ImDrawList_AddLineCompat(m_DrawList, ImVec2(0.0f, y) + VIEW_POS, ImVec2(VIEW_SIZE.x, y) + VIEW_POS, GRID_COLOR);
     }
 # endif
 
