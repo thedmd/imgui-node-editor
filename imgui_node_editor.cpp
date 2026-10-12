@@ -1774,10 +1774,12 @@ void ed::EditorContext::SetNodePosition(NodeId nodeId, const ImVec2& position)
         node->m_IsLive = false;
     }
 
-    if (node->m_Bounds.Min != position)
+    auto bounds = node->m_Bounds;
+    bounds.Translate(position - bounds.Min);
+    ImRect_Floor(bounds);
+    if (bounds.Min != node->m_Bounds.Min || bounds.Max != node->m_Bounds.Max)
     {
-        node->m_Bounds.Translate(position - node->m_Bounds.Min);
-        ImRect_Floor(node->m_Bounds);
+        node->m_Bounds = bounds;
         MakeDirty(NodeEditor::SaveReasonFlags::Position, node);
     }
 }
@@ -1793,11 +1795,11 @@ void ed::EditorContext::SetGroupSize(NodeId nodeId, const ImVec2& size)
 
     node->m_Type = NodeType::Group;
 
-    if (node->m_GroupBounds.GetSize() != size)
+    auto groupBounds = ImRect(node->m_Bounds.Min, node->m_Bounds.Min + size);
+    ImRect_Floor(groupBounds);
+    if (groupBounds.GetSize() != node->m_GroupBounds.GetSize())
     {
-        node->m_GroupBounds.Min = node->m_Bounds.Min;
-        node->m_GroupBounds.Max = node->m_Bounds.Min + size;
-        ImRect_Floor(node->m_GroupBounds);
+        node->m_GroupBounds = groupBounds;
         MakeDirty(NodeEditor::SaveReasonFlags::Size, node);
     }
 }

@@ -190,6 +190,9 @@ v0.10.0 (WIP):
     BUGFIX: Editor: Change settings once a navigation settles, not on each of its frames
         One wheel notch changed them 10 times, and NavigateToContent() 21 times.
 
+    BUGFIX: Editor: Don't change settings when a fractional position is set again
+        SetNodePosition() and SetGroupSize() called with the same fractional value changed them on every call.
+
 v0.9.2 (2023-09-01):
 
     NEW: Editor: Add offset of hover/select to style (thanks @MultiPain)
