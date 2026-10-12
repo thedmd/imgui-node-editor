@@ -1774,18 +1774,17 @@ void ed::EditorContext::ClearSelection()
 
 void ed::EditorContext::SelectObject(Object* object)
 {
+    if (object->m_IsSelected)
+        return;
+
     m_SelectedObjects.push_back(object);
     object->m_IsSelected = true;
 }
 
 void ed::EditorContext::DeselectObject(Object* object)
 {
-    auto objectIt = std::find(m_SelectedObjects.begin(), m_SelectedObjects.end(), object);
-    if (objectIt == m_SelectedObjects.end())
-        return;
-
     object->m_IsSelected = false;
-    m_SelectedObjects.erase(objectIt);
+    m_SelectedObjects.erase(std::remove(m_SelectedObjects.begin(), m_SelectedObjects.end(), object), m_SelectedObjects.end());
 }
 
 void ed::EditorContext::SetSelectedObject(Object* object)
