@@ -247,6 +247,9 @@ v0.10.0 (WIP):
     BUGFIX: Editor: Flow links that are submitted after ed::Flow() in the frame
         ed::Flow() called before ed::Link() in a frame did nothing.
 
+    CHANGE: Editor: Make F over nested groups center the innermost one
+        It centered the outermost group under the mouse.
+
 v0.9.2 (2023-09-01):
 
     NEW: Editor: Add offset of hover/select to style (thanks @MultiPain)

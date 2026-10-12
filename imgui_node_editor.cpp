@@ -1984,9 +1984,10 @@ bool ed::EditorContext::HasSelectionChanged()
 
 ed::Node* ed::EditorContext::FindNodeAt(const ImVec2& p)
 {
-    for (auto node : m_Nodes)
-        if (node->TestHit(p))
-            return node;
+    // Topmost first, which puts a group before the larger groups holding it.
+    for (auto nodeIt = m_Nodes.rbegin(), nodeItEnd = m_Nodes.rend(); nodeIt != nodeItEnd; ++nodeIt)
+        if ((*nodeIt)->TestHit(p))
+            return *nodeIt;
 
     return nullptr;
 }
