@@ -35,6 +35,10 @@ v0.9.4 (WIP):
     BUGFIX: Editor: Write IMGUI_NODE_EDITOR_VERSION_NUM in decimal
         000904 was an octal literal with the digit 9, so any version check failed to compile.
 
+    BUGFIX: Editor: Offer created item to application only once
+        Rejected items were offered again on every frame, and a drag cancelled after
+        the item was accepted left BeginCreate() returning true until the next drag.
+
 v0.9.3 (2023-10-14):
 
     CHANGE: Canvas: Use ImDrawCallback_ImCanvas macro as draw callback sentinel (#256), thanks @nspitko
