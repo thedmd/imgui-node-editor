@@ -99,3 +99,34 @@ TEST_CASE(GroupInsideItself, "groups.group_inside_its_own_group_area", "INT-11",
     const ImVec2 position = session.Use([] { return ed::GetNodePosition(2); });
     test::Check(position.x != 150.0f || position.y != 150.0f, "node 2 moved with the group: (%g, %g)", position.x, position.y);
 }
+
+TEST_CASE(SmallGroupRegions, "groups.small_group_regions_reach_the_minimum_size", "CORE-17", test::TestFlags_None)
+{
+    // A 26 x 26 group grows its regions to the 30 x 30 minimum: 2 px beyond each side.
+    test::Storage storage;
+    test::Session session(&storage);
+    ImVec2 min, max;
+    session.DefaultContent = [&](int frame)
+    {
+        if (frame == 0)
+            ed::SetNodePosition(1, ImVec2(100.0f, 100.0f));
+        ed::BeginNode(1);
+        ed::Group(ImVec2(10.0f, 10.0f));
+        ed::EndNode();
+        min = ed::CanvasToScreen(ed::GetNodePosition(1));
+        max = ed::CanvasToScreen(ed::GetNodePosition(1) + ed::GetNodeSize(1));
+    };
+    session.Run(3);
+
+    auto hoveredAt = [&](float x)
+    {
+        test::MouseMove(ImVec2(x, (min.y + max.y) * 0.5f));
+        session.Run(2);
+        return session.Use([] { return ed::GetHoveredNode(); });
+    };
+    const auto inside  = hoveredAt(max.x + 1.0f);
+    const auto outside = hoveredAt(max.x + 3.0f);
+
+    test::Check(max.x - min.x == 26.0f, "the group is 26 wide: %g", max.x - min.x);
+    test::Check(inside == ed::NodeId(1) && !outside, "its right edge reaches 2 px out: hovered 1 px out %d, 3 px out %d", (int)inside.Get(), (int)outside.Get());
+}

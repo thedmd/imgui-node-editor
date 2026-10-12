@@ -289,6 +289,9 @@ v0.10.0 (WIP):
 
     BUGFIX: Editor: Ignore non-finite positions in SetNodePosition() and sizes in SetGroupSize()
 
+    BUGFIX: Editor: Grow small groups' interaction regions to the minimum size only
+        They reached past the group by twice as much, taking hover from what lies next to it.
+
 v0.9.2 (2023-09-01):
 
     NEW: Editor: Add offset of hover/select to style (thanks @MultiPain)
