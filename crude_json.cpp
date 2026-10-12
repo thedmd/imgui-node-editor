@@ -71,6 +71,21 @@ value::value(const value& other)
     }
 }
 
+// Const lookups that find nothing return this.
+static const value& null_value()
+{
+    static const value s_Null;
+    return s_Null;
+}
+
+// Mutable lookups that can't add to the document return this. Writes to it are lost.
+static value& scratch_value()
+{
+    static thread_local value s_Scratch;
+    s_Scratch = nullptr;
+    return s_Scratch;
+}
+
 value& value::operator[](size_t index)
 {
     if (is_null())
@@ -79,23 +94,29 @@ value& value::operator[](size_t index)
     if (is_array())
     {
         auto& v = *array_ptr(m_Storage);
-        if (index >= v.size())
-            v.insert(v.end(), index - v.size() + 1, value());
+        if (index < v.max_size())
+        {
+            if (index >= v.size())
+                v.insert(v.end(), index - v.size() + 1, value());
 
-        return v[index];
+            return v[index];
+        }
     }
 
-    CRUDE_ASSERT(false && "operator[] on unsupported type");
-    std::terminate();
+    CRUDE_ASSERT(false && "operator[] on unsupported type or index");
+    return scratch_value();
 }
 
 const value& value::operator[](size_t index) const
 {
     if (is_array())
-        return (*array_ptr(m_Storage))[index];
+    {
+        auto& v = *array_ptr(m_Storage);
+        if (index < v.size())
+            return v[index];
+    }
 
-    CRUDE_ASSERT(false && "operator[] on unsupported type");
-    std::terminate();
+    return null_value();
 }
 
 value& value::operator[](const string& key)
@@ -107,21 +128,30 @@ value& value::operator[](const string& key)
         return (*object_ptr(m_Storage))[key];
 
     CRUDE_ASSERT(false && "operator[] on unsupported type");
-    std::terminate();
+    return scratch_value();
 }
 
 const value& value::operator[](const string& key) const
 {
-    if (is_object())
-    {
-        auto& o = *object_ptr(m_Storage);
-        auto it = o.find(key);
-        CRUDE_ASSERT(it != o.end());
-        return it->second;
-    }
+    if (auto entry = find(key))
+        return *entry;
 
-    CRUDE_ASSERT(false && "operator[] on unsupported type");
-    std::terminate();
+    return null_value();
+}
+
+value* value::find(const string& key)
+{
+    return const_cast<value*>(static_cast<const value*>(this)->find(key));
+}
+
+const value* value::find(const string& key) const
+{
+    if (!is_object())
+        return nullptr;
+
+    auto& o = *object_ptr(m_Storage);
+    auto it = o.find(key);
+    return it != o.end() ? &it->second : nullptr;
 }
 
 bool value::contains(const string& key) const
