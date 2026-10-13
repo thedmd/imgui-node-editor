@@ -94,35 +94,18 @@ static const char* const c_SettingsHandlerName  = "NodeEditor";
 
 
 //------------------------------------------------------------------------------
-# if defined(_DEBUG) && defined(_WIN32)
-extern "C" __declspec(dllimport) void __stdcall OutputDebugStringA(const char* string);
-
-static void LogV(const char* fmt, va_list args)
-{
-    const int buffer_size = 1024;
-    static char buffer[1024];
-
-    vsnprintf(buffer, buffer_size - 1, fmt, args);
-    buffer[buffer_size - 1] = 0;
-
-    ImGui::LogText("\nNode Editor: %s", buffer);
-
-    OutputDebugStringA("NodeEditor: ");
-    OutputDebugStringA(buffer);
-    OutputDebugStringA("\n");
-}
-# endif
-
 void ed::Log(const char* fmt, ...)
 {
-# if defined(_DEBUG) && defined(_WIN32)
+    if (!ImGui::GetCurrentContext())
+        return;
+
+    char buffer[512];
     va_list args;
     va_start(args, fmt);
-    LogV(fmt, args);
+    ImFormatStringV(buffer, IM_ARRAYSIZE(buffer), fmt, args);
     va_end(args);
-# else
-    IM_UNUSED(fmt);
-# endif
+
+    IMGUI_DEBUG_LOG("[node-editor] %s\n", buffer);
 }
 
 
@@ -1987,8 +1970,11 @@ void ed::EditorContext::UpdateNodeState(Node* node)
     if (tryLoadState)
     {
         NodeSettings newSettings = *settings;
-        if (NodeSettings::Parse(m_Config.LoadNode(node->m_ID), newSettings))
+        const auto data = m_Config.LoadNode(node->m_ID);
+        if (NodeSettings::Parse(data, newSettings))
             *settings = newSettings;
+        else if (!data.empty())
+            Log("node:%llu: what Config::LoadNodeSettings gave is ignored, it doesn't parse.", static_cast<unsigned long long>(node->m_ID.Get()));
     }
 
     ApplyNodeSettings(node, *settings);
@@ -3423,7 +3409,11 @@ bool ed::Settings::Parse(const std::string& string, Settings& settings, Settings
 
     const auto settingsValue = json::value::parse(string);
     if (!settingsValue.is_object())
+    {
+        if (!string.empty())
+            Log("Settings ignored, they aren't a JSON object.");
         return false;
+    }
 
     // Object IDs carry a type prefix. Files written before it had node IDs only.
     auto parseObjectId = [](const std::string& str, ObjectId& result) -> bool
@@ -3457,12 +3447,18 @@ bool ed::Settings::Parse(const std::string& string, Settings& settings, Settings
         {
             ObjectId id;
             if (!parseObjectId(node.first, id) || !id.IsNodeId())
+            {
+                Log("Settings: \"%s\" in \"nodes\" ignored, it isn't a node ID.", node.first.c_str());
                 continue;
+            }
 
             auto nodeSettings = result.FindNode(id.AsNodeId());
             auto parsed       = nodeSettings ? *nodeSettings : NodeSettings(id.AsNodeId());
             if (!NodeSettings::Parse(node.second, parsed))
+            {
+                Log("Settings: \"%s\" ignored, its values don't parse.", node.first.c_str());
                 continue;
+            }
 
             parsed.m_WasLoaded = true;
 
@@ -3472,6 +3468,8 @@ bool ed::Settings::Parse(const std::string& string, Settings& settings, Settings
                 *result.AddNode(parsed.m_ID) = parsed;
         }
     }
+    else if (!nodesValue.is_null() && !nodesValue.is_object())
+        Log("Settings: \"nodes\" ignored, it isn't an object.");
 
     const auto& selectionValue = settingsValue["selection"];
     if (HasContent(content, SettingsContentFlags::Selection) && selectionValue.is_array())
@@ -3482,8 +3480,12 @@ bool ed::Settings::Parse(const std::string& string, Settings& settings, Settings
             ObjectId id;
             if (selection.is_string() && parseObjectId(selection.get<json::string>(), id) && (id.IsNodeId() || id.IsLinkId()))
                 result.m_Selection.push_back(id);
+            else
+                Log("Settings: an entry of \"selection\" ignored, it isn't a node or link ID.");
         }
     }
+    else if (!selectionValue.is_null() && !selectionValue.is_array())
+        Log("Settings: \"selection\" ignored, it isn't an array.");
 
     const auto& viewValue = settingsValue["view"];
     if (HasContent(content, SettingsContentFlags::View) && viewValue.is_object())
@@ -3491,9 +3493,12 @@ bool ed::Settings::Parse(const std::string& string, Settings& settings, Settings
         if (!ParseVector(viewValue["scroll"], result.m_ViewScroll))
             result.m_ViewScroll = ImVec2(0, 0);
 
-        const auto& zoomValue = viewValue["zoom"];
-        const auto  zoom      = zoomValue.is_number() ? static_cast<float>(zoomValue.get<double>()) : 1.0f;
-        result.m_ViewZoom = std::isfinite(zoom) && zoom > 0.0f ? zoom : 1.0f;
+        const auto& zoomValue   = viewValue["zoom"];
+        const auto  zoom        = zoomValue.is_number() ? static_cast<float>(zoomValue.get<double>()) : 1.0f;
+        const bool  isZoomValid = std::isfinite(zoom) && zoom > 0.0f;
+        result.m_ViewZoom = isZoomValid ? zoom : 1.0f;
+        if (!zoomValue.is_null() && (!zoomValue.is_number() || !isZoomValid))
+            Log("Settings: the view's \"zoom\" ignored, it isn't a positive number.");
 
         const auto& visibleRectValue = viewValue["visible_rect"];
         ImRect visibleRect;
@@ -3503,6 +3508,8 @@ bool ed::Settings::Parse(const std::string& string, Settings& settings, Settings
         else
             result.m_VisibleRect = ImRect();
     }
+    else if (!viewValue.is_null() && !viewValue.is_object())
+        Log("Settings: \"view\" ignored, it isn't an object.");
 
     settings = std::move(result);
 
