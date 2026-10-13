@@ -579,6 +579,8 @@ v0.10.0 (WIP):
     BUGFIX: Examples: Leave .DS_Store files out of the macOS bundles
         Only the data copied next to the executables left them out.
 
+    CHANGE: Examples: Build as standard C++, without compiler extensions
+
 v0.9.2 (2023-09-01):
 
     NEW: Editor: Add offset of hover/select to style (thanks @MultiPain)
