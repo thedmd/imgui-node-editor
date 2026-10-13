@@ -9,13 +9,17 @@ permissions:
 
 jobs:
   examples:
-    name: Examples, ${{ matrix.os }}, ${{ matrix.config }}
+    name: Examples, ${{ matrix.os }}, ${{ matrix.config }}${{ matrix.strict && ', strict' || '' }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         os: [windows-2025, macos-15, ubuntu-24.04]
         config: [Debug, Release]
+        strict: [false]
+        include:
+          - { os: windows-2025, config: Release, strict: true }
+          - { os: ubuntu-24.04, config: Release, strict: true }
 
     steps:
     - uses: actions/checkout@v5
@@ -25,7 +29,9 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libxext-dev libwayland-dev libxkbcommon-dev mesa-common-dev libgl1-mesa-dev
     - name: Configure
-      run: cmake -S examples -B build -DCMAKE_BUILD_TYPE=${{ matrix.config }}
+      run: >
+        cmake -S examples -B build -DCMAKE_BUILD_TYPE=${{ matrix.config }}
+        ${{ matrix.strict && '"-DIMGUI_NODE_EDITOR_EXAMPLES_DEFINITIONS=IMGUI_DISABLE_OBSOLETE_FUNCTIONS;IMGUI_DISABLE_OBSOLETE_KEYIO"' || '' }}
     - name: Build
       run: cmake --build build --config ${{ matrix.config }} --parallel
 
