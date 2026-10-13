@@ -309,3 +309,28 @@ TEST_CASE(NavigateAfterDeletingRememberedObject, "lifetime.navigate_after_deleti
     const float zoomAfter = session.Use([] { return ed::GetCurrentZoom(); });
     test::Check(zoomAfter == zoom, "F over the new node centers it without zooming: zoom %g -> %g", zoom, zoomAfter);
 }
+
+TEST_CASE(EditorDestroyedWhileAnimating, "lifetime.editor_destroyed_while_navigating_and_flowing", "INT-20", test::TestFlags_None)
+{
+    // The editor ends while navigation and a flow are still playing.
+    ed::ViewState before, after;
+    {
+        TwoNodes nodes;
+        test::Storage storage;
+        test::Session session(&storage);
+        session.DefaultContent = [&](int frame)
+        {
+            nodes.Submit(frame);
+            if (frame == 3)
+            {
+                ed::Flow(100);
+                ed::NavigateToContent(1.0f);
+            }
+        };
+        session.Run(5);
+        before = session.Use([] { return ed::GetViewState(); });
+        session.Run(1);
+        after = session.Use([] { return ed::GetViewState(); });
+    }
+    test::Check(before.VisibleMin.x != after.VisibleMin.x || before.VisibleMax.x != after.VisibleMax.x, "the view was still moving when the editor ended");
+}
