@@ -124,6 +124,7 @@ struct value
     bool is_number()     const { return m_Type == type_t::number;    }
     bool is_discarded()  const { return m_Type == type_t::discarded; }
 
+    // On another type, get() asserts and returns an empty value; writes to it are lost.
     template <typename T> const T& get() const;
     template <typename T>       T& get();
 
@@ -173,6 +174,9 @@ private:
     static const boolean* boolean_ptr(const storage_t& storage) { return reinterpret_cast<const boolean*>(&storage); }
     static       number*   number_ptr(      storage_t& storage) { return reinterpret_cast<       number*>(&storage); }
     static const number*   number_ptr(const storage_t& storage) { return reinterpret_cast<const  number*>(&storage); }
+
+    template <typename T> static const T& empty()   { static const T s_Empty{}; return s_Empty; }
+    template <typename T> static       T& scratch() { static thread_local T s_Scratch; s_Scratch = T(); return s_Scratch; }
 
     static type_t construct(storage_t& storage, type_t type)
     {
@@ -235,17 +239,17 @@ private:
     type_t    m_Type;
 };
 
-template <> inline const object&  value::get<object>()  const { CRUDE_ASSERT(m_Type == type_t::object);  return *object_ptr(m_Storage);  }
-template <> inline const array&   value::get<array>()   const { CRUDE_ASSERT(m_Type == type_t::array);   return *array_ptr(m_Storage);   }
-template <> inline const string&  value::get<string>()  const { CRUDE_ASSERT(m_Type == type_t::string);  return *string_ptr(m_Storage);  }
-template <> inline const boolean& value::get<boolean>() const { CRUDE_ASSERT(m_Type == type_t::boolean); return *boolean_ptr(m_Storage); }
-template <> inline const number&  value::get<number>()  const { CRUDE_ASSERT(m_Type == type_t::number);  return *number_ptr(m_Storage);  }
+template <> inline const object&  value::get<object>()  const { CRUDE_ASSERT(m_Type == type_t::object);  return m_Type == type_t::object  ? *object_ptr(m_Storage)  : empty<object>();    }
+template <> inline const array&   value::get<array>()   const { CRUDE_ASSERT(m_Type == type_t::array);   return m_Type == type_t::array   ? *array_ptr(m_Storage)   : empty<array>();     }
+template <> inline const string&  value::get<string>()  const { CRUDE_ASSERT(m_Type == type_t::string);  return m_Type == type_t::string  ? *string_ptr(m_Storage)  : empty<string>();    }
+template <> inline const boolean& value::get<boolean>() const { CRUDE_ASSERT(m_Type == type_t::boolean); return m_Type == type_t::boolean ? *boolean_ptr(m_Storage) : empty<boolean>();   }
+template <> inline const number&  value::get<number>()  const { CRUDE_ASSERT(m_Type == type_t::number);  return m_Type == type_t::number  ? *number_ptr(m_Storage)  : empty<number>();    }
 
-template <> inline       object&  value::get<object>()        { CRUDE_ASSERT(m_Type == type_t::object);  return *object_ptr(m_Storage);  }
-template <> inline       array&   value::get<array>()         { CRUDE_ASSERT(m_Type == type_t::array);   return *array_ptr(m_Storage);   }
-template <> inline       string&  value::get<string>()        { CRUDE_ASSERT(m_Type == type_t::string);  return *string_ptr(m_Storage);  }
-template <> inline       boolean& value::get<boolean>()       { CRUDE_ASSERT(m_Type == type_t::boolean); return *boolean_ptr(m_Storage); }
-template <> inline       number&  value::get<number>()        { CRUDE_ASSERT(m_Type == type_t::number);  return *number_ptr(m_Storage);  }
+template <> inline       object&  value::get<object>()        { CRUDE_ASSERT(m_Type == type_t::object);  return m_Type == type_t::object  ? *object_ptr(m_Storage)  : scratch<object>();  }
+template <> inline       array&   value::get<array>()         { CRUDE_ASSERT(m_Type == type_t::array);   return m_Type == type_t::array   ? *array_ptr(m_Storage)   : scratch<array>();   }
+template <> inline       string&  value::get<string>()        { CRUDE_ASSERT(m_Type == type_t::string);  return m_Type == type_t::string  ? *string_ptr(m_Storage)  : scratch<string>();  }
+template <> inline       boolean& value::get<boolean>()       { CRUDE_ASSERT(m_Type == type_t::boolean); return m_Type == type_t::boolean ? *boolean_ptr(m_Storage) : scratch<boolean>(); }
+template <> inline       number&  value::get<number>()        { CRUDE_ASSERT(m_Type == type_t::number);  return m_Type == type_t::number  ? *number_ptr(m_Storage)  : scratch<number>();  }
 
 template <> inline const object*  value::get_ptr<object>()  const { if (m_Type == type_t::object)  return object_ptr(m_Storage);  else return nullptr; }
 template <> inline const array*   value::get_ptr<array>()   const { if (m_Type == type_t::array)   return array_ptr(m_Storage);   else return nullptr; }
