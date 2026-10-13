@@ -584,3 +584,30 @@ TEST_CASE(AltClickWithoutShortcuts, "api.alt_click_deletion_follows_enable_short
     test::Check(!offered[0], "with shortcuts off, Alt+click doesn't offer the link for deletion");
     test::Check(offered[1], "with shortcuts on, it does");
 }
+
+TEST_CASE(SelectionChangeInFrame, "api.selection_change_is_seen_between_begin_and_end", "CORE-13", test::TestFlags_None)
+{
+    // A click selects node 1; the content asks HasSelectionChanged() every frame.
+    test::Storage storage;
+    test::Session session(&storage);
+    int changedFrames = 0;
+    ImVec2 center;
+    session.DefaultContent = [&](int frame)
+    {
+        if (frame == 0)
+            ed::SetNodePosition(1, ImVec2(100.0f, 100.0f));
+        ed::BeginNode(1);
+        ImGui::TextUnformatted("Node");
+        ed::EndNode();
+        center = ed::GetNodePosition(1) + ed::GetNodeSize(1) * 0.5f;
+        if (ed::HasSelectionChanged())
+            ++changedFrames;
+    };
+    session.Run(2);
+    session.Click(session.Use([&] { return ed::CanvasToScreen(center); }));
+    session.Run(3);
+
+    const bool selected = session.Use([] { return ed::IsNodeSelected(1); });
+    test::Check(selected, "the click selects node 1");
+    test::Check(changedFrames == 1, "the change is seen on one frame between Begin() and End(): %d", changedFrames);
+}

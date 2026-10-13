@@ -1427,6 +1427,7 @@ struct EditorContext
     bool IsAnyNodeSelected();
     bool IsAnyLinkSelected();
     bool HasSelectionChanged();
+    bool HasSelectionChangedSinceBegin() const;
     uint64_t GetSelectionId() const { return m_SelectionId; }
 
     Node* FindNodeAt(const ImVec2& p);
@@ -1603,6 +1604,7 @@ private:
 
     vector<Object*>     m_LastSelectedObjects;
     uint64_t            m_SelectionId;
+    bool                m_SelectionChangedBeforeBegin;
 
     Link*               m_LastActiveLink;
 

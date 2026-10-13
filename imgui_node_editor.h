@@ -388,7 +388,7 @@ IMGUI_NODE_EDITOR_API bool IsSuspended();
 IMGUI_NODE_EDITOR_API bool IsFocused(); // Whether the window the editor is in had focus in Begin()
 IMGUI_NODE_EDITOR_API bool IsActive();  // Same as IsFocused()
 
-IMGUI_NODE_EDITOR_API bool HasSelectionChanged();
+IMGUI_NODE_EDITOR_API bool HasSelectionChanged(); // Selection changed in the last frame, also when asked between Begin() and End()
 IMGUI_NODE_EDITOR_API int  GetSelectedObjectCount();
 IMGUI_NODE_EDITOR_API int  GetSelectedNodes(NodeId* nodes, int size);
 IMGUI_NODE_EDITOR_API int  GetSelectedLinks(LinkId* links, int size);
