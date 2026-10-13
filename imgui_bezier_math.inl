@@ -24,7 +24,7 @@
 template <typename T>
 inline T ImLinearBezier(const T& p0, const T& p1, float t)
 {
-    return p0 + t * (p1 - p0);
+    return p0 + (p1 - p0) * t;
 }
 
 template <typename T>
@@ -40,13 +40,13 @@ inline T ImQuadraticBezier(const T& p0, const T& p1, const T& p2, float t)
 {
     const auto a = 1 - t;
 
-    return a * a * p0 + 2 * t * a * p1 + t * t * p2;
+    return p0 * (a * a) + p1 * (2 * t * a) + p2 * (t * t);
 }
 
 template <typename T>
 inline T ImQuadraticBezierDt(const T& p0, const T& p1, const T& p2, float t)
 {
-    return 2 * (1 - t) * (p1 - p0) + 2 * t * (p2 - p1);
+    return (p1 - p0) * (2 * (1 - t)) + (p2 - p1) * (2 * t);
 }
 
 template <typename T>
@@ -56,7 +56,7 @@ inline T ImCubicBezier(const T& p0, const T& p1, const T& p2, const T& p3, float
     const auto b = a * a * a;
     const auto c = t * t * t;
 
-    return b * p0 + 3 * t * a * a * p1 + 3 * t * t * a * p2 + c * p3;
+    return p0 * b + p1 * (3 * t * a * a) + p2 * (3 * t * t * a) + p3 * c;
 }
 
 template <typename T>
@@ -67,7 +67,7 @@ inline T ImCubicBezierDt(const T& p0, const T& p1, const T& p2, const T& p3, flo
     const auto c = t * t;
     const auto d = 2 * t * a;
 
-    return 3 * b * (p1 - p0) + 3 * d * (p2 - p1) + 3 * c * (p3 - p2);
+    return (p1 - p0) * (3 * b) + (p2 - p1) * (3 * d) + (p3 - p2) * (3 * c);
 }
 
 template <typename T>
@@ -207,17 +207,17 @@ inline ImCubicBezierSplitResultT<T> ImCubicBezierSplit(const T& p0, const T& p1,
     {
         ImCubicBezierPointsT<T>
         {
-                                                                 p0,
-                                             z1      * p1 - s1 * p0,
-                          z2      * p2 - 2 * z1 * s1 * p1 + s2 * p0,
-            z3 * p3 - 3 * z2 * s1 * p2 + 3 * z1 * s2 * p1 - s3 * p0
+                                                                     p0,
+                                                      p1 * z1 - p0 * s1,
+                                 p2 * z2 - p1 * (2 * z1 * s1) + p0 * s2,
+            p3 * z3 - p2 * (3 * z2 * s1) + p1 * (3 * z1 * s2) - p0 * s3
         },
         ImCubicBezierPointsT<T>
         {
-            z3 * p3 - 3 * z2 * s1 * p2 + 3 * z1 * s2 * p1 - s3 * p0,
-                          z2      * p3 - 2 * z1 * s1 * p2 + s2 * p1,
-                                             z1      * p3 - s1 * p2,
-                                                                 p3,
+            p3 * z3 - p2 * (3 * z2 * s1) + p1 * (3 * z1 * s2) - p0 * s3,
+                                 p3 * z2 - p2 * (2 * z1 * s1) + p1 * s2,
+                                                      p3 * z1 - p2 * s1,
+                                                                     p3,
         }
     };
 }
@@ -231,9 +231,9 @@ inline ImCubicBezierSplitResultT<T> ImCubicBezierSplit(const ImCubicBezierPoints
 inline ImRect ImCubicBezierBoundingRect(const ImVec2& p0, const ImVec2& p1, const ImVec2& p2, const ImVec2& p3)
 {
     // The extrema are where the derivative, a t^2 + b t + c, is zero.
-    auto a = 3 * p3 - 9 * p2 + 9 * p1 - 3 * p0;
-    auto b = 6 * p0 - 12 * p1 + 6 * p2;
-    auto c = 3 * p1 - 3 * p0;
+    auto a = p3 * 3.0f - p2 * 9.0f + p1 * 9.0f - p0 * 3.0f;
+    auto b = p0 * 6.0f - p1 * 12.0f + p2 * 6.0f;
+    auto c = p1 * 3.0f - p0 * 3.0f;
 
     auto tl = ImMin(p0, p3);
     auto rb = ImMax(p0, p3);
@@ -329,7 +329,7 @@ inline ImProjectResult ImProjectOnCubicBezier(const ImVec2& point, const ImVec2&
         {
             const auto s   = ImCubicBezier(p0, p1, p2, p3, best_t) - point;
             const auto dp  = ImCubicBezierDt(p0, p1, p2, p3, best_t);
-            const auto ddp = 6 * (1 - best_t) * (p2 - 2 * p1 + p0) + 6 * best_t * (p3 - 2 * p2 + p1);
+            const auto ddp = (p2 - p1 * 2.0f + p0) * (6 * (1 - best_t)) + (p3 - p2 * 2.0f + p1) * (6 * best_t);
             const auto f   = ImDot(s, dp);
             const auto df  = ImDot(dp, dp) + ImDot(s, ddp);
             if (df <= 0)
@@ -454,10 +454,10 @@ inline ImCubicBezierIntersectResult ImCubicBezierLineIntersect(const ImVec2& p0,
     //             c3                  c2                c1       c0
 
     // Calculate the coefficients
-    auto c3 =     -p0 + 3 * p1 - 3 * p2 + p3;
-    auto c2 =  3 * p0 - 6 * p1 + 3 * p2;
-    auto c1 = -3 * p0 + 3 * p1;
-    auto c0 =      p0;
+    auto c3 = -p0         + p1 * 3.0f - p2 * 3.0f + p3;
+    auto c2 =  p0 * 3.0f  - p1 * 6.0f + p2 * 3.0f;
+    auto c1 =  p0 * -3.0f + p1 * 3.0f;
+    auto c0 =  p0;
 
     // Convert line to normal form: ax + by + c = 0
     const double a = a1.y - a0.y;

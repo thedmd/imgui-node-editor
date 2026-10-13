@@ -88,6 +88,7 @@ set(_TestSources
     link_tests.cpp
     math_tests.cpp
     node_state_tests.cpp
+    operator_tests.cpp
     protocol_tests.cpp
     settings_handler_tests.cpp
     settings_tests.cpp

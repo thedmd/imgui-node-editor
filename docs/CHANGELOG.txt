@@ -505,6 +505,9 @@ v0.10.0 (WIP):
     CHANGE: Editor: Collect the links of a copy or duplicate in one pass
         Each node in the context scanned all links, so Ctrl+C with 6,000 nodes selected took 113 ms.
 
+    BREAKING: Editor: Don't define operator*(float, ImVec2) for Dear ImGui before 1.92.7
+        An application defining it as well failed to compile with the editor's headers; write v * s instead of s * v there.
+
 v0.9.2 (2023-09-01):
 
     NEW: Editor: Add offset of hover/select to style (thanks @MultiPain)
