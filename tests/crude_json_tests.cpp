@@ -223,6 +223,18 @@ TEST_CASE(JsonIntegers, "json.integers_are_stored_as_numbers", "JSON-12", test::
     test::Check(constructed.is_number() && constructed.get<json::number>() == 5.0, "value(5) is the number 5");
 }
 
+TEST_CASE(JsonPointers, "json.pointers_other_than_strings_dont_convert", "JSON-12", test::TestFlags_None)
+{
+    // Any pointer converted to bool, so a wide string became true.
+    test::Check(!std::is_constructible<json::value, const wchar_t*>::value && !std::is_constructible<json::value, int*>::value,
+        "value(const wchar_t*) and value(int*) don't compile");
+    test::Check(!std::is_assignable<json::value&, const wchar_t*>::value, "assigning a const wchar_t* doesn't compile");
+
+    char text[] = "text";
+    const json::value fromArray = text, fromPointer = static_cast<char*>(text), fromLiteral = "text";
+    test::Check(fromArray.is_string() && fromPointer.is_string() && fromLiteral.is_string(), "char strings still make strings");
+}
+
 TEST_CASE(JsonNothrowMoves, "json.values_move_without_throwing", "JSON-10", test::TestFlags_None)
 {
     json::value a, b;

@@ -63,6 +63,8 @@ struct value
 private:
     template <typename T>
     using if_integer = typename std::enable_if<std::is_integral<T>::value && !std::is_same<T, boolean>::value, int>::type;
+    template <typename T>
+    using if_not_char = typename std::enable_if<!std::is_same<typename std::remove_cv<T>::type, char>::value, int>::type;
 
 public:
     value(type_t type = type_t::null): m_Type(construct(m_Storage, type)) {}
@@ -83,6 +85,8 @@ public:
     // Integers are stored as numbers, exact up to 2^53.
     template <typename T, if_integer<T> = 0>
     value(      T        v): m_Type(construct(m_Storage, static_cast<number>(v))) {}
+    template <typename T, if_not_char<T> = 0>
+    value(      T*        ) = delete;
     ~value() { destruct(m_Storage, m_Type); }
 
     value& operator=(value&& other) noexcept { if (this != &other) { value(std::move(other)).swap(*this); } return *this; }
@@ -100,6 +104,8 @@ public:
     value& operator=(      number   v) { auto other = value(          v);  swap(other); return *this; }
     template <typename T, if_integer<T> = 0>
     value& operator=(      T        v) { auto other = value(          v);  swap(other); return *this; }
+    template <typename T, if_not_char<T> = 0>
+    value& operator=(      T*        ) = delete;
 
     type_t type() const { return m_Type; }
 
