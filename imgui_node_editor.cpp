@@ -5684,7 +5684,7 @@ ed::EditorAction::AcceptResult ed::DeleteItemsAction::Accept(const Control& cont
         for (auto object : Editor->GetSelectedObjects())
             AddCandidate(object);
     }
-    else if (control.ClickedLink && io.KeyAlt)
+    else if (control.ClickedLink && io.KeyAlt && Editor->AreShortcutsEnabled())
     {
         AddCandidate(control.ClickedLink);
     }
