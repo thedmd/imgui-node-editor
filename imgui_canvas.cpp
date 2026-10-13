@@ -143,10 +143,6 @@ bool ImGuiEx::Canvas::Begin(ImGuiID id, const ImVec2& size)
 
     EnterLocalSpace();
 
-# if IMGUI_VERSION_NUM >= 18967
-    ImGui::SetNextItemAllowOverlap();
-# endif
-
     // Emit dummy widget matching bounds of the canvas.
     ImGui::SetCursorScreenPos(m_ViewRect.Min);
     ImGui::Dummy(m_ViewRect.GetSize());
@@ -186,10 +182,6 @@ void ImGuiEx::Canvas::End()
             m_DrawList->CmdBuffer.erase(m_DrawList->CmdBuffer.Data + i);
 
     m_Window->DC.CursorMaxPos = m_WindowCursorMaxBackup;
-
-# if IMGUI_VERSION_NUM < 18967
-    ImGui::SetItemAllowOverlap();
-# endif
 
     // Emit dummy widget matching bounds of the canvas.
     ImGui::SetCursorScreenPos(m_WidgetPosition);
