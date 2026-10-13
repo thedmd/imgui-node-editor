@@ -260,5 +260,5 @@ int Main(int argc, char** argv)
     if (exampe.Create())
         return exampe.Run();
 
-    return 0;
+    return 1;
 }

@@ -4,6 +4,7 @@
 # include "renderer.h"
 # include "stb_image.h"
 # include <imgui_internal.h>
+# include <cstdio>
 # if PLATFORM(WINDOWS)
 #     define NOMINMAX
 #     define WIN32_LEAN_AND_MEAN
@@ -51,6 +52,21 @@ static std::string GetBaseDirectory()
     return directory;
 }
 
+static void ShowError(const std::string& title, const char* message)
+{
+# if PLATFORM(WINDOWS)
+    auto widen = [](const std::string& text)
+    {
+        std::wstring result(MultiByteToWideChar(CP_UTF8, 0, text.c_str(), -1, nullptr, 0), L'\0');
+        MultiByteToWideChar(CP_UTF8, 0, text.c_str(), -1, &result[0], static_cast<int>(result.size()));
+        return result;
+    };
+    MessageBoxW(nullptr, widen(message).c_str(), widen(title).c_str(), MB_OK | MB_ICONERROR);
+# else
+    fprintf(stderr, "%s: %s\n", title.c_str(), message);
+# endif
+}
+
 // Relative paths are relative to the base directory, not to the working directory.
 static std::string ResolvePath(const std::string& path)
 {
@@ -93,10 +109,16 @@ bool Application::Create(int width /*= -1*/, int height /*= -1*/)
     ImGui::SetCurrentContext(m_Context);
 
     if (!m_Platform->OpenMainWindow(m_Name.c_str(), width, height))
+    {
+        ShowError(m_Name, "Could not open the window.");
         return false;
+    }
 
     if (!m_Renderer->Create(*m_Platform))
+    {
+        ShowError(m_Name, "Could not create the renderer.");
         return false;
+    }
 
     m_IniFilename = ResolvePath(m_Name + ".ini");
 
