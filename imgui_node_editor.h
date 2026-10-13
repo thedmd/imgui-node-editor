@@ -385,7 +385,8 @@ IMGUI_NODE_EDITOR_API void Suspend();
 IMGUI_NODE_EDITOR_API void Resume();
 IMGUI_NODE_EDITOR_API bool IsSuspended();
 
-IMGUI_NODE_EDITOR_API bool IsActive();
+IMGUI_NODE_EDITOR_API bool IsFocused(); // Whether the window the editor is in had focus in Begin()
+IMGUI_NODE_EDITOR_API bool IsActive();  // Same as IsFocused()
 
 IMGUI_NODE_EDITOR_API bool HasSelectionChanged();
 IMGUI_NODE_EDITOR_API int  GetSelectedObjectCount();
