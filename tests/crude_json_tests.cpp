@@ -207,3 +207,20 @@ TEST_CASE(JsonEscapes, "json.keys_and_values_are_escaped_alike", "JSON-6", test:
     test::Check(!parsed.is_discarded() && parsed["a\"b"].get<json::string>() == "tab\there" && parsed["a\\b"].get<json::string>() == "one\x01" "end",
         "and read back");
 }
+
+TEST_CASE(JsonNothrowMoves, "json.values_move_without_throwing", "JSON-10", test::TestFlags_None)
+{
+    json::value a, b;
+    test::Check(std::is_nothrow_move_constructible<json::value>::value && std::is_nothrow_move_assignable<json::value>::value, "moves are noexcept");
+    test::Check(noexcept(a.swap(b)) && noexcept(swap(a, b)), "swap() is noexcept");
+
+    // An array that grows copies its elements unless they move without throwing;
+    // a moved object keeps its entries where they are.
+    json::array values(1);
+    values[0]["key"] = 1.0;
+    const auto entry    = &values[0]["key"];
+    const auto capacity = values.capacity();
+    while (values.capacity() == capacity)
+        values.emplace_back(2.0);
+    test::Check(&values[0]["key"] == entry, "a growing array moves its elements");
+}

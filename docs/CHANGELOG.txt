@@ -451,6 +451,9 @@ v0.10.0 (WIP):
     CHANGE: crude_json: Write numbers with 17 significant digits
         That is enough to read back the same double; the 18th digit was noise, as in 0.100000000000000006.
 
+    BUGFIX: crude_json: Make moves and swap() noexcept
+        Growing arrays copied their elements, and an allocation failing in swap() between values of different types left a destroyed value behind.
+
 v0.9.2 (2023-09-01):
 
     NEW: Editor: Add offset of hover/select to style (thanks @MultiPain)
