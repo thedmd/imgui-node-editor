@@ -4398,6 +4398,10 @@ bool ed::SizeAction::Process(const Control& control)
         if ((m_Pivot & NodeRegion::Right) == NodeRegion::Right)
             newBounds.Max.x = ImMax(newBounds.Min.x + minimumSize.x, Editor->AlignPointToGrid(newBounds.Max.x + dragOffset.x));
 
+        // Edges stop at the canvas border.
+        newBounds.Min = ImMax(newBounds.Min, ImVec2(-c_CanvasExtent, -c_CanvasExtent));
+        newBounds.Max = ImMin(newBounds.Max, ImVec2( c_CanvasExtent,  c_CanvasExtent));
+
         ImRect_Floor(newBounds);
 
         m_LastSize = newBounds.GetSize();
