@@ -634,6 +634,10 @@ v0.10.0 (WIP):
         Flow paths were sampled to a fixed fraction of the curve, so on links tens of thousands of units long
         samples collapsed onto each other and some markers were drawn at non-finite positions.
 
+    CHANGE: Editor: Find each sample of a flow path from the one before
+        Every sample searched the whole curve: at the precision long links need, a 71,000 unit link's path took
+        4.3 ms to build, now 0.7 ms.
+
 v0.9.3 (2023-10-14):
 
     CHANGE: Canvas: Use ImDrawCallback_ImCanvas macro as draw callback sentinel (#256), thanks @nspitko

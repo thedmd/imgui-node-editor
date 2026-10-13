@@ -17,7 +17,6 @@
 //------------------------------------------------------------------------------
 # include "imgui_bezier_math.h"
 # include <cmath>
-# include <map> // used in ImCubicBezierFixedStep
 
 
 //------------------------------------------------------------------------------
@@ -612,31 +611,36 @@ inline void ImCubicBezierFixedStep(ImCubicBezierFixedStepCallback callback, void
     const auto point_count  = static_cast<int>(ImMin(total_length / step, 16777216.0f)) + (overshoot ? 2 : 1);
     const auto t_min        = 0.0f;
     const auto t_max        = step * point_count / total_length;
-    const auto t_0          = (t_min + t_max) * 0.5f;
 
-    // #todo: replace map with ImVector + binary search
-    std::map<float, float> cache;
+    auto front_length = [&](float t)
+    {
+        return ImCubicBezierLength(ImCubicBezierSplit(p0, p1, p2, p3, t).Left);
+    };
+
+    // Each sample lies past the previous one: the search starts one step further at the
+    // curve's speed there, in a range widened until it holds the sample.
+    float t_previous = t_min;
     for (int point_index = 1; point_index < point_count; ++point_index)
     {
         const auto targetLength = point_index * step;
+        const auto speed        = ImSqrt(ImLengthSqr(ImCubicBezierTangent(p0, p1, p2, p3, t_previous)));
 
-        float t_start = t_min;
-        float t_end   = t_max;
-        float t       = t_0;
+        float width   = speed > 0.0f ? 2.0f * step / speed : t_max - t_previous;
+        float t_start = t_previous;
+        float t_end   = ImMin(t_max, t_previous + width);
+        while (t_end < t_max && front_length(t_end) < targetLength)
+        {
+            t_start = t_end;
+            width  *= 2.0f;
+            t_end   = ImMin(t_max, t_end + width);
+        }
+
+        float t       = speed > 0.0f ? ImClamp(t_previous + step / speed, t_start, t_end) : (t_start + t_end) * 0.5f;
         float length  = 0.0f;
 
         for (int iteration = 1; ; ++iteration)
         {
-            auto cacheIt = cache.find(t);
-            if (cacheIt == cache.end())
-            {
-                const auto front        = ImCubicBezierSplit(p0, p1, p2, p3, t).Left;
-                const auto split_length = ImCubicBezierLength(front);
-
-                cacheIt = cache.emplace(t, split_length).first;
-            }
-
-            length = cacheIt->second;
+            length = front_length(t);
             const auto error = targetLength - length;
 
             if (ImFabs(error) <= max_value_error || ImFabs(t_start - t_end) <= max_t_error || iteration == 50)
@@ -652,6 +656,8 @@ inline void ImCubicBezierFixedStep(ImCubicBezierFixedStepCallback callback, void
 
             t = t_next;
         }
+
+        t_previous = t;
 
         sample.T      = t;
         sample.Length = length;
