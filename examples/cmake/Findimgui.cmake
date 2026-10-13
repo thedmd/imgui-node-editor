@@ -21,10 +21,9 @@ if (NOT TARGET imgui)
         ${imgui_SOURCE_DIR}
     )
 
-    target_compile_definitions(imgui PUBLIC
-        IMGUI_DISABLE_OBSOLETE_FUNCTIONS
-        IMGUI_DISABLE_OBSOLETE_KEYIO
-    )
+    # They change the layout of ImGui's types, so everything built with ImGui sees them.
+    set(IMGUI_NODE_EDITOR_EXAMPLES_DEFINITIONS "" CACHE STRING "Definitions for Dear ImGui and the examples, for example IMGUI_DISABLE_OBSOLETE_FUNCTIONS")
+    target_compile_definitions(imgui PUBLIC ${IMGUI_NODE_EDITOR_EXAMPLES_DEFINITIONS})
 
     set_target_properties(
         imgui
