@@ -430,7 +430,6 @@ struct Node final: Object
 
     bool     m_HighlightConnectedLinks;
 
-    bool     m_RestoreState;
     bool     m_CenterOnScreen;
 
     Node(EditorContext* editor, NodeId id)
@@ -448,7 +447,6 @@ struct Node final: Object
         , m_Rounding(0)
         , m_GroupBounds()
         , m_HighlightConnectedLinks(false)
-        , m_RestoreState(false)
         , m_CenterOnScreen(false)
     {
     }
@@ -1357,9 +1355,6 @@ private:
 struct Config: ax::NodeEditor::Config
 {
     Config(const ax::NodeEditor::Config* config);
-
-    std::string LoadNode(NodeId nodeId);
-    bool SaveNode(NodeId nodeId, const std::string& data, SaveReasonFlags flags);
 };
 
 // [NodeEditor][<name>] sections of imgui.ini in one ImGui context, kept whether
@@ -1446,7 +1441,6 @@ struct EditorContext
     void SetNodeZPosition(NodeId nodeId, float z);
     float GetNodeZPosition(NodeId nodeId);
 
-    void MarkNodeToRestoreState(Node* node);
     void UpdateNodeState(Node* node);
 
     void RemoveSettings(Object* object);

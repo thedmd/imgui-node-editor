@@ -459,12 +459,6 @@ float ax::NodeEditor::GetNodeZPosition(NodeId nodeId)
     return CurrentEditor()->GetNodeZPosition(nodeId);
 }
 
-void ax::NodeEditor::RestoreNodeState(NodeId nodeId)
-{
-    if (auto node = CurrentEditor()->FindNode(nodeId))
-        CurrentEditor()->MarkNodeToRestoreState(node);
-}
-
 void ax::NodeEditor::Suspend()
 {
     CurrentEditor()->Suspend();

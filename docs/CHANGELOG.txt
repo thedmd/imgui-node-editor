@@ -600,6 +600,14 @@ v0.10.0 (WIP):
     NEW: Editor: Add FormatNodeState() and ParseNodeState()
         A node's state as text, in the format 0.9's Config::SaveNodeSettings gave, for documents that keep node layout as text.
 
+    BREAKING: Editor: Keep node layout in documents through typed node state instead of per-node callbacks
+        Config::SaveNodeSettings, Config::LoadNodeSettings and ed::RestoreNodeState() are removed. Applications
+        read node layout with ed::GetNodeStates() and restore it with ed::SetNodeStates(), also before the first
+        ed::Begin(); ed::FormatNodeState() and ed::ParseNodeState() write and read the text SaveNodeSettings
+        gave. ed::SetNodeState() takes RestoreNodeState()'s place, and ed::BeginEdits() reports what the user changes.
+
+    CHANGE: Examples: Save and restore node state in blueprints-example through typed node state
+
 v0.9.3 (2023-10-14):
 
     CHANGE: Canvas: Use ImDrawCallback_ImCanvas macro as draw callback sentinel (#256), thanks @nspitko

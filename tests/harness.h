@@ -11,7 +11,6 @@
 # include <imgui_node_editor.h>
 # include <cstdint>
 # include <functional>
-# include <map>
 # include <string>
 # include <vector>
 
@@ -135,14 +134,11 @@ long         FirstIndexOf(const Geometry& geometry, ImU32 color);
 //------------------------------------------------------------------------------
 // Application side storage of editor settings. A Session loads Global with
 // LoadSettingsFromMemory() before its first frame, and stores the result of
-// SaveSettingsToMemory() after every frame that changed the settings. Nodes is
-// behind the per-node callbacks MakeConfig() sets up.
+// SaveSettingsToMemory() after every frame that changed the settings.
 struct Storage
 {
-    std::string                      Global;
-    int                              GlobalSaves = 0;
-    std::map<uintptr_t, std::string> Nodes;
-    std::vector<std::string>         NodeSaveLog;
+    std::string Global;
+    int         GlobalSaves = 0;
 };
 
 ed::Config MakeConfig(Storage* storage);

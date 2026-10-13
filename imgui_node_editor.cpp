@@ -2320,40 +2320,14 @@ bool ed::EditorContext::ParseNodeState(const char* data, size_t size, NodeState&
     return true;
 }
 
-void ed::EditorContext::MarkNodeToRestoreState(Node* node)
-{
-    node->m_RestoreState = true;
-}
-
 void ed::EditorContext::UpdateNodeState(Node* node)
 {
-    bool tryLoadState = node->m_RestoreState;
-
-    node->m_RestoreState = false;
-
     auto settings = m_Settings.FindNode(node->m_ID);
-    if (!settings)
+    if (!settings || settings->m_WasUsed)
         return;
 
-    if (!tryLoadState && settings->m_WasUsed)
-        return;
-
-    if (!settings->m_WasUsed)
-    {
-        MakeDirty(SaveReasonFlags::AddNode, node);
-        settings->m_WasUsed = true;
-    }
-
-    // Load state from config (if possible)
-    if (tryLoadState)
-    {
-        NodeSettings newSettings = *settings;
-        const auto data = m_Config.LoadNode(node->m_ID);
-        if (NodeSettings::Parse(data, newSettings))
-            *settings = newSettings;
-        else if (!data.empty())
-            Log("node:%llu: what Config::LoadNodeSettings gave is ignored, it doesn't parse.", static_cast<unsigned long long>(node->m_ID.Get()));
-    }
+    MakeDirty(SaveReasonFlags::AddNode, node);
+    settings->m_WasUsed = true;
 
     ApplyNodeSettings(node, *settings);
 }
@@ -2850,9 +2824,6 @@ ed::Node* ed::EditorContext::CreateNode(NodeId id)
     if (!settings)
         settings = m_Settings.AddNode(id);
 
-    if (!settings->m_WasUsed)
-        MarkNodeToRestoreState(node);
-
     UpdateNodeState(node);
 
     if (settings->m_GroupSize.x > 0 || settings->m_GroupSize.y > 0)
@@ -3020,16 +2991,6 @@ void ed::EditorContext::UpdateSettings()
 void ed::EditorContext::SaveSettings()
 {
     UpdateSettings();
-
-    if (m_Config.SaveNodeSettings)
-    {
-        for (auto& node : m_Nodes)
-        {
-            auto settings = m_Settings.FindNode(node->m_ID);
-            if (!node->m_RestoreState && settings->m_IsDirty)
-                m_Config.SaveNode(node->m_ID, settings->Serialize().dump(), settings->m_DirtyReason);
-        }
-    }
 
     if (!m_HasSettingsChanged)
     {
@@ -7177,29 +7138,4 @@ ed::Config::Config(const ax::NodeEditor::Config* config)
 {
     if (config)
         *static_cast<ax::NodeEditor::Config*>(this) = *config;
-}
-
-std::string ed::Config::LoadNode(NodeId nodeId)
-{
-    std::string data;
-
-    if (LoadNodeSettings)
-    {
-        const auto size = LoadNodeSettings(nodeId, nullptr, UserPointer);
-        if (size > 0)
-        {
-            data.resize(size);
-            LoadNodeSettings(nodeId, const_cast<char*>(data.data()), UserPointer);
-        }
-    }
-
-    return data;
-}
-
-bool ed::Config::SaveNode(NodeId nodeId, const std::string& data, SaveReasonFlags flags)
-{
-    if (SaveNodeSettings)
-        return SaveNodeSettings(nodeId, data.c_str(), data.size(), flags, UserPointer);
-
-    return false;
 }

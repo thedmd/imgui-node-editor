@@ -117,7 +117,6 @@ struct Node
     NodeType Type;
     ImVec2 Size;
 
-    std::string State;
     std::string SavedState;
 
     Node(int id, const char* name, ImColor color = ImColor(255, 255, 255)):
@@ -501,38 +500,6 @@ struct Example:
 
         ed::Config config;
 
-        config.UserPointer = this;
-
-        config.LoadNodeSettings = [](ed::NodeId nodeId, char* data, void* userPointer) -> size_t
-        {
-            auto self = static_cast<Example*>(userPointer);
-
-            auto node = self->FindNode(nodeId);
-            if (!node)
-                return 0;
-
-            if (data != nullptr)
-                memcpy(data, node->State.data(), node->State.size());
-            return node->State.size();
-        };
-
-        config.SaveNodeSettings = [](ed::NodeId nodeId, const char* data, size_t size, ed::SaveReasonFlags reason, void* userPointer) -> bool
-        {
-            IM_UNUSED(reason);
-
-            auto self = static_cast<Example*>(userPointer);
-
-            auto node = self->FindNode(nodeId);
-            if (!node)
-                return false;
-
-            node->State.assign(data, size);
-
-            self->TouchNode(nodeId);
-
-            return true;
-        };
-
         m_Editor = ed::CreateEditor(&config);
         ed::SetCurrentEditor(m_Editor);
 
@@ -794,8 +761,9 @@ struct Example:
 
                 ed::NavigateToSelection();
             }
-            if (ImGui::IsItemHovered() && !node.State.empty())
-                ImGui::SetTooltip("State: %s", node.State.c_str());
+            ed::NodeState state;
+            if (ImGui::IsItemHovered() && ed::GetNodeState(node.ID, &state))
+                ImGui::SetTooltip("State: %s", ed::FormatNodeState(state));
 
             auto id = std::string("(") + std::to_string(reinterpret_cast<uintptr_t>(node.ID.AsPointer())) + ")";
             auto textSize = ImGui::CalcTextSize(id.c_str(), nullptr);
@@ -815,8 +783,8 @@ struct Example:
 # endif
             if (node.SavedState.empty())
             {
-                if (ImGui::InvisibleButton("save", ImVec2((float)saveIconWidth, (float)saveIconHeight)))
-                    node.SavedState = node.State;
+                if (ImGui::InvisibleButton("save", ImVec2((float)saveIconWidth, (float)saveIconHeight)) && ed::GetNodeState(node.ID, &state))
+                    node.SavedState = ed::FormatNodeState(state);
 
                 if (ImGui::IsItemActive())
                     drawList->AddImage(m_SaveIcon, ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), ImVec2(0, 0), ImVec2(1, 1), IM_COL32(255, 255, 255, 96));
@@ -841,8 +809,9 @@ struct Example:
             {
                 if (ImGui::InvisibleButton("restore", ImVec2((float)restoreIconWidth, (float)restoreIconHeight)))
                 {
-                    node.State = node.SavedState;
-                    ed::RestoreNodeState(node.ID);
+                    state.Id = node.ID;
+                    if (ed::ParseNodeState(node.SavedState.c_str(), node.SavedState.size(), &state))
+                        ed::SetNodeState(state);
                     node.SavedState.clear();
                 }
 
@@ -1753,6 +1722,16 @@ struct Example:
         drawList->AddBezierCurve(to_imvec(c.p0), to_imvec(c.p1), to_imvec(c.p2), to_imvec(c.p3), IM_COL32(255, 255, 255, 255), 1.0f);
         cubic_bezier_subdivide(acceptPoint, c);
     */
+
+        // Nodes the user moved or resized are marked in the node list for a while.
+        if (ed::BeginEdits())
+        {
+            ed::Edit edit;
+            while (ed::QueryEdit(&edit))
+                for (int i = 0; i < edit.NodeCount; ++i)
+                    TouchNode(edit.NodesAfter[i].Id);
+            ed::EndEdits();
+        }
 
         ed::End();
 
