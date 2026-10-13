@@ -2,6 +2,7 @@
 #     define IMGUI_DEFINE_MATH_OPERATORS
 # endif
 # include "imgui_canvas.h"
+# include <cmath>
 # include <type_traits>
 
 // https://stackoverflow.com/a/36079786
@@ -321,7 +322,7 @@ ImVec2 ImGuiEx::Canvas::FromLocal(const ImVec2& point) const
 
 ImVec2 ImGuiEx::Canvas::FromLocal(const ImVec2& point, const CanvasView& view) const
 {
-    return point * view.Scale() + view.Origin() + m_WidgetPosition;
+    return point * view.Scale() + CalcViewTransformPosition(view);
 }
 
 ImVec2 ImGuiEx::Canvas::FromLocalV(const ImVec2& vector) const
@@ -341,7 +342,7 @@ ImVec2 ImGuiEx::Canvas::ToLocal(const ImVec2& point) const
 
 ImVec2 ImGuiEx::Canvas::ToLocal(const ImVec2& point, const CanvasView& view) const
 {
-    return (point - view.Origin() - m_WidgetPosition) * view.InvScale();
+    return (point - CalcViewTransformPosition(view)) * view.InvScale();
 }
 
 ImVec2 ImGuiEx::Canvas::ToLocalV(const ImVec2& vector) const
@@ -357,14 +358,22 @@ ImVec2 ImGuiEx::Canvas::ToLocalV(const ImVec2& vector, const CanvasView& view) c
 ImRect ImGuiEx::Canvas::CalcViewRect(const CanvasView& view) const
 {
     ImRect result;
-    result.Min = ImVec2(-view.Origin().x, -view.Origin().y) * view.InvScale();
-    result.Max = (m_WidgetSize - view.Origin()) * view.InvScale();
+    const auto transformPosition = CalcViewTransformPosition(view);
+    result.Min = (m_WidgetPosition - transformPosition) * view.InvScale();
+    result.Max = (m_WidgetPosition + m_WidgetSize - transformPosition) * view.InvScale();
     return result;
+}
+
+ImVec2 ImGuiEx::Canvas::CalcViewTransformPosition(const CanvasView& view) const
+{
+    // On whole pixels, so content on whole canvas units is too at scale 1.
+    const auto position = view.Origin() + m_WidgetPosition;
+    return ImVec2(std::floor(position.x), std::floor(position.y));
 }
 
 void ImGuiEx::Canvas::UpdateViewTransformPosition()
 {
-    m_ViewTransformPosition = m_View.Origin() + m_WidgetPosition;
+    m_ViewTransformPosition = CalcViewTransformPosition(m_View);
 }
 
 void ImGuiEx::Canvas::SaveInputState()

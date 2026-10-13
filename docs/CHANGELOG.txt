@@ -245,6 +245,9 @@ v0.9.4 (WIP):
     BUGFIX: Canvas: Place the IME of an input inside a canvas on screen
         InputText() published its caret in canvas coordinates, so candidate windows appeared in the wrong place.
 
+    BUGFIX: Canvas: Put the view origin on whole pixels
+        After zooming in and back out, content at zoom 1.0 rendered between pixels and looked blurry.
+
 v0.9.3 (2023-10-14):
 
     CHANGE: Canvas: Use ImDrawCallback_ImCanvas macro as draw callback sentinel (#256), thanks @nspitko
