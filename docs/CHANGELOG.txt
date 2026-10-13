@@ -430,6 +430,9 @@ v0.10.0 (WIP):
     BUGFIX: Editor: Report selection changes made by the mouse to HasSelectionChanged() between Begin() and End()
         It missed them there, since Begin() had taken them in already.
 
+    BUGFIX: crude_json: Read UTF-8 strings, and \u escapes as UTF-8
+        Bytes from 0x80 up failed to parse where char is signed, and escapes above 0x7F asserted and were cut to one byte.
+
 v0.9.2 (2023-09-01):
 
     NEW: Editor: Add offset of hover/select to style (thanks @MultiPain)

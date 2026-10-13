@@ -46,3 +46,33 @@ TEST_CASE(JsonMutableLookups, "json.mutable_lookups_on_wrong_types_assert", "JSO
 
     test::Check(document.dump() == before, "document unchanged: %s", document.dump().c_str());
 }
+
+namespace {
+
+// The string in a parsed document, or "<not a string>".
+std::string ParsedString(const char* text)
+{
+    const auto parsed = json::value::parse(text);
+    return parsed.is_string() ? parsed.get<json::string>() : std::string("<not a string>");
+}
+
+} // namespace
+
+TEST_CASE(JsonUtf8, "json.utf8_strings_round_trip", "JSON-5", test::TestFlags_None)
+{
+    // zażółć, é, € and an emoji, in UTF-8.
+    const char* texts[] = { "za\xC5\xBC\xC3\xB3\xC5\x82\xC4\x87", "\xC3\xA9", "\xE2\x82\xAC", "\xF0\x9F\x98\x80" };
+    int differing = 0;
+    for (auto text : texts)
+    {
+        const json::value written = std::string(text);
+        if (ParsedString(written.dump().c_str()) != text)
+            ++differing;
+    }
+    test::Check(differing == 0, "UTF-8 strings round-trip: %d of 4 differ", differing);
+
+    test::Check(ParsedString(R"("\u00e9")") == "\xC3\xA9", "\\u00e9 reads as UTF-8 for e acute");
+    test::Check(ParsedString(R"("\u20ac")") == "\xE2\x82\xAC", "\\u20ac reads as UTF-8 for the euro sign");
+    test::Check(ParsedString(R"("\ud83d\ude00")") == "\xF0\x9F\x98\x80", "a surrogate pair reads as the 4 bytes of one code point");
+    test::Check(json::value::parse(R"("\ud83d")").is_discarded() && json::value::parse(R"("\ude00x")").is_discarded(), "lone surrogates are rejected");
+}
