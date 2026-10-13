@@ -21,6 +21,7 @@
 # include <imgui_internal.h>
 # include <imgui_node_editor.h>
 # include <application.h>
+# include <utility>
 
 namespace ed = ax::NodeEditor;
 
@@ -40,8 +41,8 @@ struct Example:
     struct LinkInfo
     {
         ed::LinkId Id;
-        ed::PinId  InputId;
-        ed::PinId  OutputId;
+        ed::PinId  StartPinId; // an output pin, where the link starts
+        ed::PinId  EndPinId;   // an input pin, where it ends
     };
 
     void OnStart() override
@@ -68,12 +69,14 @@ struct Example:
         ed::SetCurrentEditor(m_Context);
         ed::Begin("My Editor", ImVec2(0.0, 0.0f));
             int uniqueId = 1;
+            ImVector<ed::PinId> inputPins; // to tell inputs from outputs when a link is created
 
 
             // Basic Widgets Demo  ==============================================================================================
             auto basic_id = uniqueId++;
             ed::BeginNode(basic_id);
             ImGui::Text("Basic Widget Demo");
+            inputPins.push_back(uniqueId);
             ed::BeginPin(uniqueId++, ed::PinKind::Input);
             ImGui::Text("-> In");
             ed::EndPin();
@@ -167,6 +170,7 @@ struct Example:
                 ImGui::Text("Tree Widget Demo");
 
                 // Pins Row
+                inputPins.push_back(uniqueId);
                 ed::BeginPin(uniqueId++, ed::PinKind::Input);
                     ImGui::Text("-> In");
                 ed::EndPin();
@@ -225,6 +229,7 @@ struct Example:
             auto popup_id = uniqueId++;
             ed::BeginNode(popup_id);
                 ImGui::Text("Tool Tip & Pop-up Demo");
+                inputPins.push_back(uniqueId);
                 ed::BeginPin(uniqueId++, ed::PinKind::Input);
                     ImGui::Text("-> In");
                 ed::EndPin();
@@ -323,6 +328,7 @@ struct Example:
             auto plot_id = uniqueId++;
             ed::BeginNode(plot_id);
                 ImGui::Text("Plot Demo");
+                inputPins.push_back(uniqueId);
                 ed::BeginPin(uniqueId++, ed::PinKind::Input);
                     ImGui::Text("-> In");
                 ed::EndPin();
@@ -362,7 +368,7 @@ struct Example:
             // Link Drawing Section
 
             for (auto& linkInfo : m_Links)
-                ed::Link(linkInfo.Id, linkInfo.InputId, linkInfo.OutputId);
+                ed::Link(linkInfo.Id, linkInfo.StartPinId, linkInfo.EndPinId);
 
             // ==================================================================================================
             // Interaction Handling Section
@@ -371,15 +377,20 @@ struct Example:
             // Handle creation action ---------------------------------------------------------------------------
             if (ed::BeginCreate())
             {
-                ed::PinId inputPinId, outputPinId;
-                if (ed::QueryNewLink(&inputPinId, &outputPinId))
+                ed::PinId startPinId, endPinId;
+                if (ed::QueryNewLink(&startPinId, &endPinId))
                 {
-                    if (inputPinId && outputPinId)
+                    if (startPinId && endPinId)
                     {
-                        if (ed::AcceptNewItem())
+                        if (inputPins.contains(startPinId))
+                            std::swap(startPinId, endPinId);
+
+                        if (inputPins.contains(startPinId) || !inputPins.contains(endPinId))
+                            ed::RejectNewItem(ImVec4(1.0f, 0.0f, 0.0f, 1.0f), 2.0f);
+                        else if (ed::AcceptNewItem())
                         {
-                            m_Links.push_back({ ed::LinkId(m_NextLinkId++), inputPinId, outputPinId });
-                            ed::Link(m_Links.back().Id, m_Links.back().InputId, m_Links.back().OutputId);
+                            m_Links.push_back({ ed::LinkId(m_NextLinkId++), startPinId, endPinId });
+                            ed::Link(m_Links.back().Id, m_Links.back().StartPinId, m_Links.back().EndPinId);
                         }
                     }
                 }
