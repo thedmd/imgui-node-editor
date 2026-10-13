@@ -583,6 +583,9 @@ v0.10.0 (WIP):
     CHANGE: Examples: Have the Find modules check the targets and components they provide
         A missing ImGui backend or stb part now stops the configure with its name.
 
+    NEW: Editor: Report settings that don't parse to Dear ImGui's Debug Log
+        Each part that doesn't parse is named and skipped; the rest still loads, as before.
+
 v0.9.3 (2023-10-14):
 
     CHANGE: Canvas: Use ImDrawCallback_ImCanvas macro as draw callback sentinel (#256), thanks @nspitko

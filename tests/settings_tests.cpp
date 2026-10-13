@@ -321,6 +321,97 @@ TEST_CASE(Version09Settings, "settings.settings_written_by_0_9_load", "API-9", t
 
 namespace {
 
+int CountOf(const std::string& text, const char* what)
+{
+    int count = 0;
+    for (auto at = text.find(what); at != std::string::npos; at = text.find(what, at + 1))
+        ++count;
+    return count;
+}
+
+} // namespace
+
+TEST_CASE(NullSelection, "settings.null_selection_loads_the_rest", "BPN-4", test::TestFlags_None)
+{
+    // As 0.9 writes them while nothing is selected.
+    const char* const c_Settings = R"({"nodes":{"node:1":{"location":{"x":100,"y":50}}},"selection":null,"view":{"scroll":{"x":-120,"y":-40},"visible_rect":{"max":{"x":0,"y":0},"min":{"x":0,"y":0}},"zoom":1}})";
+
+    auto content = [](int)
+    {
+        ed::BeginNode(1);
+        ImGui::TextUnformatted("Node");
+        ed::EndNode();
+    };
+
+    ImVec2 corner;
+    {
+        test::Session session(UnnamedConfig());
+        session.DefaultContent = content;
+        session.Run(3);
+        corner = session.Use([] { return ed::CanvasToScreen(ImVec2(0.0f, 0.0f)); });
+    }
+
+    test::Session session(UnnamedConfig());
+    session.Use([&] { ed::LoadSettingsFromMemory(c_Settings); });
+    session.DefaultContent = content;
+    session.Run(3);
+
+    const auto position = session.Use([] { return ed::GetNodePosition(1); });
+    const auto origin   = session.Use([] { return ed::CanvasToScreen(ImVec2(0.0f, 0.0f)); });
+    const auto selected = session.Use([] { return ed::GetSelectedObjectCount(); });
+    const std::string log = session.HostContext.Context->DebugLogBuf.c_str();
+    test::Check(position.x == 100.0f && position.y == 50.0f, "node position loaded: (%g, %g)", position.x, position.y);
+    test::Check(origin.x == corner.x + 120.0f && origin.y == corner.y + 40.0f, "view loaded: canvas origin at (%g, %g), editor corner at (%g, %g)", origin.x, origin.y, corner.x, corner.y);
+    test::Check(selected == 0, "nothing selected: %d objects", selected);
+    test::Check(CountOf(log, "[node-editor]") == 0, "nothing reported:\n%s", log.c_str());
+}
+
+TEST_CASE(ParseErrorsReported, "settings.parse_errors_are_reported_to_the_debug_log", "BPN-4", test::TestFlags_None)
+{
+# if !defined(IMGUI_DISABLE_DEBUG_TOOLS)
+    test::Storage storage;
+    storage.Global   = R"({"nodes":{"node:1":{"location":{"x":"a","y":0}},"node:2":{"location":{"x":200,"y":0}},"bogus":{}},"selection":["pin:3",5,"node:2"],"view":{"zoom":-1}})";
+    storage.Nodes[3] = "not json";
+
+    test::Session session(&storage);
+    session.DefaultContent = [](int)
+    {
+        for (uintptr_t id : { 1, 2, 3 })
+        {
+            ed::BeginNode(id);
+            ImGui::TextUnformatted("Node");
+            ed::EndNode();
+        }
+    };
+    session.Run(3);
+
+    const std::string log = session.HostContext.Context->DebugLogBuf.c_str();
+    test::Check(CountOf(log, "\"node:1\" ignored, its values don't parse") == 1, "node 1's values reported");
+    test::Check(CountOf(log, "\"bogus\" in \"nodes\" ignored, it isn't a node ID") == 1, "the key that isn't a node ID reported");
+    test::Check(CountOf(log, "an entry of \"selection\" ignored") == 2, "the pin and the number in the selection reported");
+    test::Check(CountOf(log, "the view's \"zoom\" ignored") == 1, "the negative zoom reported");
+    test::Check(CountOf(log, "node:3: what Config::LoadNodeSettings gave is ignored") == 1, "node 3's per-node data reported");
+
+    const auto position = session.Use([] { return ed::GetNodePosition(2); });
+    const bool selected = session.Use([] { return ed::IsNodeSelected(2) && ed::GetSelectedObjectCount() == 1; });
+    test::Check(position.x == 200.0f && position.y == 0.0f, "the valid node still loads: (%g, %g)", position.x, position.y);
+    test::Check(selected, "the valid selection entry still loads");
+
+    // Empty text is no saved state; text that isn't JSON is reported.
+    const auto reports = CountOf(log, "[node-editor]");
+    session.Use([] { ed::LoadSettingsFromMemory(""); });
+    const auto afterEmpty = CountOf(session.HostContext.Context->DebugLogBuf.c_str(), "[node-editor]");
+    session.Use([] { ed::LoadSettingsFromMemory("garbage"); });
+    const std::string afterGarbage = session.HostContext.Context->DebugLogBuf.c_str();
+    test::Check(afterEmpty == reports, "empty text reports nothing: %d reports, %d before", afterEmpty, reports);
+    test::Check(CountOf(afterGarbage, "Settings ignored, they aren't a JSON object.") == 1, "text that isn't JSON reported");
+# else
+    test::Skip("needs Dear ImGui's debug log, which IMGUI_DISABLE_DEBUG_TOOLS removes");
+# endif
+}
+
+namespace {
+
 // Whether the settings changed since the last call.
 bool TakeSettingsChange(test::Session& session)
 {

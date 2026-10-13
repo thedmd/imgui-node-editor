@@ -56,7 +56,8 @@ using std::string;
 
 
 //------------------------------------------------------------------------------
-void Log(const char* fmt, ...);
+// To ImGui's Debug Log window, for rare events such as settings that don't parse.
+void Log(const char* fmt, ...) IM_FMTARGS(1);
 
 
 //------------------------------------------------------------------------------
