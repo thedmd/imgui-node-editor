@@ -235,18 +235,6 @@ struct Canvas
     bool IsSuspended() const { return m_SuspendCounter > 0; }
 
 private:
-# define IMGUI_EX_CANVAS_DEFERED() 0
-
-# if IMGUI_EX_CANVAS_DEFERED()
-    struct Range
-    {
-        int BeginVertexIndex = 0;
-        int EndVertexIndex   = 0;
-        int BeginComandIndex = 0;
-        int EndCommandIndex  = 0;
-    };
-# endif
-
     ImVec2 CalcViewTransformPosition(const CanvasView& view) const;
     void UpdateViewTransformPosition();
 
@@ -271,11 +259,6 @@ private:
     int m_ExpectedChannel = 0;
     int m_ClipRectStackSize = 0;
     ImVector<ImVec4> m_SuspendedClipRects;
-
-# if IMGUI_EX_CANVAS_DEFERED()
-    ImVector<Range> m_Ranges;
-    Range* m_CurrentRange = nullptr;
-# endif
 
     int m_DrawListFirstCommandIndex = 0;
     int m_DrawListCommadBufferSize = 0;
