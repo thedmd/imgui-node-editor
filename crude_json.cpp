@@ -684,20 +684,15 @@ private:
         auto s = state();
 
         string n;
-        if (s(accept_int(n) && accept_frac(n) && accept_exp(n)))
+        number v = 0;
+        if (!(accept_int(n) && accept_frac(n) && accept_exp(n)) || !parse_number(n, v) || (v != 0 && !std::isnormal(v)))
         {
-            number v = 0;
-            if (!parse_number(n, v))
-                return false;
-
-            if (v != 0 && !std::isnormal(v))
-                return false;
-
-            result = v;
-            return true;
+            s.reset();
+            return false;
         }
 
-        return false;
+        result = v;
+        return true;
     }
 
     bool accept_int(string& result)

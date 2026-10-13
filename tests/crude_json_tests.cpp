@@ -98,6 +98,13 @@ TEST_CASE(JsonNoTypeComparison, "json.values_dont_compare_by_type", "JSON-8", te
     test::Check(static_cast<json::type_t>(json::value(1.0)) == json::type_t::number, "the type is still there for an explicit conversion");
 }
 
+TEST_CASE(JsonRejectedNumber, "json.rejected_number_rejects_the_document", "JSON-9", test::TestFlags_None)
+{
+    // 1e999 overflows; the literal right after it was read in its place.
+    test::Check(json::value::parse("[1e999null]").is_discarded(), "[1e999null] is discarded");
+    test::Check(json::value::parse("1e999true").is_discarded(), "1e999true is discarded");
+}
+
 TEST_CASE(JsonDepth, "json.nesting_beyond_the_limit_is_rejected", "JSON-7", test::TestFlags_None)
 {
     // Arrays nested to the default limit of 512, one past it, and 2500 deep, which
