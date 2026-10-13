@@ -638,6 +638,8 @@ v0.10.0 (WIP):
         Every sample searched the whole curve: at the precision long links need, a 71,000 unit link's path took
         4.3 ms to build, now 0.7 ms.
 
+    CHANGE: Editor: Let ImCubicBezierSubdivide() and ImCubicBezierFixedStep() take temporary and const callables
+
 v0.9.3 (2023-10-14):
 
     CHANGE: Canvas: Use ImDrawCallback_ImCanvas macro as draw callback sentinel (#256), thanks @nspitko

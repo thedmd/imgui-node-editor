@@ -113,8 +113,8 @@ static inline void ImCubicBezierSubdivide(ImCubicBezierSubdivideCallback callbac
 
 
 // F has signature void(const ImCubicBezierSubdivideSample& p)
-template <typename F> static inline void ImCubicBezierSubdivide(F& callback, const ImVec2& p0, const ImVec2& p1, const ImVec2& p2, const ImVec2& p3, float tess_tol = -1.0f, ImCubicBezierSubdivideFlags flags = ImCubicBezierSubdivide_None);
-template <typename F> static inline void ImCubicBezierSubdivide(F& callback, const ImCubicBezierPoints& curve, float tess_tol = -1.0f, ImCubicBezierSubdivideFlags flags = ImCubicBezierSubdivide_None);
+template <typename F> static inline void ImCubicBezierSubdivide(F&& callback, const ImVec2& p0, const ImVec2& p1, const ImVec2& p2, const ImVec2& p3, float tess_tol = -1.0f, ImCubicBezierSubdivideFlags flags = ImCubicBezierSubdivide_None);
+template <typename F> static inline void ImCubicBezierSubdivide(F&& callback, const ImCubicBezierPoints& curve, float tess_tol = -1.0f, ImCubicBezierSubdivideFlags flags = ImCubicBezierSubdivide_None);
 
 // Fixed step Cubic Bezier subdivision.
 struct ImCubicBezierFixedStepSample
@@ -132,8 +132,8 @@ static inline void ImCubicBezierFixedStep(ImCubicBezierFixedStepCallback callbac
 
 
 // F has signature void(const ImCubicBezierFixedStepSample& p)
-template <typename F> static inline void ImCubicBezierFixedStep(F& callback, const ImVec2& p0, const ImVec2& p1, const ImVec2& p2, const ImVec2& p3, float step, bool overshoot = false, float max_value_error = 1e-3f, float max_t_error = 1e-5f);
-template <typename F> static inline void ImCubicBezierFixedStep(F& callback, const ImCubicBezierPoints& curve, float step, bool overshoot = false, float max_value_error = 1e-3f, float max_t_error = 1e-5f);
+template <typename F> static inline void ImCubicBezierFixedStep(F&& callback, const ImVec2& p0, const ImVec2& p1, const ImVec2& p2, const ImVec2& p3, float step, bool overshoot = false, float max_value_error = 1e-3f, float max_t_error = 1e-5f);
+template <typename F> static inline void ImCubicBezierFixedStep(F&& callback, const ImCubicBezierPoints& curve, float step, bool overshoot = false, float max_value_error = 1e-3f, float max_t_error = 1e-5f);
 
 
 //------------------------------------------------------------------------------

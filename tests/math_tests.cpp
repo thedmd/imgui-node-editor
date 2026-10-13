@@ -713,3 +713,14 @@ TEST_CASE(FixedStepLongLinks, "math.fixed_step_keeps_its_spacing_on_long_links",
 
     test::Check(miscounted == 0 && off == 0, "samples lie every 15 along the links: %d of 6 links miscounted, %d of %d samples off", miscounted, off, samples);
 }
+
+TEST_CASE(CallbackKinds, "math.callbacks_take_temporaries_and_const_lambdas", "MATH-9", test::TestFlags_None)
+{
+    const ImCubicBezierPoints link{ ImVec2(0, 0), ImVec2(100, 0), ImVec2(200, 150), ImVec2(300, 150) };
+    int subdivided = 0, stepped = 0;
+    ImCubicBezierSubdivide([&](const ImCubicBezierSubdivideSample&) { ++subdivided; }, link);
+    const auto step = [&](ImCubicBezierFixedStepSample&) { ++stepped; };
+    ImCubicBezierFixedStep(step, link, 10.0f);
+
+    test::Check(subdivided > 0 && stepped > 0, "a temporary and a const lambda are called: %d and %d times", subdivided, stepped);
+}
