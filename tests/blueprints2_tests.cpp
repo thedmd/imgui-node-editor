@@ -5,6 +5,7 @@
 # include "blueprint_editor_document.h"
 # include "crude_blueprint.h"
 # include "crude_blueprint_library.h"
+# include "crude_logger.h"
 # include <cstdio>
 # include <string>
 # include <vector>
@@ -27,6 +28,15 @@ ed::Config UnnamedConfig()
     config.SettingsName = nullptr;
     return config;
 }
+
+// The example logs through the overlay logger it shows, which needs an ImGui context.
+struct OverlayLog
+{
+    OverlayLog()  { crude_logger::OverlayLogger::SetCurrent(&m_Logger); }
+    ~OverlayLog() { crude_logger::OverlayLogger::SetCurrent(nullptr); }
+
+    crude_logger::OverlayLogger m_Logger;
+};
 
 struct TestFile
 {
@@ -185,4 +195,36 @@ TEST_CASE(SaveLiveState, "blueprints2.save_writes_the_blueprint_as_it_is", "EXB-
 
     test::Check(saved && loaded && doN, "the document saves and loads");
     test::Check(count.GetType() == PinType::Int32 && count.As<int32_t>() == 7, "with the count Do N had when saved");
+}
+TEST_CASE(StepsMarkModified, "blueprints2.undo_steps_mark_the_document_modified", "EXB-5", test::TestFlags_None)
+{
+    test::Session    session(UnnamedConfig());
+    OverlayLog       log;
+    Document         document;
+    ExampleBlueprint example(document.m_Blueprint);
+    bool fresh = true, edited = false, undone = false, redone = false;
+    session.Use([&]
+    {
+        document.m_DocumentState = document.BuildDocumentState();
+        fresh = document.m_IsModified;
+        {
+            auto transaction = document.BeginUndoTransaction("Edit Value");
+            example.m_DoN->m_N.SetValue(7);
+            transaction->AddAction("N changed");
+        }
+        edited = document.m_IsModified;
+
+        // As saving does.
+        document.m_IsModified = false;
+        document.Undo();
+        undone = document.m_IsModified;
+
+        document.m_IsModified = false;
+        document.Redo();
+        redone = document.m_IsModified;
+    });
+
+    test::Check(!fresh, "a new document has no changes");
+    test::Check(edited, "an undo step marks it modified");
+    test::Check(undone && redone, "and so do undo and redo: %d, %d", undone, redone);
 }

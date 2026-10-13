@@ -213,6 +213,7 @@ void blueprint_editor::Document::UndoTransaction::Commit(string_view name)
             m_Document->m_Redo.clear();
 
             m_Document->m_DocumentState = m_Document->BuildDocumentState();
+            m_Document->m_IsModified    = true;
         }
 
         m_Document->m_MasterTransaction = nullptr;
@@ -344,6 +345,7 @@ bool blueprint_editor::Document::Undo()
     undoState.m_State = m_DocumentState;
 
     ApplyState(state.m_State);
+    m_IsModified = true;
 
     m_Redo.push_back(std::move(undoState));
 
@@ -365,6 +367,7 @@ bool blueprint_editor::Document::Redo()
     undoState.m_State = m_DocumentState;
 
     ApplyState(state.m_State);
+    m_IsModified = true;
 
     m_Undo.push_back(std::move(undoState));
 

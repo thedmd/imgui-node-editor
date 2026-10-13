@@ -326,6 +326,7 @@ struct BlueprintEditorExample
         ed::SetCurrentEditor(m_Editor);
 
         UpdateActions();
+        UpdateTitle();
 
         ShowMainMenu();
         ShowToolbar();
@@ -392,6 +393,10 @@ private:
                 title += "*";
         }
 
+        if (title == m_Title)
+            return;
+
+        m_Title = title;
         SetTitle(title.c_str());
     }
 
@@ -1058,16 +1063,6 @@ private:
         return m_Document->m_IsModified;
     }
 
-    void File_MarkModified()
-    {
-        if (m_Document->m_IsModified)
-            return;
-
-        m_Document->m_IsModified = true;
-
-        UpdateTitle();
-    }
-
     void File_New()
     {
         if (!File_Close())
@@ -1344,6 +1339,7 @@ private:
     }
 
     crude_logger::OverlayLogger m_OverlayLogger;
+    string                      m_Title;
 
     unique_ptr<Document> m_Document;
     Blueprint*           m_Blueprint = nullptr;
