@@ -236,18 +236,14 @@ struct ForLoopNode final : Node
 
     FlowPin Execute(Context& context, FlowPin& entryPoint) override
     {
+        // The next index is 64-bit, so that a loop ending at INT32_MAX ends.
         auto isCounting = context.GetPinValue<bool>(m_IsCounting);
-        if (!isCounting)
-        {
-            auto firstIndex = context.GetPinValue<int32_t>(m_FirstIndex);
-            context.SetPinValue(m_Index, firstIndex);
-        }
-
-        auto index     = context.GetPinValue<int32_t>(m_Index);
-        auto lastIndex = context.GetPinValue<int32_t>(m_LastIndex);
+        auto index      = isCounting ? static_cast<int64_t>(context.GetPinValue<int32_t>(m_Index)) + 1 : context.GetPinValue<int32_t>(m_FirstIndex);
+        auto lastIndex  = context.GetPinValue<int32_t>(m_LastIndex);
         if (index <= lastIndex)
         {
-            context.SetPinValue(m_Index, index + 1);
+            context.SetPinValue(m_Index, static_cast<int32_t>(index));
+            context.SetPinValue(m_IsCounting, true);
 
             context.PushReturnPoint(entryPoint);
 

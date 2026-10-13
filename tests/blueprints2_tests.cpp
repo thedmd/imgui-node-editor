@@ -7,6 +7,7 @@
 # include "crude_blueprint.h"
 # include "crude_blueprint_library.h"
 # include "crude_logger.h"
+# include <cstdint>
 # include <cstdio>
 # include <string>
 # include <vector>
@@ -19,9 +20,27 @@ namespace {
 
 std::vector<std::string> s_Printed;
 
-void Capture(const PrintNode&, string_view message)
+// What Print nodes print, while it lives.
+struct PrintCapture
 {
-    s_Printed.push_back(message.to_string());
+    PrintCapture()
+    {
+        s_Printed.clear();
+        PrintNode::s_PrintFunction = [](const PrintNode&, string_view message) { s_Printed.push_back(message.to_string()); };
+    }
+
+    ~PrintCapture()
+    {
+        PrintNode::s_PrintFunction = nullptr;
+    }
+};
+
+std::string Printed()
+{
+    std::string printed;
+    for (auto& message : s_Printed)
+        printed += message + "|";
+    return printed;
 }
 
 ed::Config UnnamedConfig()
@@ -80,15 +99,40 @@ struct ExampleBlueprint
         m_PrintB->m_String.LinkTo(m_ToString->m_String);
         m_FlipFlop->m_A.LinkTo(m_PrintA->m_Enter);
         m_FlipFlop->m_B.LinkTo(m_ToString->m_Enter);
-
-        s_Printed.clear();
-        PrintNode::s_PrintFunction = Capture;
     }
 
-    ~ExampleBlueprint()
+    PrintCapture    m_Capture;
+};
+
+// Start runs For Loop from the first to the last index, and its body prints the index.
+struct ForLoopBlueprint
+{
+    ForLoopBlueprint(int32_t firstIndex, int32_t lastIndex)
     {
-        PrintNode::s_PrintFunction = nullptr;
+        m_Entry->m_Exit.LinkTo(m_ForLoop->m_Enter);
+        m_ForLoop->m_FirstIndex.SetValue(firstIndex);
+        m_ForLoop->m_LastIndex.SetValue(lastIndex);
+        m_ForLoop->m_LoopBody.LinkTo(m_ToString->m_Enter);
+        m_ToString->m_Value.LinkTo(m_ForLoop->m_Index);
+        m_ToString->m_Exit.LinkTo(m_Print->m_Enter);
+        m_Print->m_String.LinkTo(m_ToString->m_String);
     }
+
+    // Steps until execution ends, or for 100 steps.
+    StepResult Run()
+    {
+        m_Blueprint.Start(*m_Entry);
+        for (int steps = 0; steps < 100 && m_Blueprint.LastStepResult() == StepResult::Success; ++steps)
+            m_Blueprint.Step();
+        return m_Blueprint.LastStepResult();
+    }
+
+    Blueprint       m_Blueprint;
+    EntryPointNode* m_Entry    = m_Blueprint.CreateNode<EntryPointNode>();
+    ForLoopNode*    m_ForLoop  = m_Blueprint.CreateNode<ForLoopNode>();
+    ToStringNode*   m_ToString = m_Blueprint.CreateNode<ToStringNode>();
+    PrintNode*      m_Print    = m_Blueprint.CreateNode<PrintNode>();
+    PrintCapture    m_Capture;
 };
 
 } // namespace
@@ -99,9 +143,7 @@ TEST_CASE(Blueprints2Runs, "blueprints2.example_blueprint_runs", nullptr, test::
     ExampleBlueprint example(blueprint);
     const auto result = example.m_Blueprint.Execute(*example.m_Entry);
 
-    std::string printed;
-    for (auto& message : s_Printed)
-        printed += message + "|";
+    const auto printed = Printed();
     test::Check(result == StepResult::Done, "the example runs to its end: %s", StepResultToString(result));
     test::Check(printed == "FlipFlop slot A!|5|FlipFlop slot A!|7|FlipFlop slot A!|", "and prints: %s", printed.c_str());
 }
@@ -286,4 +328,24 @@ TEST_CASE(StepsMarkModified, "blueprints2.undo_steps_mark_the_document_modified"
     test::Check(!fresh, "a new document has no changes");
     test::Check(edited, "an undo step marks it modified");
     test::Check(undone && redone, "and so do undo and redo: %d, %d", undone, redone);
+}
+
+TEST_CASE(ForLoopCounts, "blueprints2.for_loop_runs_its_body_once_per_index", "EXB-7", test::TestFlags_None)
+{
+    ForLoopBlueprint loop(0, 2);
+    const auto result  = loop.Run();
+    const auto printed = Printed();
+
+    test::Check(result == StepResult::Done, "a loop from 0 to 2 ends: %s", StepResultToString(result));
+    test::Check(printed == "0|1|2|", "and its body sees each index once: %.60s", printed.c_str());
+}
+
+TEST_CASE(ForLoopLargestIndex, "blueprints2.for_loop_ends_at_the_largest_index", "EXB-7", test::TestFlags_None)
+{
+    ForLoopBlueprint loop(INT32_MAX - 1, INT32_MAX);
+    const auto result  = loop.Run();
+    const auto printed = Printed();
+
+    test::Check(result == StepResult::Done, "a loop up to INT32_MAX ends: %s", StepResultToString(result));
+    test::Check(printed == "2147483646|2147483647|", "after its last two indices: %.60s", printed.c_str());
 }
