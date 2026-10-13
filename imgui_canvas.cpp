@@ -11,6 +11,35 @@
 
 static inline ImVec2 ImSelectPositive(const ImVec2& lhs, const ImVec2& rhs) { return ImVec2(lhs.x > 0.0f ? lhs.x : rhs.x, lhs.y > 0.0f ? lhs.y : rhs.y); }
 
+# if IMGUI_VERSION_NUM >= 19200
+// Density the text drawn next is rasterized at. Dear ImGui sets it to the framebuffer
+// scale whenever the current window changes.
+static float GetTextDensity()
+{
+#   if IMGUI_VERSION_NUM >= 19292
+    return GImGui->CurrentPixelDensity;
+#   else
+    return GImGui->FontRasterizerDensity;
+#   endif
+}
+
+static void SetTextDensity(float density)
+{
+#   if IMGUI_VERSION_NUM >= 19292
+    ImGui::SetPixelDensity(density);
+#   else
+    ImGui::SetFontRasterizerDensity(density);
+#   endif
+}
+
+static float CalcTextDensity(float density, float viewScale)
+{
+    const float maxDensity = 8.0f;
+    const float scale = ImMax(powf(2.0f, roundf(log2f(viewScale) * 4.0f) * 0.25f), 0.5f);
+    return ImMin(density * scale, ImMax(density, maxDensity));
+}
+# endif
+
 bool ImGuiEx::Canvas::Begin(const char* id, const ImVec2& size)
 {
     return Begin(ImGui::GetID(id), size);
@@ -447,6 +476,15 @@ void ImGuiEx::Canvas::EnterLocalSpace()
     m_LastCurveTessellationTol = m_DrawList->_Data->CurveTessellationTol;
     m_DrawList->_Data->CurveTessellationTol *= m_View.InvScale() * m_View.InvScale(); // a squared distance
 # endif
+
+# if IMGUI_VERSION_NUM >= 19200
+    m_LastTextDensity = 0.0f;
+    if (m_RasterizeTextForScale && (ImGui::GetIO().BackendFlags & ImGuiBackendFlags_RendererHasTextures))
+    {
+        m_LastTextDensity = GetTextDensity();
+        SetTextDensity(CalcTextDensity(m_LastTextDensity, m_View.Scale()));
+    }
+# endif
 }
 
 void ImGuiEx::Canvas::LeaveLocalSpace()
@@ -518,6 +556,11 @@ void ImGuiEx::Canvas::LeaveLocalSpace()
     fringeScale = m_LastFringeScale;
 
     m_DrawList->_Data->CurveTessellationTol = m_LastCurveTessellationTol;
+# endif
+
+# if IMGUI_VERSION_NUM >= 19200
+    if (m_LastTextDensity > 0.0f)
+        SetTextDensity(m_LastTextDensity);
 # endif
 
     // Clip rectangles pushed inside the canvas are in local space. Set them aside,

@@ -644,6 +644,11 @@ v0.10.0 (WIP):
         A program with another copy of crude_json can build the editor's in a namespace of its own, so both link.
         The header relies on #pragma once alone, so that another copy's header doesn't hide it.
 
+    NEW: Canvas: Rasterize text for the view's scale, so it stays sharp when zoomed in
+        With Dear ImGui 1.92 or later and a renderer backend that sets ImGuiBackendFlags_RendererHasTextures. The scale is
+        taken in quarter octave steps from 0.5 up, and glyphs are rasterized at most 8 times their size.
+        Canvas::SetRasterizeTextForScale(false) keeps glyphs at the font's size.
+
 v0.9.3 (2023-10-14):
 
     CHANGE: Canvas: Use ImDrawCallback_ImCanvas macro as draw callback sentinel (#256), thanks @nspitko
