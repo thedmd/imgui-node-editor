@@ -159,6 +159,7 @@ public:
 # if CRUDE_JSON_IO
     // Paths are UTF-8, on Windows as well.
     // load() returns false when the file can't be read; a file that isn't JSON loads as a discarded value.
+    // save() writes path + ".tmp", and renames it over the file.
     static std::pair<value, bool> load(const string& path);
     bool save(const string& path, const int indent = -1, const char indent_char = ' ') const;
 # endif
