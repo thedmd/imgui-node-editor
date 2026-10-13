@@ -444,6 +444,10 @@ struct Node final: Object
         , m_BorderColor(IM_COL32_BLACK)
         , m_BorderWidth(0)
         , m_Rounding(0)
+        , m_GroupColor(IM_COL32_BLACK)
+        , m_GroupBorderColor(IM_COL32_BLACK)
+        , m_GroupBorderWidth(0)
+        , m_GroupRounding(0)
         , m_GroupBounds()
         , m_HighlightConnectedLinks(false)
         , m_CenterOnScreen(false)
@@ -493,6 +497,7 @@ struct Link final: Object
         , m_StartPin(nullptr)
         , m_EndPin(nullptr)
         , m_Color(IM_COL32_WHITE)
+        , m_HighlightColor(IM_COL32_WHITE)
         , m_Thickness(1.0f)
     {
     }
