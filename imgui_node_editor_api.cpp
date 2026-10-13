@@ -480,6 +480,11 @@ bool ax::NodeEditor::IsSuspended()
     return CurrentEditor()->IsSuspended();
 }
 
+bool ax::NodeEditor::IsFocused()
+{
+    return CurrentEditor()->IsFocused();
+}
+
 bool ax::NodeEditor::IsActive()
 {
     return CurrentEditor()->IsFocused();

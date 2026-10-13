@@ -309,3 +309,33 @@ TEST_CASE(CurrentZoom, "api.current_zoom_is_the_zoom_factor", "API-13", test::Te
     const float zoom = session.Use([] { return ed::GetCurrentZoom(); });
     test::Check(zoom == 2.0f, "GetCurrentZoom() reads 2 at 200%%: %g", zoom);
 }
+
+TEST_CASE(IsFocused, "api.is_focused_follows_the_host_window", "API-13", test::TestFlags_None)
+{
+    // Another window takes focus from the host, then gives it back.
+    test::Storage storage;
+    test::Session session(&storage);
+    bool focusOther = false, focusHost = false;
+    session.AfterHost = [&]
+    {
+        ImGui::SetNextWindowPos(ImVec2(1100.0f, 600.0f));
+        ImGui::Begin("Other");
+        ImGui::End();
+        if (focusOther)
+            ImGui::SetWindowFocus("Other");
+        if (focusHost)
+            ImGui::SetWindowFocus("Host");
+        focusOther = focusHost = false;
+    };
+    focusHost = true;
+    session.Run(3);
+    const bool focused     = session.Use([] { return ed::IsFocused() && ed::IsActive(); });
+    focusOther = true;
+    session.Run(3);
+    const bool unfocused   = session.Use([] { return !ed::IsFocused() && !ed::IsActive(); });
+    focusHost = true;
+    session.Run(3);
+    const bool refocused   = session.Use([] { return ed::IsFocused() && ed::IsActive(); });
+
+    test::Check(focused && unfocused && refocused, "IsFocused() and IsActive() follow the host window's focus: %d, %d, %d", focused, unfocused, refocused);
+}
