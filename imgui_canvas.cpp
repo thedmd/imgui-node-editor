@@ -148,8 +148,10 @@ bool ImGuiEx::Canvas::Begin(ImGuiID id, const ImVec2& size)
     SaveInputState();
     SaveViewportState();
 
-    // Record cursor max to prevent scrollbars from appearing.
+    // Record cursor max to prevent scrollbars from appearing, and ideal max, which
+    // tables and tab bars inside extend, to keep the window's auto-fit size.
     m_WindowCursorMaxBackup = m_Window->DC.CursorMaxPos;
+    m_WindowIdealMaxBackup  = m_Window->DC.IdealMaxPos;
 
     // Local space lays lines out from x = 0, in the visible part of the canvas.
     m_LocalIndent            = 0.0f;
@@ -203,6 +205,7 @@ void ImGuiEx::Canvas::End()
             m_DrawList->CmdBuffer.erase(m_DrawList->CmdBuffer.Data + i);
 
     m_Window->DC.CursorMaxPos = m_WindowCursorMaxBackup;
+    m_Window->DC.IdealMaxPos  = m_WindowIdealMaxBackup;
 
 # if IMGUI_VERSION_NUM < 18967
     ImGui::SetItemAllowOverlap();
