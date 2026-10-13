@@ -557,7 +557,7 @@ struct Settings
     bool                 m_IsDirty;
     SaveReasonFlags      m_DirtyReason;
 
-    vector<NodeSettings> m_Nodes;
+    vector<NodeSettings> m_Nodes; // sorted by ID
     vector<ObjectId>     m_Selection;
     ImVec2               m_ViewScroll;
     float                m_ViewZoom;
