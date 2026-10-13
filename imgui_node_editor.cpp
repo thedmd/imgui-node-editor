@@ -6042,6 +6042,19 @@ void ed::NodeBuilder::End()
     else
         m_CurrentNode->m_Type        = NodeType::Node;
 
+    // A node that grew past the canvas border moves back inside.
+    if (measured)
+    {
+        const auto offset = ClampToCanvas(m_CurrentNode->m_Bounds.Min, m_CurrentNode->m_Bounds.GetSize()) - m_CurrentNode->m_Bounds.Min;
+        if (offset.x != 0.0f || offset.y != 0.0f)
+        {
+            m_CurrentNode->m_Bounds.Translate(offset);
+            if (m_IsGroup)
+                m_CurrentNode->m_GroupBounds.Translate(offset);
+            Editor->MakeDirty(SaveReasonFlags::Position, m_CurrentNode);
+        }
+    }
+
     m_CurrentNode = nullptr;
 }
 
