@@ -85,6 +85,7 @@ struct Pin
     std::string Name;
     PinType     Type;
     PinKind     Kind;
+    char        Text[128] = "Edit Me\nMultiline!"; // edited next to a String output
 
     Pin(int id, const char* name, PinType type):
         ID(id), Node(nullptr), Name(name), Type(type), Kind(PinKind::Input)
@@ -1038,22 +1039,9 @@ struct Example:
                         builder.Output(output.ID);
                         if (output.Type == PinType::String)
                         {
-                            static char buffer[128] = "Edit Me\nMultiline!";
-                            static bool wasActive = false;
-
                             ImGui::PushItemWidth(100.0f);
-                            ImGui::InputText("##edit", buffer, 127);
+                            ImGui::InputText("##edit", output.Text, IM_ARRAYSIZE(output.Text));
                             ImGui::PopItemWidth();
-                            if (ImGui::IsItemActive() && !wasActive)
-                            {
-                                ed::EnableShortcuts(false);
-                                wasActive = true;
-                            }
-                            else if (!ImGui::IsItemActive() && wasActive)
-                            {
-                                ed::EnableShortcuts(true);
-                                wasActive = false;
-                            }
                             ImGui::Spring(0);
                         }
                         if (!output.Name.empty())
