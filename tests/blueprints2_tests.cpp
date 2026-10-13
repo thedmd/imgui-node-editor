@@ -530,3 +530,28 @@ TEST_CASE(SaveKeepsLoadableFile, "blueprints2.a_document_that_wouldnt_load_isnt_
     test::Check(!second, "with a NaN in a Float pin, it doesn't");
     test::Check(reloadedScale && reloadedScale->m_Float.m_Value == 0.0f, "and the file it saved before still loads");
 }
+
+TEST_CASE(Utf8Documents, "blueprints2.utf8_text_and_paths_round_trip", "EXB-9", test::TestFlags_None)
+{
+    // Polish text in a Print pin and in the file name, in UTF-8, as the file dialogs give paths.
+    const char* text = "za\xC5\xBC\xC3\xB3\xC5\x82\xC4\x87";
+    const char* path = "blueprints2_za\xC5\xBC\xC3\xB3\xC5\x82\xC4\x87.bp";
+    test::Session    session(UnnamedConfig());
+    Document         document;
+    ExampleBlueprint example(document.m_Blueprint);
+    example.m_PrintA->m_String.SetValue(text);
+
+    const bool saved = session.Use([&] { return document.Save(path); });
+    Document reloaded;
+    const bool loaded = reloaded.Load(path);
+    auto print = loaded ? static_cast<PrintNode*>(reloaded.m_Blueprint.FindNode(example.m_PrintA->m_Id)) : nullptr;
+
+    test::Check(saved && loaded, "a document saves under a UTF-8 path and loads back");
+    test::Check(print && print->m_String.m_Value == text, "with the UTF-8 text of its pin");
+
+# ifdef _WIN32
+    test::Check(_wremove(L"blueprints2_za\u017C\u00F3\u0142\u0107.bp") == 0, "the file has the name the path spells");
+# else
+    std::remove(path);
+# endif
+}
