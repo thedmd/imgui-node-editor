@@ -1,0 +1,219 @@
+# API reference
+
+The comments in [imgui_node_editor.h](../imgui_node_editor.h) describe each function. This page collects the rules that span several functions: the order of calls in a frame, IDs, the create and delete protocols, input, persistence, and the coordinate space.
+
+The examples use the alias `namespace ed = ax::NodeEditor;`.
+
+## Frames
+
+An editor draws inside an ImGui window, between `ed::Begin()` and `ed::End()`:
+
+```cpp
+ed::SetCurrentEditor(editor);
+ed::Begin("My Editor");
+
+// 1. Nodes, with their pins
+ed::BeginNode(nodeId);
+    ImGui::TextUnformatted("Node");
+    ed::BeginPin(pinId, ed::PinKind::Output);
+        ImGui::TextUnformatted("Out ->");
+    ed::EndPin();
+ed::EndNode();
+
+// 2. Links
+ed::Link(linkId, outputPinId, inputPinId);
+
+// 3. Interactions: create, delete, shortcuts, context menus
+if (ed::BeginCreate()) { /* see below */ ed::EndCreate(); }
+if (ed::BeginDelete()) { /* see below */ ed::EndDelete(); }
+
+ed::End();
+ed::SetCurrentEditor(nullptr);
+```
+
+- `ed::Begin()` belongs in a visible host window. While the host skips its items (collapsed, in a hidden dock tab, or a child window out of view), the editor measures nothing and changes no state, so the frame is harmless.
+- Every object is submitted every frame. A node that isn't submitted isn't drawn, but the editor keeps its position and selection (see [IDs](#ids)).
+- Queries see the frame as far as it has been submitted:
+
+| Function | Answers for |
+| --- | --- |
+| `HasAnyLinks()`, `BreakLinks()`, `GetNodeCount()`, `GetOrderedNodeIds()` | The objects submitted so far in this frame. Call them after the frame's links. |
+| `PinHadAnyLinks()` | The previous frame |
+| `HasSelectionChanged()` | The last frame, also when asked between `Begin()` and `End()` |
+| `GetNodeBackgroundDrawList()` | A node after its `EndNode()` in this frame; `nullptr` otherwise |
+| `IsFocused()` | The host window's focus at `Begin()` |
+| `GetCurrentZoom()` | The zoom factor: 2 at 200%, as in `Config::CustomZoomLevels` |
+
+- `ForgetNode()` and `ClearState()` work outside `Begin()`/`End()`, and assert inside.
+
+### `Begin*()` and `End*()`
+
+As with ImGui's own `BeginXXX()`/`EndXXX()` pairs, call `EndCreate()`, `EndDelete()` and `EndShortcut()` only when the matching `BeginCreate()`, `BeginDelete()` or `BeginShortcut()` returned true. An `End*()` after a `Begin*()` that returned false asserts. Code that also builds against 0.9.x, which wanted the `End*()` calls unconditionally, can tell the versions apart with `IMGUI_NODE_EDITOR_VERSION_NUM >= 1000`.
+
+## IDs
+
+- `NodeId`, `PinId` and `LinkId` are separate kinds: node 1, pin 1 and link 1 are three different objects.
+- 0 isn't a valid ID of any kind. `BeginNode(0)`, `BeginPin(0)` and `Link(0, ...)` assert and create nothing, and the calls nested in such a node or pin are ignored.
+- A pin ID names one pin. Submitting it twice in a frame asserts.
+- IDs are pointer-sized, so pointers to the application's objects work as IDs: `ed::NodeId(node)`, and back with `nodeId.AsPointer<Node>()`.
+- Each node pushes an ImGui ID scope of its own, so widgets in different nodes may share labels. Inside a node, ImGui's usual rules apply.
+- **Reuse:** a node, pin or link deleted through the editor is freed by the next `ed::Begin()`. An ID submitted after that names a new object. A node the application stops submitting stays known, with its saved position and selection, until `ForgetNode()` forgets it, its pins, the links to them and its saved state, or `ClearState()` forgets everything, as for a new document.
+
+## Creating links and nodes
+
+The user drags from a pin. The application answers on every frame of the drag, and creates the item once the user releases the mouse:
+
+```cpp
+if (ed::BeginCreate())
+{
+    ed::PinId startPinId, endPinId;
+    if (ed::QueryNewLink(&startPinId, &endPinId))
+    {
+        // startPinId is the pin the drag started from, endPinId the one under
+        // the mouse; either can be an input or an output.
+        if (!CanConnect(startPinId, endPinId))
+            ed::RejectNewItem(ImVec4(1, 0, 0, 1));
+        else if (ed::AcceptNewItem())
+            AddLink(startPinId, endPinId); // order them as output -> input here
+    }
+
+    ed::PinId pinId;
+    if (ed::QueryNewNode(&pinId))
+    {
+        if (ed::AcceptNewItem())
+            OpenCreateNodePopup(pinId);
+    }
+
+    ed::EndCreate();
+}
+```
+
+- While the user drags, `AcceptNewItem()` returns false and shows the item as accepted; `RejectNewItem()` shows it as rejected. `AcceptNewItem()` returns true once, in the frame after the release over an accepted item.
+- A drag released over the pin it started from offers nothing.
+- `QueryNewNode()` reports a drag over empty space, with the pin it started from. `AcceptNewItem()` returns true when the user releases it there.
+
+## Deleting
+
+The user deletes the selection with the Delete key, or a link with Alt+click. `ed::DeleteNode()` and `ed::DeleteLink()` start the same interaction from code. Every deletion goes through the application:
+
+```cpp
+if (ed::BeginDelete())
+{
+    ed::NodeId nodeId;
+    while (ed::QueryDeletedNode(&nodeId))
+    {
+        if (ed::AcceptDeletedItem())
+            RemoveNode(nodeId);
+    }
+
+    ed::LinkId linkId;
+    ed::PinId startPinId, endPinId;
+    while (ed::QueryDeletedLink(&linkId, &startPinId, &endPinId))
+    {
+        if (ed::AcceptDeletedItem())
+            RemoveLink(linkId);
+    }
+
+    ed::EndDelete();
+}
+```
+
+- `RejectDeletedItem()` keeps an item.
+- The links attached to a node accepted with `AcceptDeletedItem(true)`, the default, are deleted with it. `QueryDeletedLink()` reports each of them, with the pins it connected:
+  - in the same interaction, when links are queried after nodes, as above;
+  - otherwise, in one more delete interaction in the next frame.
+
+  They are already deleted. `AcceptDeletedItem()` returns true, so the application removes them from its model, and `RejectDeletedItem()` asserts. The application's links therefore match the editor's whatever order its loop queries in.
+
+## Shortcuts
+
+| Keys | Effect |
+| --- | --- |
+| Delete | Deletes the selection, through `BeginDelete()` |
+| Alt+click on a link | Deletes the link, through `BeginDelete()` |
+| Ctrl+X, Ctrl+C, Ctrl+V, Ctrl+D | `AcceptCut()`, `AcceptCopy()`, `AcceptPaste()` and `AcceptDuplicate()`, through `BeginShortcut()` |
+| Space | `AcceptCreateNode()`, through `BeginShortcut()` |
+| F | Navigates to the selection, the object under the mouse, or the content |
+| Shift+F | The same, zoomed to leave a margin |
+
+- The editor doesn't cut, copy or paste anything itself. `GetActionContextNodes()` and `GetActionContextLinks()` give the objects a shortcut applies to.
+- The keys go through ImGui's shortcut routing. They don't fire while another ImGui item is active, for example a text field inside a node, so code that turned shortcuts off while typing (`ed::EnableShortcuts(!io.WantTextInput)`) isn't needed any more.
+- `ed::EnableShortcuts(false)` turns off all of the above, Alt+click included.
+
+## Mouse and keyboard
+
+- `Config::DragButtonIndex`, `SelectButtonIndex`, `NavigateButtonIndex` and `ContextMenuButtonIndex` assign the mouse buttons. Only the select button changes the selection: the context menu button leaves it alone, and `ShowNodeContextMenu()` and its siblings report the object it was clicked on.
+- Ctrl+click adds an object to the selection or removes it from it.
+- On macOS, Cmd takes Ctrl's place in the keyboard shortcuts and in Ctrl+click, as `io.ConfigMacOSXBehaviors` decides.
+
+## Persistence
+
+The editor keeps node positions and group sizes, node z positions, the selection, and the view. `Config::SettingsContent` picks which of them (`Nodes`, `Selection`, `View`); leave `Nodes` out when the application keeps node positions in its own documents. The editor writes no files. Settings go to `imgui.ini`, or to the application's own storage.
+
+### In `imgui.ini`
+
+```cpp
+ImGui::CreateContext();
+ed::InstallSettingsHandler(); // once per ImGui context, before ImGui reads .ini data
+
+ed::Config config;
+config.SettingsName = "Blueprint"; // section [NodeEditor][Blueprint]; the default is "NodeEditor"
+ed::EditorContext* editor = ed::CreateEditor(&config);
+```
+
+- Install the handler before ImGui reads `.ini` data: before the first `ImGui::NewFrame()` when `io.IniFilename` is set, otherwise before the application's `ImGui::LoadIniSettingsFromMemory()`. Installing it later, or twice, asserts.
+- Each editor has a section named by `Config::SettingsName`, which `CreateEditor()` copies. Two live editors can't share a name.
+- The handler keeps every section of the run, so an editor created later, or created again, starts from the newest state of its name, and sections of editors that don't exist are written back unchanged.
+- Changes mark ImGui's settings dirty, and ImGui saves them with its windows after `io.IniSavingRate`. Only settled state is saved, never a drag in progress.
+- ImGui rewrites `imgui.ini` in place. For an atomic save, use ImGui's manual mode: set `io.IniFilename = nullptr`, load the data with `ImGui::LoadIniSettingsFromMemory()`, and when `io.WantSaveIniSettings` is set, write `ImGui::SaveIniSettingsToMemory()` to a temporary file, rename it over the old one, and clear the flag.
+
+### In the application's own storage
+
+```cpp
+ed::Config config;
+config.SettingsName = nullptr; // stays out of imgui.ini
+ed::EditorContext* editor = ed::CreateEditor(&config);
+
+ed::SetCurrentEditor(editor);
+ed::LoadSettingsFromMemory(document.EditorState.c_str()); // before the first Begin()
+
+// Each frame, after ed::End():
+if (ed::WantSaveSettings())
+{
+    document.EditorState = ed::SaveSettingsToMemory();
+    ed::ClearWantSaveSettings();
+}
+```
+
+- `WantSaveSettings()` turns true after a change, once `io.IniSavingRate` has passed. `GetSettingsChangeReason()` tells what changed.
+- `LoadSettingsFromMemory()` before the first `Begin()` takes precedence over `imgui.ini`. Later, it replaces the state the editor holds. It also reads the files 0.9's `Config::SettingsFile` wrote.
+
+### Per node
+
+`Config::LoadNodeSettings` gives a node's saved state when the editor creates the node, and `Config::SaveNodeSettings` receives each change of a node with the reasons for it. `RestoreNodeState()` asks `LoadNodeSettings` again, and applies the answer when the node is next submitted. Use them when node layout lives in the application's documents.
+
+## Coordinates
+
+- `ScreenToCanvas()` and `CanvasToScreen()` convert between ImGui's screen coordinates and the canvas, whose units are screen pixels at zoom 1.
+- The canvas ends 250000 units from the origin in each direction, inside the -256000 below which ImGui treats mouse positions as invalid. Nodes stay inside that border: `SetNodePosition()`, dragging, resizing, growing content and loaded settings all keep them in. The view can still pan past it.
+
+### Drawing inside the canvas
+
+The editor draws through a canvas, which transforms ImGui's coordinates and draw lists. That has limits:
+
+- Windows begun inside the editor, such as popups, tooltips, combo boxes and child windows, are placed at canvas coordinates as if they were screen ones, and aren't transformed. Begin them between `ed::Suspend()` and `ed::Resume()`, which work inside nodes too:
+
+  ```cpp
+  ed::Suspend();
+  if (ed::ShowNodeContextMenu(&contextNodeId))
+      ImGui::OpenPopup("Node Context Menu");
+  if (ImGui::BeginPopup("Node Context Menu"))
+  {
+      // ...
+      ImGui::EndPopup();
+  }
+  ed::Resume();
+  ```
+
+- Text is drawn from glyphs rasterized at the font's size and scaled with the view, so it looks blurry when zoomed in.
+- Before Dear ImGui 1.93, circles and rounded corners get the same number of segments at any zoom.
