@@ -6135,8 +6135,8 @@ void ed::NodeBuilder::BeginPin(PinId pinId, PinKind kind)
         m_CurrentPin->m_Node = m_CurrentNode;
 
     m_CurrentPin->m_IsLive      = true;
-    m_CurrentPin->m_Color       = Editor->GetColor(StyleColor_PinRect);
-    m_CurrentPin->m_BorderColor = Editor->GetColor(StyleColor_PinRectBorder);
+    m_CurrentPin->m_Color       = Editor->GetColor(StyleColor_PinRect, ImGui::GetStyle().Alpha);
+    m_CurrentPin->m_BorderColor = Editor->GetColor(StyleColor_PinRectBorder, ImGui::GetStyle().Alpha);
     m_CurrentPin->m_BorderWidth = editorStyle.PinBorderWidth;
     m_CurrentPin->m_Rounding    = editorStyle.PinRounding;
     m_CurrentPin->m_Corners     = static_cast<int>(editorStyle.PinCorners);
