@@ -537,6 +537,9 @@ v0.10.0 (WIP):
 
     CHANGE: Examples: Share one Splitter() between the canvas and blueprints examples
 
+    BUGFIX: Examples: Title each example's window with its name
+        Every example was titled Application.
+
 v0.9.2 (2023-09-01):
 
     NEW: Editor: Add offset of hover/select to style (thanks @MultiPain)
