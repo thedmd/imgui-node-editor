@@ -76,3 +76,19 @@ TEST_CASE(JsonUtf8, "json.utf8_strings_round_trip", "JSON-5", test::TestFlags_No
     test::Check(ParsedString(R"("\ud83d\ude00")") == "\xF0\x9F\x98\x80", "a surrogate pair reads as the 4 bytes of one code point");
     test::Check(json::value::parse(R"("\ud83d")").is_discarded() && json::value::parse(R"("\ude00x")").is_discarded(), "lone surrogates are rejected");
 }
+
+TEST_CASE(JsonEscapes, "json.keys_and_values_are_escaped_alike", "JSON-6", test::TestFlags_None)
+{
+    // Keys with a quote and a backslash, values with a tab and a 0x01 byte.
+    json::value document;
+    document["a\"b"]  = std::string("tab\there");
+    document["a\\b"]  = std::string("one\x01" "end");
+    document["plain"] = std::string("x/y");
+
+    const auto text = document.dump();
+    test::Check(text == R"({"a\"b":"tab\there","a\\b":"one\u0001end","plain":"x/y"})", "written as %s", text.c_str());
+
+    const auto parsed = json::value::parse(text);
+    test::Check(!parsed.is_discarded() && parsed["a\"b"].get<json::string>() == "tab\there" && parsed["a\\b"].get<json::string>() == "one\x01" "end",
+        "and read back");
+}
