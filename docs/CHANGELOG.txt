@@ -630,6 +630,10 @@ v0.10.0 (WIP):
     CHANGE: Canvas: Make the canvas an item of the ID Begin() takes
         After End(), ImGui::GetItemID() is the canvas' ID; it was 0. It stays out of keyboard navigation.
 
+    BUGFIX: Editor: Keep flow markers on very long links
+        Flow paths were sampled to a fixed fraction of the curve, so on links tens of thousands of units long
+        samples collapsed onto each other and some markers were drawn at non-finite positions.
+
 v0.9.3 (2023-10-14):
 
     CHANGE: Canvas: Use ImDrawCallback_ImCanvas macro as draw callback sentinel (#256), thanks @nspitko
