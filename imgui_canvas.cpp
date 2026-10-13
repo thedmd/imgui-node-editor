@@ -525,10 +525,12 @@ void ImGuiEx::Canvas::EnterLocalSpace()
 # endif
 
     // Clip rectangle in parent canvas space and move it to local space.
+    m_ScreenClipRect = clipped_clip_rect;
     clipped_clip_rect.x = (clipped_clip_rect.x - m_ViewTransformPosition.x) * m_View.InvScale();
     clipped_clip_rect.y = (clipped_clip_rect.y - m_ViewTransformPosition.y) * m_View.InvScale();
     clipped_clip_rect.z = (clipped_clip_rect.z - m_ViewTransformPosition.x) * m_View.InvScale();
     clipped_clip_rect.w = (clipped_clip_rect.w - m_ViewTransformPosition.y) * m_View.InvScale();
+    m_LocalClipRect = clipped_clip_rect;
     m_DrawList->PushClipRect(ImVec2(clipped_clip_rect.x, clipped_clip_rect.y), ImVec2(clipped_clip_rect.z, clipped_clip_rect.w), false);
     m_ClipRectStackSize = m_DrawList->_ClipRectStack.Size;
     for (auto& clipRect : m_SuspendedClipRects)
@@ -611,16 +613,6 @@ void ImGuiEx::Canvas::LeaveLocalSpace()
             vertex->pos.y = vertex->pos.y * m_View.Scale() + m_ViewTransformPosition.y;
             ++vertex;
         }
-
-        // Move clip rectangles to screen space.
-        for (int i = m_DrawListFirstCommandIndex; i < m_DrawList->CmdBuffer.size(); ++i)
-        {
-            auto& command = m_DrawList->CmdBuffer[i];
-            command.ClipRect.x = command.ClipRect.x * m_View.Scale() + m_ViewTransformPosition.x;
-            command.ClipRect.y = command.ClipRect.y * m_View.Scale() + m_ViewTransformPosition.y;
-            command.ClipRect.z = command.ClipRect.z * m_View.Scale() + m_ViewTransformPosition.x;
-            command.ClipRect.w = command.ClipRect.w * m_View.Scale() + m_ViewTransformPosition.y;
-        }
     }
     else
     {
@@ -630,16 +622,22 @@ void ImGuiEx::Canvas::LeaveLocalSpace()
             vertex->pos.y = vertex->pos.y + m_ViewTransformPosition.y;
             ++vertex;
         }
+    }
 
-        // Move clip rectangles to screen space.
-        for (int i = m_DrawListFirstCommandIndex; i < m_DrawList->CmdBuffer.size(); ++i)
-        {
-            auto& command = m_DrawList->CmdBuffer[i];
-            command.ClipRect.x = command.ClipRect.x + m_ViewTransformPosition.x;
-            command.ClipRect.y = command.ClipRect.y + m_ViewTransformPosition.y;
-            command.ClipRect.z = command.ClipRect.z + m_ViewTransformPosition.x;
-            command.ClipRect.w = command.ClipRect.w + m_ViewTransformPosition.y;
-        }
+    // Move clip rectangles to screen space. An edge of the canvas' own clip rectangle, or of
+    // one clipped by it, gets back the value it came from: the round trip through local space
+    // can land just inside it, which a truncating scissor turns into a pixel lost.
+    auto toScreen = [](float value, float local, float screen, float scale, float offset)
+    {
+        return value == local ? screen : value * scale + offset;
+    };
+    for (int i = m_DrawListFirstCommandIndex; i < m_DrawList->CmdBuffer.size(); ++i)
+    {
+        auto& clipRect = m_DrawList->CmdBuffer[i].ClipRect;
+        clipRect.x = toScreen(clipRect.x, m_LocalClipRect.x, m_ScreenClipRect.x, m_View.Scale(), m_ViewTransformPosition.x);
+        clipRect.y = toScreen(clipRect.y, m_LocalClipRect.y, m_ScreenClipRect.y, m_View.Scale(), m_ViewTransformPosition.y);
+        clipRect.z = toScreen(clipRect.z, m_LocalClipRect.z, m_ScreenClipRect.z, m_View.Scale(), m_ViewTransformPosition.x);
+        clipRect.w = toScreen(clipRect.w, m_LocalClipRect.w, m_ScreenClipRect.w, m_View.Scale(), m_ViewTransformPosition.y);
     }
 
     if (sentinelIndex >= 0)

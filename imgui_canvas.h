@@ -257,6 +257,8 @@ private:
     int m_ExpectedChannel = 0;
     int m_ClipRectStackSize = 0;
     ImVector<ImVec4> m_SuspendedClipRects;
+    ImVec4 m_ScreenClipRect;
+    ImVec4 m_LocalClipRect;
 
 # if IMGUI_EX_CANVAS_DEFERED()
     ImVector<Range> m_Ranges;
