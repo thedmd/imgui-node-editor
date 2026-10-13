@@ -470,3 +470,25 @@ TEST_CASE(LoadedIdsStayUnique, "blueprints2.new_nodes_take_ids_no_loaded_one_has
     test::Check(ok, "the blueprint loads");
     test::Check(reused == 0, "a node made after it takes IDs no loaded node or pin has: %d reused", reused);
 }
+
+TEST_CASE(WrongTypeFailsStep, "blueprints2.a_value_of_another_type_fails_the_step", "EXB-8", test::TestFlags_None)
+{
+    // Do N counts to the end of a chain of links too long to evaluate, which gives no value, not an Int32.
+    Blueprint blueprint;
+    auto entry = blueprint.CreateNode<EntryPointNode>();
+    auto doN   = blueprint.CreateNode<DoNNode>();
+    entry->m_Exit.LinkTo(doN->m_Enter);
+
+    std::vector<AddNode*> chain(1, blueprint.CreateNode<AddNode>());
+    for (int i = 1; i < 300; ++i)
+    {
+        chain.push_back(blueprint.CreateNode<AddNode>());
+        chain.back()->m_A.m_Link = &chain[chain.size() - 2]->m_Result;
+    }
+    doN->m_N.m_Link = &chain.back()->m_Result;
+
+    const auto result = blueprint.Execute(*entry);
+
+    test::Check(result == StepResult::Error, "the step that reads it fails: %s", StepResultToString(result));
+    test::Check(blueprint.CurrentNode() == doN, "in Do N");
+}

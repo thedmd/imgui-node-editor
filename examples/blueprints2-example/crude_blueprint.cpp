@@ -754,7 +754,16 @@ crude_blueprint::StepResult crude_blueprint::Context::Step()
     if (m_Monitor)
         m_Monitor->OnPreStep(*this);
 
-    auto next = entryPin->m_Node->Execute(*this, *entryPin);
+    // Nodes read their inputs with GetPinValue<T>(), which throws for a value of another type.
+    FlowPin next;
+    try
+    {
+        next = entryPin->m_Node->Execute(*this, *entryPin);
+    }
+    catch (const bad_variant_access&)
+    {
+        return SetStepResult(StepResult::Error);
+    }
 
     if (next.m_Link && next.m_Link->m_Type == PinType::Flow)
     {
