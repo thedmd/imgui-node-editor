@@ -1537,7 +1537,12 @@ struct Example:
                         {
                             auto id = std::find_if(m_Nodes.begin(), m_Nodes.end(), [nodeId](auto& node) { return node.ID == nodeId; });
                             if (id != m_Nodes.end())
+                            {
                                 m_Nodes.erase(id);
+
+                                // Erasing moves the nodes after it, so their pins point at other nodes.
+                                BuildNodes();
+                            }
                         }
                     }
 
