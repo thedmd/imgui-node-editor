@@ -3,6 +3,9 @@
 //------------------------------------------------------------------------------
 # include "harness.h"
 # include <crude_json.h>
+# include <cmath>
+# include <cstdint>
+# include <cstring>
 # include <limits>
 # include <type_traits>
 # include <utility>
@@ -116,6 +119,66 @@ TEST_CASE(JsonSubnormal, "json.subnormal_numbers_round_trip", "JSON-9", test::Te
 
     const auto literal = json::value::parse("5e-324");
     test::Check(literal.is_number() && literal.get<json::number>() == smallest, "5e-324 reads as the smallest subnormal");
+}
+
+namespace {
+
+// Pseudo-random bits, the same on every platform (splitmix64).
+struct RandomBits
+{
+    uint64_t State = 0;
+
+    uint64_t Next()
+    {
+        uint64_t z = (State += 0x9E3779B97F4A7C15ull);
+        z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9ull;
+        z = (z ^ (z >> 27)) * 0x94D049BB133111EBull;
+        return z ^ (z >> 31);
+    }
+};
+
+// Whether the number reads back as the same double.
+bool RoundTrips(double number)
+{
+    const json::value written = number;
+    const auto parsed = json::value::parse(written.dump());
+    return parsed.is_number() && parsed.get<json::number>() == number;
+}
+
+} // namespace
+
+TEST_CASE(JsonNumberDigits, "json.numbers_round_trip_in_17_significant_digits", "JSON-9", test::TestFlags_None)
+{
+    // 17 significant digits read back as the same double; an 18th only adds noise.
+    const auto tenth = json::value(0.1).dump();
+    test::Check(tenth == "0.10000000000000001", "0.1 written as %s", tenth.c_str());
+
+    // Finite doubles and floats from random bit patterns, across the whole range.
+    RandomBits random;
+    int doubles = 0, floats = 0, differing = 0;
+    while (doubles < 5000)
+    {
+        const auto bits = random.Next();
+        double number;
+        std::memcpy(&number, &bits, sizeof(number));
+        if (!std::isfinite(number))
+            continue;
+        ++doubles;
+        if (!RoundTrips(number))
+            ++differing;
+    }
+    while (floats < 5000)
+    {
+        const auto bits = static_cast<uint32_t>(random.Next() >> 32);
+        float number;
+        std::memcpy(&number, &bits, sizeof(number));
+        if (!std::isfinite(number))
+            continue;
+        ++floats;
+        if (!RoundTrips(number))
+            ++differing;
+    }
+    test::Check(differing == 0, "doubles and floats read back exactly: %d of 10000 differ", differing);
 }
 
 TEST_CASE(JsonDepth, "json.nesting_beyond_the_limit_is_rejected", "JSON-7", test::TestFlags_None)
