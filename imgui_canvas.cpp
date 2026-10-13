@@ -126,10 +126,6 @@ bool ImGuiEx::Canvas::Begin(ImGuiID id, const ImVec2& size)
 
     ImGui::SetCursorScreenPos(ImVec2(0.0f, 0.0f));
 
-# if IMGUI_EX_CANVAS_DEFERED()
-    m_Ranges.resize(0);
-# endif
-
     SaveInputState();
     SaveViewportState();
 
@@ -451,12 +447,6 @@ void ImGuiEx::Canvas::EnterLocalSpace()
         clipped_clip_rect.w = clipped_clip_rect.y;
     }
 
-# if IMGUI_EX_CANVAS_DEFERED()
-    m_Ranges.resize(m_Ranges.Size + 1);
-    m_CurrentRange = &m_Ranges.back();
-    m_CurrentRange->BeginComandIndex = ImMax(m_DrawList->CmdBuffer.Size, 0);
-    m_CurrentRange->BeginVertexIndex = m_DrawList->_VtxCurrentIdx + ImVtxOffsetRef(m_DrawList);
-# endif
     m_DrawListCommadBufferSize       = ImMax(m_DrawList->CmdBuffer.Size, 0);
     m_DrawListStartVertexIndex       = m_DrawList->_VtxCurrentIdx + ImVtxOffsetRef(m_DrawList);
 
@@ -559,19 +549,6 @@ void ImGuiEx::Canvas::LeaveLocalSpace()
     // If you're here, another draw list splitter or channel is current than the one
     // the canvas began or resumed with.
     IM_ASSERT(sentinelIndex >= 0 && "Canvas suspended or ended in another draw list splitter or channel.");
-
-# if IMGUI_EX_CANVAS_DEFERED()
-    IM_ASSERT(m_CurrentRange != nullptr);
-
-    m_CurrentRange->EndVertexIndex  = m_DrawList->_VtxCurrentIdx + ImVtxOffsetRef(m_DrawList);
-    m_CurrentRange->EndCommandIndex = m_DrawList->CmdBuffer.size();
-    if (m_CurrentRange->BeginVertexIndex == m_CurrentRange->EndVertexIndex)
-    {
-        // Drop empty range
-        m_Ranges.resize(m_Ranges.Size - 1);
-    }
-    m_CurrentRange = nullptr;
-# endif
 
     // Move vertices to screen space.
     auto vertex    = m_DrawList->VtxBuffer.Data + m_DrawListStartVertexIndex;
