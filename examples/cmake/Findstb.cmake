@@ -1,6 +1,6 @@
-if (NOT TARGET stb)
-    include(FetchContent)
+include(FetchContent)
 
+if (NOT TARGET stb)
     FetchContent_Declare(
         stb
         GIT_REPOSITORY      https://github.com/nothings/stb.git
@@ -18,13 +18,20 @@ if (NOT TARGET stb)
     )
 endif()
 
+FetchContent_GetProperties(stb)
+
 foreach(component ${stb_FIND_COMPONENTS})
 
     if (TARGET stb_${component})
+        set(stb_${component}_FOUND TRUE)
         continue()
     endif()
 
     set(HEADER "${stb_SOURCE_DIR}/stb_${component}.h")
+    if (NOT EXISTS "${HEADER}")
+        set(stb_${component}_FOUND FALSE)
+        continue()
+    endif()
     set(SOURCE "${stb_BINARY_DIR}/stb_${component}_generated.c")
 
     string(TOUPPER ${component} componentUppercase)
@@ -50,12 +57,19 @@ foreach(component ${stb_FIND_COMPONENTS})
             FOLDER "external"
     )
 
+    set(stb_${component}_FOUND TRUE)
+
 endforeach()
+
+if (TARGET stb)
+    set(stb_LIBRARY stb)
+endif()
 
 include(FindPackageHandleStandardArgs)
 
 find_package_handle_standard_args(
     stb
-    DEFAULT_MSG
+    REQUIRED_VARS stb_LIBRARY
+    HANDLE_COMPONENTS
 )
 
