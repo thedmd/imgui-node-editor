@@ -5,7 +5,9 @@
 # include <crude_json.h>
 # include <cmath>
 # include <cstdint>
+# include <cstdio>
 # include <cstring>
+# include <fstream>
 # include <limits>
 # include <type_traits>
 # include <utility>
@@ -247,6 +249,36 @@ TEST_CASE(JsonGetOtherType, "json.get_of_another_type_returns_an_empty_value", "
     text.get<json::object>()["key"] = 1.0;
     text.get<json::number>() = 2.0;
     test::Check(text.is_string() && text.get<json::string>() == "text", "writes through mutable get() are lost");
+}
+
+namespace {
+
+// A file in the working directory, removed with the test.
+struct TestFile
+{
+    explicit TestFile(const char* path): Path(path) { std::remove(Path.c_str()); }
+    ~TestFile() { std::remove(Path.c_str()); }
+
+    void Write(const std::string& bytes) const { std::ofstream(Path, std::ios::binary) << bytes; }
+
+    std::string Path;
+};
+
+} // namespace
+
+TEST_CASE(JsonLoadEmptyFile, "json.load_tells_an_empty_file_from_a_missing_one", "JSON-12", test::TestFlags_None)
+{
+    // An empty file read as a failure, the same as a missing one.
+    TestFile empty("json_load_empty.json"), missing("json_load_missing.json"), document("json_load_document.json");
+    empty.Write("");
+    document.Write(R"({"list":[1,2]})");
+
+    const auto fromEmpty = json::value::load(empty.Path);
+    test::Check(fromEmpty.second && fromEmpty.first.is_discarded(), "an empty file is read, and isn't JSON");
+    test::Check(!json::value::load(missing.Path).second, "a missing file isn't read");
+
+    const auto fromDocument = json::value::load(document.Path);
+    test::Check(fromDocument.second && fromDocument.first["list"][1].is_number(), "a document is read");
 }
 
 TEST_CASE(JsonNothrowMoves, "json.values_move_without_throwing", "JSON-10", test::TestFlags_None)

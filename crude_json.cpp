@@ -942,13 +942,11 @@ std::pair<value, bool> value::load(const string& path)
     if (!file)
         return {value{}, false};
 
-    fseek(file.get(), 0, SEEK_END);
-    auto size = static_cast<size_t>(ftell(file.get()));
-    fseek(file.get(), 0, SEEK_SET);
-
     string data;
-    data.resize(size);
-    if (fread(const_cast<char*>(data.data()), size, 1, file.get()) != 1)
+    char buffer[4096];
+    while (const auto size = fread(buffer, 1, sizeof(buffer), file.get()))
+        data.append(buffer, size);
+    if (ferror(file.get()))
         return {value{}, false};
 
     return {parse(data), true};
