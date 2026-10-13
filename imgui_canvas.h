@@ -250,6 +250,8 @@ private:
     bool m_InBeginEnd = false;
     bool m_IsVisible = false;
 
+    ImGuiID m_ID = 0;
+
     ImVec2 m_WidgetPosition;
     ImVec2 m_WidgetSize;
     ImRect m_WidgetRect;

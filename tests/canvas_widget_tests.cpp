@@ -505,3 +505,21 @@ TEST_CASE(ClipRectsMapBackExactly, "canvas_widget.clip_rectangles_map_back_to_th
     test::Check(inexact == 0, "the canvas' clip rectangle comes back as it was: %d of %d differ", inexact, configurations);
     test::Check(inexactInner == 0 && outside == 0, "and a clip inside it keeps the edges it shares: %d differ, %d reach outside", inexactInner, outside);
 }
+
+TEST_CASE(CanvasItemId, "canvas_widget.canvas_is_an_item_of_its_id", "CNV-11", test::TestFlags_None)
+{
+    test::Host host;
+    host.NewFrame();
+    BeginHostWindow();
+    const auto id = ImGui::GetID("canvas");
+    ImGuiEx::Canvas canvas;
+    canvas.Begin("canvas", ImVec2(300.0f, 200.0f));
+    canvas.End();
+    const auto itemId   = ImGui::GetItemID();
+    const auto itemRect = ImRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
+    ImGui::End();
+    host.Render();
+
+    test::Check(itemId == id, "after End(), the last item is the canvas: ID %08X, the canvas' %08X", itemId, id);
+    test::Check(itemRect.Min.x == canvas.Rect().Min.x && itemRect.Max.y == canvas.Rect().Max.y, "with its rectangle");
+}
