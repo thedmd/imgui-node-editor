@@ -1467,7 +1467,7 @@ struct Example:
 
                         newLinkPin = startPin ? startPin : endPin;
 
-                        if (startPin->Kind == PinKind::Input)
+                        if (startPin && startPin->Kind == PinKind::Input)
                         {
                             std::swap(startPin, endPin);
                             std::swap(startPinId, endPinId);
