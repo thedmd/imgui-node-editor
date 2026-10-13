@@ -134,6 +134,8 @@ private:
 struct Pin
 {
     Pin(Node* node, PinType type, string_view name = "");
+    Pin(const Pin& other);            // A copy is a value: it stays out of the node's blueprint,
+    Pin& operator=(const Pin& other); // which may delete the node while the copy lives.
     virtual ~Pin();
 
     virtual bool     SetValueType(PinType type) { return m_Type == type; } // By default, type of held value cannot be changed
@@ -167,6 +169,9 @@ struct Pin
     PinType     m_Type = PinType::Void;
     string_view m_Name;
     const Pin*  m_Link = nullptr;
+
+private:
+    bool        m_IsRegistered = false;
 };
 
 
