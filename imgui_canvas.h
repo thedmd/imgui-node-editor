@@ -35,6 +35,15 @@
 // Note:
 //     It is not valid to call canvas API outside of BeginCanvas() / EndCanvas() scope.
 //
+// Limitations:
+//   - Windows begun inside the canvas, such as popups, tooltips, combo boxes and
+//     child windows, are placed at canvas coordinates as if they were screen ones,
+//     and are not transformed. Begin them between Suspend() and Resume().
+//   - Text is drawn from glyphs rasterized at the font's size and scaled with the
+//     view, so it looks blurry when zoomed in.
+//   - Before Dear ImGui 1.93, circles and rounded corners get the same number of
+//     segments at any scale.
+//
 // VERSION 0.1
 //
 // LICENSE
