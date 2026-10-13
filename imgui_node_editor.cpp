@@ -80,6 +80,11 @@ static const float c_SelectionFadeOutDuration   = 0.15f; // seconds
 static const float c_MinFlowMarkerDistance      = 1.0f;  // canvas pixels
 static const float c_MinGridLineSpacing         = 2.0f;  // screen pixels
 
+// Nodes stay within this distance of the origin on both axes. ImGui takes mouse
+// positions below -256000 for invalid, and local space is canvas space, so the
+// margin keeps what is drawn around nodes within reach of the mouse.
+static const float c_CanvasExtent               = 250000.0f; // canvas pixels
+
 static const auto  c_MaxMoveOverEdgeSpeed       = 10.0f;
 static const auto  c_MaxMoveOverEdgeDistance    = 300.0f;
 
@@ -161,6 +166,15 @@ static void ImRect_Floor(ImRect& rect)
     const auto size = ImVec2_Floor(rect.GetSize());
     rect.Min = ImVec2_Floor(rect.Min);
     rect.Max = rect.Min + size;
+}
+
+// The position nearest to the given one at which a rectangle of the size lies within
+// the canvas. One larger than the canvas keeps its top left corner inside.
+static ImVec2 ClampToCanvas(const ImVec2& position, const ImVec2& size)
+{
+    return ImVec2(
+        ImClamp(position.x, -c_CanvasExtent, ImMax(c_CanvasExtent - size.x, -c_CanvasExtent)),
+        ImClamp(position.y, -c_CanvasExtent, ImMax(c_CanvasExtent - size.y, -c_CanvasExtent)));
 }
 
 
@@ -1864,8 +1878,9 @@ void ed::EditorContext::SetNodePosition(NodeId nodeId, const ImVec2& position)
         node->m_IsLive = false;
     }
 
-    auto bounds = node->m_Bounds;
-    bounds.Translate(position - bounds.Min);
+    const auto size = node->m_Bounds.GetSize();
+    auto bounds = ImRect(ClampToCanvas(position, ImMax(size, node->m_GroupBounds.GetSize())), ImVec2());
+    bounds.Max = bounds.Min + size;
     ImRect_Floor(bounds);
     if (bounds.Min != node->m_Bounds.Min || bounds.Max != node->m_Bounds.Max)
     {

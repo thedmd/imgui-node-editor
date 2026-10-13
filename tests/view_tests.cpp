@@ -20,28 +20,31 @@ int GridVertices(const ImDrawList* drawList)
 
 TEST_CASE(GridAtTinyZoom, "view.grid_at_tiny_zoom_is_bounded", "CORE-10", test::TestFlags_None)
 {
-    test::Storage storage;
-    test::Session session(&storage);
-    auto content = [](int frame)
+    auto content = [](int)
     {
-        if (frame == 0)
-            ed::SetNodePosition(2, ImVec2(1.0e9f, 1.0e9f));
-        for (uintptr_t id : { 1, 2 })
-        {
-            ed::BeginNode(id);
-            ImGui::TextUnformatted("Node");
-            ed::EndNode();
-        }
-        if (frame == 2)
-            ed::NavigateToContent(0.0f);
+        ed::BeginNode(1);
+        ImGui::TextUnformatted("Node");
+        ed::EndNode();
     };
 
-    session.Frame(content);
-    session.Frame(content);
-    const int gridVertices = session.Use([&] { return GridVertices(session.DrawList); });
-    test::Check(gridVertices > 0, "grid drawn at zoom 1: %d vertices", gridVertices);
+    {
+        test::Storage storage;
+        test::Session session(&storage);
+        session.Frame(content);
+        session.Frame(content);
+        const int gridVertices = session.Use([&] { return GridVertices(session.DrawList); });
+        test::Check(gridVertices > 0, "grid drawn at zoom 1: %d vertices", gridVertices);
+    }
 
-    // Content 10^9 units across: the view zooms out far below the zoom levels.
+    // Zoom levels down to 1e-6, where the view is 10^9 units across. Content can't
+    // be spread that far, since the canvas ends 250000 from the origin.
+    test::Storage storage;
+    storage.Global = R"({"view":{"scroll":{"x":0,"y":0},"zoom":0.000001}})";
+    auto config = test::MakeConfig(&storage);
+    config.CustomZoomLevels.push_back(1e-6f);
+    config.CustomZoomLevels.push_back(1.0f);
+    test::Session session(config);
+    session.Settings = &storage;
     for (int i = 0; i < 3; ++i)
         session.Frame(content);
     const float zoom = 1.0f / session.Use([] { return ed::GetCurrentZoom(); });

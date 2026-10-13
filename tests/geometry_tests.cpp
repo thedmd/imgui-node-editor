@@ -172,3 +172,45 @@ TEST_CASE(SizeWhileDraggedAcrossZero, "geometry.size_kept_while_dragged_across_z
     test::Check(changed == 0, "node and group sizes kept while dragged across 0: %d changes, now (%g, %g) and (%g, %g), were (%g, %g) and (%g, %g)",
         changed, sizes[0].x, sizes[0].y, sizes[1].x, sizes[1].y, before[0].x, before[0].y, before[1].x, before[1].y);
 }
+
+TEST_CASE(PlacementBeyondBorder, "geometry.node_placed_beyond_the_border_stops_there", "CNV-8", test::TestFlags_None)
+{
+    // The canvas ends 250000 from the origin on both axes; a node keeps its size.
+    const float extent = 250000.0f;
+    test::Storage storage;
+    test::Session session(&storage);
+    session.DefaultContent = [](int)
+    {
+        ed::BeginNode(1);
+        ImGui::Dummy(ImVec2(100.0f, 40.0f));
+        ed::EndNode();
+    };
+    session.Run(2);
+    const auto size = session.Use([] { return ed::GetNodeSize(1); });
+
+    struct Case { ImVec2 Requested; ImVec2 Expected; };
+    const Case cases[] =
+    {
+        { ImVec2(-1e6f, 1e6f),          ImVec2(-extent, extent - size.y) },
+        { ImVec2(FLT_MAX, FLT_MAX),     ImVec2(extent - size.x, extent - size.y) },
+        { ImVec2(-FLT_MAX, -FLT_MAX),   ImVec2(-extent, -extent) },
+        { ImVec2(-extent, -extent),     ImVec2(-extent, -extent) },
+        { ImVec2(123.5f, -77.25f),      ImVec2(123.0f, -78.0f) },
+    };
+    int wrong = 0;
+    for (const auto& c : cases)
+    {
+        session.Use([&c] { ed::SetNodePosition(1, c.Requested); });
+        session.Run(2);
+        const auto position = session.Use([] { return ed::GetNodePosition(1); });
+        const auto measured = session.Use([] { return ed::GetNodeSize(1); });
+        if (position.x != c.Expected.x || position.y != c.Expected.y || measured.x != size.x || measured.y != size.y)
+        {
+            ++wrong;
+            test::Check(false, "(%g, %g) places the node at (%g, %g), %g by %g; expected (%g, %g), %g by %g",
+                c.Requested.x, c.Requested.y, position.x, position.y, measured.x, measured.y, c.Expected.x, c.Expected.y, size.x, size.y);
+        }
+    }
+
+    test::Check(wrong == 0, "nodes placed beyond the border are placed at it, with their size");
+}
