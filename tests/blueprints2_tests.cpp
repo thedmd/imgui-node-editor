@@ -69,3 +69,31 @@ TEST_CASE(Blueprints2Runs, "blueprints2.example_blueprint_runs", nullptr, test::
     test::Check(result == StepResult::Done, "the example runs to its end: %s", StepResultToString(result));
     test::Check(printed == "FlipFlop slot A!|5|FlipFlop slot A!|7|FlipFlop slot A!|", "and prints: %s", printed.c_str());
 }
+TEST_CASE(DeleteStopsExecution, "blueprints2.deleting_a_node_stops_execution", "EXB-1", test::TestFlags_None)
+{
+    // Execution paused after Do N's first step, with Flip Flop to run next; the user deletes Flip Flop.
+    ExampleBlueprint example;
+    auto& blueprint = example.m_Blueprint;
+    blueprint.Start(*example.m_Entry);
+    blueprint.Step();
+    const bool paused = blueprint.CurrentNode() == example.m_DoN && blueprint.NextNode() == example.m_FlipFlop;
+
+    blueprint.DeleteNode(example.m_FlipFlop);
+    const bool stopped = blueprint.CurrentNode() == nullptr && blueprint.NextNode() == nullptr && blueprint.LastStepResult() == StepResult::Done;
+    const auto step    = blueprint.Step();
+
+    test::Check(paused, "execution paused in Do N, before Flip Flop");
+    test::Check(stopped, "deleting Flip Flop stops it: the toolbar finds no current or next node");
+    test::Check(step == StepResult::Done, "and a step does nothing: %s", StepResultToString(step));
+}
+
+TEST_CASE(PinCopyOutlivesNode, "blueprints2.a_pin_copy_outlives_its_node", "EXB-1", test::TestFlags_NeedsSanitizer)
+{
+    // The debug overlay keeps a copy of the current flow pin for the frame, in which the user may delete its node.
+    ExampleBlueprint example;
+    {
+        FlowPin copy = example.m_DoN->m_Exit;
+        example.m_Blueprint.DeleteNode(example.m_DoN);
+    }
+    test::Check(example.m_Blueprint.FindNode(example.m_Add->m_Id) == example.m_Add, "the copy went away without touching the deleted node");
+}

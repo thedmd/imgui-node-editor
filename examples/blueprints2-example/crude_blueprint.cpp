@@ -146,12 +146,32 @@ crude_blueprint::Pin::Pin(Node* node, PinType type, string_view name)
     , m_Node(node)
     , m_Type(type)
     , m_Name(name)
+    , m_IsRegistered(node != nullptr)
 {
+}
+
+crude_blueprint::Pin::Pin(const Pin& other)
+    : m_Id(other.m_Id)
+    , m_Node(other.m_Node)
+    , m_Type(other.m_Type)
+    , m_Name(other.m_Name)
+    , m_Link(other.m_Link)
+{
+}
+
+crude_blueprint::Pin& crude_blueprint::Pin::operator=(const Pin& other)
+{
+    m_Id   = other.m_Id;
+    m_Node = other.m_Node;
+    m_Type = other.m_Type;
+    m_Name = other.m_Name;
+    m_Link = other.m_Link;
+    return *this;
 }
 
 crude_blueprint::Pin::~Pin()
 {
-    if (m_Node)
+    if (m_IsRegistered)
         m_Node->m_Blueprint->ForgetPin(this);
 }
 
@@ -1031,6 +1051,9 @@ void crude_blueprint::Blueprint::DeleteNode(Node* node)
     auto nodeIt = std::find(m_Nodes.begin(), m_Nodes.end(), node);
     if (nodeIt == m_Nodes.end())
         return;
+
+    // Execution holds pins of the nodes it goes through.
+    m_Context.Stop();
 
     delete *nodeIt;
 
