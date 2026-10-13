@@ -259,6 +259,8 @@ private:
     int m_ExpectedChannel = 0;
     int m_ClipRectStackSize = 0;
     ImVector<ImVec4> m_SuspendedClipRects;
+    ImVec4 m_ScreenClipRect;
+    ImVec4 m_LocalClipRect;
 
     int m_DrawListFirstCommandIndex = 0;
     int m_DrawListCommandBufferSize = 0;

@@ -623,6 +623,10 @@ v0.10.0 (WIP):
         They extend the window's ideal size in canvas space, so an auto-resizing window around the canvas
         grew to fit a table placed far away in it.
 
+    BUGFIX: Canvas: Bring the canvas' clip rectangle back to the screen exactly
+        At some positions and zoom levels it came back a fraction of a pixel inside the canvas, and renderers
+        that truncate scissor rectangles cut a row or column of pixels off its edge.
+
 v0.9.3 (2023-10-14):
 
     CHANGE: Canvas: Use ImDrawCallback_ImCanvas macro as draw callback sentinel (#256), thanks @nspitko

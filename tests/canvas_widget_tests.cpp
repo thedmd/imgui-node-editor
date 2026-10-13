@@ -32,6 +32,25 @@ void BeginHostWindow()
     ImGui::PopStyleVar();
 }
 
+// Clip rectangles of the commands that draw vertices of the color.
+ImVector<ImVec4> ClipRectsOf(const ImDrawList* drawList, ImU32 color)
+{
+    ImVector<ImVec4> result;
+    for (auto& command : drawList->CmdBuffer)
+    {
+        for (unsigned int i = 0; i < command.ElemCount; ++i)
+        {
+            const auto index = drawList->IdxBuffer[static_cast<int>(command.IdxOffset + i)];
+            if (drawList->VtxBuffer[static_cast<int>(command.VtxOffset + index)].col == color)
+            {
+                result.push_back(command.ClipRect);
+                break;
+            }
+        }
+    }
+    return result;
+}
+
 } // namespace
 
 TEST_CASE(SetViewWhileSuspended, "canvas_widget.set_view_while_suspended_stays_in_screen_space", "CNV-4", test::TestFlags_None)
@@ -441,4 +460,48 @@ TEST_CASE(IdealSizeKeepsLocalContentOut, "canvas_widget.local_content_leaves_the
     }
 
     test::Check(size.x <= 200.0f + 2.0f && size.y <= 100.0f + 2.0f, "the window fits the canvas: %g x %g", size.x, size.y);
+}
+
+TEST_CASE(ClipRectsMapBackExactly, "canvas_widget.clip_rectangles_map_back_to_the_screen_exactly", "CNV-11", test::TestFlags_None)
+{
+    // Canvases at fractional positions, scales and origins. Their clip rectangle goes to local
+    // space and back, where a value just inside the original makes a truncating scissor lose a
+    // pixel. Red is drawn under the canvas' clip, green under one pushed inside it that reaches
+    // past the canvas' bottom right.
+    int configurations = 0, inexact = 0, inexactInner = 0, outside = 0;
+    for (float x : { 10.3f, 33.7f, 101.1f })
+        for (float scale : { 0.3f, 0.7f, 1.0f, 1.3f, 2.1f, 3.7f })
+            for (float origin : { 0.0f, -123.4f, 7777.7f })
+            {
+                test::Host host;
+                host.NewFrame();
+                BeginHostWindow();
+                ImGui::SetCursorScreenPos(ImVec2(x, x * 0.5f));
+                ImRect expected = ImGui::GetCurrentWindow()->ClipRect;
+                ImGuiEx::Canvas canvas;
+                canvas.SetView(ImVec2(origin, origin * 0.5f), scale);
+                canvas.Begin("canvas", ImVec2(250.0f, 150.0f));
+                expected.ClipWithFull(canvas.Rect());
+                auto drawList = ImGui::GetWindowDrawList();
+                const auto view = canvas.ViewRect();
+                drawList->AddRectFilled(view.Min, view.Max, c_Red);
+                drawList->PushClipRect(view.Min + ImVec2(7.0f, 5.0f), view.Max + ImVec2(50.0f, 50.0f), true);
+                drawList->AddRectFilled(view.Min, view.Max, c_Green);
+                drawList->PopClipRect();
+                canvas.End();
+                ImGui::End();
+                host.Render();
+
+                ++configurations;
+                for (auto& clip : ClipRectsOf(drawList, c_Red))
+                    inexact += clip.x != expected.Min.x || clip.y != expected.Min.y || clip.z != expected.Max.x || clip.w != expected.Max.y;
+                for (auto& clip : ClipRectsOf(drawList, c_Green))
+                {
+                    inexactInner += clip.z != expected.Max.x || clip.w != expected.Max.y;
+                    outside      += clip.x < expected.Min.x || clip.y < expected.Min.y;
+                }
+            }
+
+    test::Check(inexact == 0, "the canvas' clip rectangle comes back as it was: %d of %d differ", inexact, configurations);
+    test::Check(inexactInner == 0 && outside == 0, "and a clip inside it keeps the edges it shares: %d differ, %d reach outside", inexactInner, outside);
 }
