@@ -397,8 +397,9 @@ inline ImCubicBezierIntersectResult ImCubicBezierLineIntersect(const ImVec2& p0,
 
             if (D >= 0) // complex or duplicate roots
             {
-                const double S = std::cbrt(R + std::sqrt(D));
-                const double T = std::cbrt(R - std::sqrt(D));
+                const double sqrt_D = std::sqrt(D);
+                const double S      = std::cbrt(R + sqrt_D);
+                const double T      = std::cbrt(R - sqrt_D);
 
                 roots[0] = -A / 3 + (S + T);       // real root
                 roots[1] = -A / 3 - (S + T) / 2;   // real part of complex root
@@ -409,12 +410,13 @@ inline ImCubicBezierIntersectResult ImCubicBezierLineIntersect(const ImVec2& p0,
             }
             else // distinct real roots
             {
-                const double th = std::acos(R / std::sqrt(-Q * Q * Q));
-                const double pi = 3.14159265358979323846;
+                const double th     = std::acos(R / std::sqrt(-Q * Q * Q));
+                const double pi     = 3.14159265358979323846;
+                const double radius = 2 * std::sqrt(-Q);
 
-                roots[0] = 2 * std::sqrt(-Q) * std::cos(th / 3) - A / 3;
-                roots[1] = 2 * std::sqrt(-Q) * std::cos((th + 2 * pi) / 3) - A / 3;
-                roots[2] = 2 * std::sqrt(-Q) * std::cos((th + 4 * pi) / 3) - A / 3;
+                roots[0] = radius * std::cos(th / 3) - A / 3;
+                roots[1] = radius * std::cos((th + 2 * pi) / 3) - A / 3;
+                roots[2] = radius * std::cos((th + 4 * pi) / 3) - A / 3;
                 return 3;
             }
         }
