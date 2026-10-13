@@ -227,6 +227,9 @@ v0.9.4 (WIP):
     BUGFIX: Editor: Keep the clip rectangles of content drawn after a context menu shows
         Drawn in canvas space without Suspend(), it was clipped as if drawn in screen space, and hidden at zoom other than 1.
 
+    BUGFIX: Canvas: Keep a suspended canvas in screen space when its view changes
+        SetView() and CenterView() re-entered local space, transforming earlier geometry twice and remapping the mouse.
+
 v0.9.3 (2023-10-14):
 
     CHANGE: Canvas: Use ImDrawCallback_ImCanvas macro as draw callback sentinel (#256), thanks @nspitko
