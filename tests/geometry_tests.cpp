@@ -351,3 +351,56 @@ TEST_CASE(ResizeIntoBorder, "geometry.group_resized_into_the_border_stops_there"
         "the left edge stops at the border and the right edge stays: from %g to %g, was %g to %g",
         resizedPosition.x, resizedPosition.x + resizedSize.x, position.x, position.x + size.x);
 }
+
+TEST_CASE(CornerOfCanvas, "geometry.node_in_the_canvas_corner_is_usable", "CNV-8", test::TestFlags_None)
+{
+    // Node 1 and group 10 in the top left corner of the canvas, where mouse positions
+    // are still valid for ImGui.
+    const float extent = 250000.0f;
+    char state[128];
+    snprintf(state, sizeof(state), R"({"view":{"scroll":{"x":%g,"y":%g},"zoom":1}})", -extent - 100.0f, -extent - 100.0f);
+    test::Storage storage;
+    storage.Global = state;
+    test::Session session(&storage);
+    session.DefaultContent = [extent](int frame)
+    {
+        if (frame == 0)
+        {
+            ed::SetNodePosition(1, ImVec2(-extent, -extent));
+            ed::SetNodePosition(10, ImVec2(-extent + 300.0f, -extent));
+        }
+        ed::BeginNode(1);
+        ImGui::Text("Corner");
+        ImGui::Dummy(ImVec2(80.0f, 20.0f));
+        ed::EndNode();
+        ed::BeginNode(10);
+        ImGui::Text("Group");
+        ed::Group(ImVec2(200.0f, 100.0f));
+        ed::EndNode();
+    };
+    session.Run(3);
+
+    const auto inside = session.Use([&] { return ed::CanvasToScreen(ImVec2(-extent + 10.0f, -extent + 8.0f)); });
+    test::MouseMove(inside);
+    session.Run(2);
+    const bool hovered = session.Use([] { return ed::GetHoveredNode() == ed::NodeId(1); });
+
+    session.Click(inside);
+    session.Run(2);
+    const bool selected = session.Use([] { return ed::IsNodeSelected(1); });
+
+    session.Drag(inside, inside + ImVec2(64.0f, 48.0f));
+    session.Run(2);
+    const auto moved = session.Use([] { return ed::GetNodePosition(1); });
+
+    const auto groupSize = session.Use([] { return ed::GetNodeSize(10); });
+    const auto edge      = session.Use([&] { return ed::CanvasToScreen(ImVec2(-extent + 300.0f + groupSize.x - 2.0f, -extent + groupSize.y * 0.5f)); });
+    session.Drag(edge, edge + ImVec2(64.0f, 0.0f));
+    session.Run(2);
+    const auto resized = session.Use([] { return ed::GetNodeSize(10); });
+
+    test::Check(hovered, "the node in the corner is hovered");
+    test::Check(selected, "a click selects it");
+    test::Check(moved.x == -extent + 64.0f && moved.y == -extent + 48.0f, "a drag moves it: to (%g, %g)", moved.x, moved.y);
+    test::Check(resized.x > groupSize.x, "a drag on its edge resizes the group next to it: %g wide, was %g", resized.x, groupSize.x);
+}
