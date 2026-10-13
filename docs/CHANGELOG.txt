@@ -254,6 +254,9 @@ v0.9.4 (WIP):
     BUGFIX: Canvas: Recognize its own sentinel draw command, and assert when it is out of reach (#285), thanks @pthom
         Suspending with another splitter's channel current went unnoticed, as only channel numbers were compared.
 
+    BUGFIX: Canvas: Strip sentinels left behind by misuse in End()
+        Suspending in another splitter's channel left one in the draw data for the renderer to call.
+
 v0.9.3 (2023-10-14):
 
     CHANGE: Canvas: Use ImDrawCallback_ImCanvas macro as draw callback sentinel (#256), thanks @nspitko

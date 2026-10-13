@@ -189,6 +189,12 @@ void ImGuiEx::Canvas::End()
     LeaveLocalSpace();
     m_SuspendedClipRects.resize(0);
 
+    // Misuse that asserted already can leave a sentinel behind, which a renderer
+    // would call.
+    for (int i = m_DrawList->CmdBuffer.Size - 1; i >= 0; --i)
+        if (m_DrawList->CmdBuffer[i].UserCallback == ImDrawCallback_ImCanvas && m_DrawList->CmdBuffer[i].UserCallbackData == this)
+            m_DrawList->CmdBuffer.erase(m_DrawList->CmdBuffer.Data + i);
+
     m_Window->DC.CursorMaxPos = m_WindowCursorMaxBackup;
 
 # if IMGUI_VERSION_NUM < 18967
