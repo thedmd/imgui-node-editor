@@ -311,6 +311,35 @@ TEST_CASE(ContextDestroyedFirst, "settings_handler.context_destroyed_before_edit
     // The session destroys its editor after the context.
 }
 
+TEST_CASE(DestroyUnchangedEditor, "settings_handler.destroying_an_unchanged_editor_saves_nothing", "API-13", test::TestFlags_None)
+{
+    // DestroyEditor() saved every time, which marked imgui.ini for a write.
+    const auto config = NamedConfig("A");
+    test::Session session(config);
+    session.HostContext.Context->IO.IniSavingRate = 0.1f;
+    ed::InstallSettingsHandler(session.HostContext.Context);
+    session.DefaultContent = OneNode;
+    session.Run(20);
+
+    // Saved as an application does once io.WantSaveIniSettings is set.
+    ImGui::SaveIniSettingsToMemory();
+    ed::DestroyEditor(session.Editor);
+    const bool unchanged = session.HostContext.Context->SettingsDirtyTimer <= 0.0f;
+
+    // A position set after the last frame is saved by the destructor.
+    session.Editor = ed::CreateEditor(&config);
+    session.Run(20);
+    ImGui::SaveIniSettingsToMemory();
+    session.Use([] { ed::SetNodePosition(1, ImVec2(500.0f, 300.0f)); });
+    ed::DestroyEditor(session.Editor);
+    const bool changed = session.HostContext.Context->SettingsDirtyTimer > 0.0f;
+    const std::string ini = ImGui::SaveIniSettingsToMemory();
+    session.Editor = ed::CreateEditor(&config);
+
+    test::Check(unchanged, "destroying an unchanged editor leaves ImGui's settings clean");
+    test::Check(changed && ini.find(R"("node:1":{"location":{"x":500,"y":300}})") != std::string::npos, "destroying a changed one saves the change:\n%s", ini.c_str());
+}
+
 TEST_CASE(IdleFramesSaveNothing, "settings_handler.idle_frames_save_nothing", "API-9", test::TestFlags_None)
 {
     test::Session session(NamedConfig("A"));
