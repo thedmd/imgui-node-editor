@@ -364,6 +364,9 @@ v0.10.0 (WIP):
     CHANGE: Editor: Stop group edges at the canvas border while resizing
         The group moved back inside instead, so its opposite edge moved.
 
+    BUGFIX: Canvas: Keep a suspended canvas in screen space when its view changes
+        SetView() and CenterView() re-entered local space, transforming earlier geometry twice and remapping the mouse.
+
 v0.9.2 (2023-09-01):
 
     NEW: Editor: Add offset of hover/select to style (thanks @MultiPain)

@@ -191,7 +191,10 @@ void ImGuiEx::Canvas::SetView(const ImVec2& origin, float scale)
 
 void ImGuiEx::Canvas::SetView(const CanvasView& view)
 {
-    if (m_InBeginEnd)
+    // A suspended canvas is in screen space already, and enters local space with the
+    // new view on Resume().
+    const auto inLocalSpace = m_InBeginEnd && m_SuspendCounter == 0;
+    if (inLocalSpace)
         LeaveLocalSpace();
 
     if (m_View.Origin.x != view.Origin.x || m_View.Origin.y != view.Origin.y)
@@ -207,7 +210,9 @@ void ImGuiEx::Canvas::SetView(const CanvasView& view)
         m_View.InvScale = view.InvScale;
     }
 
-    if (m_InBeginEnd)
+    m_ViewRect = CalcViewRect(m_View);
+
+    if (inLocalSpace)
         EnterLocalSpace();
 }
 
