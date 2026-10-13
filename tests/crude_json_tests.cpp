@@ -235,6 +235,20 @@ TEST_CASE(JsonPointers, "json.pointers_other_than_strings_dont_convert", "JSON-1
     test::Check(fromArray.is_string() && fromPointer.is_string() && fromLiteral.is_string(), "char strings still make strings");
 }
 
+TEST_CASE(JsonGetOtherType, "json.get_of_another_type_returns_an_empty_value", "JSON-12", test::TestFlags_None)
+{
+    // Past the assert, get() read the storage as the type asked for.
+    test::ExpectAsserts(4);
+    const json::value number = 1.5;
+    json::value text = std::string("text");
+
+    test::Check(number.get<json::string>().empty() && number.get<json::array>().empty(), "const get() returns an empty string and array");
+
+    text.get<json::object>()["key"] = 1.0;
+    text.get<json::number>() = 2.0;
+    test::Check(text.is_string() && text.get<json::string>() == "text", "writes through mutable get() are lost");
+}
+
 TEST_CASE(JsonNothrowMoves, "json.values_move_without_throwing", "JSON-10", test::TestFlags_None)
 {
     json::value a, b;
