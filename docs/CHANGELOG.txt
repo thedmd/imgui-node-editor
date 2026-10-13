@@ -418,6 +418,9 @@ v0.10.0 (WIP):
     BUGFIX: Editor: Ignore misnested node and pin building, after asserting
         BeginPin() outside a node or a pin, a nested BeginNode(), and unmatched EndNode() or EndPin() crashed release builds or corrupted the draw list.
 
+    BUGFIX: Editor: Fade group hints with the application's style alpha
+        BeginGroupHint() set ImGui's alpha to the zoom fade, ignoring the alpha in effect.
+
 v0.9.2 (2023-09-01):
 
     NEW: Editor: Add offset of hover/select to style (thanks @MultiPain)
