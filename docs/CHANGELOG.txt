@@ -616,6 +616,9 @@ v0.10.0 (WIP):
         A second ed::Begin() before ed::End() began the canvas again and broke the frame's draw data,
         and ed::End() without ed::Begin() read a null draw list. Both assert and do nothing now.
 
+    CHANGE: Canvas: Leave the last item of the content as the content left it
+        Before Dear ImGui 1.89.7, End() let later items overlap it.
+
 v0.9.3 (2023-10-14):
 
     CHANGE: Canvas: Use ImDrawCallback_ImCanvas macro as draw callback sentinel (#256), thanks @nspitko
