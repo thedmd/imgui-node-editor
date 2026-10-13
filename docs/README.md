@@ -10,8 +10,8 @@ Project purpose is to serve as a basis for more complex solutions like blueprint
 
 ![node_editor_overview](https://user-images.githubusercontent.com/1197433/89328475-c01bc680-d68d-11ea-88bf-8c4155480927.gif)
 
-Node Editor is build around an idea "draw your content, we do the rest", which mean interactions are handled by editor, content rendering is handled by user. Editor will take care of:
- * placing your node in the word
+Node Editor is built around an idea "draw your content, we do the rest", which means interactions are handled by editor, content rendering is handled by user. Editor will take care of:
+ * placing your node in the world
  * dragging nodes
  * zoom and scrolling
  * selection
@@ -41,11 +41,13 @@ Here are some highlights:
  * Basic shortcuts support (cut/copy/paste/delete)
  * ImGui style API
 
-Editor is used to implement blueprint editor in Spark CE engine, it proved itself there by allowing to do everything we needed. Therefore it is now slowly moving into stable state from beeing a prototype.
+Editor is used to implement blueprint editor in Spark CE engine, it proved itself there by allowing to do everything we needed. Therefore it is now slowly moving into stable state from being a prototype.
 
 Note: Project recently was restructured to mimic ImGui layout.
 
 Please report issues or questions if something isn't clear.
+
+Changes land on the `develop` branch, which `master` follows at releases. Pull requests go to `develop`.
 
 ## Dependencies
 
@@ -55,34 +57,29 @@ Please report issues or questions if something isn't clear.
 ### Dependencies for examples:
 
  * [thedmd/imgui feature/layout-external](https://github.com/thedmd/imgui/tree/feature/layout-external) (Dear ImGui 1.93.0 WIP with Stack Layout, used in blueprints sample)
- * stb, and GLFW on macOS and Linux
+ * stb, and GLFW on macOS, Linux, and Windows with the GLFW backend
 
 CMake fetches all of them at revisions pinned in [examples/cmake](../examples/cmake). An installed GLFW package is used when found.
-
-### Optional extension you can pull into your local copy of ImGui node editor can take advantage of:
- * ~~https://github.com/thedmd/imgui/tree/feature/draw-list-fringe-scale (for sharp rendering, while zooming)~~ It is part of ImGui since 1.80 release
- * https://github.com/thedmd/imgui/tree/feature/extra-keys (for extra shortcuts)
 
 ## Building / Installing
 
 Node Editor sources are located in root project directory. To use it, simply copy&paste sources into your project. Exactly like you can do with ImGui.
 
 ### Examples
-[Examples](../examples) can be build with CMake:
+[Examples](../examples) can be built with CMake 3.24 or newer:
 ```
-Windows:
-    cmake -S examples -B build -G "Visual Studio 17 2022"
-
-macOS:
-    cmake -S examples -B build -G "Xcode"
-
-Linux:
-    cmake -S examples -B build -G "Unix Makefiles"
-
-Build:
-    cmake --build build --config Release
+cmake -S examples -B build
+cmake --build build --config Release
 ```
-Executables will be located in `build\bin` directory. CMake 3.24 or newer is required.
+CMake uses the platform's default generator; `-G Ninja` or `-G Xcode` picks another. The executables are in `build/bin`. They find their data next to them, so they can be started from any directory.
+
+On Windows the examples use Win32 and DirectX 11. `-DIMGUI_NODE_EDITOR_EXAMPLES_BACKEND=glfw -DIMGUI_NODE_EDITOR_EXAMPLES_RENDERER=opengl3` builds them with GLFW and OpenGL instead.
+
+On Linux, GLFW needs the X11, Wayland and OpenGL development packages, for example on Ubuntu:
+```
+sudo apt-get install libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libxext-dev libwayland-dev libxkbcommon-dev libgl1-mesa-dev
+```
+On macOS, the Xcode command line tools are enough.
 
 To build offline or against a local checkout of a dependency, point FetchContent at it, for example `-DFETCHCONTENT_SOURCE_DIR_IMGUI=<path>`. `FETCHCONTENT_SOURCE_DIR_STB` and `FETCHCONTENT_SOURCE_DIR_GLFW` work the same way.
 
@@ -99,7 +96,7 @@ ctest --test-dir build-tests -C Debug
 
 ### Quick Start
 
-Main node editor header is located in [imgui_node_editor.h](../imgui_node_editor.h).
+Main node editor header is located in [imgui_node_editor.h](../imgui_node_editor.h). [API.md](API.md) describes the rules that span the API: the order of calls in a frame, IDs, creating and deleting, input, persistence and coordinates.
 
 Minimal example of one node can be found in [simple-example.cpp](../examples/simple-example/simple-example.cpp).
 Press 'F' in editor to focus on editor content if you see only grid.
@@ -128,6 +125,8 @@ struct Example:
 
     void OnFrame(float deltaTime) override
     {
+        IM_UNUSED(deltaTime);
+
         auto& io = ImGui::GetIO();
 
         ImGui::Text("FPS: %.2f (%.2gms)", io.Framerate, io.Framerate ? 1000.0f / io.Framerate : 0.0f);
@@ -164,7 +163,7 @@ int Main(int argc, char** argv)
     if (exampe.Create())
         return exampe.Run();
 
-    return 0;
+    return 1;
 }
 ```
 
