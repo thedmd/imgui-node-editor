@@ -93,6 +93,7 @@ set(_TestSources
     settings_handler_tests.cpp
     settings_tests.cpp
     smoke_tests.cpp
+    state_tests.cpp
     suspend_tests.cpp
     view_tests.cpp
 )

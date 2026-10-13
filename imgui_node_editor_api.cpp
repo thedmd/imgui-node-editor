@@ -597,6 +597,45 @@ void ax::NodeEditor::ClearState()
     CurrentEditor()->ClearState();
 }
 
+bool ax::NodeEditor::GetNodeState(NodeId nodeId, NodeState* state)
+{
+    IM_ASSERT(state);
+    return CurrentEditor()->GetNodeState(nodeId, *state);
+}
+
+int ax::NodeEditor::GetNodeStates(NodeState* states, int capacity)
+{
+    return CurrentEditor()->GetNodeStates(states, capacity);
+}
+
+bool ax::NodeEditor::SetNodeState(const NodeState& state)
+{
+    return CurrentEditor()->SetNodeState(state);
+}
+
+bool ax::NodeEditor::SetNodeStates(const NodeState* states, int count)
+{
+    bool changed = false;
+    for (int i = 0; i < count; ++i)
+        changed |= CurrentEditor()->SetNodeState(states[i]);
+    return changed;
+}
+
+ax::NodeEditor::ViewState ax::NodeEditor::GetViewState()
+{
+    return CurrentEditor()->GetViewState();
+}
+
+bool ax::NodeEditor::SetViewState(const ViewState& state, float duration)
+{
+    return CurrentEditor()->SetViewState(state, duration);
+}
+
+bool ax::NodeEditor::SetSelection(const NodeId* nodes, int nodeCount, const LinkId* links, int linkCount)
+{
+    return CurrentEditor()->SetSelection(nodes, nodeCount, links, linkCount);
+}
+
 bool ax::NodeEditor::HasAnyLinks(NodeId nodeId)
 {
     return CurrentEditor()->HasAnyLinks(nodeId);

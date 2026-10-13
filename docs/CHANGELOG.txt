@@ -586,6 +586,10 @@ v0.10.0 (WIP):
     NEW: Editor: Report settings that don't parse to Dear ImGui's Debug Log
         Each part that doesn't parse is named and skipped; the rest still loads, as before.
 
+    NEW: Editor: Add typed node, view and selection state
+        GetNodeState(), GetNodeStates(), SetNodeState(), SetNodeStates(), GetViewState(), SetViewState() and SetSelection(),
+        for applications that keep node layout in their documents.
+
 v0.9.3 (2023-10-14):
 
     CHANGE: Canvas: Use ImDrawCallback_ImCanvas macro as draw callback sentinel (#256), thanks @nspitko

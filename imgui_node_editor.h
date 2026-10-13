@@ -40,6 +40,8 @@ namespace NodeEditor {
 struct NodeId;
 struct LinkId;
 struct PinId;
+struct NodeState;
+struct ViewState;
 
 
 //------------------------------------------------------------------------------
@@ -421,6 +423,17 @@ IMGUI_NODE_EDITOR_API bool ForgetNode(NodeId nodeId);
 // view, as for a new document. Call it outside Begin()/End().
 IMGUI_NODE_EDITOR_API void ClearState();
 
+// Typed state, for applications that keep node layout in their documents. The Set
+// functions return whether anything changed, and stop a drag or resize of the nodes
+// they change, putting those nodes back where the user found them.
+IMGUI_NODE_EDITOR_API bool      GetNodeState(NodeId nodeId, NodeState* state);  // false for a node the editor doesn't know
+IMGUI_NODE_EDITOR_API int       GetNodeStates(NodeState* states, int capacity); // known nodes by ID, also those only loaded; returns how many it wrote, or all of them for nullptr
+IMGUI_NODE_EDITOR_API bool      SetNodeState(const NodeState& state);           // false for state that isn't finite, and for a node the editor doesn't know; keeps the node inside the canvas border
+IMGUI_NODE_EDITOR_API bool      SetNodeStates(const NodeState* states, int count);
+IMGUI_NODE_EDITOR_API ViewState GetViewState();                                 // before the first visible frame, the view the editor will restore
+IMGUI_NODE_EDITOR_API bool      SetViewState(const ViewState& state, float duration = 0.0f); // keeps the zoom within the zoom levels
+IMGUI_NODE_EDITOR_API bool      SetSelection(const NodeId* nodes, int nodeCount, const LinkId* links, int linkCount); // skips unknown objects and objects being deleted; links only without nodes; before the first frame, also nodes not created yet
+
 // These see the links submitted so far: between Begin() and End(), call them after
 // the frame's links. PinHadAnyLinks() answers for the previous frame.
 IMGUI_NODE_EDITOR_API bool HasAnyLinks(NodeId nodeId); // Returns true if node has any link connected
@@ -565,6 +578,24 @@ struct LinkId final: Details::SafePointerType<LinkId>
 struct PinId final: Details::SafePointerType<PinId>
 {
     using SafePointerType::SafePointerType;
+};
+
+
+//------------------------------------------------------------------------------
+struct NodeState
+{
+    NodeId Id;
+    ImVec2 Position;          // top left corner, in canvas coordinates
+    ImVec2 GroupSize;         // (0, 0) for a node that isn't a group
+    float  ZPosition = 0.0f;
+};
+
+// The visible part of the canvas, in canvas coordinates. The zoom follows from it
+// and the editor's size.
+struct ViewState
+{
+    ImVec2 VisibleMin;
+    ImVec2 VisibleMax;
 };
 
 
