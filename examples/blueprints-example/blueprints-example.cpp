@@ -197,10 +197,13 @@ struct Example:
     void UpdateTouch()
     {
         const auto deltaTime = ImGui::GetIO().DeltaTime;
-        for (auto& entry : m_NodeTouchTime)
+        for (auto it = m_NodeTouchTime.begin(); it != m_NodeTouchTime.end(); )
         {
-            if (entry.second > 0.0f)
-                entry.second -= deltaTime;
+            it->second -= deltaTime;
+            if (it->second > 0.0f)
+                ++it;
+            else
+                it = m_NodeTouchTime.erase(it);
         }
     }
 
