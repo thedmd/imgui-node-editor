@@ -106,6 +106,7 @@ bool ImGuiEx::Canvas::Begin(ImGuiID id, const ImVec2& size)
 {
     IM_ASSERT(m_InBeginEnd == false);
 
+    m_ID = id;
     m_WidgetPosition = ImGui::GetCursorScreenPos();
     m_WidgetSize = ImSelectPositive(size, ImGui::GetContentRegionAvail());
     m_WidgetRect = ImRect(m_WidgetPosition, m_WidgetPosition + m_WidgetSize);
@@ -186,9 +187,13 @@ void ImGuiEx::Canvas::End()
     m_Window->DC.CursorMaxPos = m_WindowCursorMaxBackup;
     m_Window->DC.IdealMaxPos  = m_WindowIdealMaxBackup;
 
-    // Emit dummy widget matching bounds of the canvas.
+    // The canvas is an item of its ID, kept out of keyboard navigation.
     ImGui::SetCursorScreenPos(m_WidgetPosition);
-    ImGui::Dummy(m_WidgetSize);
+    if (!m_Window->SkipItems)
+    {
+        ImGui::ItemSize(m_WidgetSize);
+        ImGui::ItemAdd(m_WidgetRect, m_ID, nullptr, ImGuiItemFlags_NoNav);
+    }
 
     // #debug: Rect around canvas. Content should be inside these bounds.
     //m_DrawList->AddRect(m_WidgetPosition - ImVec2(1.0f, 1.0f), m_WidgetPosition + m_WidgetSize + ImVec2(1.0f, 1.0f), IM_COL32(196, 0, 0, 255));
