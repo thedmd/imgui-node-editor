@@ -670,7 +670,7 @@ void ax::NodeEditor::EndShortcut()
 
 float ax::NodeEditor::GetCurrentZoom()
 {
-    return CurrentEditor()->GetView().InvScale;
+    return CurrentEditor()->GetView().InvScale();
 }
 
 ax::NodeEditor::NodeId ax::NodeEditor::GetHoveredNode()

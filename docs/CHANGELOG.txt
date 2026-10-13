@@ -4,6 +4,9 @@ v0.9.4 (WIP):
 
     NEW: Canvas: Add IsVisible(); Begin() returns true also for a canvas out of view
 
+    CHANGE: Canvas: CanvasView keeps its scale and inverse scale private and in sync
+        Read them with Origin(), Scale() and InvScale(), set them with Set(), SetOrigin() and SetScale(), which refuses a scale that isn't positive and finite.
+
     BUGFIX: Canvas: Remember index of first command buffer to not miss updating any used (#260)
 
     BUGFIX: Editor: Don't duplicated ImVec2/ImVec3 == != operators defined since ImGui r19002 (#268)

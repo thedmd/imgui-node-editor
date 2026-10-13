@@ -59,22 +59,39 @@ namespace ImGuiEx {
 
 struct CanvasView
 {
-    ImVec2 Origin;
-    float  Scale  = 1.0f;
-    float  InvScale = 1.0f;
-
     CanvasView() = default;
     CanvasView(const ImVec2& origin, float scale)
-        : Origin(origin)
-        , Scale(scale)
-        , InvScale(scale ? 1.0f / scale : 0.0f)
+        : m_Origin(origin)
     {
+        SetScale(scale);
     }
 
     void Set(const ImVec2& origin, float scale)
     {
         *this = CanvasView(origin, scale);
     }
+
+    const ImVec2& Origin()   const { return m_Origin; }
+    float         Scale()    const { return m_Scale; }
+    float         InvScale() const { return m_InvScale; }
+
+    void SetOrigin(const ImVec2& origin) { m_Origin = origin; }
+
+    // Scale must be positive and finite; any other is ignored.
+    void SetScale(float scale)
+    {
+        IM_ASSERT(scale > 0.0f && scale <= FLT_MAX && "Canvas view scale must be positive and finite.");
+        if (!(scale > 0.0f && scale <= FLT_MAX))
+            return;
+
+        m_Scale    = scale;
+        m_InvScale = 1.0f / scale;
+    }
+
+private:
+    ImVec2 m_Origin;
+    float  m_Scale    = 1.0f;
+    float  m_InvScale = 1.0f;
 };
 
 // Canvas widget represent view over infinite plane.
@@ -193,10 +210,10 @@ struct Canvas
     //
     // Origin is an offset of infinite plane origin from top left
     // corner of the canvas.
-    const ImVec2& ViewOrigin()  const { return m_View.Origin; }
+    const ImVec2& ViewOrigin()  const { return m_View.Origin(); }
 
     // Returns scale of the view.
-    float ViewScale() const { return m_View.Scale; }
+    float ViewScale() const { return m_View.Scale(); }
 
     // Returns true if canvas is suspended.
     //

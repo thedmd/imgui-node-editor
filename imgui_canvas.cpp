@@ -206,18 +206,15 @@ void ImGuiEx::Canvas::SetView(const CanvasView& view)
     if (inLocalSpace)
         LeaveLocalSpace();
 
-    if (m_View.Origin.x != view.Origin.x || m_View.Origin.y != view.Origin.y)
+    if (m_View.Origin().x != view.Origin().x || m_View.Origin().y != view.Origin().y)
     {
-        m_View.Origin = view.Origin;
+        m_View.SetOrigin(view.Origin());
 
         UpdateViewTransformPosition();
     }
 
-    if (m_View.Scale != view.Scale)
-    {
-        m_View.Scale    = view.Scale;
-        m_View.InvScale = view.InvScale;
-    }
+    if (m_View.Scale() != view.Scale())
+        m_View.SetScale(view.Scale());
 
     m_ViewRect = CalcViewRect(m_View);
 
@@ -237,7 +234,7 @@ ImGuiEx::CanvasView ImGuiEx::Canvas::CalcCenterView(const ImVec2& canvasPoint) c
     auto localOffset = canvasPoint - localCenter;
     auto offset      = FromLocalV(localOffset);
 
-    return CanvasView{ m_View.Origin - offset, m_View.Scale };
+    return CanvasView{ m_View.Origin() - offset, m_View.Scale() };
 }
 
 void ImGuiEx::Canvas::CenterView(const ImRect& canvasRect)
@@ -260,8 +257,8 @@ ImGuiEx::CanvasView ImGuiEx::Canvas::CalcCenterView(const ImRect& canvasRect) co
     if (widgetAspectRatio <= 0.0f || canvasRectAspectRatio <= 0.0f)
         return View();
 
-    auto newOrigin = m_View.Origin;
-    auto newScale  = m_View.Scale;
+    auto newOrigin = m_View.Origin();
+    auto newScale  = m_View.Scale();
     if (canvasRectAspectRatio > widgetAspectRatio)
     {
         // width span across view
@@ -308,55 +305,55 @@ void ImGuiEx::Canvas::Resume()
 
 ImVec2 ImGuiEx::Canvas::FromLocal(const ImVec2& point) const
 {
-    return point * m_View.Scale + m_ViewTransformPosition;
+    return point * m_View.Scale() + m_ViewTransformPosition;
 }
 
 ImVec2 ImGuiEx::Canvas::FromLocal(const ImVec2& point, const CanvasView& view) const
 {
-    return point * view.Scale + view.Origin + m_WidgetPosition;
+    return point * view.Scale() + view.Origin() + m_WidgetPosition;
 }
 
 ImVec2 ImGuiEx::Canvas::FromLocalV(const ImVec2& vector) const
 {
-    return vector * m_View.Scale;
+    return vector * m_View.Scale();
 }
 
 ImVec2 ImGuiEx::Canvas::FromLocalV(const ImVec2& vector, const CanvasView& view) const
 {
-    return vector * view.Scale;
+    return vector * view.Scale();
 }
 
 ImVec2 ImGuiEx::Canvas::ToLocal(const ImVec2& point) const
 {
-    return (point - m_ViewTransformPosition) * m_View.InvScale;
+    return (point - m_ViewTransformPosition) * m_View.InvScale();
 }
 
 ImVec2 ImGuiEx::Canvas::ToLocal(const ImVec2& point, const CanvasView& view) const
 {
-    return (point - view.Origin - m_WidgetPosition) * view.InvScale;
+    return (point - view.Origin() - m_WidgetPosition) * view.InvScale();
 }
 
 ImVec2 ImGuiEx::Canvas::ToLocalV(const ImVec2& vector) const
 {
-    return vector * m_View.InvScale;
+    return vector * m_View.InvScale();
 }
 
 ImVec2 ImGuiEx::Canvas::ToLocalV(const ImVec2& vector, const CanvasView& view) const
 {
-    return vector * view.InvScale;
+    return vector * view.InvScale();
 }
 
 ImRect ImGuiEx::Canvas::CalcViewRect(const CanvasView& view) const
 {
     ImRect result;
-    result.Min = ImVec2(-view.Origin.x, -view.Origin.y) * view.InvScale;
-    result.Max = (m_WidgetSize - view.Origin) * view.InvScale;
+    result.Min = ImVec2(-view.Origin().x, -view.Origin().y) * view.InvScale();
+    result.Max = (m_WidgetSize - view.Origin()) * view.InvScale();
     return result;
 }
 
 void ImGuiEx::Canvas::UpdateViewTransformPosition()
 {
-    m_ViewTransformPosition = m_View.Origin + m_WidgetPosition;
+    m_ViewTransformPosition = m_View.Origin() + m_WidgetPosition;
 }
 
 void ImGuiEx::Canvas::SaveInputState()
@@ -472,29 +469,29 @@ void ImGuiEx::Canvas::EnterLocalSpace()
     auto viewport_min = m_ViewportPosBackup;
     auto viewport_max = m_ViewportPosBackup + m_ViewportSizeBackup;
 
-    viewport_min.x = (viewport_min.x - m_ViewTransformPosition.x) * m_View.InvScale;
-    viewport_min.y = (viewport_min.y - m_ViewTransformPosition.y) * m_View.InvScale;
-    viewport_max.x = (viewport_max.x - m_ViewTransformPosition.x) * m_View.InvScale;
-    viewport_max.y = (viewport_max.y - m_ViewTransformPosition.y) * m_View.InvScale;
+    viewport_min.x = (viewport_min.x - m_ViewTransformPosition.x) * m_View.InvScale();
+    viewport_min.y = (viewport_min.y - m_ViewTransformPosition.y) * m_View.InvScale();
+    viewport_max.x = (viewport_max.x - m_ViewTransformPosition.x) * m_View.InvScale();
+    viewport_max.y = (viewport_max.y - m_ViewTransformPosition.y) * m_View.InvScale();
 
     auto viewport = m_Window->Viewport;
     viewport->Pos  = viewport_min;
     viewport->Size = viewport_max - viewport_min;
 
 # if IMGUI_VERSION_NUM > 18002
-    viewport->WorkPos  = m_ViewportWorkPosBackup  * m_View.InvScale;
-    viewport->WorkSize = m_ViewportWorkSizeBackup * m_View.InvScale;
+    viewport->WorkPos  = m_ViewportWorkPosBackup  * m_View.InvScale();
+    viewport->WorkSize = m_ViewportWorkSizeBackup * m_View.InvScale();
 # else
-    viewport->WorkOffsetMin = m_ViewportWorkOffsetMinBackup * m_View.InvScale;
-    viewport->WorkOffsetMax = m_ViewportWorkOffsetMaxBackup * m_View.InvScale;
+    viewport->WorkOffsetMin = m_ViewportWorkOffsetMinBackup * m_View.InvScale();
+    viewport->WorkOffsetMax = m_ViewportWorkOffsetMaxBackup * m_View.InvScale();
 # endif
 # endif
 
     // Clip rectangle in parent canvas space and move it to local space.
-    clipped_clip_rect.x = (clipped_clip_rect.x - m_ViewTransformPosition.x) * m_View.InvScale;
-    clipped_clip_rect.y = (clipped_clip_rect.y - m_ViewTransformPosition.y) * m_View.InvScale;
-    clipped_clip_rect.z = (clipped_clip_rect.z - m_ViewTransformPosition.x) * m_View.InvScale;
-    clipped_clip_rect.w = (clipped_clip_rect.w - m_ViewTransformPosition.y) * m_View.InvScale;
+    clipped_clip_rect.x = (clipped_clip_rect.x - m_ViewTransformPosition.x) * m_View.InvScale();
+    clipped_clip_rect.y = (clipped_clip_rect.y - m_ViewTransformPosition.y) * m_View.InvScale();
+    clipped_clip_rect.z = (clipped_clip_rect.z - m_ViewTransformPosition.x) * m_View.InvScale();
+    clipped_clip_rect.w = (clipped_clip_rect.w - m_ViewTransformPosition.y) * m_View.InvScale();
     m_DrawList->PushClipRect(ImVec2(clipped_clip_rect.x, clipped_clip_rect.y), ImVec2(clipped_clip_rect.z, clipped_clip_rect.w), false);
     m_ClipRectStackSize = m_DrawList->_ClipRectStack.Size;
     for (auto& clipRect : m_SuspendedClipRects)
@@ -504,25 +501,25 @@ void ImGuiEx::Canvas::EnterLocalSpace()
 
     // Transform mouse position to local space.
     auto& io = ImGui::GetIO();
-    io.MousePos     = (m_MousePosBackup - m_ViewTransformPosition) * m_View.InvScale;
-    io.MousePosPrev = (m_MousePosPrevBackup - m_ViewTransformPosition) * m_View.InvScale;
+    io.MousePos     = (m_MousePosBackup - m_ViewTransformPosition) * m_View.InvScale();
+    io.MousePosPrev = (m_MousePosPrevBackup - m_ViewTransformPosition) * m_View.InvScale();
     for (auto i = 0; i < IM_ARRAYSIZE(m_MouseClickedPosBackup); ++i)
-        io.MouseClickedPos[i] = (m_MouseClickedPosBackup[i] - m_ViewTransformPosition) * m_View.InvScale;
+        io.MouseClickedPos[i] = (m_MouseClickedPosBackup[i] - m_ViewTransformPosition) * m_View.InvScale();
 
     m_ViewRect = CalcViewRect(m_View);;
 
 # if IMGUI_VERSION_NUM >= 19292
     m_LastPixelDensity = m_DrawList->_InvFringeScale;
-    m_DrawList->_SetPixelDensity(m_LastPixelDensity * m_View.Scale);
+    m_DrawList->_SetPixelDensity(m_LastPixelDensity * m_View.Scale());
 # else
     auto& fringeScale = ImFringeScaleRef(m_DrawList);
     m_LastFringeScale = fringeScale;
-    fringeScale *= m_View.InvScale;
+    fringeScale *= m_View.InvScale();
 
     // ImDrawList::_Data points to const before ImGui 1.89.
     auto& sharedData = *const_cast<ImDrawListSharedData*>(m_DrawList->_Data);
     m_LastCurveTessellationTol = sharedData.CurveTessellationTol;
-    sharedData.CurveTessellationTol *= m_View.InvScale * m_View.InvScale; // a squared distance
+    sharedData.CurveTessellationTol *= m_View.InvScale() * m_View.InvScale(); // a squared distance
 # endif
 }
 
@@ -553,12 +550,12 @@ void ImGuiEx::Canvas::LeaveLocalSpace()
     auto vertexEnd = m_DrawList->VtxBuffer.Data + m_DrawList->_VtxCurrentIdx + ImVtxOffsetRef(m_DrawList);
 
     // If canvas view is not scaled take a faster path.
-    if (m_View.Scale != 1.0f)
+    if (m_View.Scale() != 1.0f)
     {
         while (vertex < vertexEnd)
         {
-            vertex->pos.x = vertex->pos.x * m_View.Scale + m_ViewTransformPosition.x;
-            vertex->pos.y = vertex->pos.y * m_View.Scale + m_ViewTransformPosition.y;
+            vertex->pos.x = vertex->pos.x * m_View.Scale() + m_ViewTransformPosition.x;
+            vertex->pos.y = vertex->pos.y * m_View.Scale() + m_ViewTransformPosition.y;
             ++vertex;
         }
 
@@ -566,10 +563,10 @@ void ImGuiEx::Canvas::LeaveLocalSpace()
         for (int i = m_DrawListFirstCommandIndex; i < m_DrawList->CmdBuffer.size(); ++i)
         {
             auto& command = m_DrawList->CmdBuffer[i];
-            command.ClipRect.x = command.ClipRect.x * m_View.Scale + m_ViewTransformPosition.x;
-            command.ClipRect.y = command.ClipRect.y * m_View.Scale + m_ViewTransformPosition.y;
-            command.ClipRect.z = command.ClipRect.z * m_View.Scale + m_ViewTransformPosition.x;
-            command.ClipRect.w = command.ClipRect.w * m_View.Scale + m_ViewTransformPosition.y;
+            command.ClipRect.x = command.ClipRect.x * m_View.Scale() + m_ViewTransformPosition.x;
+            command.ClipRect.y = command.ClipRect.y * m_View.Scale() + m_ViewTransformPosition.y;
+            command.ClipRect.z = command.ClipRect.z * m_View.Scale() + m_ViewTransformPosition.x;
+            command.ClipRect.w = command.ClipRect.w * m_View.Scale() + m_ViewTransformPosition.y;
         }
     }
     else
