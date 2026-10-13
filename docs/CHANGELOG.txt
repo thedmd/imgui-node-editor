@@ -590,6 +590,9 @@ v0.10.0 (WIP):
         GetNodeState(), GetNodeStates(), SetNodeState(), SetNodeStates(), GetViewState(), SetViewState() and SetSelection(),
         for applications that keep node layout in their documents.
 
+    NEW: Editor: Keep the state SetNodeState() gives a node the editor doesn't know, until the node is submitted
+        A document's layout can be restored before the first frame, and an undone deletion puts the node back where it was.
+
 v0.9.3 (2023-10-14):
 
     CHANGE: Canvas: Use ImDrawCallback_ImCanvas macro as draw callback sentinel (#256), thanks @nspitko

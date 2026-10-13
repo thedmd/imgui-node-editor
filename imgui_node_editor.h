@@ -428,7 +428,7 @@ IMGUI_NODE_EDITOR_API void ClearState();
 // they change, putting those nodes back where the user found them.
 IMGUI_NODE_EDITOR_API bool      GetNodeState(NodeId nodeId, NodeState* state);  // false for a node the editor doesn't know
 IMGUI_NODE_EDITOR_API int       GetNodeStates(NodeState* states, int capacity); // known nodes by ID, also those only loaded; returns how many it wrote, or all of them for nullptr
-IMGUI_NODE_EDITOR_API bool      SetNodeState(const NodeState& state);           // false for state that isn't finite, and for a node the editor doesn't know; keeps the node inside the canvas border
+IMGUI_NODE_EDITOR_API bool      SetNodeState(const NodeState& state);           // false for state that isn't finite, and for a node being deleted; keeps the node inside the canvas border; a node the editor doesn't know starts with the state when submitted
 IMGUI_NODE_EDITOR_API bool      SetNodeStates(const NodeState* states, int count);
 IMGUI_NODE_EDITOR_API ViewState GetViewState();                                 // before the first visible frame, the view the editor will restore
 IMGUI_NODE_EDITOR_API bool      SetViewState(const ViewState& state, float duration = 0.0f); // keeps the zoom within the zoom levels
