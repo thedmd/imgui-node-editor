@@ -301,13 +301,15 @@ void PlatformGLFW::UpdatePixelDensity()
     glfwGetWindowContentScale(m_Window, &xscale, &yscale);
     float scale = xscale > yscale ? xscale : yscale;
 
-# if PLATFORM(WINDOWS)
-    float windowScale      = scale;
+    // Windows and X11 size windows in pixels at any content scale, macOS and Wayland in points.
+    int windowWidth = 0, framebufferWidth = 0;
+    glfwGetWindowSize(m_Window, &windowWidth, nullptr);
+    glfwGetFramebufferSize(m_Window, &framebufferWidth, nullptr);
+    if (windowWidth <= 0 || framebufferWidth <= 0)
+        return;
+
+    float windowScale      = scale * windowWidth / framebufferWidth;
     float framebufferScale = scale;
-# else
-    float windowScale      = 1.0f;
-    float framebufferScale = scale;
-# endif
 
     SetWindowScale(1.0f / windowScale); // this is how windows is scaled, not window content
 
