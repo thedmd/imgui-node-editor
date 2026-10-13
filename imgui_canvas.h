@@ -53,8 +53,8 @@
 //
 // CREDITS
 //   Written by Michal Cichon
-# ifndef __IMGUI_EX_CANVAS_H__
-# define __IMGUI_EX_CANVAS_H__
+# ifndef IMGUI_EX_CANVAS_H
+# define IMGUI_EX_CANVAS_H
 # pragma once
 
 # include <imgui.h>
@@ -306,4 +306,4 @@ private:
 
 } // namespace ImGuiEx
 
-# endif // __IMGUI_EX_CANVAS_H__
+# endif // IMGUI_EX_CANVAS_H
