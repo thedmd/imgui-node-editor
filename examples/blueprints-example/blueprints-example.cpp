@@ -76,6 +76,19 @@ enum class NodeType
     Houdini
 };
 
+static const char* GetNodeTypeName(NodeType type)
+{
+    switch (type)
+    {
+        case NodeType::Blueprint: return "Blueprint";
+        case NodeType::Simple:    return "Simple";
+        case NodeType::Tree:      return "Tree";
+        case NodeType::Comment:   return "Comment";
+        case NodeType::Houdini:   return "Houdini";
+    }
+    return "Unknown";
+}
+
 struct Node;
 
 struct Pin
@@ -1579,7 +1592,7 @@ struct Example:
             if (node)
             {
                 ImGui::Text("ID: %p", node->ID.AsPointer());
-                ImGui::Text("Type: %s", node->Type == NodeType::Blueprint ? "Blueprint" : (node->Type == NodeType::Tree ? "Tree" : "Comment"));
+                ImGui::Text("Type: %s", GetNodeTypeName(node->Type));
                 ImGui::Text("Inputs: %d", (int)node->Inputs.size());
                 ImGui::Text("Outputs: %d", (int)node->Outputs.size());
             }
