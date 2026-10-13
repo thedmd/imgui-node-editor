@@ -387,3 +387,10 @@ TEST_CASE(JsonRenamedNamespace, "json.a_copy_in_another_namespace_links_beside_i
     const auto own     = json::value::parse(document).dump();
     test::Check(renamed == own && renamed == document, "both copies read and write the document: %s and %s", renamed.c_str(), own.c_str());
 }
+
+TEST_CASE(JsonRepeatedKey, "json.a_repeated_key_keeps_its_first_value", "JSON-13", test::TestFlags_None)
+{
+    const auto document = json::value::parse(R"({"a":1,"b":2,"a":3})");
+    const auto first    = document["a"].is_number() ? document["a"].get<json::number>() : -1.0;
+    test::Check(first == 1.0 && document.get<json::object>().size() == 2, "\"a\" keeps 1, of 1 and 3: %g", first);
+}
