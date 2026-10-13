@@ -19,6 +19,8 @@
 
 
 //------------------------------------------------------------------------------
+// docs/API.md has the rules that span several functions: the order of calls in a
+// frame, IDs, the create and delete protocols, input, persistence and coordinates.
 # define IMGUI_NODE_EDITOR_VERSION      "0.10.0"
 # define IMGUI_NODE_EDITOR_VERSION_NUM  1000
 
@@ -320,6 +322,9 @@ IMGUI_NODE_EDITOR_API void PopStyleVar(int count = 1);
 IMGUI_NODE_EDITOR_API void Begin(const char* id, const ImVec2& size = ImVec2(0, 0));
 IMGUI_NODE_EDITOR_API void End();
 
+// Node, pin and link IDs are separate kinds, and 0 isn't valid for any of them.
+// Each node pushes an ImGui ID scope, so widgets in different nodes may share
+// labels. A pin ID can be submitted once per frame.
 IMGUI_NODE_EDITOR_API void BeginNode(NodeId id);
 IMGUI_NODE_EDITOR_API void BeginPin(PinId id, PinKind kind);
 IMGUI_NODE_EDITOR_API void PinRect(const ImVec2& a, const ImVec2& b);
@@ -371,6 +376,7 @@ IMGUI_NODE_EDITOR_API bool AcceptDeletedItem(bool deleteDependencies = true);
 IMGUI_NODE_EDITOR_API void RejectDeletedItem();
 IMGUI_NODE_EDITOR_API void EndDelete();
 
+// Nodes are kept inside the canvas border, 250000 from the origin.
 IMGUI_NODE_EDITOR_API void SetNodePosition(NodeId nodeId, const ImVec2& editorPosition);
 IMGUI_NODE_EDITOR_API void SetGroupSize(NodeId nodeId, const ImVec2& size);
 IMGUI_NODE_EDITOR_API ImVec2 GetNodePosition(NodeId nodeId);
@@ -381,6 +387,8 @@ IMGUI_NODE_EDITOR_API float GetNodeZPosition(NodeId nodeId); // Returns node z p
 
 IMGUI_NODE_EDITOR_API void RestoreNodeState(NodeId nodeId);
 
+// Leaves the editor's canvas space, inside a node too. Begin popups, tooltips and
+// child windows between Suspend() and Resume(): the canvas doesn't transform them.
 IMGUI_NODE_EDITOR_API void Suspend();
 IMGUI_NODE_EDITOR_API void Resume();
 IMGUI_NODE_EDITOR_API bool IsSuspended();
@@ -428,6 +436,9 @@ IMGUI_NODE_EDITOR_API bool ShowPinContextMenu(PinId* pinId);
 IMGUI_NODE_EDITOR_API bool ShowLinkContextMenu(LinkId* linkId);
 IMGUI_NODE_EDITOR_API bool ShowBackgroundContextMenu();
 
+// The shortcuts don't fire while another ImGui item, such as a text field, is
+// active. With io.ConfigMacOSXBehaviors, Cmd takes Ctrl's place in them and in
+// Ctrl+click selection.
 IMGUI_NODE_EDITOR_API void EnableShortcuts(bool enable);
 IMGUI_NODE_EDITOR_API bool AreShortcutsEnabled();
 
