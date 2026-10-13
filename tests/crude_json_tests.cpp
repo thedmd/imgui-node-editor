@@ -8,9 +8,16 @@
 # include <cstdio>
 # include <cstring>
 # include <fstream>
+# include <iterator>
 # include <limits>
 # include <type_traits>
 # include <utility>
+# ifdef _WIN32
+#     include <direct.h>
+# else
+#     include <sys/stat.h>
+#     include <unistd.h>
+# endif
 
 namespace json = crude_json;
 
@@ -261,8 +268,34 @@ struct TestFile
 
     void Write(const std::string& bytes) const { std::ofstream(Path, std::ios::binary) << bytes; }
 
+    std::string Read() const
+    {
+        std::ifstream file(Path, std::ios::binary);
+        return std::string(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
+    }
+
+    bool Exists() const { return std::ifstream(Path).good(); }
+
     std::string Path;
 };
+
+void MakeFolder(const std::string& path)
+{
+# ifdef _WIN32
+    _mkdir(path.c_str());
+# else
+    mkdir(path.c_str(), 0700);
+# endif
+}
+
+void RemoveFolder(const std::string& path)
+{
+# ifdef _WIN32
+    _rmdir(path.c_str());
+# else
+    rmdir(path.c_str());
+# endif
+}
 
 } // namespace
 
@@ -307,6 +340,24 @@ TEST_CASE(JsonUtf8Paths, "json.paths_are_utf8", "JSON-12", test::TestFlags_None)
 # else
     std::remove(path);
 # endif
+}
+
+TEST_CASE(JsonSaveThroughTemporaryFile, "json.save_replaces_the_file_through_a_temporary_one", "JSON-12", test::TestFlags_None)
+{
+    // save() wrote over the file in place, so a save that failed midway lost it.
+    TestFile file("json_save.json"), temporary("json_save.json.tmp");
+    file.Write("old");
+
+    json::value document;
+    document["key"] = 1.0;
+    test::Check(document.save(file.Path) && file.Read() == R"({"key":1})", "save() replaces the file");
+    test::Check(!temporary.Exists(), "and leaves no temporary file");
+
+    // A directory where the temporary file goes makes the save fail.
+    MakeFolder(temporary.Path);
+    document["key"] = 2.0;
+    test::Check(!document.save(file.Path) && file.Read() == R"({"key":1})", "a failed save leaves the file as it was");
+    RemoveFolder(temporary.Path);
 }
 
 TEST_CASE(JsonNothrowMoves, "json.values_move_without_throwing", "JSON-10", test::TestFlags_None)

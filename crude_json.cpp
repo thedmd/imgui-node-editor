@@ -970,6 +970,28 @@ static FILE* open_file(const string& path, const char* mode)
     return file;
 }
 
+// Replaces 'to' when it exists.
+static bool replace_file(const string& from, const string& to)
+{
+# if defined(_WIN32)
+    const auto wide_from = widen(from);
+    const auto wide_to   = widen(to);
+    return !wide_from.empty() && !wide_to.empty()
+        && MoveFileExW(wide_from.c_str(), wide_to.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != 0;
+# else
+    return rename(from.c_str(), to.c_str()) == 0;
+# endif
+}
+
+static void remove_file(const string& path)
+{
+# if defined(_WIN32)
+    DeleteFileW(widen(path).c_str());
+# else
+    remove(path.c_str());
+# endif
+}
+
 std::pair<value, bool> value::load(const string& path)
 {
     // Modern C++, so beautiful...
@@ -992,15 +1014,20 @@ std::pair<value, bool> value::load(const string& path)
 
 bool value::save(const string& path, const int indent, const char indent_char) const
 {
-    // Modern C++, so beautiful...
-    std::unique_ptr<FILE, void(*)(FILE*)> file{open_file(path, "wb"), [](FILE* file) { if (file) fclose(file); }};
+    const auto data      = dump(indent, indent_char);
+    const auto temp_path = path + ".tmp";
+
+    auto file = open_file(temp_path, "wb");
     if (!file)
         return false;
 
-    auto data = dump(indent, indent_char);
-
-    if (fwrite(data.data(), data.size(), 1, file.get()) != 1)
+    const auto written = fwrite(data.data(), 1, data.size(), file) == data.size();
+    const auto closed  = fclose(file) == 0;
+    if (!written || !closed || !replace_file(temp_path, path))
+    {
+        remove_file(temp_path);
         return false;
+    }
 
     return true;
 }
