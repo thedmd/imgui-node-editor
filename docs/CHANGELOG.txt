@@ -397,6 +397,9 @@ v0.10.0 (WIP):
     BUGFIX: Canvas: Strip sentinels left behind by misuse in End()
         Suspending in another splitter's channel left one in the draw data for the renderer to call.
 
+    BUGFIX: Canvas: Lay content out from the local origin on every ImGui branch
+        New lines, SameLine() offsets and the content region were relative to the window's screen position on master builds, and to its padding on docking ones.
+
 v0.9.2 (2023-09-01):
 
     NEW: Editor: Add offset of hover/select to style (thanks @MultiPain)
