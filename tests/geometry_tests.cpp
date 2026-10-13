@@ -318,3 +318,36 @@ TEST_CASE(DragIntoBorder, "geometry.dragged_nodes_stop_at_the_border_together", 
     test::Check(position2.x - position1.x == 200.0f && position2.y - position1.y == 30.0f,
         "the other selected node keeps its place relative to it: (%g, %g) apart", position2.x - position1.x, position2.y - position1.y);
 }
+
+TEST_CASE(ResizeIntoBorder, "geometry.group_resized_into_the_border_stops_there", "CNV-8", test::TestFlags_None)
+{
+    // The left edge of a group 100 from the left border is dragged 300 to the left.
+    const float extent = 250000.0f;
+    char state[128];
+    snprintf(state, sizeof(state), R"({"view":{"scroll":{"x":%g,"y":-100},"zoom":1}})", -extent - 100.0f);
+    test::Storage storage;
+    storage.Global = state;
+    test::Session session(&storage);
+    session.DefaultContent = [extent](int frame)
+    {
+        if (frame == 0)
+            ed::SetNodePosition(10, ImVec2(-extent + 100.0f, 0.0f));
+        ed::BeginNode(10);
+        ImGui::Text("Group");
+        ed::Group(ImVec2(200.0f, 100.0f));
+        ed::EndNode();
+    };
+    session.Run(3);
+
+    const auto position = session.Use([] { return ed::GetNodePosition(10); });
+    const auto size     = session.Use([] { return ed::GetNodeSize(10); });
+    const auto from     = session.Use([&] { return ed::CanvasToScreen(position + ImVec2(2.0f, size.y * 0.5f)); });
+    session.Drag(from, from - ImVec2(300.0f, 0.0f));
+    session.Run(2);
+
+    const auto resizedPosition = session.Use([] { return ed::GetNodePosition(10); });
+    const auto resizedSize     = session.Use([] { return ed::GetNodeSize(10); });
+    test::Check(resizedPosition.x == -extent && resizedPosition.x + resizedSize.x == position.x + size.x,
+        "the left edge stops at the border and the right edge stays: from %g to %g, was %g to %g",
+        resizedPosition.x, resizedPosition.x + resizedSize.x, position.x, position.x + size.x);
+}
