@@ -8,6 +8,7 @@
 # include "crude_blueprint_library.h"
 # include "crude_logger.h"
 # include <crude_json.h>
+# include <cmath>
 # include <cstdint>
 # include <cstdio>
 # include <functional>
@@ -491,4 +492,19 @@ TEST_CASE(WrongTypeFailsStep, "blueprints2.a_value_of_another_type_fails_the_ste
 
     test::Check(result == StepResult::Error, "the step that reads it fails: %s", StepResultToString(result));
     test::Check(blueprint.CurrentNode() == doN, "in Do N");
+}
+
+TEST_CASE(FloatPinsStayFinite, "blueprints2.float_pins_take_only_finite_values", "EXB-9", test::TestFlags_None)
+{
+    // As the value editor sets what the user typed: "nan", "inf" or "1e39".
+    Blueprint blueprint;
+    auto scale = blueprint.CreateNode<ConstFloatNode>();
+    scale->m_Float.SetValue(2.5f);
+
+    int taken = 0;
+    for (auto value : { std::nanf(""), INFINITY, -INFINITY })
+        taken += scale->m_Float.SetValue(value);
+
+    test::Check(taken == 0 && scale->m_Float.m_Value == 2.5f, "a NaN or infinity doesn't replace 2.5: %d taken, %g", taken, scale->m_Float.m_Value);
+    test::Check(scale->m_Float.SetValue(-1e30f) && scale->m_Float.m_Value == -1e30f, "a finite value does");
 }
