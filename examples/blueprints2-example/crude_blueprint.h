@@ -31,6 +31,7 @@ using nonstd::span;
 using nonstd::make_span;
 using nonstd::string_view;
 using nonstd::variant;
+using nonstd::bad_variant_access;
 using nonstd::get;
 using nonstd::get_if;
 using nonstd::monostate;
