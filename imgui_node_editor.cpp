@@ -1848,6 +1848,10 @@ bool ed::EditorContext::DoLink(LinkId id, PinId startPinId, PinId endPinId, ImU3
 {
     //auto& editorStyle = GetStyle();
 
+    IM_ASSERT(id && "Link ID 0 is reserved.");
+    if (!id)
+        return false;
+
     auto startPin = FindPin(startPinId);
     auto endPin   = FindPin(endPinId);
 
@@ -5930,7 +5934,9 @@ ed::NodeBuilder::NodeBuilder(EditorContext* editor):
     m_CurrentNode(nullptr),
     m_CurrentPin(nullptr),
     m_IsHoverBlocked(false),
-    m_BlockedHoveredId(0)
+    m_BlockedHoveredId(0),
+    m_IgnoredNodes(0),
+    m_IgnoredPins(0)
 {
 }
 
@@ -5942,6 +5948,13 @@ ed::NodeBuilder::~NodeBuilder()
 
 void ed::NodeBuilder::Begin(NodeId nodeId)
 {
+    IM_ASSERT(nodeId && "Node ID 0 is reserved.");
+    if (!nodeId)
+    {
+        ++m_IgnoredNodes;
+        return;
+    }
+
     IM_ASSERT(nullptr == m_CurrentNode);
 
     ImGui::PushID(nodeId.AsPointer());
@@ -6011,6 +6024,12 @@ void ed::NodeBuilder::Begin(NodeId nodeId)
 
 void ed::NodeBuilder::End()
 {
+    if (m_IgnoredNodes > 0)
+    {
+        --m_IgnoredNodes;
+        return;
+    }
+
     IM_ASSERT(nullptr != m_CurrentNode);
 
     if (m_IsHoverBlocked)
@@ -6086,6 +6105,13 @@ void ed::NodeBuilder::End()
 
 void ed::NodeBuilder::BeginPin(PinId pinId, PinKind kind)
 {
+    IM_ASSERT((pinId || m_IgnoredNodes > 0) && "Pin ID 0 is reserved.");
+    if (!pinId || m_IgnoredNodes > 0)
+    {
+        ++m_IgnoredPins;
+        return;
+    }
+
     IM_ASSERT(nullptr != m_CurrentNode);
     IM_ASSERT(nullptr == m_CurrentPin);
     IM_ASSERT(false   == m_IsGroup);
@@ -6137,6 +6163,12 @@ void ed::NodeBuilder::BeginPin(PinId pinId, PinKind kind)
 
 void ed::NodeBuilder::EndPin()
 {
+    if (m_IgnoredPins > 0)
+    {
+        --m_IgnoredPins;
+        return;
+    }
+
     IM_ASSERT(nullptr != m_CurrentPin);
 
     if (auto drawList = Editor->GetDrawList())
@@ -6174,6 +6206,9 @@ void ed::NodeBuilder::EndPin()
 
 void ed::NodeBuilder::PinRect(const ImVec2& a, const ImVec2& b)
 {
+    if (m_IgnoredPins > 0)
+        return;
+
     IM_ASSERT(nullptr != m_CurrentPin);
 
     m_CurrentPin->m_Bounds = ImRect(a, b);
@@ -6183,6 +6218,9 @@ void ed::NodeBuilder::PinRect(const ImVec2& a, const ImVec2& b)
 
 void ed::NodeBuilder::PinPivotRect(const ImVec2& a, const ImVec2& b)
 {
+    if (m_IgnoredPins > 0)
+        return;
+
     IM_ASSERT(nullptr != m_CurrentPin);
 
     m_CurrentPin->m_Pivot = ImRect(a, b);
@@ -6191,6 +6229,9 @@ void ed::NodeBuilder::PinPivotRect(const ImVec2& a, const ImVec2& b)
 
 void ed::NodeBuilder::PinPivotSize(const ImVec2& size)
 {
+    if (m_IgnoredPins > 0)
+        return;
+
     IM_ASSERT(nullptr != m_CurrentPin);
 
     m_PivotSize    = size;
@@ -6199,6 +6240,9 @@ void ed::NodeBuilder::PinPivotSize(const ImVec2& size)
 
 void ed::NodeBuilder::PinPivotScale(const ImVec2& scale)
 {
+    if (m_IgnoredPins > 0)
+        return;
+
     IM_ASSERT(nullptr != m_CurrentPin);
 
     m_PivotScale   = scale;
@@ -6207,6 +6251,9 @@ void ed::NodeBuilder::PinPivotScale(const ImVec2& scale)
 
 void ed::NodeBuilder::PinPivotAlignment(const ImVec2& alignment)
 {
+    if (m_IgnoredPins > 0)
+        return;
+
     IM_ASSERT(nullptr != m_CurrentPin);
 
     m_PivotAlignment = alignment;
@@ -6215,6 +6262,9 @@ void ed::NodeBuilder::PinPivotAlignment(const ImVec2& alignment)
 
 void ed::NodeBuilder::Group(const ImVec2& size)
 {
+    if (m_IgnoredNodes > 0)
+        return;
+
     IM_ASSERT(nullptr != m_CurrentNode);
     IM_ASSERT(nullptr == m_CurrentPin);
     IM_ASSERT(false   == m_IsGroup);
