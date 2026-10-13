@@ -118,6 +118,28 @@ TEST_CASE(DrawOrderSelectionBorder, "draw_order.selection_border_over_lower_node
     test::Check(selection > bottom, "selection border of the upper node is drawn over the lower node: border at index %ld, node at %ld", selection, bottom);
 }
 
+TEST_CASE(DrawOrderManyNodesAtOnce, "draw_order.many_new_nodes_in_one_frame", "PERF-1", test::TestFlags_None)
+{
+    // Each node grows the draw channels: 200 new nodes grow them 200 times in a frame.
+    test::Storage storage;
+    test::Session session(&storage);
+    session.DefaultContent = [](int frame)
+    {
+        for (uintptr_t id = 1; id <= 200; ++id)
+        {
+            if (frame == 0)
+                ed::SetNodePosition(id, ImVec2((id % 20) * 60.0f, (id / 20) * 40.0f));
+            ed::BeginNode(id);
+            ImGui::TextUnformatted("Node");
+            ed::EndNode();
+        }
+    };
+    session.Run(2);
+
+    const int nodes = session.Use([] { return ed::GetNodeCount(); });
+    test::Check(nodes == 200, "all 200 nodes are submitted: %d", nodes);
+}
+
 TEST_CASE(DrawOrderContentBeforeNodes, "draw_order.content_before_nodes_over_background", "CORE-16", test::TestFlags_None)
 {
     // A rectangle drawn right after ed::Begin(), before any node, on a blue background
