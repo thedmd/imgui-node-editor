@@ -237,13 +237,11 @@ inline ImRect ImCubicBezierBoundingRect(const ImVec2& p0, const ImVec2& p1, cons
     auto tl = ImMin(p0, p3);
     auto rb = ImMax(p0, p3);
 
-# define IM_VEC2_INDEX(v, i) *(&v.x + i)
-
     for (int i = 0; i < 2; ++i)
     {
-        const auto ai = IM_VEC2_INDEX(a, i);
-        const auto bi = IM_VEC2_INDEX(b, i);
-        const auto ci = IM_VEC2_INDEX(c, i);
+        const auto ai = a[i];
+        const auto bi = b[i];
+        const auto ci = c[i];
 
         float roots[2];
         int   count = 0;
@@ -269,14 +267,13 @@ inline ImRect ImCubicBezierBoundingRect(const ImVec2& p0, const ImVec2& p1, cons
             const auto t = roots[k];
             if (t > 0 && t < 1)
             {
-                auto p = ImCubicBezier(IM_VEC2_INDEX(p0, i), IM_VEC2_INDEX(p1, i), IM_VEC2_INDEX(p2, i), IM_VEC2_INDEX(p3, i), t);
-                IM_VEC2_INDEX(tl, i) = ImMin(IM_VEC2_INDEX(tl, i), p);
-                IM_VEC2_INDEX(rb, i) = ImMax(IM_VEC2_INDEX(rb, i), p);
+                auto p = ImCubicBezier(p0[i], p1[i], p2[i], p3[i], t);
+                tl[i] = ImMin(tl[i], p);
+                rb[i] = ImMax(rb[i], p);
             }
         }
     }
 
-# undef IM_VEC2_INDEX
 
     return ImRect(tl, rb);
 }
