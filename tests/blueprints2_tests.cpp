@@ -97,3 +97,47 @@ TEST_CASE(PinCopyOutlivesNode, "blueprints2.a_pin_copy_outlives_its_node", "EXB-
     }
     test::Check(example.m_Blueprint.FindNode(example.m_Add->m_Id) == example.m_Add, "the copy went away without touching the deleted node");
 }
+TEST_CASE(DataLoopRefused, "blueprints2.a_link_that_makes_a_data_loop_is_refused", "EXB-3", test::TestFlags_None)
+{
+    // Add 2 takes Add 1's result; Add 1 taking Add 2's result would evaluate forever.
+    Blueprint blueprint;
+    auto add1 = blueprint.CreateNode<AddNode>();
+    auto add2 = blueprint.CreateNode<AddNode>();
+    auto add3 = blueprint.CreateNode<AddNode>();
+    const bool first  = add2->m_A.LinkTo(add1->m_Result);
+    const bool chain  = add3->m_A.LinkTo(add2->m_Result);
+    const auto query  = add1->m_A.CanLinkTo(add3->m_Result);
+    const bool closed = add1->m_A.LinkTo(add3->m_Result);
+    const bool other  = add1->m_B.LinkTo(add2->m_Result);
+
+    test::Check(first && chain, "Add 1 feeds Add 2, which feeds Add 3");
+    test::Check(!query && query.Reason().find("loop") != std::string::npos, "Add 3 feeding Add 1 is refused: %s", query.Reason().data());
+    test::Check(!closed && !other && add1->m_A.m_Link == nullptr && add1->m_B.m_Link == nullptr, "and no loop is linked");
+}
+
+TEST_CASE(DeepEvaluation, "blueprints2.a_data_loop_or_long_chain_evaluates_without_overflow", "EXB-3", test::TestFlags_None)
+{
+    // A loop from a file, which no link check saw, and a chain as long as a file may make it.
+    Blueprint blueprint;
+    auto add1 = blueprint.CreateNode<AddNode>();
+    auto add2 = blueprint.CreateNode<AddNode>();
+    add2->m_A.LinkTo(add1->m_Result);
+    add1->m_A.m_Link = &add2->m_Result;
+    const auto loop = blueprint.GetContext().GetPinValue(add1->m_Result);
+
+    std::vector<AddNode*> chain(1, blueprint.CreateNode<AddNode>());
+    for (int i = 1; i < 20000; ++i)
+    {
+        chain.push_back(blueprint.CreateNode<AddNode>());
+        chain.back()->m_A.m_Link = &chain[chain.size() - 2]->m_Result;
+    }
+    const auto deep = blueprint.GetContext().GetPinValue(chain.back()->m_Result);
+
+    // Evaluation afterwards goes on as usual.
+    auto constant = blueprint.CreateNode<ConstInt32Node>();
+    constant->m_Int32.SetValue(7);
+    const auto value = blueprint.GetContext().GetPinValue(constant->m_Int32);
+
+    test::Check(loop.GetType() == PinType::Any && deep.GetType() == PinType::Any, "both evaluate to no value");
+    test::Check(value.GetType() == PinType::Int32 && value.As<int32_t>() == 7, "a pin evaluated after them has its value");
+}
