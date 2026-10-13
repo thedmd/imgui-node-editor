@@ -44,6 +44,7 @@ struct PlatformWin32 final
     void ApplicationStop() override;
     bool OpenMainWindow(const char* title, int width, int height) override;
     bool CloseMainWindow() override;
+    void DestroyMainWindow() override;
     void* GetMainWindowHandle() const override;
     void SetMainWindowTitle(const char* title) override;
     void ShowMainWindow() override;
@@ -218,6 +219,15 @@ bool PlatformWin32::CloseMainWindow()
     return m_CanCloseResult;
 }
 
+void PlatformWin32::DestroyMainWindow()
+{
+    if (m_MainWindowHandle == nullptr)
+        return;
+
+    ImGui_ImplWin32_Shutdown();
+    DestroyWindow(m_MainWindowHandle);
+}
+
 void* PlatformWin32::GetMainWindowHandle() const
 {
     return m_MainWindowHandle;
@@ -336,10 +346,7 @@ LRESULT PlatformWin32::WinProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam
         case WM_CLOSE:
             m_CanCloseResult = m_Application.CanClose();
             if (m_CanCloseResult)
-            {
-                ImGui_ImplWin32_Shutdown();
-                DestroyWindow(hWnd);
-            }
+                PostQuitMessage(0);
             return 0;
 
         case WM_SIZE:
@@ -382,7 +389,6 @@ LRESULT PlatformWin32::WinProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam
         case WM_DESTROY:
             m_MainWindowHandle = nullptr;
             m_IsMinimized      = false;
-            PostQuitMessage(0);
             return 0;
     }
 
