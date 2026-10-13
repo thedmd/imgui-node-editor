@@ -356,3 +356,28 @@ TEST_CASE(SuspendWithAnotherSplitter, "canvas_widget.suspend_with_another_splitt
     test::Check(asserted, "Suspend() asserts");
     test::Check(host.StrayCallbacks == 0, "no canvas callback is left for the renderer: %d", host.StrayCallbacks);
 }
+
+TEST_CASE(SentinelAfterMisuse, "canvas_widget.misused_canvas_leaves_no_sentinel", "CNV-1", test::TestFlags_None)
+{
+    // As above, but the canvas goes on past the assert and resumes in the other
+    // splitter's channel before it is merged.
+    test::ExpectAsserts(1);
+    test::Host host;
+    host.NewFrame();
+    BeginHostWindow();
+    ImGuiEx::Canvas canvas;
+    canvas.Begin("canvas", ImVec2(300.0f, 300.0f));
+    auto drawList = ImGui::GetWindowDrawList();
+    ImDrawListSplitter splitter;
+    splitter.Split(drawList, 2);
+    splitter.SetCurrentChannel(drawList, 1);
+    canvas.Suspend();
+    canvas.Resume();
+    splitter.SetCurrentChannel(drawList, 0);
+    splitter.Merge(drawList);
+    canvas.End();
+    ImGui::End();
+    host.Render();
+
+    test::Check(host.StrayCallbacks == 0, "no canvas callback is left for the renderer: %d", host.StrayCallbacks);
+}

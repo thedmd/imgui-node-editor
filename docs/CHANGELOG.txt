@@ -394,6 +394,9 @@ v0.10.0 (WIP):
     BUGFIX: Canvas: Recognize its own sentinel draw command, and assert when it is out of reach
         Suspending with another splitter's channel current went unnoticed, as only channel numbers were compared.
 
+    BUGFIX: Canvas: Strip sentinels left behind by misuse in End()
+        Suspending in another splitter's channel left one in the draw data for the renderer to call.
+
 v0.9.2 (2023-09-01):
 
     NEW: Editor: Add offset of hover/select to style (thanks @MultiPain)
