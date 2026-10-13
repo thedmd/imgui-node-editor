@@ -236,6 +236,9 @@ v0.9.4 (WIP):
     BUGFIX: Canvas: Set clip rectangles pushed inside a canvas aside while it is suspended
         Suspend() popped whichever was on top, so drawing while suspended in a table cell or under a user's clip rectangle was clipped in canvas space. Leaving a clip rectangle pushed, or the canvas suspended in another window, now asserts.
 
+    BUGFIX: Canvas: Move the viewport's work area to local space with docking builds
+        It was scaled but not translated, so with a main menu bar it lay outside the viewport.
+
 v0.9.3 (2023-10-14):
 
     CHANGE: Canvas: Use ImDrawCallback_ImCanvas macro as draw callback sentinel (#256), thanks @nspitko

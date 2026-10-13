@@ -479,7 +479,7 @@ void ImGuiEx::Canvas::EnterLocalSpace()
     viewport->Size = viewport_max - viewport_min;
 
 # if IMGUI_VERSION_NUM > 18002
-    viewport->WorkPos  = m_ViewportWorkPosBackup  * m_View.InvScale();
+    viewport->WorkPos  = (m_ViewportWorkPosBackup - m_ViewTransformPosition) * m_View.InvScale();
     viewport->WorkSize = m_ViewportWorkSizeBackup * m_View.InvScale();
 # else
     viewport->WorkOffsetMin = m_ViewportWorkOffsetMinBackup * m_View.InvScale();
