@@ -170,7 +170,7 @@ void ImEx::MostRecentlyUsedList::Install(ImGuiContext* context)
     {
         const char* lineEnd = line + strlen(line);
 
-        auto parseListEntry = [lineEnd](const char* line, int& index) -> const char*
+        auto parseListEntry = [lineEnd](const char* line, long& index) -> const char*
         {
             char* indexEnd = nullptr;
             errno = 0;
@@ -185,12 +185,15 @@ void ImEx::MostRecentlyUsedList::Install(ImGuiContext* context)
         };
 
 
-        int index = 0;
+        // Entries come in the order WriteAll() writes them, so an index is one the list has, or the next.
+        long index = 0;
         if (auto path = parseListEntry(line, index))
         {
-            if (static_cast<int>(entry->m_List.size()) <= index)
-                entry->m_List.resize(index + 1);
-            entry->m_List[index] = path;
+            const auto size = static_cast<long>(entry->m_List.size());
+            if (index >= 0 && index < size)
+                entry->m_List[static_cast<size_t>(index)] = path;
+            else if (index == size)
+                entry->m_List.push_back(path);
         }
     };
 
