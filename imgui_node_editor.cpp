@@ -979,6 +979,10 @@ ed::EditorContext::~EditorContext()
 
 void ed::EditorContext::Begin(const char* id, const ImVec2& size)
 {
+    IM_ASSERT(m_DrawList == nullptr && "Begin() is called again before End().");
+    if (m_DrawList)
+        return;
+
     m_EditorActiveId = ImGui::GetID(id);
     ImGui::PushID(id);
 
@@ -1131,6 +1135,10 @@ void ed::EditorContext::Begin(const char* id, const ImVec2& size)
 
 void ed::EditorContext::End()
 {
+    IM_ASSERT(m_DrawList != nullptr && "End() is called without Begin().");
+    if (!m_DrawList)
+        return;
+
     IM_ASSERT(m_SuspendCounter == 0 && "Each Suspend() needs a Resume() before End().");
     IM_ASSERT(m_Style.GetColorStackSize() == m_BeginColorStackSize && "PushStyleColor() and PopStyleColor() calls don't match between Begin() and End().");
     IM_ASSERT(m_Style.GetVarStackSize() == m_BeginVarStackSize && "PushStyleVar() and PopStyleVar() calls don't match between Begin() and End().");

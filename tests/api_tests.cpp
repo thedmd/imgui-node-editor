@@ -204,6 +204,26 @@ TEST_CASE(StyleStackUnbalanced, "api.style_stack_unbalanced_in_frame_asserts", "
     session.Use([] { ed::PopStyleVar(); });
 }
 
+TEST_CASE(BeginEndOutOfOrder, "api.begin_and_end_out_of_order_assert", "CORE-18", test::TestFlags_None)
+{
+    // ed::Begin() again inside a frame, and ed::End() between frames.
+    test::ExpectAsserts(2);
+    test::Storage storage;
+    test::Session session(&storage);
+    session.Frame([](int)
+    {
+        ed::Begin("Again");
+        ed::BeginNode(1);
+        ImGui::TextUnformatted("Node");
+        ed::EndNode();
+    });
+    session.Use([] { ed::End(); });
+    session.Run(2);
+
+    const auto size = session.Use([] { return ed::GetNodeSize(1); });
+    test::Check(size.x > 0.0f && size.y > 0.0f, "the editor goes on: node 1 measures (%g, %g)", size.x, size.y);
+}
+
 TEST_CASE(CallWithoutEditor, "api.call_without_current_editor_asserts", "API-8", test::TestFlags_None)
 {
     test::ExpectAsserts(1);
