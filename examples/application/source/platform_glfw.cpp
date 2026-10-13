@@ -14,7 +14,6 @@
 # endif
 
 # include <imgui.h>
-# include <imgui_internal.h>
 # include "imgui_impl_glfw.h"
 
 struct PlatformGLFW final
@@ -47,7 +46,6 @@ struct PlatformGLFW final
     bool            m_IsMinimized = false;
     bool            m_WasMinimized = false;
     Renderer*       m_Renderer = nullptr;
-    ImU32           m_LastEventId = 0;
 };
 
 std::unique_ptr<Platform> CreatePlatform(Application& application)
@@ -120,6 +118,14 @@ bool PlatformGLFW::OpenMainWindow(const char* title, int width, int height)
     }
 
     glfwSetWindowUserPointer(m_Window, this);
+
+    // Replaces the backend's callback, to pass positions in ImGui units.
+    glfwSetCursorPosCallback(m_Window, [](GLFWwindow* window, double x, double y)
+    {
+        auto self = reinterpret_cast<PlatformGLFW*>(glfwGetWindowUserPointer(window));
+        const auto scale = self->GetWindowScale();
+        ImGui_ImplGlfw_CursorPosCallback(window, x * scale, y * scale);
+    });
 
     glfwSetWindowCloseCallback(m_Window, [](GLFWwindow* window)
     {
@@ -247,31 +253,7 @@ void PlatformGLFW::SetRenderer(Renderer* renderer)
 
 void PlatformGLFW::NewFrame()
 {
-    auto& io = ImGui::GetIO();
-    auto& ctx = *ImGui::GetCurrentContext();
-
     ImGui_ImplGlfw_NewFrame();
-
-    auto inputEventCountAfterUpdate = ctx.InputEventsQueue.Size;
-
-    auto windowScale = GetWindowScale();
-
-    for (auto& event : ctx.InputEventsQueue)
-    {
-        if (event.EventId <= m_LastEventId)
-            continue;
-
-        m_LastEventId = event.EventId;
-
-        if (event.Type == ImGuiInputEventType_MousePos)
-        {
-            if (event.MousePos.PosX > -FLT_MAX && event.MousePos.PosY > -FLT_MAX)
-            {
-                event.MousePos.PosX *= windowScale;
-                event.MousePos.PosY *= windowScale;
-            }
-        }
-    }
 
     if (m_WasMinimized)
     {

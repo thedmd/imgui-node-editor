@@ -120,6 +120,22 @@ bool Application::Create(int width /*= -1*/, int height /*= -1*/)
         return false;
     }
 
+    // The IME takes positions in window units.
+    auto& platformIO = ImGui::GetPlatformIO();
+    m_SetImeData = platformIO.Platform_SetImeDataFn;
+    platformIO.Platform_ImeUserData = this;
+    platformIO.Platform_SetImeDataFn = [](ImGuiContext* context, ImGuiViewport* viewport, ImGuiPlatformImeData* data)
+    {
+        auto self = static_cast<Application*>(ImGui::GetPlatformIO().Platform_ImeUserData);
+        const auto scale = self->m_Platform->GetWindowScale();
+        auto windowData = *data;
+        windowData.InputPos.x      /= scale;
+        windowData.InputPos.y      /= scale;
+        windowData.InputLineHeight /= scale;
+        if (self->m_SetImeData)
+            self->m_SetImeData(context, viewport, &windowData);
+    };
+
     m_IniFilename = ResolvePath(m_Name + ".ini");
 
     ImGuiIO& io = ImGui::GetIO();
