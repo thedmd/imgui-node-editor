@@ -543,6 +543,9 @@ v0.10.0 (WIP):
     BUGFIX: Examples: Show UTF-8 window titles correctly on Windows
         They went to the Win32 A functions, which read them in the active code page.
 
+    BUGFIX: Examples: Link an output to an input in the basic interaction and widgets examples
+        They stored the pins in drag order as input and output, and took links between two pins of one kind.
+
 v0.9.2 (2023-09-01):
 
     NEW: Editor: Add offset of hover/select to style (thanks @MultiPain)
