@@ -54,6 +54,8 @@ struct Example:
 
     void OnFrame(float deltaTime) override
     {
+        IM_UNUSED(deltaTime);
+
         auto& io = ImGui::GetIO();
 
         ImGui::Text("FPS: %.2f (%.2gms)", io.Framerate, io.Framerate ? 1000.0f / io.Framerate : 0.0f);

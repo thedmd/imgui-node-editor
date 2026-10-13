@@ -37,6 +37,13 @@ function(add_example_data_target target root)
     set_target_properties(${target} PROPERTIES FOLDER "examples")
 endfunction()
 
+# MSVC keeps its default /W3.
+function(set_example_warnings target)
+    if (CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(${target} PRIVATE -Wall -Wextra)
+    endif()
+endfunction()
+
 # Macro that will configure an example application
 macro(add_example_executable name)
     project(${name})
@@ -87,6 +94,7 @@ macro(add_example_executable name)
     endif()
 
     add_executable(${name} ${_Example_Type} ${_Example_Sources} ${_Example_Resources} ${_Example_CommonResources})
+    set_example_warnings(${name})
 
     target_link_libraries(${name} PRIVATE imgui imgui_node_editor application)
 

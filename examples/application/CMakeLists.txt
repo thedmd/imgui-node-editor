@@ -17,6 +17,7 @@ set(_Application_Sources
 )
 
 add_library(application STATIC)
+set_example_warnings(application)
 
 target_include_directories(application PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 

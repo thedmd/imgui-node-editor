@@ -60,6 +60,9 @@ PlatformGLFW::PlatformGLFW(Application& application)
 
 bool PlatformGLFW::ApplicationStart(int argc, char** argv)
 {
+    IM_UNUSED(argc);
+    IM_UNUSED(argv);
+
     if (!glfwInit())
         return false;
 
@@ -162,6 +165,8 @@ bool PlatformGLFW::OpenMainWindow(const char* title, int width, int height)
 
     auto onWindowContentScaleChanged = [](GLFWwindow* window, float xscale, float yscale)
     {
+        IM_UNUSED(xscale);
+        IM_UNUSED(yscale);
         auto self = reinterpret_cast<PlatformGLFW*>(glfwGetWindowUserPointer(window));
         self->UpdatePixelDensity();
     };
