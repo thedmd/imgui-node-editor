@@ -1419,6 +1419,7 @@ struct EditorContext
     void RemoveSettings(Object* object);
 
     bool ForgetNode(NodeId nodeId);
+    void ClearState();
 
     void ClearSelection();
     void SelectObject(Object* object);
@@ -1650,7 +1651,7 @@ private:
     Settings            m_Settings;
     string              m_SettingsName;
     SettingsStore*      m_SettingsStore;
-    bool                m_HasMemorySettings;    // loaded by LoadSettingsFromMemory() before the first Begin()
+    bool                m_HasMemorySettings;    // set before the first Begin(), by LoadSettingsFromMemory() or ClearState()
     string              m_SettingsMemory;       // returned by SaveSettingsToMemory()
     bool                m_HasSettingsChanged;   // since ClearWantSaveSettings()
     SaveReasonFlags     m_SettingsChangeReason;

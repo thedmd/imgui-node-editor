@@ -140,6 +140,92 @@ TEST_CASE(ForgetDraggedNode, "forget.node_while_it_is_dragged", "CORE-7", test::
     test::Check(session.Use([] { return ed::GetNodePosition(1).x == FLT_MAX && ed::GetSelectedObjectCount() == 0; }), "node 1 stays forgotten after the drag");
 }
 
+TEST_CASE(ClearStateNewDocument, "forget.clear_state_starts_a_new_document", "CORE-7", test::TestFlags_None)
+{
+    // A document with a zoomed and scrolled view, and a selection, is replaced by
+    // one that reuses its IDs.
+    test::Storage storage;
+    storage.Global = R"({"view":{"scroll":{"x":-50,"y":-30},"zoom":2}})";
+    test::Session session(&storage);
+    TwoNodes scene;
+    session.DefaultContent = [&](int frame)
+    {
+        scene.Submit(frame);
+        if (frame == 1)
+        {
+            ed::SelectNode(1);
+            ed::SelectLink(100, true);
+        }
+    };
+    session.Run(3);
+    const auto zoomBefore = session.Use([] { return ed::GetCurrentZoom(); });
+
+    storage.Nodes.clear();
+    session.Use([] { ed::ClearState(); });
+    const auto settings = SavedSettings(session);
+    test::Check(settings.find("node:") == std::string::npos && settings.find("link:") == std::string::npos && settings.find(R"("zoom":1)") != std::string::npos,
+        "saved settings hold no nodes, no selection and the default view: %s", settings.c_str());
+    test::Check(session.Use([] { return ed::GetNodePosition(1).x == FLT_MAX && ed::GetNodePosition(11).x == FLT_MAX && ed::GetSelectedObjectCount() == 0; }),
+        "the nodes and the selection are gone");
+
+    session.Run(3);
+    const auto reused   = session.Use([] { return ed::GetNodePosition(11); });
+    const auto zoom     = session.Use([] { return ed::GetCurrentZoom(); });
+    const auto selected = session.Use([] { return ed::GetSelectedObjectCount(); });
+    test::Check(zoomBefore == 2.0f && zoom == 1.0f, "the view zoom goes from %g to %g", zoomBefore, zoom);
+    test::Check(reused.x == 0.0f && reused.y == 0.0f && selected == 0, "a reused ID starts at the origin, unselected: (%g, %g), %d selected", reused.x, reused.y, selected);
+}
+
+TEST_CASE(ClearStateBoundsGrowth, "forget.clear_state_keeps_settings_bounded", "PERF-3", test::TestFlags_None)
+{
+    // Documents of 10 nodes, each with fresh IDs, as in the review's growth benchmark.
+    size_t first[2] = {}, last[2] = {};
+    for (int clear = 0; clear < 2; ++clear)
+    {
+        test::Storage storage;
+        test::Session session(&storage);
+        int document = 0;
+        session.DefaultContent = [&](int)
+        {
+            for (int i = 0; i < 10; ++i)
+                SubmitNode(1 + (document * 10 + i) * 4, false);
+        };
+        for (document = 0; document < 30; ++document)
+        {
+            if (clear && document > 0)
+                session.Use([] { ed::ClearState(); });
+            session.Run(3);
+            if (document == 0)
+                first[clear] = storage.Global.size();
+            last[clear] = storage.Global.size();
+        }
+    }
+    test::Check(last[0] > first[0] * 10, "without ClearState(), settings grow with every document: %d to %d bytes", (int)first[0], (int)last[0]);
+    test::Check(last[1] < first[1] * 2, "with it, they stay one document's: %d to %d bytes", (int)first[1], (int)last[1]);
+}
+
+TEST_CASE(ClearStateInFrame, "forget.clear_state_between_begin_and_end_asserts", "CORE-7", test::TestFlags_None)
+{
+    // Without the application's own state for node 1, only the kept node is still placed.
+    test::ExpectAsserts(1);
+    test::Storage storage;
+    test::Session session(&storage);
+    TwoNodes scene;
+    session.DefaultContent = [&](int frame)
+    {
+        scene.Submit(frame);
+        if (frame == 2)
+        {
+            storage.Nodes.clear();
+            ed::ClearState();
+        }
+    };
+    session.Run(4);
+
+    const auto position = session.Use([] { return ed::GetNodePosition(1); });
+    test::Check(position.x == 100.0f, "ClearState() is ignored there: node 1 kept at (%g, %g)", position.x, position.y);
+}
+
 TEST_CASE(ForgetNodeInFrame, "forget.node_between_begin_and_end_asserts", "CORE-7", test::TestFlags_None)
 {
     // Freeing a node that may be submitted in the same frame isn't supported.

@@ -484,6 +484,9 @@ v0.10.0 (WIP):
     NEW: Editor: Add ForgetNode() for nodes the application drops on its own
         The node, its pins, the links to them, its saved state and its selection go, so a reused ID starts fresh.
 
+    NEW: Editor: Add ClearState() for a new document
+        It forgets all nodes, pins and links with their saved state, the selection and the view.
+
 v0.9.2 (2023-09-01):
 
     NEW: Editor: Add offset of hover/select to style (thanks @MultiPain)

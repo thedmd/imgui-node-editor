@@ -592,6 +592,11 @@ bool ax::NodeEditor::ForgetNode(NodeId nodeId)
     return CurrentEditor()->ForgetNode(nodeId);
 }
 
+void ax::NodeEditor::ClearState()
+{
+    CurrentEditor()->ClearState();
+}
+
 bool ax::NodeEditor::HasAnyLinks(NodeId nodeId)
 {
     return CurrentEditor()->HasAnyLinks(nodeId);
