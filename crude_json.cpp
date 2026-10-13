@@ -281,6 +281,33 @@ void value::dump_context_t::write_newline()
     out.put('\n');
 }
 
+static void write_string(std::ostream& out, const string& text)
+{
+    static const char hex_digits[] = "0123456789abcdef";
+
+    out << '\"';
+    for (const auto c : text)
+    {
+        switch (c)
+        {
+            case '\"': out << "\\\""; break;
+            case '\\': out << "\\\\"; break;
+            case '\b': out << "\\b";  break;
+            case '\f': out << "\\f";  break;
+            case '\n': out << "\\n";  break;
+            case '\r': out << "\\r";  break;
+            case '\t': out << "\\t";  break;
+            default:
+                if (static_cast<unsigned char>(c) < 0x20)
+                    out << "\\u00" << hex_digits[c >> 4] << hex_digits[c & 0xF];
+                else
+                    out << c;
+                break;
+        }
+    }
+    out << '\"';
+}
+
 void value::dump(dump_context_t& context, int level) const
 {
     context.write_indent(level);
@@ -300,7 +327,8 @@ void value::dump(dump_context_t& context, int level) const
                 {
                     if (!first) { context.out << ','; context.write_newline(); } else first = false;
                     context.write_indent(level + 1);
-                    context.out << '\"' << entry.first << "\":";
+                    write_string(context.out, entry.first);
+                    context.out << ':';
                     if (!entry.second.is_structured())
                     {
                         context.write_separator();
@@ -345,27 +373,7 @@ void value::dump(dump_context_t& context, int level) const
             break;
 
         case type_t::string:
-            context.out << '\"';
-
-            if (string_ptr(m_Storage)->find_first_of("\"\\/\b\f\n\r") != string::npos || string_ptr(m_Storage)->find('\0') != string::npos)
-            {
-                for (auto c : *string_ptr(m_Storage))
-                {
-                         if (c == '\"')  context.out << "\\\"";
-                    else if (c == '\\')  context.out << "\\\\";
-                    else if (c == '/')   context.out << "\\/";
-                    else if (c == '\b')  context.out << "\\b";
-                    else if (c == '\f')  context.out << "\\f";
-                    else if (c == '\n')  context.out << "\\n";
-                    else if (c == '\r')  context.out << "\\r";
-                    else if (c == '\t')  context.out << "\\t";
-                    else if (c == 0)     context.out << "\\u0000";
-                    else                 context.out << c;
-                }
-            }
-            else
-                context.out << *string_ptr(m_Storage);
-            context.out << '\"';
+            write_string(context.out, *string_ptr(m_Storage));
             break;
 
 
