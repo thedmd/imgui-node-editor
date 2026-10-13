@@ -492,26 +492,6 @@ void ed::Node::Draw(ImDrawList* drawList, DrawFlags flags)
             }
         }
 
-# if 0
-        // #debug: highlight group regions
-        auto drawRect = [drawList](const ImRect& rect, ImU32 color)
-        {
-            if (ImRect_IsEmpty(rect)) return;
-            drawList->AddRectFilled(rect.Min, rect.Max, color);
-        };
-
-        drawRect(GetRegionBounds(NodeRegion::Top), IM_COL32(255, 0, 0, 64));
-        drawRect(GetRegionBounds(NodeRegion::Bottom), IM_COL32(255, 0, 0, 64));
-        drawRect(GetRegionBounds(NodeRegion::Left), IM_COL32(0, 255, 0, 64));
-        drawRect(GetRegionBounds(NodeRegion::Right), IM_COL32(0, 255, 0, 64));
-        drawRect(GetRegionBounds(NodeRegion::TopLeft), IM_COL32(255, 0, 255, 64));
-        drawRect(GetRegionBounds(NodeRegion::TopRight), IM_COL32(255, 0, 255, 64));
-        drawRect(GetRegionBounds(NodeRegion::BottomLeft), IM_COL32(255, 0, 255, 64));
-        drawRect(GetRegionBounds(NodeRegion::BottomRight), IM_COL32(255, 0, 255, 64));
-        drawRect(GetRegionBounds(NodeRegion::Center), IM_COL32(0, 0, 255, 64));
-        drawRect(GetRegionBounds(NodeRegion::Header), IM_COL32(0, 255, 255, 64));
-# endif
-
         DrawBorder(drawList, m_BorderColor, m_BorderWidth);
     }
     else if (flags & Selected)
@@ -1350,7 +1330,6 @@ void ed::EditorContext::End()
         return lhs->m_ZPosition < rhs->m_ZPosition;
     });
 
-# if 1
     // Every node has few channels assigned. Grow channel list
     // to hold twice as much of channels and place them in
     // node drawing order.
@@ -1388,12 +1367,10 @@ void ed::EditorContext::End()
         // Copy normal nodes
         std::for_each(groupsItEnd, m_Nodes.end(), copyNode);
     }
-# endif
 
     // ImGui::PopClipRect();
 
     // Draw grid
-# if 1 // #FIXME
     if (m_IsCanvasVisible)
     {
         //auto& style = ImGui::GetStyle();
@@ -1425,42 +1402,7 @@ void ed::EditorContext::End()
             }
         }
     }
-# endif
 
-# if 0
-    {
-        auto userChannel = drawList->_Splitter._Count;
-        auto channelsToCopy = c_UserLayersCount;
-        ImDrawList_ChannelsGrow(drawList, userChannel + channelsToCopy);
-        for (int i = 0; i < channelsToCopy; ++i)
-            ImDrawList_SwapChannels(drawList, userChannel + i, c_UserLayerChannelStart + i);
-    }
-# endif
-
-# if 0
-    {
-        auto preOffset  = ImVec2(0, 0);
-        auto postOffset = m_OldCanvas.WindowScreenPos + m_OldCanvas.ClientOrigin;
-        auto scale      = m_OldCanvas.Zoom;
-
-        ImDrawList_TransformChannels(drawList,                        0,                            1, preOffset, scale, postOffset);
-        ImDrawList_TransformChannels(drawList, c_BackgroundChannelStart, drawList->_ChannelsCount - 1, preOffset, scale, postOffset);
-
-        auto clipTranslation = m_OldCanvas.WindowScreenPos - m_OldCanvas.FromScreen(m_OldCanvas.WindowScreenPos);
-        ImGui::PushClipRect(m_OldCanvas.WindowScreenPos + ImVec2(1, 1), m_OldCanvas.WindowScreenPos + m_OldCanvas.WindowScreenSize - ImVec2(1, 1), false);
-        ImDrawList_TranslateAndClampClipRects(drawList,                        0,                            1, clipTranslation);
-        ImDrawList_TranslateAndClampClipRects(drawList, c_BackgroundChannelStart, drawList->_ChannelsCount - 1, clipTranslation);
-        ImGui::PopClipRect();
-
-        // #debug: Static grid in local space
-        //for (float x = 0; x < Canvas.WindowScreenSize.x; x += 100)
-        //    drawList->AddLine(ImVec2(x, 0.0f) + Canvas.WindowScreenPos, ImVec2(x, Canvas.WindowScreenSize.y) + Canvas.WindowScreenPos, IM_COL32(255, 0, 0, 128));
-        //for (float y = 0; y < Canvas.WindowScreenSize.y; y += 100)
-        //    drawList->AddLine(ImVec2(0.0f, y) + Canvas.WindowScreenPos, ImVec2(Canvas.WindowScreenSize.x, y) + Canvas.WindowScreenPos, IM_COL32(255, 0, 0, 128));
-    }
-# endif
-
-# if 1
     // Move user and hint channels to top
     {
         // Clip plane is transformed to global space.
@@ -1491,7 +1433,6 @@ void ed::EditorContext::End()
         preTransformClipRect(channelCount + 1);
         preTransformClipRect(channelCount + 2);
     }
-# endif
 
     UpdateAnimations();
 
