@@ -508,3 +508,25 @@ TEST_CASE(FloatPinsStayFinite, "blueprints2.float_pins_take_only_finite_values",
     test::Check(taken == 0 && scale->m_Float.m_Value == 2.5f, "a NaN or infinity doesn't replace 2.5: %d taken, %g", taken, scale->m_Float.m_Value);
     test::Check(scale->m_Float.SetValue(-1e30f) && scale->m_Float.m_Value == -1e30f, "a finite value does");
 }
+
+TEST_CASE(SaveKeepsLoadableFile, "blueprints2.a_document_that_wouldnt_load_isnt_saved", "EXB-9", test::TestFlags_None)
+{
+    // A Float pin set around SetValue(), as code may, to a NaN, which documents have no number for.
+    test::Session    session(UnnamedConfig());
+    Document         document;
+    ExampleBlueprint example(document.m_Blueprint);
+    auto scale = document.m_Blueprint.CreateNode<ConstFloatNode>();
+
+    TestFile file("blueprints2_unloadable.bp");
+    const bool first = session.Use([&] { return document.Save(file.Path); });
+    scale->m_Float.m_Value = std::nanf("");
+    const bool second = session.Use([&] { return document.Save(file.Path); });
+
+    Document reloaded;
+    const bool loaded = reloaded.Load(file.Path);
+    auto reloadedScale = loaded ? static_cast<ConstFloatNode*>(reloaded.m_Blueprint.FindNode(scale->m_Id)) : nullptr;
+
+    test::Check(first, "the document saves");
+    test::Check(!second, "with a NaN in a Float pin, it doesn't");
+    test::Check(reloadedScale && reloadedScale->m_Float.m_Value == 0.0f, "and the file it saved before still loads");
+}

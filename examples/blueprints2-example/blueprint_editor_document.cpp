@@ -327,6 +327,12 @@ bool blueprint_editor::Document::Load(string_view path)
 bool blueprint_editor::Document::Save(string_view path) const
 {
     auto result = Serialize();
+
+    // Only a file the document can be loaded from again replaces the one at 'path'.
+    Document check;
+    if (!Deserialize(crude_json::value::parse(result.dump()), check))
+        return false;
+
     return result.save(path.to_string());
 }
 
