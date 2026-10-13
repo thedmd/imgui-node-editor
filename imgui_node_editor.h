@@ -75,7 +75,7 @@ enum class EditType
 
 
 //------------------------------------------------------------------------------
-enum class SaveReasonFlags: uint32_t
+enum class SaveReasonFlags: std::uint32_t
 {
     None       = 0x00000000,
     Navigation = 0x00000001,
@@ -87,10 +87,10 @@ enum class SaveReasonFlags: uint32_t
     User       = 0x00000040
 };
 
-inline SaveReasonFlags operator |(SaveReasonFlags lhs, SaveReasonFlags rhs) { return static_cast<SaveReasonFlags>(static_cast<uint32_t>(lhs) | static_cast<uint32_t>(rhs)); }
-inline SaveReasonFlags operator &(SaveReasonFlags lhs, SaveReasonFlags rhs) { return static_cast<SaveReasonFlags>(static_cast<uint32_t>(lhs) & static_cast<uint32_t>(rhs)); }
+inline SaveReasonFlags operator |(SaveReasonFlags lhs, SaveReasonFlags rhs) { return static_cast<SaveReasonFlags>(static_cast<std::uint32_t>(lhs) | static_cast<std::uint32_t>(rhs)); }
+inline SaveReasonFlags operator &(SaveReasonFlags lhs, SaveReasonFlags rhs) { return static_cast<SaveReasonFlags>(static_cast<std::uint32_t>(lhs) & static_cast<std::uint32_t>(rhs)); }
 
-enum class SettingsContentFlags: uint32_t
+enum class SettingsContentFlags: std::uint32_t
 {
     None      = 0x00000000,
     Nodes     = 0x00000001,
@@ -99,8 +99,8 @@ enum class SettingsContentFlags: uint32_t
     All       = 0x00000007
 };
 
-inline SettingsContentFlags operator |(SettingsContentFlags lhs, SettingsContentFlags rhs) { return static_cast<SettingsContentFlags>(static_cast<uint32_t>(lhs) | static_cast<uint32_t>(rhs)); }
-inline SettingsContentFlags operator &(SettingsContentFlags lhs, SettingsContentFlags rhs) { return static_cast<SettingsContentFlags>(static_cast<uint32_t>(lhs) & static_cast<uint32_t>(rhs)); }
+inline SettingsContentFlags operator |(SettingsContentFlags lhs, SettingsContentFlags rhs) { return static_cast<SettingsContentFlags>(static_cast<std::uint32_t>(lhs) | static_cast<std::uint32_t>(rhs)); }
+inline SettingsContentFlags operator &(SettingsContentFlags lhs, SettingsContentFlags rhs) { return static_cast<SettingsContentFlags>(static_cast<std::uint32_t>(lhs) & static_cast<std::uint32_t>(rhs)); }
 
 struct Config
 {
@@ -538,18 +538,18 @@ private:
 
 template <typename Tag>
 struct SafePointerType
-    : SafeType<uintptr_t, Tag>
+    : SafeType<std::uintptr_t, Tag>
 {
     static const Tag Invalid;
 
-    using SafeType<uintptr_t, Tag>::SafeType;
+    using SafeType<std::uintptr_t, Tag>::SafeType;
 
     SafePointerType()
         : SafePointerType(Invalid)
     {
     }
 
-    template <typename T = void> explicit SafePointerType(T* ptr): SafePointerType(reinterpret_cast<uintptr_t>(ptr)) {}
+    template <typename T = void> explicit SafePointerType(T* ptr): SafePointerType(reinterpret_cast<std::uintptr_t>(ptr)) {}
     template <typename T = void> T* AsPointer() const { return reinterpret_cast<T*>(this->Get()); }
 
     explicit operator bool() const { return *this != Invalid; }
