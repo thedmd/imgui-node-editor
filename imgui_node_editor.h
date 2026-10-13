@@ -627,7 +627,7 @@ struct Edit
 
 
 //------------------------------------------------------------------------------
-} // namespace Editor
+} // namespace NodeEditor
 } // namespace ax
 
 
