@@ -35,22 +35,12 @@
         static bool const value = sizeof(test<T>(0)) == sizeof(yes);               \
     };
 
-// LOCAL NAMESPACE TO DEFINE FLOOR FUNCTION, deprecated in imgui
-namespace {
-    void FloorRect(ImRect & rect)
-    {
-        rect.Min.x = IM_TRUNC(rect.Min.x);
-        rect.Min.y = IM_TRUNC(rect.Min.y);
-        rect.Max.x = IM_TRUNC(rect.Max.x);
-        rect.Max.y = IM_TRUNC(rect.Max.y);
-    }
-}
-namespace ImGui {
-    ImGuiKey GetKeyIndex(ImGuiKey key)
-    {
-        IM_ASSERT(IsNamedKey(key));
-        return key; // already the correct 'index' in modern ImGui
-    }
+static inline void FloorRect(ImRect& rect)
+{
+    rect.Min.x = static_cast<float>(static_cast<int>(rect.Min.x));
+    rect.Min.y = static_cast<float>(static_cast<int>(rect.Min.y));
+    rect.Max.x = static_cast<float>(static_cast<int>(rect.Max.x));
+    rect.Max.y = static_cast<float>(static_cast<int>(rect.Max.y));
 }
 
 
@@ -60,6 +50,8 @@ namespace NodeEditor {
 namespace Detail {
 
 # if !defined(IMGUI_VERSION_NUM) || (IMGUI_VERSION_NUM < 18822)
+using ImGui::GetKeyIndex;
+
 # define DECLARE_KEY_TESTER(Key)                                                                    \
     DECLARE_HAS_NESTED(Key, Key)                                                                    \
     struct KeyTester_ ## Key                                                                        \
@@ -90,6 +82,11 @@ static inline int GetKeyIndexForD()
     return KeyTester_ImGuiKey_D::Get<ImGuiKey_>(nullptr);
 }
 # else
+static inline ImGuiKey GetKeyIndex(ImGuiKey key)
+{
+    return key;
+}
+
 static inline ImGuiKey GetKeyIndexForF()
 {
     return ImGuiKey_F;
@@ -4441,15 +4438,15 @@ ed::EditorAction::AcceptResult ed::ShortcutAction::Accept(const Control& control
     Action candidateAction = None;
 
     auto& io = ImGui::GetIO();
-    if (io.KeyCtrl && !io.KeyShift && !io.KeyAlt && ImGui::IsKeyPressed(ImGui::GetKeyIndex(ImGuiKey_X)))
+    if (io.KeyCtrl && !io.KeyShift && !io.KeyAlt && ImGui::IsKeyPressed(GetKeyIndex(ImGuiKey_X)))
         candidateAction = Cut;
-    if (io.KeyCtrl && !io.KeyShift && !io.KeyAlt && ImGui::IsKeyPressed(ImGui::GetKeyIndex(ImGuiKey_C)))
+    if (io.KeyCtrl && !io.KeyShift && !io.KeyAlt && ImGui::IsKeyPressed(GetKeyIndex(ImGuiKey_C)))
         candidateAction = Copy;
-    if (io.KeyCtrl && !io.KeyShift && !io.KeyAlt && ImGui::IsKeyPressed(ImGui::GetKeyIndex(ImGuiKey_V)))
+    if (io.KeyCtrl && !io.KeyShift && !io.KeyAlt && ImGui::IsKeyPressed(GetKeyIndex(ImGuiKey_V)))
         candidateAction = Paste;
     if (io.KeyCtrl && !io.KeyShift && !io.KeyAlt && ImGui::IsKeyPressed(GetKeyIndexForD()))
         candidateAction = Duplicate;
-    if (!io.KeyCtrl && !io.KeyShift && !io.KeyAlt && ImGui::IsKeyPressed(ImGui::GetKeyIndex(ImGuiKey_Space)))
+    if (!io.KeyCtrl && !io.KeyShift && !io.KeyAlt && ImGui::IsKeyPressed(GetKeyIndex(ImGuiKey_Space)))
         candidateAction = CreateNode;
 
     if (candidateAction != None)
@@ -5003,7 +5000,7 @@ ed::EditorAction::AcceptResult ed::DeleteItemsAction::Accept(const Control& cont
         return False;
 
     auto& io = ImGui::GetIO();
-    if (Editor->CanAcceptUserInput() && ImGui::IsKeyPressed(ImGui::GetKeyIndex(ImGuiKey_Delete)) && Editor->AreShortcutsEnabled())
+    if (Editor->CanAcceptUserInput() && ImGui::IsKeyPressed(GetKeyIndex(ImGuiKey_Delete)) && Editor->AreShortcutsEnabled())
     {
         auto& selection = Editor->GetSelectedObjects();
         if (!selection.empty())

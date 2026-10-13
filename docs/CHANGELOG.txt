@@ -18,6 +18,10 @@ v0.9.4 (WIP):
 
     BUGFIX: Editor: Don't duplicate float * ImVec2 operator defined since ImGui r19268 (#335), thanks @sonoro1234
 
+    BUGFIX: Editor: Build with Dear ImGui before 1.91.5 again (#330), thanks @LAK132
+        ImGui::GetKeyIndex() was defined in ImGui's namespace, as ImGui itself does up to 1.91.4,
+        and IM_TRUNC was used, which ImGui defines since 1.90.
+
 v0.9.3 (2023-10-14):
 
     CHANGE: Canvas: Use ImDrawCallback_ImCanvas macro as draw callback sentinel (#256), thanks @nspitko
