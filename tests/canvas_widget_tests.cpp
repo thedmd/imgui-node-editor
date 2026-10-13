@@ -267,3 +267,34 @@ TEST_CASE(MouseDelta, "canvas_widget.mouse_delta_is_in_local_space", "CNV-8", te
     test::Check(inside.x == 10.0f && inside.y == 5.0f, "inside the canvas the mouse moved by (10, 5): (%g, %g)", inside.x, inside.y);
     test::Check(after.x == 20.0f && after.y == 10.0f, "after it, by (20, 10) again: (%g, %g)", after.x, after.y);
 }
+
+TEST_CASE(ImePosition, "canvas_widget.ime_position_is_in_screen_space", "CNV-8", test::TestFlags_None)
+{
+    // A focused InputText() at local (20, 30) in a canvas at (100, 80) and scale 2.
+    test::Host host;
+    ImGuiEx::Canvas canvas;
+    char text[32] = "";
+    ImRect item;
+    for (int frame = 0; frame < 3; ++frame)
+    {
+        host.NewFrame();
+        BeginHostWindow();
+        ImGui::SetCursorScreenPos(ImVec2(100.0f, 80.0f));
+        canvas.SetView(ImVec2(0.0f, 0.0f), 2.0f);
+        canvas.Begin("canvas", ImVec2(300.0f, 300.0f));
+        ImGui::SetCursorScreenPos(ImVec2(20.0f, 30.0f));
+        if (frame == 0)
+            ImGui::SetKeyboardFocusHere();
+        ImGui::InputText("##text", text, sizeof(text));
+        item = ImRect(canvas.FromLocal(ImGui::GetItemRectMin()), canvas.FromLocal(ImGui::GetItemRectMax()));
+        canvas.End();
+        ImGui::End();
+        host.Render();
+    }
+
+    const auto& ime = GImGui->PlatformImeData;
+    test::Check(ime.WantVisible, "the input wants the IME");
+    test::Check(ime.InputPos.x >= item.Min.x - 2.0f && ime.InputPos.y >= item.Min.y - 2.0f && ime.InputPos.x <= item.Max.x && ime.InputPos.y <= item.Max.y,
+        "the IME is placed at the input on screen, (%g, %g) - (%g, %g): at (%g, %g)", item.Min.x, item.Min.y, item.Max.x, item.Max.y, ime.InputPos.x, ime.InputPos.y);
+    test::Check(ime.InputLineHeight == ImGui::GetFontSize() * 2.0f, "the IME line is as tall as on screen: %g", ime.InputLineHeight);
+}
