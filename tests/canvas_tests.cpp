@@ -172,3 +172,17 @@ TEST_CASE(HiddenDockTab, "canvas.hidden_dock_tab_keeps_group_size", "CORE-2", te
     test::Skip("needs a docking build of Dear ImGui");
 # endif
 }
+
+TEST_CASE(FirstFrameLayout, "canvas.first_frame_layout_matches_later_frames", "CNV-9", test::TestFlags_None)
+{
+    // An editor 300 by 200, with content after it in the host window.
+    test::Storage storage;
+    test::Session session(&storage);
+    session.EditorSize = ImVec2(300.0f, 200.0f);
+    ImVec2 after[3];
+    session.AfterEditor = [&] { after[session.FrameIndex] = ImGui::GetCursorScreenPos(); };
+    session.Run(3);
+
+    test::Check(after[0].x == after[2].x && after[0].y == after[2].y,
+        "content after the editor starts at (%g, %g) on the first frame, as on later ones: (%g, %g)", after[0].x, after[0].y, after[2].x, after[2].y);
+}
