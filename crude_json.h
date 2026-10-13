@@ -18,6 +18,7 @@
 # include <vector>
 # include <map>
 # include <cstddef>
+# include <new>
 # include <algorithm>
 # include <sstream>
 
@@ -183,16 +184,24 @@ private:
 # undef CRUDE_MAX2
     struct storage_t { alignas(max_align) unsigned char data[max_size]; };
 
-    static       object*   object_ptr(      storage_t& storage) { return reinterpret_cast<       object*>(storage.data); }
-    static const object*   object_ptr(const storage_t& storage) { return reinterpret_cast<const  object*>(storage.data); }
-    static       array*     array_ptr(      storage_t& storage) { return reinterpret_cast<        array*>(storage.data); }
-    static const array*     array_ptr(const storage_t& storage) { return reinterpret_cast<const   array*>(storage.data); }
-    static       string*   string_ptr(      storage_t& storage) { return reinterpret_cast<       string*>(storage.data); }
-    static const string*   string_ptr(const storage_t& storage) { return reinterpret_cast<const  string*>(storage.data); }
-    static       boolean* boolean_ptr(      storage_t& storage) { return reinterpret_cast<      boolean*>(storage.data); }
-    static const boolean* boolean_ptr(const storage_t& storage) { return reinterpret_cast<const boolean*>(storage.data); }
-    static       number*   number_ptr(      storage_t& storage) { return reinterpret_cast<       number*>(storage.data); }
-    static const number*   number_ptr(const storage_t& storage) { return reinterpret_cast<const  number*>(storage.data); }
+    // A value lives in the storage, made there by placement new, and from C++17 a
+    // pointer to it made from the storage's address needs std::launder().
+# if defined(__cpp_lib_launder)
+    template <typename T> static T* launder(T* pointer) { return std::launder(pointer); }
+# else
+    template <typename T> static T* launder(T* pointer) { return pointer; }
+# endif
+
+    static       object*   object_ptr(      storage_t& storage) { return launder(reinterpret_cast<       object*>(storage.data)); }
+    static const object*   object_ptr(const storage_t& storage) { return launder(reinterpret_cast<const  object*>(storage.data)); }
+    static       array*     array_ptr(      storage_t& storage) { return launder(reinterpret_cast<        array*>(storage.data)); }
+    static const array*     array_ptr(const storage_t& storage) { return launder(reinterpret_cast<const   array*>(storage.data)); }
+    static       string*   string_ptr(      storage_t& storage) { return launder(reinterpret_cast<       string*>(storage.data)); }
+    static const string*   string_ptr(const storage_t& storage) { return launder(reinterpret_cast<const  string*>(storage.data)); }
+    static       boolean* boolean_ptr(      storage_t& storage) { return launder(reinterpret_cast<      boolean*>(storage.data)); }
+    static const boolean* boolean_ptr(const storage_t& storage) { return launder(reinterpret_cast<const boolean*>(storage.data)); }
+    static       number*   number_ptr(      storage_t& storage) { return launder(reinterpret_cast<       number*>(storage.data)); }
+    static const number*   number_ptr(const storage_t& storage) { return launder(reinterpret_cast<const  number*>(storage.data)); }
 
     template <typename T> static const T& empty()   { static const T s_Empty{}; return s_Empty; }
     template <typename T> static       T& scratch() { static thread_local T s_Scratch; s_Scratch = T(); return s_Scratch; }
