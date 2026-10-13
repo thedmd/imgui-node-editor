@@ -743,9 +743,9 @@ struct Example:
         selectedLinks.resize(linkCount);
 
         int saveIconWidth     = GetTextureWidth(m_SaveIcon);
-        int saveIconHeight    = GetTextureWidth(m_SaveIcon);
+        int saveIconHeight    = GetTextureHeight(m_SaveIcon);
         int restoreIconWidth  = GetTextureWidth(m_RestoreIcon);
-        int restoreIconHeight = GetTextureWidth(m_RestoreIcon);
+        int restoreIconHeight = GetTextureHeight(m_RestoreIcon);
 
         ImGui::GetWindowDrawList()->AddRectFilled(
             ImGui::GetCursorScreenPos(),
