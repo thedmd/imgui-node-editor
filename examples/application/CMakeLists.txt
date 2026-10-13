@@ -2,6 +2,7 @@ project(application)
 
 set(_Application_Sources
     include/application.h
+    include/splitter.h
     source/application.cpp
     source/entry_point.cpp
     source/config.h.in
@@ -12,6 +13,7 @@ set(_Application_Sources
     source/renderer.h
     source/renderer_dx11.cpp
     source/renderer_ogl3.cpp
+    source/splitter.cpp
 )
 
 add_library(application STATIC)
