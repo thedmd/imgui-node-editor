@@ -619,6 +619,10 @@ v0.10.0 (WIP):
     CHANGE: Canvas: Leave the last item of the content as the content left it
         Before Dear ImGui 1.89.7, End() let later items overlap it.
 
+    BUGFIX: Canvas: Keep tables and tab bars in the canvas out of the window's auto-fit size
+        They extend the window's ideal size in canvas space, so an auto-resizing window around the canvas
+        grew to fit a table placed far away in it.
+
 v0.9.3 (2023-10-14):
 
     CHANGE: Canvas: Use ImDrawCallback_ImCanvas macro as draw callback sentinel (#256), thanks @nspitko

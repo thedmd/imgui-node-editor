@@ -411,3 +411,34 @@ TEST_CASE(LocalLayoutFrame, "canvas_widget.layout_starts_at_the_local_origin", "
         "the content region ends where the canvas does: (%g, %g) available at (%g, %g)", avail.x, avail.y, cursor.x, cursor.y);
     test::Check(position.x == 300.0f && position.y == 100.0f, "the window is back at (300, 100) after the canvas: (%g, %g)", position.x, position.y);
 }
+
+TEST_CASE(IdealSizeKeepsLocalContentOut, "canvas_widget.local_content_leaves_the_window_ideal_size_alone", "CNV-11", test::TestFlags_None)
+{
+    // An auto-resizing window around a 200 by 100 canvas, with a table at local (2000, 1500),
+    // as a node may hold. Tables, unlike most items, extend the window's ideal size.
+    test::Host host;
+    ImVec2 size;
+    for (int frame = 0; frame < 4; ++frame)
+    {
+        host.NewFrame();
+        ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+        ImGui::Begin("Auto", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_AlwaysAutoResize);
+        ImGui::PopStyleVar();
+        ImGuiEx::Canvas canvas;
+        canvas.Begin("canvas", ImVec2(200.0f, 100.0f));
+        ImGui::SetCursorScreenPos(ImVec2(2000.0f, 1500.0f));
+        if (ImGui::BeginTable("table", 1, ImGuiTableFlags_SizingFixedFit))
+        {
+            ImGui::TableNextColumn();
+            ImGui::TextUnformatted("Cell");
+            ImGui::EndTable();
+        }
+        canvas.End();
+        size = ImGui::GetWindowSize();
+        ImGui::End();
+        host.Render();
+    }
+
+    test::Check(size.x <= 200.0f + 2.0f && size.y <= 100.0f + 2.0f, "the window fits the canvas: %g x %g", size.x, size.y);
+}
