@@ -163,3 +163,30 @@ TEST_CASE(SuspendInChildWindow, "canvas_widget.suspend_in_another_window_asserts
     test::Check(suspendedPosition.x == position.x && suspendedPosition.y == position.y,
         "the child window stays in place: at (%g, %g), was (%g, %g)", suspendedPosition.x, suspendedPosition.y, position.x, position.y);
 }
+
+TEST_CASE(SuspendOutsideBeginEnd, "canvas_widget.suspend_outside_begin_end_asserts", "CNV-5", test::TestFlags_None)
+{
+    // Suspend() and Resume() on the frame after the canvas, before its Begin().
+    test::ExpectAsserts(2);
+    test::Host host;
+    ImGuiEx::Canvas canvas;
+    host.NewFrame();
+    BeginHostWindow();
+    canvas.SetView(ImVec2(0.0f, 0.0f), 2.0f);
+    canvas.Begin("canvas", ImVec2(300.0f, 300.0f));
+    canvas.End();
+    ImGui::End();
+    host.Render();
+
+    ImGui::GetIO().AddMousePosEvent(150.0f, 150.0f);
+    host.NewFrame();
+    BeginHostWindow();
+    const auto mouse = ImGui::GetIO().MousePos;
+    canvas.Suspend();
+    canvas.Resume();
+    const auto mouseAfter = ImGui::GetIO().MousePos;
+    ImGui::End();
+    host.Render();
+
+    test::Check(mouseAfter.x == mouse.x && mouseAfter.y == mouse.y, "the mouse stays where it is: (%g, %g), was (%g, %g)", mouseAfter.x, mouseAfter.y, mouse.x, mouse.y);
+}
