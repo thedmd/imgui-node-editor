@@ -35,7 +35,7 @@ bool Application::Create(int width /*= -1*/, int height /*= -1*/)
     m_Context = ImGui::CreateContext();
     ImGui::SetCurrentContext(m_Context);
 
-    if (!m_Platform->OpenMainWindow("Application", width, height))
+    if (!m_Platform->OpenMainWindow(m_Name.c_str(), width, height))
         return false;
 
     if (!m_Renderer->Create(*m_Platform))
