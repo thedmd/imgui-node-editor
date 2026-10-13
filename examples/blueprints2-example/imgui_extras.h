@@ -56,6 +56,9 @@ private:
     ImVec2 m_PrevLineSize;
     float  m_CurrLineTextBaseOffset;
     float  m_PrevLineTextBaseOffset;
+    bool   m_IsSameLine;
+    bool   m_IsSetPos;
+    ImGuiLastItemData m_LastItemData;
 };
 
 

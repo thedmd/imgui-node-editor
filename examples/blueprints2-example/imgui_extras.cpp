@@ -93,6 +93,9 @@ ImEx::ScopedSuspendLayout::ScopedSuspendLayout()
     m_PrevLineSize = m_Window->DC.PrevLineSize;
     m_CurrLineTextBaseOffset = m_Window->DC.CurrLineTextBaseOffset;
     m_PrevLineTextBaseOffset = m_Window->DC.PrevLineTextBaseOffset;
+    m_IsSameLine = m_Window->DC.IsSameLine;
+    m_IsSetPos = m_Window->DC.IsSetPos;
+    m_LastItemData = GImGui->LastItemData;
 }
 
 ImEx::ScopedSuspendLayout::~ScopedSuspendLayout()
@@ -112,6 +115,9 @@ void ImEx::ScopedSuspendLayout::Release()
     m_Window->DC.PrevLineSize = m_PrevLineSize;
     m_Window->DC.CurrLineTextBaseOffset = m_CurrLineTextBaseOffset;
     m_Window->DC.PrevLineTextBaseOffset = m_PrevLineTextBaseOffset;
+    m_Window->DC.IsSameLine = m_IsSameLine;
+    m_Window->DC.IsSetPos = m_IsSetPos;
+    GImGui->LastItemData = m_LastItemData;
 
     m_Window = nullptr;
 }
