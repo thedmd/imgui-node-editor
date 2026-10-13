@@ -171,6 +171,9 @@ using ax::NodeEditor::NodeId;
 using ax::NodeEditor::PinId;
 using ax::NodeEditor::LinkId;
 
+using ax::NodeEditor::NodeState;
+using ax::NodeEditor::ViewState;
+
 struct ObjectId final: Details::SafePointerType<ObjectId>
 {
     using Super = Details::SafePointerType<ObjectId>;
@@ -906,6 +909,7 @@ struct NavigateAction final: EditorAction
     ImRect GetViewRect() const;
 
     void ClampZoom();
+    ImRect ClampViewRect(const ImRect& rect) const; // the rectangle around the same center at a zoom within the zoom levels
 
 private:
     ImGuiEx::Canvas&   m_Canvas;
@@ -960,6 +964,9 @@ struct SizeAction final: EditorAction
 
     const ImRect& GetStartGroupBounds() const { return m_StartGroupBounds; }
 
+    void Flush();  // completes a resize that has ended
+    void Cancel(); // puts the node back as the resize found it
+
 private:
     NodeRegion GetRegion(Node* node);
     ImGuiMouseCursor ChooseCursor(NodeRegion region);
@@ -997,6 +1004,10 @@ struct DragAction final: EditorAction
     virtual void ForgetDeletedObjects() override final;
 
     virtual DragAction* AsDrag() override final { return this; }
+
+    bool Involves(const Node* node) const;
+    void Flush();  // completes a drag that has ended
+    void Cancel(); // puts the dragged nodes back where the drag found them
 };
 
 struct SelectAction final: EditorAction
@@ -1424,6 +1435,13 @@ struct EditorContext
     bool ForgetNode(NodeId nodeId);
     void ClearState();
 
+    bool      GetNodeState(NodeId nodeId, NodeState& state);
+    int       GetNodeStates(NodeState* states, int capacity);
+    bool      SetNodeState(const NodeState& state);
+    ViewState GetViewState() const;
+    bool      SetViewState(const ViewState& state, float duration);
+    bool      SetSelection(const NodeId* nodes, int nodeCount, const LinkId* links, int linkCount);
+
     void ClearSelection();
     void SelectObject(Object* object);
     void DeselectObject(Object* object);
@@ -1579,6 +1597,13 @@ private:
     void RestoreView();
     void UpdateSettings();
     void SaveSettings();
+
+    // Each returns whether the node changed, and marks it dirty if it did.
+    bool PlaceNode(Node* node, const ImVec2& position);
+    bool ResizeGroup(Node* node, const ImVec2& size);
+    bool ChangeZPosition(Node* node, float z);
+
+    void SettleGesturesOn(Node* node);
 
     void ForgetDeletedObjects();
     void FreeDeletedObjects();

@@ -1862,15 +1862,7 @@ void ed::EditorContext::SetNodePosition(NodeId nodeId, const ImVec2& position)
         node->m_IsLive = false;
     }
 
-    const auto size = node->m_Bounds.GetSize();
-    auto bounds = ImRect(ClampToCanvas(position, ImMax(size, node->m_GroupBounds.GetSize())), ImVec2());
-    bounds.Max = bounds.Min + size;
-    ImRect_Floor(bounds);
-    if (bounds.Min != node->m_Bounds.Min || bounds.Max != node->m_Bounds.Max)
-    {
-        node->m_Bounds = bounds;
-        MakeDirty(NodeEditor::SaveReasonFlags::Position, node);
-    }
+    PlaceNode(node, position);
 }
 
 void ed::EditorContext::SetGroupSize(NodeId nodeId, const ImVec2& size)
@@ -1885,15 +1877,45 @@ void ed::EditorContext::SetGroupSize(NodeId nodeId, const ImVec2& size)
         node->m_IsLive = false;
     }
 
+    ResizeGroup(node, size);
+}
+
+bool ed::EditorContext::PlaceNode(Node* node, const ImVec2& position)
+{
+    const auto size = node->m_Bounds.GetSize();
+    auto bounds = ImRect(ClampToCanvas(position, ImMax(size, node->m_GroupBounds.GetSize())), ImVec2());
+    bounds.Max = bounds.Min + size;
+    ImRect_Floor(bounds);
+    if (bounds.Min == node->m_Bounds.Min && bounds.Max == node->m_Bounds.Max)
+        return false;
+
+    node->m_Bounds = bounds;
+    MakeDirty(NodeEditor::SaveReasonFlags::Position, node);
+    return true;
+}
+
+bool ed::EditorContext::ResizeGroup(Node* node, const ImVec2& size)
+{
     node->m_Type = NodeType::Group;
 
     auto groupBounds = ImRect(node->m_Bounds.Min, node->m_Bounds.Min + size);
     ImRect_Floor(groupBounds);
-    if (groupBounds.GetSize() != node->m_GroupBounds.GetSize())
-    {
-        node->m_GroupBounds = groupBounds;
-        MakeDirty(NodeEditor::SaveReasonFlags::Size, node);
-    }
+    if (groupBounds.GetSize() == node->m_GroupBounds.GetSize())
+        return false;
+
+    node->m_GroupBounds = groupBounds;
+    MakeDirty(NodeEditor::SaveReasonFlags::Size, node);
+    return true;
+}
+
+bool ed::EditorContext::ChangeZPosition(Node* node, float z)
+{
+    if (node->m_ZPosition == z)
+        return false;
+
+    node->m_ZPosition = z;
+    MakeDirty(NodeEditor::SaveReasonFlags::Position, node);
+    return true;
 }
 
 ImVec2 ed::EditorContext::GetNodePosition(NodeId nodeId)
@@ -1926,11 +1948,7 @@ void ed::EditorContext::SetNodeZPosition(NodeId nodeId, float z)
         node->m_IsLive = false;
     }
 
-    if (node->m_ZPosition != z)
-    {
-        node->m_ZPosition = z;
-        MakeDirty(NodeEditor::SaveReasonFlags::Position, node);
-    }
+    ChangeZPosition(node, z);
 }
 
 float ed::EditorContext::GetNodeZPosition(NodeId nodeId)
@@ -1940,6 +1958,221 @@ float ed::EditorContext::GetNodeZPosition(NodeId nodeId)
         return 0.0f;
 
     return node->m_ZPosition;
+}
+
+static ed::NodeState MakeNodeState(const ed::Node* node)
+{
+    ed::NodeState state;
+    state.Id        = node->m_ID;
+    state.Position  = node->m_Bounds.Min;
+    state.GroupSize = IsGroup(node) ? node->m_GroupBounds.GetSize() : ImVec2(0, 0);
+    state.ZPosition = node->m_ZPosition;
+    return state;
+}
+
+static ed::NodeState MakeNodeState(const ed::NodeSettings& settings)
+{
+    ed::NodeState state;
+    state.Id        = settings.m_ID;
+    state.Position  = settings.m_Location;
+    state.GroupSize = settings.m_GroupSize;
+    state.ZPosition = settings.m_ZPosition;
+    return state;
+}
+
+static bool IsFinite(const ImVec2& v)
+{
+    return std::isfinite(v.x) && std::isfinite(v.y);
+}
+
+bool ed::EditorContext::GetNodeState(NodeId nodeId, NodeState& state)
+{
+    if (auto node = FindNode(nodeId))
+    {
+        if (node->m_DeleteOnNewFrame)
+            return false;
+
+        state = MakeNodeState(node);
+        return true;
+    }
+
+    // Every node object has a settings entry, so an entry without one is a node only loaded.
+    if (auto settings = m_Settings.FindNode(nodeId))
+    {
+        state = MakeNodeState(*settings);
+        return true;
+    }
+
+    return false;
+}
+
+int ed::EditorContext::GetNodeStates(NodeState* states, int capacity)
+{
+    int count = 0;
+    auto add = [&](const NodeState& state)
+    {
+        if (states && count >= capacity)
+            return false;
+        if (states)
+            states[count] = state;
+        ++count;
+        return true;
+    };
+
+    auto node     = m_NodeIndex.begin();
+    auto settings = m_Settings.m_Nodes.begin();
+    while (node != m_NodeIndex.end() || settings != m_Settings.m_Nodes.end())
+    {
+        if (node != m_NodeIndex.end() && (settings == m_Settings.m_Nodes.end() || node->m_ID.Get() <= settings->m_ID.Get()))
+        {
+            if (settings != m_Settings.m_Nodes.end() && settings->m_ID == node->m_ID)
+                ++settings;
+            if (!node->m_Object->m_DeleteOnNewFrame && !add(MakeNodeState(node->m_Object)))
+                break;
+            ++node;
+        }
+        else
+        {
+            if (!add(MakeNodeState(*settings)))
+                break;
+            ++settings;
+        }
+    }
+
+    return count;
+}
+
+bool ed::EditorContext::SetNodeState(const NodeState& state)
+{
+    if (!IsFinite(state.Position) || !IsFinite(state.GroupSize) || state.GroupSize.x < 0.0f || state.GroupSize.y < 0.0f || !std::isfinite(state.ZPosition))
+        return false;
+
+    auto node = FindNode(state.Id);
+    if (!node || node->m_DeleteOnNewFrame)
+        return false;
+
+    SettleGesturesOn(node);
+
+    bool changed = false;
+    if (state.GroupSize.x > 0.0f || state.GroupSize.y > 0.0f)
+        changed |= ResizeGroup(node, state.GroupSize);
+    changed |= PlaceNode(node, state.Position);
+    changed |= ChangeZPosition(node, state.ZPosition);
+    return changed;
+}
+
+// A drag or resize that has ended completes first. One in progress puts its nodes
+// back and ends, so the node keeps what the application set.
+void ed::EditorContext::SettleGesturesOn(Node* node)
+{
+    if (m_DragAction.Involves(node))
+    {
+        if (m_DragAction.m_IsActive)
+        {
+            m_DragAction.Cancel();
+            ImGui::ClearActiveID();
+            if (m_CurrentAction == &m_DragAction)
+                m_CurrentAction = nullptr;
+        }
+        else
+            m_DragAction.Flush();
+    }
+
+    if (m_SizeAction.m_SizedNode == node)
+    {
+        if (m_SizeAction.m_IsActive)
+        {
+            m_SizeAction.Cancel();
+            ImGui::ClearActiveID();
+            if (m_CurrentAction == &m_SizeAction)
+                m_CurrentAction = nullptr;
+        }
+        else
+            m_SizeAction.Flush();
+    }
+}
+
+ed::ViewState ed::EditorContext::GetViewState() const
+{
+    const auto rect = m_IsInitialized ? m_NavigateAction.GetViewRect() : m_Settings.m_VisibleRect;
+
+    ViewState state;
+    state.VisibleMin = rect.Min;
+    state.VisibleMax = rect.Max;
+    return state;
+}
+
+bool ed::EditorContext::SetViewState(const ViewState& state, float duration)
+{
+    auto rect = ImRect(state.VisibleMin, state.VisibleMax);
+    if (!IsFinite(rect.Min) || !IsFinite(rect.Max) || rect.Min.x >= rect.Max.x || rect.Min.y >= rect.Max.y)
+        return false;
+
+    // Before the first visible frame, the view is restored from the settings.
+    if (!m_IsInitialized)
+    {
+        if (m_Settings.m_VisibleRect.Min == rect.Min && m_Settings.m_VisibleRect.Max == rect.Max)
+            return false;
+
+        m_Settings.m_VisibleRect = rect;
+        MakeDirty(SaveReasonFlags::Navigation);
+        return true;
+    }
+
+    rect = m_NavigateAction.ClampViewRect(rect);
+    const auto target  = m_Canvas.CalcViewRect(m_Canvas.CalcCenterView(rect));
+    const auto current = m_NavigateAction.GetViewRect();
+    if (target.Min == current.Min && target.Max == current.Max)
+        return false;
+
+    m_NavigateAction.NavigateTo(rect, NavigateAction::ZoomMode::Exact, ImMax(duration, 0.0f));
+    return true;
+}
+
+bool ed::EditorContext::SetSelection(const NodeId* nodes, int nodeCount, const LinkId* links, int linkCount)
+{
+    vector<ObjectId> ids;
+    vector<Object*>  objects;
+    auto add = [&](ObjectId id, Object* object)
+    {
+        if (std::find(ids.begin(), ids.end(), id) != ids.end())
+            return;
+        ids.push_back(id);
+        if (object && !object->m_DeleteOnNewFrame)
+            objects.push_back(object);
+    };
+
+    for (int i = 0; i < nodeCount; ++i)
+        if (nodes[i])
+            add(nodes[i], FindNode(nodes[i]));
+
+    // Nodes and links are never selected together.
+    if (ids.empty())
+        for (int i = 0; i < linkCount; ++i)
+            if (links[i])
+                add(links[i], FindLink(links[i]));
+
+    // The first End() selects what the settings hold, once the frame has created the objects.
+    bool changed = false;
+    if (m_IsFirstFrame && m_Settings.m_Selection != ids)
+    {
+        m_Settings.m_Selection = ids;
+        changed = true;
+    }
+
+    const bool isSame = objects.size() == m_SelectedObjects.size() && std::all_of(objects.begin(), objects.end(), [](Object* object) { return object->m_IsSelected; });
+    if (!isSame)
+    {
+        ClearSelection();
+        for (auto object : objects)
+            SelectObject(object);
+        changed = true;
+    }
+
+    if (changed)
+        MakeDirty(SaveReasonFlags::Selection);
+
+    return changed;
 }
 
 void ed::EditorContext::MarkNodeToRestoreState(Node* node)
@@ -4387,6 +4620,18 @@ void ed::NavigateAction::ClampZoom()
     m_Zoom   = zoom;
 }
 
+ImRect ed::NavigateAction::ClampViewRect(const ImRect& rect) const
+{
+    const auto scale = m_Canvas.CalcCenterView(rect).Scale();
+    const auto zoom  = ImClamp(scale, m_ZoomLevels.front(), m_ZoomLevels.back());
+    if (zoom == scale)
+        return rect;
+
+    const auto center   = rect.GetCenter();
+    const auto halfSize = m_Canvas.Rect().GetSize() * (0.5f / zoom);
+    return ImRect(center - halfSize, center + halfSize);
+}
+
 float ed::NavigateAction::GetNextZoom(float steps)
 {
     if (Editor->GetConfig().EnableSmoothZoom)
@@ -4488,20 +4733,35 @@ ed::EditorAction::AcceptResult ed::SizeAction::Accept(const Control& control)
     return m_IsActive ? True : False;
 }
 
+void ed::SizeAction::Flush()
+{
+    if (!m_Clean)
+        return;
+
+    m_Clean = false;
+
+    if (m_SizedNode->m_Bounds.Min != m_StartBounds.Min || m_SizedNode->m_GroupBounds.Min != m_StartGroupBounds.Min)
+        Editor->MakeDirty(SaveReasonFlags::Position | SaveReasonFlags::User, m_SizedNode);
+
+    if (m_SizedNode->m_Bounds.GetSize() != m_StartBounds.GetSize() || m_SizedNode->m_GroupBounds.GetSize() != m_StartGroupBounds.GetSize())
+        Editor->MakeDirty(SaveReasonFlags::Size | SaveReasonFlags::User, m_SizedNode);
+
+    m_SizedNode = nullptr;
+}
+
+void ed::SizeAction::Cancel()
+{
+    m_SizedNode->m_Bounds      = m_StartBounds;
+    m_SizedNode->m_GroupBounds = m_StartGroupBounds;
+
+    m_SizedNode = nullptr;
+    m_IsActive  = false;
+    m_Clean     = false;
+}
+
 bool ed::SizeAction::Process(const Control& control)
 {
-    if (m_Clean)
-    {
-        m_Clean = false;
-
-        if (m_SizedNode->m_Bounds.Min != m_StartBounds.Min || m_SizedNode->m_GroupBounds.Min != m_StartGroupBounds.Min)
-            Editor->MakeDirty(SaveReasonFlags::Position | SaveReasonFlags::User, m_SizedNode);
-
-        if (m_SizedNode->m_Bounds.GetSize() != m_StartBounds.GetSize() || m_SizedNode->m_GroupBounds.GetSize() != m_StartGroupBounds.GetSize())
-            Editor->MakeDirty(SaveReasonFlags::Size | SaveReasonFlags::User, m_SizedNode);
-
-        m_SizedNode = nullptr;
-    }
+    Flush();
 
     if (!m_IsActive)
         return false;
@@ -4692,22 +4952,44 @@ ed::EditorAction::AcceptResult ed::DragAction::Accept(const Control& control)
     return m_IsActive ? True : False;
 }
 
+bool ed::DragAction::Involves(const Node* node) const
+{
+    return std::find(m_Objects.begin(), m_Objects.end(), node) != m_Objects.end();
+}
+
+void ed::DragAction::Flush()
+{
+    if (!m_Clear)
+        return;
+
+    m_Clear = false;
+
+    for (auto object : m_Objects)
+    {
+        if (object->EndDrag())
+            Editor->MakeDirty(SaveReasonFlags::Position | SaveReasonFlags::User, object->AsNode());
+    }
+
+    m_Objects.resize(0);
+
+    m_DraggedObject = nullptr;
+}
+
+void ed::DragAction::Cancel()
+{
+    for (auto object : m_Objects)
+        object->UpdateDrag(ImVec2(0, 0));
+
+    m_Objects.resize(0);
+
+    m_DraggedObject = nullptr;
+    m_IsActive      = false;
+    m_Clear         = false;
+}
+
 bool ed::DragAction::Process(const Control& control)
 {
-    if (m_Clear)
-    {
-        m_Clear = false;
-
-        for (auto object : m_Objects)
-        {
-            if (object->EndDrag())
-                Editor->MakeDirty(SaveReasonFlags::Position | SaveReasonFlags::User, object->AsNode());
-        }
-
-        m_Objects.resize(0);
-
-        m_DraggedObject = nullptr;
-    }
+    Flush();
 
     if (!m_IsActive)
         return false;

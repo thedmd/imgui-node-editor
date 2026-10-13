@@ -148,7 +148,7 @@ if (ed::BeginDelete())
 
 ## Persistence
 
-The editor keeps node positions and group sizes, node z positions, the selection, and the view. `Config::SettingsContent` picks which of them (`Nodes`, `Selection`, `View`); leave `Nodes` out when the application keeps node positions in its own documents. The editor writes no files. Settings go to `imgui.ini`, or to the application's own storage.
+The editor keeps node positions and group sizes, node z positions, the selection, and the view. `Config::SettingsContent` picks which of them (`Nodes`, `Selection`, `View`); leave `Nodes` out when the application keeps node positions in its own documents. The editor writes no files. Settings go to `imgui.ini`, or to the application's own storage. Node layout can also live in the application's documents, as typed state.
 
 ### In `imgui.ini`
 
@@ -188,9 +188,31 @@ if (ed::WantSaveSettings())
 - `WantSaveSettings()` turns true after a change, once `io.IniSavingRate` has passed. `GetSettingsChangeReason()` tells what changed.
 - `LoadSettingsFromMemory()` before the first `Begin()` takes precedence over `imgui.ini`. Later, it replaces the state the editor holds. It also reads the files 0.9's `Config::SettingsFile` wrote.
 
+### In the application's documents
+
+Applications that keep node layout in their own documents read and write it as typed state:
+
+```cpp
+// Keeping it
+std::vector<ed::NodeState> nodes(ed::GetNodeStates(nullptr, 0));
+nodes.resize(ed::GetNodeStates(nodes.data(), static_cast<int>(nodes.size())));
+ed::ViewState view = ed::GetViewState();
+
+// Restoring it
+ed::SetNodeStates(nodes.data(), static_cast<int>(nodes.size()));
+ed::SetViewState(view);
+ed::SetSelection(selectedNodes, selectedNodeCount, nullptr, 0);
+```
+
+- `GetNodeStates()` returns every node the editor knows, by ID: nodes submitted in the last frame, nodes no longer submitted, and nodes only loaded from settings. The selection is read with `GetSelectedNodes()` and `GetSelectedLinks()`.
+- The Set functions return whether anything changed, and mark the settings changed. They refuse values that aren't finite, keep nodes inside the canvas border and the zoom within the zoom levels, and report no edits.
+- `SetNodeState()` on a node the user is dragging or resizing ends that gesture, and puts the other nodes it moved back.
+- `SetSelection()` replaces the selection. It skips objects the editor doesn't know and objects being deleted, and selects links only when no nodes are given. Before the editor's first frame, it also takes nodes not created yet.
+- With `SettingsContent` left without `Nodes`, node layout stays out of the editor's own settings, so the two don't compete.
+
 ### Per node
 
-`Config::LoadNodeSettings` gives a node's saved state when the editor creates the node, and `Config::SaveNodeSettings` receives each change of a node with the reasons for it. `RestoreNodeState()` asks `LoadNodeSettings` again, and applies the answer when the node is next submitted. Use them when node layout lives in the application's documents.
+`Config::LoadNodeSettings` gives a node's saved state when the editor creates the node, and `Config::SaveNodeSettings` receives each change of a node with the reasons for it. `RestoreNodeState()` asks `LoadNodeSettings` again, and applies the answer when the node is next submitted.
 
 ## Coordinates
 
