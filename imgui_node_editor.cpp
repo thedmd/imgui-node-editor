@@ -1227,6 +1227,9 @@ ed::EditorContext::EditorContext(const ax::NodeEditor::Config* config)
     , m_SettingsChangeReason(SaveReasonFlags::None)
     , m_SettingsChangeTime(0.0)
     , m_FrameTime(0.0)
+    , m_NextReportedEdit(0)
+    , m_IsInEdits(false)
+    , m_ReportedView()
     , m_DrawList(nullptr)
     , m_ExternalChannel(0)
 {
@@ -1492,6 +1495,9 @@ void ed::EditorContext::End()
     for (auto controller : m_AnimationControllers)
         controller->Draw(m_DrawList);
 
+    // The actions change the selection only for the user's input.
+    const auto selectionBefore = m_SelectedObjects;
+
     // Actions are paused in a frozen frame, and none starts while the canvas is out of view.
     if (!m_IsFrozen && m_CurrentAction && !m_CurrentAction->Process(control))
         m_CurrentAction = nullptr;
@@ -1543,6 +1549,9 @@ void ed::EditorContext::End()
         if (m_CurrentAction && possibleAction)
             possibleAction->Reject();
     }
+
+    RecordSelectionEdit(selectionBefore);
+    RecordNavigationEdit();
 
     if (!m_IsFrozen && m_CurrentAction)
         ImGui::SetMouseCursor(m_CurrentAction->GetCursor());
@@ -1816,6 +1825,11 @@ void ed::EditorContext::End()
 
     if (m_Settings.m_IsDirty && !m_CurrentAction && m_IsCanvasVisible)
         SaveSettings();
+
+    IM_ASSERT(!m_IsInEdits && "Please call EndEdits() before End().");
+    m_IsInEdits = false;
+    m_ReportedEdits.swap(m_CompletedEdits);
+    m_CompletedEdits.clear();
 
     m_DrawList = nullptr;
 }
@@ -2097,6 +2111,105 @@ void ed::EditorContext::SettleGesturesOn(Node* node)
         else
             m_SizeAction.Flush();
     }
+}
+
+void ed::EditorContext::RecordSelectionEdit(const vector<Object*>& before)
+{
+    const bool isSame = before.size() == m_SelectedObjects.size() && std::all_of(before.begin(), before.end(), [](Object* object) { return object->m_IsSelected; });
+    if (isSame)
+        return;
+
+    auto collect = [](const vector<Object*>& objects, vector<NodeId>& nodes, vector<LinkId>& links)
+    {
+        for (auto object : objects)
+        {
+            if (auto node = object->AsNode())
+                nodes.push_back(node->m_ID);
+            else if (auto link = object->AsLink())
+                links.push_back(link->m_ID);
+        }
+    };
+
+    EditRecord edit;
+    edit.Type = EditType::Select;
+    collect(before, edit.SelectedNodesBefore, edit.SelectedLinksBefore);
+    collect(m_SelectedObjects, edit.SelectedNodesAfter, edit.SelectedLinksAfter);
+    RecordEdit(std::move(edit));
+}
+
+// One edit per navigation, once the view settles. A navigation that leaves the view
+// where it was ends without one, and a change the application made moves the
+// starting point of the next edit.
+void ed::EditorContext::RecordNavigationEdit()
+{
+    if (!m_IsInitialized || m_IsFrozen || !m_NavigateAction.IsSettled())
+        return;
+
+    const auto isUserNavigation = m_NavigateAction.m_IsUserNavigation;
+    m_NavigateAction.m_IsUserNavigation = false;
+
+    const auto view = m_NavigateAction.GetViewRect();
+    if (view.Min == m_ReportedView.Min && view.Max == m_ReportedView.Max)
+        return;
+
+    if (isUserNavigation && m_Config.ReportNavigationEdits && !ImRect_IsEmpty(m_ReportedView))
+    {
+        EditRecord edit;
+        edit.Type                  = EditType::Navigate;
+        edit.ViewBefore.VisibleMin = m_ReportedView.Min;
+        edit.ViewBefore.VisibleMax = m_ReportedView.Max;
+        edit.ViewAfter.VisibleMin  = view.Min;
+        edit.ViewAfter.VisibleMax  = view.Max;
+        RecordEdit(std::move(edit));
+    }
+
+    m_ReportedView = view;
+}
+
+bool ed::EditorContext::BeginEdits()
+{
+    IM_ASSERT(!m_IsInEdits && "BeginEdits() called again before EndEdits().");
+    if (m_IsInEdits || m_ReportedEdits.empty())
+        return false;
+
+    m_IsInEdits        = true;
+    m_NextReportedEdit = 0;
+    return true;
+}
+
+bool ed::EditorContext::QueryEdit(Edit& edit)
+{
+    IM_ASSERT(m_IsInEdits && "Please call QueryEdit() between BeginEdits() and EndEdits().");
+    if (!m_IsInEdits || m_NextReportedEdit >= m_ReportedEdits.size())
+        return false;
+
+    const auto& record = m_ReportedEdits[m_NextReportedEdit++];
+    edit = Edit();
+    edit.Type                      = record.Type;
+    edit.NodesBefore               = record.NodesBefore.data();
+    edit.NodesAfter                = record.NodesAfter.data();
+    edit.NodeCount                 = static_cast<int>(record.NodesAfter.size());
+    edit.SelectionBefore.Nodes     = record.SelectedNodesBefore.data();
+    edit.SelectionBefore.NodeCount = static_cast<int>(record.SelectedNodesBefore.size());
+    edit.SelectionBefore.Links     = record.SelectedLinksBefore.data();
+    edit.SelectionBefore.LinkCount = static_cast<int>(record.SelectedLinksBefore.size());
+    edit.SelectionAfter.Nodes      = record.SelectedNodesAfter.data();
+    edit.SelectionAfter.NodeCount  = static_cast<int>(record.SelectedNodesAfter.size());
+    edit.SelectionAfter.Links      = record.SelectedLinksAfter.data();
+    edit.SelectionAfter.LinkCount  = static_cast<int>(record.SelectedLinksAfter.size());
+    edit.ViewBefore                = record.ViewBefore;
+    edit.ViewAfter                 = record.ViewAfter;
+    return true;
+}
+
+void ed::EditorContext::EndEdits()
+{
+    IM_ASSERT(m_IsInEdits && "Please call EndEdits() only when BeginEdits() returned true.");
+    if (!m_IsInEdits)
+        return;
+
+    m_IsInEdits = false;
+    m_ReportedEdits.clear();
 }
 
 ed::ViewState ed::EditorContext::GetViewState() const
@@ -2593,6 +2706,11 @@ void ed::EditorContext::ClearState()
     m_NavigateAction.StopNavigation();
     if (m_IsInitialized)
         RestoreView();
+
+    m_CompletedEdits.clear();
+    if (!m_IsInEdits)
+        m_ReportedEdits.clear();
+    m_ReportedView = ImRect();
 }
 
 void ed::EditorContext::Suspend(SuspendFlags flags)
@@ -4271,6 +4389,7 @@ ed::NavigateAction::NavigateAction(EditorContext* editor, ImGuiEx::Canvas& canva
     m_Scroll(0, 0),
     m_ScrollStart(0, 0),
     m_ScrollDelta(0, 0),
+    m_IsUserNavigation(false),
     m_Canvas(canvas),
     m_WindowScreenPos(0, 0),
     m_WindowScreenSize(0, 0),
@@ -4310,10 +4429,11 @@ ed::EditorAction::AcceptResult ed::NavigateAction::Accept(const Control& control
     {
         m_Animation.Stop();
 
-        m_IsActive    = true;
-        m_ScrollStart = m_Scroll;
-        m_ScrollDelta = ImGui::GetMouseDragDelta(Editor->GetConfig().NavigateButtonIndex);
-        m_Scroll      = m_ScrollStart - m_ScrollDelta * m_Zoom;
+        m_IsActive         = true;
+        m_IsUserNavigation = true;
+        m_ScrollStart      = m_Scroll;
+        m_ScrollDelta      = ImGui::GetMouseDragDelta(Editor->GetConfig().NavigateButtonIndex);
+        m_Scroll           = m_ScrollStart - m_ScrollDelta * m_Zoom;
     }
 
     auto& io = ImGui::GetIO();
@@ -4520,6 +4640,8 @@ void ed::NavigateAction::NavigateTo(const ImRect& bounds, ZoomMode zoomMode, flo
 
 void ed::NavigateAction::NavigateTo(const ImRect& target, float duration, NavigationReason reason)
 {
+    // Every navigation the user starts has a reason; the application's have none.
+    m_IsUserNavigation = reason != NavigationReason::Unknown;
     m_Reason = reason;
 
     m_Animation.NavigateTo(target, duration);
@@ -4567,6 +4689,7 @@ bool ed::NavigateAction::MoveOverEdge(const ImVec2& canvasSize)
 
     m_MoveScreenOffset  = relativeOffset;
     m_MovingOverEdge    = true;
+    m_IsUserNavigation  = true;
 
     return true;
 }
@@ -4747,11 +4870,25 @@ void ed::SizeAction::Flush()
 
     m_Clean = false;
 
-    if (m_SizedNode->m_Bounds.Min != m_StartBounds.Min || m_SizedNode->m_GroupBounds.Min != m_StartGroupBounds.Min)
+    const bool moved   = m_SizedNode->m_Bounds.Min != m_StartBounds.Min || m_SizedNode->m_GroupBounds.Min != m_StartGroupBounds.Min;
+    const bool resized = m_SizedNode->m_Bounds.GetSize() != m_StartBounds.GetSize() || m_SizedNode->m_GroupBounds.GetSize() != m_StartGroupBounds.GetSize();
+
+    if (moved)
         Editor->MakeDirty(SaveReasonFlags::Position | SaveReasonFlags::User, m_SizedNode);
 
-    if (m_SizedNode->m_Bounds.GetSize() != m_StartBounds.GetSize() || m_SizedNode->m_GroupBounds.GetSize() != m_StartGroupBounds.GetSize())
+    if (resized)
         Editor->MakeDirty(SaveReasonFlags::Size | SaveReasonFlags::User, m_SizedNode);
+
+    if (moved || resized)
+    {
+        EditRecord edit;
+        edit.Type = EditType::Resize;
+        edit.NodesAfter.push_back(MakeNodeState(m_SizedNode));
+        edit.NodesBefore.push_back(edit.NodesAfter.back());
+        edit.NodesBefore.back().Position  = m_StartBounds.Min;
+        edit.NodesBefore.back().GroupSize = m_StartGroupBounds.GetSize();
+        Editor->RecordEdit(std::move(edit));
+    }
 
     m_SizedNode = nullptr;
 }
@@ -4971,11 +5108,24 @@ void ed::DragAction::Flush()
 
     m_Clear = false;
 
+    EditRecord edit;
+    edit.Type = EditType::Move;
     for (auto object : m_Objects)
     {
-        if (object->EndDrag())
-            Editor->MakeDirty(SaveReasonFlags::Position | SaveReasonFlags::User, object->AsNode());
+        if (!object->EndDrag())
+            continue;
+
+        auto node = object->AsNode();
+        Editor->MakeDirty(SaveReasonFlags::Position | SaveReasonFlags::User, node);
+        if (!node)
+            continue;
+
+        edit.NodesAfter.push_back(MakeNodeState(node));
+        edit.NodesBefore.push_back(edit.NodesAfter.back());
+        edit.NodesBefore.back().Position = node->m_DragStart;
     }
+    if (!edit.NodesAfter.empty())
+        Editor->RecordEdit(std::move(edit));
 
     m_Objects.resize(0);
 

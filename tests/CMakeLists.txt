@@ -79,6 +79,7 @@ set(_TestSources
     crude_json_tests.cpp
     deletion_tests.cpp
     draw_order_tests.cpp
+    edit_tests.cpp
     flow_tests.cpp
     forget_tests.cpp
     geometry_tests.cpp

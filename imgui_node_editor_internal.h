@@ -173,6 +173,9 @@ using ax::NodeEditor::LinkId;
 
 using ax::NodeEditor::NodeState;
 using ax::NodeEditor::ViewState;
+using ax::NodeEditor::SelectionState;
+using ax::NodeEditor::EditType;
+using ax::NodeEditor::Edit;
 
 struct ObjectId final: Details::SafePointerType<ObjectId>
 {
@@ -874,6 +877,7 @@ struct NavigateAction final: EditorAction
     ImVec2          m_Scroll;
     ImVec2          m_ScrollStart;
     ImVec2          m_ScrollDelta;
+    bool            m_IsUserNavigation; // the view changes for the user's input, not for the application's
 
     NavigateAction(EditorContext* editor, ImGuiEx::Canvas& canvas);
 
@@ -893,6 +897,7 @@ struct NavigateAction final: EditorAction
     void FinishNavigation();
 
     bool MoveOverEdge(const ImVec2& canvasSize);
+    bool IsSettled() const { return !m_IsActive && !m_Animation.IsPlaying() && !m_MovingOverEdge; }
     void StopMoveOverEdge();
     bool IsMovingOverEdge() const { return m_MovingOverEdge; }
     ImVec2 GetMoveScreenOffset() const { return m_MoveScreenOffset; }
@@ -1367,6 +1372,20 @@ struct SettingsStore
     vector<EditorContext*>     Editors;        // live editors with a section here
 };
 
+// The data an Edit points to.
+struct EditRecord
+{
+    EditType          Type = EditType::Move;
+    vector<NodeState> NodesBefore;
+    vector<NodeState> NodesAfter;
+    vector<NodeId>    SelectedNodesBefore;
+    vector<LinkId>    SelectedLinksBefore;
+    vector<NodeId>    SelectedNodesAfter;
+    vector<LinkId>    SelectedLinksAfter;
+    ViewState         ViewBefore;
+    ViewState         ViewAfter;
+};
+
 void InstallSettingsHandler(ImGuiContext* context);
 
 enum class SuspendFlags : uint8_t
@@ -1441,6 +1460,11 @@ struct EditorContext
     ViewState GetViewState() const;
     bool      SetViewState(const ViewState& state, float duration);
     bool      SetSelection(const NodeId* nodes, int nodeCount, const LinkId* links, int linkCount);
+
+    bool BeginEdits();
+    bool QueryEdit(Edit& edit);
+    void EndEdits();
+    void RecordEdit(EditRecord&& edit) { m_CompletedEdits.push_back(std::move(edit)); }
 
     void ClearSelection();
     void SelectObject(Object* object);
@@ -1605,6 +1629,9 @@ private:
 
     void SettleGesturesOn(Node* node);
 
+    void RecordSelectionEdit(const vector<Object*>& before);
+    void RecordNavigationEdit();
+
     void ForgetDeletedObjects();
     void FreeDeletedObjects();
 
@@ -1686,6 +1713,12 @@ private:
     SaveReasonFlags     m_SettingsChangeReason;
     double              m_SettingsChangeTime;
     double              m_FrameTime;
+
+    vector<EditRecord>  m_CompletedEdits;       // by the user, since the last End()
+    vector<EditRecord>  m_ReportedEdits;        // from the last End() until the next
+    size_t              m_NextReportedEdit;
+    bool                m_IsInEdits;            // between BeginEdits() and EndEdits()
+    ImRect              m_ReportedView;         // where the last settled navigation left the view
 
     ImDrawList*         m_DrawList;
     int                 m_ExternalChannel;

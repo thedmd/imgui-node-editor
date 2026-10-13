@@ -1,6 +1,6 @@
 # API reference
 
-The comments in [imgui_node_editor.h](../imgui_node_editor.h) describe each function. This page collects the rules that span several functions: the order of calls in a frame, IDs, the create and delete protocols, input, persistence, and the coordinate space.
+The comments in [imgui_node_editor.h](../imgui_node_editor.h) describe each function. This page collects the rules that span several functions: the order of calls in a frame, IDs, the create and delete protocols, input, persistence, edit reports, and the coordinate space.
 
 The examples use the alias `namespace ed = ax::NodeEditor;`.
 
@@ -48,7 +48,7 @@ ed::SetCurrentEditor(nullptr);
 
 ### `Begin*()` and `End*()`
 
-As with ImGui's own `BeginXXX()`/`EndXXX()` pairs, call `EndCreate()`, `EndDelete()` and `EndShortcut()` only when the matching `BeginCreate()`, `BeginDelete()` or `BeginShortcut()` returned true. An `End*()` after a `Begin*()` that returned false asserts. Code that also builds against 0.9.x, which wanted the `End*()` calls unconditionally, can tell the versions apart with `IMGUI_NODE_EDITOR_VERSION_NUM >= 1000`.
+As with ImGui's own `BeginXXX()`/`EndXXX()` pairs, call `EndCreate()`, `EndDelete()`, `EndShortcut()` and `EndEdits()` only when the matching `BeginCreate()`, `BeginDelete()`, `BeginShortcut()` or `BeginEdits()` returned true. An `End*()` after a `Begin*()` that returned false asserts. Code that also builds against 0.9.x, which wanted the `End*()` calls unconditionally, can tell the versions apart with `IMGUI_NODE_EDITOR_VERSION_NUM >= 1000`.
 
 ## IDs
 
@@ -214,6 +214,38 @@ ed::SetSelection(selectedNodes, selectedNodeCount, nullptr, 0);
 ### Per node
 
 `Config::LoadNodeSettings` gives a node's saved state when the editor creates the node, and `Config::SaveNodeSettings` receives each change of a node with the reasons for it. `RestoreNodeState()` asks `LoadNodeSettings` again, and applies the answer when the node is next submitted.
+
+## Edits
+
+The editor reports each edit the user completes, with the state before and after it, for an application's undo history:
+
+```cpp
+// Inside Begin()/End(), or after End()
+if (ed::BeginEdits())
+{
+    ed::Edit edit;
+    while (ed::QueryEdit(&edit))
+    {
+        if (edit.Type == ed::EditType::Move || edit.Type == ed::EditType::Resize)
+            history.PushNodes(edit.NodesBefore, edit.NodesAfter, edit.NodeCount);
+        else if (edit.Type == ed::EditType::Select)
+            history.PushSelection(edit.SelectionBefore, edit.SelectionAfter);
+    }
+    ed::EndEdits();
+}
+
+// Undoing a step the history copied
+ed::SetNodeStates(step.NodesBefore.data(), static_cast<int>(step.NodesBefore.size()));
+```
+
+- **What:**
+  - `Move` when a drag ends, with every node it moved, in the same order before and after;
+  - `Resize` when the resize of a group ends;
+  - `Select` for each change of the selection, with node and link IDs: a click, Ctrl+click, a click on the background, a selection rectangle once it's released;
+  - `Navigate`, only with `Config::ReportNavigationEdits`, once the view settles after a pan, a zoom or F, with the visible canvas rectangle.
+- **Only the user's:** changes the application makes aren't reported: the Set functions, `SetNodePosition()`, `SelectNode()`, `NavigateToContent()` and the like. Applying an undo step, also from inside the loop above, records no new one. A Set function on a node the user is dragging ends the drag without an edit; a drag that has already ended is reported first.
+- New and deleted objects go through the [create](#creating-links-and-nodes) and [delete](#deleting) protocols. Deleting a selected object deselects it without a `Select` edit.
+- **When:** the edits completed in a frame are reported from its `End()` until the next `End()`, each once: `EndEdits()` consumes them, and the next `End()` drops those nobody read. Their data stays valid until `EndEdits()`.
 
 ## Coordinates
 

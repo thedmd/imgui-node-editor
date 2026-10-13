@@ -42,6 +42,7 @@ struct LinkId;
 struct PinId;
 struct NodeState;
 struct ViewState;
+struct Edit;
 
 
 //------------------------------------------------------------------------------
@@ -62,6 +63,14 @@ enum class CanvasSizeMode
     FitVerticalView,        // Previous view will be scaled to fit new view on Y axis
     FitHorizontalView,      // Previous view will be scaled to fit new view on X axis
     CenterOnly,             // Previous view will be centered on new view
+};
+
+enum class EditType
+{
+    Move,                   // nodes dragged
+    Resize,                 // a group resized
+    Select,                 // the selection changed
+    Navigate                // the view moved or zoomed, with Config::ReportNavigationEdits
 };
 
 
@@ -113,6 +122,7 @@ struct Config
     int                     ContextMenuButtonIndex; // Mouse button index context menu action will react to (0-left, 1-right, 2-middle)
     bool                    EnableSmoothZoom;
     float                   SmoothZoomPower;
+    bool                    ReportNavigationEdits;  // Edits report navigation too, once the view settles
 
     Config()
         : SettingsName("NodeEditor")
@@ -132,6 +142,7 @@ struct Config
 # else
         , SmoothZoomPower(1.3f)
 # endif
+        , ReportNavigationEdits(false)
     {
     }
 };
@@ -419,8 +430,8 @@ IMGUI_NODE_EDITOR_API bool DeleteLink(LinkId linkId);
 // Returns false if the editor doesn't know the node.
 IMGUI_NODE_EDITOR_API bool ForgetNode(NodeId nodeId);
 
-// Forgets all nodes, pins and links with their saved state, the selection and the
-// view, as for a new document. Call it outside Begin()/End().
+// Forgets all nodes, pins and links with their saved state, the selection, the view
+// and the edits not read yet, as for a new document. Call it outside Begin()/End().
 IMGUI_NODE_EDITOR_API void ClearState();
 
 // Typed state, for applications that keep node layout in their documents. The Set
@@ -433,6 +444,14 @@ IMGUI_NODE_EDITOR_API bool      SetNodeStates(const NodeState* states, int count
 IMGUI_NODE_EDITOR_API ViewState GetViewState();                                 // before the first visible frame, the view the editor will restore
 IMGUI_NODE_EDITOR_API bool      SetViewState(const ViewState& state, float duration = 0.0f); // keeps the zoom within the zoom levels
 IMGUI_NODE_EDITOR_API bool      SetSelection(const NodeId* nodes, int nodeCount, const LinkId* links, int linkCount); // skips unknown objects and objects being deleted; links only without nodes; before the first frame, also nodes not created yet
+
+// Edits the user completed in the last frame, in order: a drag or resize once it ends,
+// a selection change, and navigation once the view settles. Changes the application
+// makes aren't reported. Call EndEdits() only when BeginEdits() returned true, and
+// before End() when inside Begin()/End(). The edit's data stays valid until then.
+IMGUI_NODE_EDITOR_API bool BeginEdits();
+IMGUI_NODE_EDITOR_API bool QueryEdit(Edit* edit);
+IMGUI_NODE_EDITOR_API void EndEdits();
 
 // These see the links submitted so far: between Begin() and End(), call them after
 // the frame's links. PinHadAnyLinks() answers for the previous frame.
@@ -596,6 +615,26 @@ struct ViewState
 {
     ImVec2 VisibleMin;
     ImVec2 VisibleMax;
+};
+
+struct SelectionState
+{
+    const NodeId* Nodes     = nullptr;
+    int           NodeCount = 0;
+    const LinkId* Links     = nullptr;
+    int           LinkCount = 0;
+};
+
+struct Edit
+{
+    EditType         Type = EditType::Move;
+    const NodeState* NodesBefore = nullptr; // Move and Resize: the nodes the edit changed, in the same order before and after it
+    const NodeState* NodesAfter  = nullptr;
+    int              NodeCount   = 0;
+    SelectionState   SelectionBefore;       // Select
+    SelectionState   SelectionAfter;
+    ViewState        ViewBefore;            // Navigate
+    ViewState        ViewAfter;
 };
 
 

@@ -636,6 +636,22 @@ bool ax::NodeEditor::SetSelection(const NodeId* nodes, int nodeCount, const Link
     return CurrentEditor()->SetSelection(nodes, nodeCount, links, linkCount);
 }
 
+bool ax::NodeEditor::BeginEdits()
+{
+    return CurrentEditor()->BeginEdits();
+}
+
+bool ax::NodeEditor::QueryEdit(Edit* edit)
+{
+    IM_ASSERT(edit);
+    return CurrentEditor()->QueryEdit(*edit);
+}
+
+void ax::NodeEditor::EndEdits()
+{
+    CurrentEditor()->EndEdits();
+}
+
 bool ax::NodeEditor::HasAnyLinks(NodeId nodeId)
 {
     return CurrentEditor()->HasAnyLinks(nodeId);
