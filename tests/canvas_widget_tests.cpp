@@ -243,3 +243,27 @@ TEST_CASE(ViewportWorkPos, "canvas_widget.viewport_work_area_is_in_local_space",
     test::Skip("needs a Dear ImGui branch with viewports");
 # endif
 }
+
+TEST_CASE(MouseDelta, "canvas_widget.mouse_delta_is_in_local_space", "CNV-8", test::TestFlags_None)
+{
+    // The mouse moves by (20, 10) between frames; the canvas is at scale 2.
+    test::Host host;
+    ImGuiEx::Canvas canvas;
+    ImVec2 inside, after;
+    for (int frame = 0; frame < 2; ++frame)
+    {
+        ImGui::GetIO().AddMousePosEvent(frame == 0 ? 150.0f : 170.0f, frame == 0 ? 150.0f : 160.0f);
+        host.NewFrame();
+        BeginHostWindow();
+        canvas.SetView(ImVec2(0.0f, 0.0f), 2.0f);
+        canvas.Begin("canvas", ImVec2(300.0f, 300.0f));
+        inside = ImGui::GetIO().MouseDelta;
+        canvas.End();
+        after = ImGui::GetIO().MouseDelta;
+        ImGui::End();
+        host.Render();
+    }
+
+    test::Check(inside.x == 10.0f && inside.y == 5.0f, "inside the canvas the mouse moved by (10, 5): (%g, %g)", inside.x, inside.y);
+    test::Check(after.x == 20.0f && after.y == 10.0f, "after it, by (20, 10) again: (%g, %g)", after.x, after.y);
+}
