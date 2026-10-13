@@ -2835,12 +2835,7 @@ void ed::EditorContext::SetUserContext(bool globalSpace)
 
     // Move drawing cursor to mouse location and prepare layer for
     // content added by user.
-    if (globalSpace)
-        ImGui::SetCursorScreenPos(m_Canvas.FromLocal(mousePos));
-    else
-        ImGui::SetCursorScreenPos(m_Canvas.FromLocal(mousePos));
-        //ImGui::SetCursorScreenPos(ImFloor(mousePos));
-        //ImGui::SetCursorScreenPos(ImVec2(floorf(mousePos.x), floorf(mousePos.y)));
+    ImGui::SetCursorScreenPos(m_Canvas.FromLocal(mousePos));
 
     // Content in global space is drawn while suspended, which keeps the splitter.
     if (!IsSuspended())
