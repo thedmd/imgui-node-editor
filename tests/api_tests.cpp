@@ -496,3 +496,43 @@ TEST_CASE(GroupHintAlpha, "api.group_hint_multiplies_style_alpha", "API-13", tes
 
     test::Check(ImFabs(alpha - 0.3f) < 1e-4f, "the hint draws at 0.5 times 0.6: %g", alpha);
 }
+
+TEST_CASE(PinAlpha, "api.pin_colors_follow_style_alpha", "API-13", test::TestFlags_None)
+{
+    // A hovered pin draws its rectangle in opaque red, with the style alpha at 0.5.
+    test::Storage storage;
+    test::Session session(&storage);
+    ImGui::GetStyle().Alpha = 0.5f;
+    ImVec2 pinCenter;
+    session.DefaultContent = [&](int frame)
+    {
+        if (frame == 0)
+            ed::SetNodePosition(1, ImVec2(100.0f, 100.0f));
+        ed::BeginNode(1);
+        ed::PushStyleColor(ed::StyleColor_PinRect, ImVec4(1.0f, 0.0f, 0.0f, 1.0f));
+        ed::BeginPin(11, ed::PinKind::Output);
+        ImGui::TextUnformatted("Out ->");
+        pinCenter = ImGui::GetItemRectMin() + ImGui::GetItemRectSize() * 0.5f;
+        ed::EndPin();
+        ed::PopStyleColor();
+        ed::EndNode();
+    };
+    session.Run(2);
+    test::MouseMove(session.Use([&] { return ed::CanvasToScreen(pinCenter); }));
+    session.Run(2);
+
+    const bool hovered = session.Use([] { return ed::GetHoveredPin() == ed::PinId(11); });
+    int opaque = 0, halved = 0;
+    for (auto color : test::Capture(session.DrawList).Colors)
+    {
+        if ((color & ~IM_COL32_A_MASK) != IM_COL32(255, 0, 0, 0) || (color & IM_COL32_A_MASK) == 0)
+            continue;
+        if ((color >> IM_COL32_A_SHIFT) == 255)
+            ++opaque;
+        else if ((color >> IM_COL32_A_SHIFT) == 128)
+            ++halved;
+    }
+
+    test::Check(hovered, "the pin is hovered");
+    test::Check(halved > 0 && opaque == 0, "the pin rectangle is drawn at half alpha: %d vertices at 128, %d at 255", halved, opaque);
+}

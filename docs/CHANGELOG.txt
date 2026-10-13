@@ -421,6 +421,9 @@ v0.10.0 (WIP):
     BUGFIX: Editor: Fade group hints with the application's style alpha
         BeginGroupHint() set ImGui's alpha to the zoom fade, ignoring the alpha in effect.
 
+    BUGFIX: Editor: Draw pins with the application's style alpha
+        Their rectangle and border ignored ImGui::GetStyle().Alpha, unlike the node around them.
+
 v0.9.2 (2023-09-01):
 
     NEW: Editor: Add offset of hover/select to style (thanks @MultiPain)
