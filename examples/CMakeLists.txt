@@ -14,6 +14,7 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 # Node editor use C++14
 set(CMAKE_CXX_STANDARD            14)
 set(CMAKE_CXX_STANDARD_REQUIRED   YES)
+set(CMAKE_CXX_EXTENSIONS          OFF)
 
 # Copies each file to bin/data, keeping its path relative to 'root'. Every file is
 # copied by one command owned by 'target', so parallel builds don't race on it.
