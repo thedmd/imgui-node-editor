@@ -466,21 +466,11 @@ void ImGuiEx::Canvas::EnterLocalSpace()
     m_DrawListCommadBufferSize       = ImMax(m_DrawList->CmdBuffer.Size, 0);
     m_DrawListStartVertexIndex       = m_DrawList->_VtxCurrentIdx + ImVtxOffsetRef(m_DrawList);
 
-    // Make sure we do not share draw command with anyone. We don't want to mess
-    // with someones clip rectangle.
-
-    // #FIXME:
-    //     This condition is not enough to avoid when user choose
-    //     to use channel splitter.
-    //
-    //     To deal with Suspend()/Resume() calls empty draw command
-    //     is always added then splitter is active. Otherwise
-    //     channel merger will collapse our draw command one with
-    //     different clip rectangle.
-    //
-    //     More investigation is needed. To get to the bottom of this.
-    if ((!m_DrawList->CmdBuffer.empty() && m_DrawList->CmdBuffer.back().ElemCount > 0) || m_DrawList->_Splitter._Count > 1)
-        m_DrawList->AddCallback(ImDrawCallback_ImCanvas, nullptr);
+    // Mark where local space begins with a draw command of its own, which also keeps
+    // canvas commands from sharing one with what was drawn before. AddCallback() adds
+    // a fresh command after it, so removing it in LeaveLocalSpace() leaves the buffer
+    // as it would be without it.
+    m_DrawList->AddCallback(ImDrawCallback_ImCanvas, this);
 
     m_DrawListFirstCommandIndex = ImMax(m_DrawList->CmdBuffer.Size - 1, 0);
 
@@ -560,6 +550,16 @@ void ImGuiEx::Canvas::LeaveLocalSpace()
 
     IM_ASSERT(m_DrawList->_Splitter._Current == m_ExpectedChannel);
 
+    // The sentinel is where local space began in the command buffer it was entered with.
+    int sentinelIndex = -1;
+    for (int i = ImMax(m_DrawListCommadBufferSize - 1, 0); i < m_DrawList->CmdBuffer.Size && sentinelIndex < 0; ++i)
+        if (m_DrawList->CmdBuffer[i].UserCallback == ImDrawCallback_ImCanvas && m_DrawList->CmdBuffer[i].UserCallbackData == this)
+            sentinelIndex = i;
+
+    // If you're here, another draw list splitter or channel is current than the one
+    // the canvas began or resumed with.
+    IM_ASSERT(sentinelIndex >= 0 && "Canvas suspended or ended in another draw list splitter or channel.");
+
 # if IMGUI_EX_CANVAS_DEFERED()
     IM_ASSERT(m_CurrentRange != nullptr);
 
@@ -617,14 +617,8 @@ void ImGuiEx::Canvas::LeaveLocalSpace()
         }
     }
 
-    // Remove sentinel draw command if present
-    if (m_DrawListCommadBufferSize > 0)
-    {
-        if (m_DrawList->CmdBuffer.size() > m_DrawListCommadBufferSize && m_DrawList->CmdBuffer[m_DrawListCommadBufferSize].UserCallback == ImDrawCallback_ImCanvas)
-            m_DrawList->CmdBuffer.erase(m_DrawList->CmdBuffer.Data + m_DrawListCommadBufferSize);
-        else if (m_DrawList->CmdBuffer.size() >= m_DrawListCommadBufferSize && m_DrawList->CmdBuffer[m_DrawListCommadBufferSize - 1].UserCallback == ImDrawCallback_ImCanvas)
-            m_DrawList->CmdBuffer.erase(m_DrawList->CmdBuffer.Data + m_DrawListCommadBufferSize - 1);
-    }
+    if (sentinelIndex >= 0)
+        m_DrawList->CmdBuffer.erase(m_DrawList->CmdBuffer.Data + sentinelIndex);
 
 # if IMGUI_VERSION_NUM >= 19292
     m_DrawList->_SetPixelDensity(m_LastPixelDensity);
