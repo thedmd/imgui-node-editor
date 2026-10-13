@@ -517,6 +517,8 @@ v0.10.0 (WIP):
     BUGFIX: Examples: Give each String pin its own text in the blueprints example
         They all edited one shared buffer.
 
+    BUGFIX: Examples: Don't start link flows with Z while typing in the blueprints example
+
 v0.9.2 (2023-09-01):
 
     NEW: Editor: Add offset of hover/select to style (thanks @MultiPain)
