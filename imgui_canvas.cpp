@@ -361,6 +361,7 @@ void ImGuiEx::Canvas::SaveInputState()
     auto& io = ImGui::GetIO();
     m_MousePosBackup = io.MousePos;
     m_MousePosPrevBackup = io.MousePosPrev;
+    m_MouseDeltaBackup = io.MouseDelta;
     for (auto i = 0; i < IM_ARRAYSIZE(m_MouseClickedPosBackup); ++i)
         m_MouseClickedPosBackup[i] = io.MouseClickedPos[i];
 }
@@ -370,6 +371,7 @@ void ImGuiEx::Canvas::RestoreInputState()
     auto& io = ImGui::GetIO();
     io.MousePos = m_MousePosBackup;
     io.MousePosPrev = m_MousePosPrevBackup;
+    io.MouseDelta = m_MouseDeltaBackup;
     for (auto i = 0; i < IM_ARRAYSIZE(m_MouseClickedPosBackup); ++i)
         io.MouseClickedPos[i] = m_MouseClickedPosBackup[i];
 }
@@ -503,6 +505,7 @@ void ImGuiEx::Canvas::EnterLocalSpace()
     auto& io = ImGui::GetIO();
     io.MousePos     = (m_MousePosBackup - m_ViewTransformPosition) * m_View.InvScale();
     io.MousePosPrev = (m_MousePosPrevBackup - m_ViewTransformPosition) * m_View.InvScale();
+    io.MouseDelta   = m_MouseDeltaBackup * m_View.InvScale();
     for (auto i = 0; i < IM_ARRAYSIZE(m_MouseClickedPosBackup); ++i)
         io.MouseClickedPos[i] = (m_MouseClickedPosBackup[i] - m_ViewTransformPosition) * m_View.InvScale();
 

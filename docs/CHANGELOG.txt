@@ -239,6 +239,9 @@ v0.9.4 (WIP):
     BUGFIX: Canvas: Move the viewport's work area to local space with docking builds
         It was scaled but not translated, so with a main menu bar it lay outside the viewport.
 
+    BUGFIX: Canvas: Give io.MouseDelta in canvas units inside a canvas
+        Drag widgets and panning inside nodes moved at the wrong speed when zoomed.
+
 v0.9.3 (2023-10-14):
 
     CHANGE: Canvas: Use ImDrawCallback_ImCanvas macro as draw callback sentinel (#256), thanks @nspitko
