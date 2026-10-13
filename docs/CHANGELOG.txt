@@ -26,6 +26,9 @@ v0.9.4 (WIP):
 
     CHANGE: Examples: Build with -Wall -Wextra on GCC and Clang
 
+    CHANGE: Examples: Remove the copies of their dependencies in external/
+        Dear ImGui 1.84 WIP, stb_image, ScopeGuard and D3DX11 from the DirectX SDK, with their CMake modules in misc/cmake-modules.
+
     BUGFIX: Canvas: Remember index of first command buffer to not miss updating any used (#260)
 
     BUGFIX: Editor: Don't duplicated ImVec2/ImVec3 == != operators defined since ImGui r19002 (#268)
