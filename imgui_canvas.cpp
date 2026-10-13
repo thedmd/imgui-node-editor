@@ -151,6 +151,13 @@ bool ImGuiEx::Canvas::Begin(ImGuiID id, const ImVec2& size)
     // Record cursor max to prevent scrollbars from appearing.
     m_WindowCursorMaxBackup = m_Window->DC.CursorMaxPos;
 
+    // Local space lays lines out from x = 0, in the visible part of the canvas.
+    m_LocalIndent            = 0.0f;
+    m_LocalColumnsOffset     = 0.0f;
+    m_LocalGroupOffset       = 0.0f;
+    m_LocalWorkRect          = CalcViewRect(m_View);
+    m_LocalContentRegionRect = m_LocalWorkRect;
+
     EnterLocalSpace();
 
 # if IMGUI_VERSION_NUM >= 18967
@@ -405,10 +412,8 @@ void ImGuiEx::Canvas::RestoreInputState()
 void ImGuiEx::Canvas::SaveViewportState()
 {
 # if defined(IMGUI_HAS_VIEWPORT)
-    auto window = m_Window;
     auto viewport = m_Window->Viewport;
 
-    m_WindowPosBackup = window->Pos;
     m_ViewportPosBackup = viewport->Pos;
     m_ViewportSizeBackup = viewport->Size;
 # if IMGUI_VERSION_NUM > 18002
@@ -424,10 +429,8 @@ void ImGuiEx::Canvas::SaveViewportState()
 void ImGuiEx::Canvas::RestoreViewportState()
 {
 # if defined(IMGUI_HAS_VIEWPORT)
-    auto window = m_Window;
     auto viewport = m_Window->Viewport;
 
-    window->Pos = m_WindowPosBackup;
     viewport->Pos = m_ViewportPosBackup;
     viewport->Size = m_ViewportSizeBackup;
 # if IMGUI_VERSION_NUM > 18002
@@ -480,10 +483,23 @@ void ImGuiEx::Canvas::EnterLocalSpace()
 
     m_DrawListFirstCommandIndex = ImMax(m_DrawList->CmdBuffer.Size - 1, 0);
 
-# if defined(IMGUI_HAS_VIEWPORT)
-    auto window = m_Window;
-    window->Pos = ImVec2(0.0f, 0.0f);
+    // One layout frame on every ImGui branch, with the window at the local origin.
+    // The window's own layout state comes back on leaving local space, and the
+    // local one on entering it again.
+    m_WindowPosBackup               = m_Window->Pos;
+    m_WindowIndentBackup            = m_Window->DC.Indent.x;
+    m_WindowColumnsOffsetBackup     = m_Window->DC.ColumnsOffset.x;
+    m_WindowGroupOffsetBackup       = m_Window->DC.GroupOffset.x;
+    m_WindowWorkRectBackup          = m_Window->WorkRect;
+    m_WindowContentRegionRectBackup = m_Window->ContentRegionRect;
+    m_Window->Pos                   = ImVec2(0.0f, 0.0f);
+    m_Window->DC.Indent.x           = m_LocalIndent;
+    m_Window->DC.ColumnsOffset.x    = m_LocalColumnsOffset;
+    m_Window->DC.GroupOffset.x      = m_LocalGroupOffset;
+    m_Window->WorkRect              = m_LocalWorkRect;
+    m_Window->ContentRegionRect     = m_LocalContentRegionRect;
 
+# if defined(IMGUI_HAS_VIEWPORT)
     auto viewport_min = m_ViewportPosBackup;
     auto viewport_max = m_ViewportPosBackup + m_ViewportSizeBackup;
 
@@ -656,6 +672,18 @@ void ImGuiEx::Canvas::LeaveLocalSpace()
         GImGui->PlatformImeData.InputLineHeight *= m_View.Scale();
 # endif
     }
+
+    m_LocalIndent                = m_Window->DC.Indent.x;
+    m_LocalColumnsOffset         = m_Window->DC.ColumnsOffset.x;
+    m_LocalGroupOffset           = m_Window->DC.GroupOffset.x;
+    m_LocalWorkRect              = m_Window->WorkRect;
+    m_LocalContentRegionRect     = m_Window->ContentRegionRect;
+    m_Window->Pos                = m_WindowPosBackup;
+    m_Window->DC.Indent.x        = m_WindowIndentBackup;
+    m_Window->DC.ColumnsOffset.x = m_WindowColumnsOffsetBackup;
+    m_Window->DC.GroupOffset.x   = m_WindowGroupOffsetBackup;
+    m_Window->WorkRect           = m_WindowWorkRectBackup;
+    m_Window->ContentRegionRect  = m_WindowContentRegionRectBackup;
 
     RestoreInputState();
     RestoreViewportState();

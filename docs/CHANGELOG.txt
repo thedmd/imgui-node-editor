@@ -257,6 +257,9 @@ v0.9.4 (WIP):
     BUGFIX: Canvas: Strip sentinels left behind by misuse in End()
         Suspending in another splitter's channel left one in the draw data for the renderer to call.
 
+    BUGFIX: Canvas: Lay content out from the local origin on every ImGui branch
+        New lines, SameLine() offsets and the content region were relative to the window's screen position on master builds, and to its padding on docking ones.
+
 v0.9.3 (2023-10-14):
 
     CHANGE: Canvas: Use ImDrawCallback_ImCanvas macro as draw callback sentinel (#256), thanks @nspitko

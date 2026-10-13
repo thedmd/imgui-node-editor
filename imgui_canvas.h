@@ -287,9 +287,19 @@ private:
     ImVec2 m_ImeInputPosBackup;
     ImVec2 m_MouseClickedPosBackup[IM_ARRAYSIZE(ImGuiIO::MouseClickedPos)];
     ImVec2 m_WindowCursorMaxBackup;
+    ImVec2 m_WindowPosBackup;
+    float  m_WindowIndentBackup = 0.0f;
+    float  m_WindowColumnsOffsetBackup = 0.0f;
+    float  m_WindowGroupOffsetBackup = 0.0f;
+    ImRect m_WindowWorkRectBackup;
+    ImRect m_WindowContentRegionRectBackup;
+    float  m_LocalIndent = 0.0f;
+    float  m_LocalColumnsOffset = 0.0f;
+    float  m_LocalGroupOffset = 0.0f;
+    ImRect m_LocalWorkRect;
+    ImRect m_LocalContentRegionRect;
 
 # if defined(IMGUI_HAS_VIEWPORT)
-    ImVec2 m_WindowPosBackup;
     ImVec2 m_ViewportPosBackup;
     ImVec2 m_ViewportSizeBackup;
 # if IMGUI_VERSION_NUM > 18002
