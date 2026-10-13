@@ -106,7 +106,8 @@ bool ImGuiEx::Canvas::Begin(ImGuiID id, const ImVec2& size)
     m_WidgetPosition = ImGui::GetCursorScreenPos();
     m_WidgetSize = ImSelectPositive(size, ImGui::GetContentRegionAvail());
     m_WidgetRect = ImRect(m_WidgetPosition, m_WidgetPosition + m_WidgetSize);
-    m_DrawList = ImGui::GetWindowDrawList();
+    m_Window = ImGui::GetCurrentWindow();
+    m_DrawList = m_Window->DrawList;
 
     UpdateViewTransformPosition();
 
@@ -136,7 +137,7 @@ bool ImGuiEx::Canvas::Begin(ImGuiID id, const ImVec2& size)
     SaveViewportState();
 
     // Record cursor max to prevent scrollbars from appearing.
-    m_WindowCursorMaxBackup = ImGui::GetCurrentWindow()->DC.CursorMaxPos;
+    m_WindowCursorMaxBackup = m_Window->DC.CursorMaxPos;
 
     EnterLocalSpace();
 
@@ -170,9 +171,13 @@ void ImGuiEx::Canvas::End()
     // Check: Unmatched calls to Suspend() / Resume(). Please check your code.
     IM_ASSERT(m_SuspendCounter == 0);
 
-    LeaveLocalSpace();
+    // Check: Clip rectangle pushed inside the canvas wasn't popped.
+    IM_ASSERT(m_DrawList->_ClipRectStack.Size == m_ClipRectStackSize);
 
-    ImGui::GetCurrentWindow()->DC.CursorMaxPos = m_WindowCursorMaxBackup;
+    LeaveLocalSpace();
+    m_SuspendedClipRects.resize(0);
+
+    m_Window->DC.CursorMaxPos = m_WindowCursorMaxBackup;
 
 # if IMGUI_VERSION_NUM < 18967
     ImGui::SetItemAllowOverlap();
@@ -375,8 +380,8 @@ void ImGuiEx::Canvas::RestoreInputState()
 void ImGuiEx::Canvas::SaveViewportState()
 {
 # if defined(IMGUI_HAS_VIEWPORT)
-    auto window = ImGui::GetCurrentWindow();
-    auto viewport = ImGui::GetWindowViewport();
+    auto window = m_Window;
+    auto viewport = m_Window->Viewport;
 
     m_WindowPosBackup = window->Pos;
     m_ViewportPosBackup = viewport->Pos;
@@ -394,8 +399,8 @@ void ImGuiEx::Canvas::SaveViewportState()
 void ImGuiEx::Canvas::RestoreViewportState()
 {
 # if defined(IMGUI_HAS_VIEWPORT)
-    auto window = ImGui::GetCurrentWindow();
-    auto viewport = ImGui::GetWindowViewport();
+    auto window = m_Window;
+    auto viewport = m_Window->Viewport;
 
     window->Pos = m_WindowPosBackup;
     viewport->Pos = m_ViewportPosBackup;
@@ -461,7 +466,7 @@ void ImGuiEx::Canvas::EnterLocalSpace()
     m_DrawListFirstCommandIndex = ImMax(m_DrawList->CmdBuffer.Size - 1, 0);
 
 # if defined(IMGUI_HAS_VIEWPORT)
-    auto window = ImGui::GetCurrentWindow();
+    auto window = m_Window;
     window->Pos = ImVec2(0.0f, 0.0f);
 
     auto viewport_min = m_ViewportPosBackup;
@@ -472,7 +477,7 @@ void ImGuiEx::Canvas::EnterLocalSpace()
     viewport_max.x = (viewport_max.x - m_ViewTransformPosition.x) * m_View.InvScale;
     viewport_max.y = (viewport_max.y - m_ViewTransformPosition.y) * m_View.InvScale;
 
-    auto viewport = ImGui::GetWindowViewport();
+    auto viewport = m_Window->Viewport;
     viewport->Pos  = viewport_min;
     viewport->Size = viewport_max - viewport_min;
 
@@ -490,7 +495,12 @@ void ImGuiEx::Canvas::EnterLocalSpace()
     clipped_clip_rect.y = (clipped_clip_rect.y - m_ViewTransformPosition.y) * m_View.InvScale;
     clipped_clip_rect.z = (clipped_clip_rect.z - m_ViewTransformPosition.x) * m_View.InvScale;
     clipped_clip_rect.w = (clipped_clip_rect.w - m_ViewTransformPosition.y) * m_View.InvScale;
-    ImGui::PushClipRect(ImVec2(clipped_clip_rect.x, clipped_clip_rect.y), ImVec2(clipped_clip_rect.z, clipped_clip_rect.w), false);
+    m_DrawList->PushClipRect(ImVec2(clipped_clip_rect.x, clipped_clip_rect.y), ImVec2(clipped_clip_rect.z, clipped_clip_rect.w), false);
+    m_ClipRectStackSize = m_DrawList->_ClipRectStack.Size;
+    for (auto& clipRect : m_SuspendedClipRects)
+        m_DrawList->PushClipRect(ImVec2(clipRect.x, clipRect.y), ImVec2(clipRect.z, clipRect.w), false);
+    m_SuspendedClipRects.resize(0);
+    m_Window->ClipRect = ImRect(m_DrawList->_ClipRectStack.back());
 
     // Transform mouse position to local space.
     auto& io = ImGui::GetIO();
@@ -518,6 +528,11 @@ void ImGuiEx::Canvas::EnterLocalSpace()
 
 void ImGuiEx::Canvas::LeaveLocalSpace()
 {
+    // If you're here, a window begun inside the canvas wasn't ended before
+    // Suspend() or End().
+    IM_ASSERT(ImGui::GetCurrentWindow() == m_Window && "Canvas suspended or ended in another window than it began in.");
+    IM_ASSERT(m_DrawList->_ClipRectStack.Size >= m_ClipRectStackSize && "Canvas clip rectangle was popped inside the canvas.");
+
     IM_ASSERT(m_DrawList->_Splitter._Current == m_ExpectedChannel);
 
 # if IMGUI_EX_CANVAS_DEFERED()
@@ -595,8 +610,14 @@ void ImGuiEx::Canvas::LeaveLocalSpace()
     const_cast<ImDrawListSharedData*>(m_DrawList->_Data)->CurveTessellationTol = m_LastCurveTessellationTol;
 # endif
 
-    // And pop \o/
-    ImGui::PopClipRect();
+    // Clip rectangles pushed inside the canvas are in local space. Set them aside,
+    // with the canvas' own, until Resume().
+    m_SuspendedClipRects.resize(0);
+    for (int i = m_ClipRectStackSize; i < m_DrawList->_ClipRectStack.Size; ++i)
+        m_SuspendedClipRects.push_back(m_DrawList->_ClipRectStack[i]);
+    while (m_DrawList->_ClipRectStack.Size >= m_ClipRectStackSize && m_DrawList->_ClipRectStack.Size > 0)
+        m_DrawList->PopClipRect();
+    m_Window->ClipRect = ImRect(m_DrawList->_ClipRectStack.back());
 
     RestoreInputState();
     RestoreViewportState();
