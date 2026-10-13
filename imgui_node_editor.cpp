@@ -996,6 +996,8 @@ void ed::EditorContext::Begin(const char* id, const ImVec2& size)
         m_IsSettingsLoaded = true;
     }
 
+    m_Canvas.SetRasterizeTextForScale(m_Config.RasterizeTextForZoom);
+
     if (!m_IsInitialized && !m_IsFrozen)
     {
         // Cycle canvas, so it has a chance to initialize its size before the view is
