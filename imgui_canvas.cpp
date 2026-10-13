@@ -92,6 +92,17 @@ static inline unsigned int& ImVtxOffsetRef(ImDrawList* drawList)
     return VtxCurrentOffsetRef::Get<ImDrawList>(drawList);
 }
 
+// Returns a reference to the IME input position requested in this frame,
+// which ImGui 1.87 moved into PlatformImeData.
+static inline ImVec2& ImPlatformImeInputPosRef()
+{
+# if IMGUI_VERSION_NUM >= 18604
+    return GImGui->PlatformImeData.InputPos;
+# else
+    return GImGui->PlatformImePos;
+# endif
+}
+
 static inline ImVec2 ImSelectPositive(const ImVec2& lhs, const ImVec2& rhs) { return ImVec2(lhs.x > 0.0f ? lhs.x : rhs.x, lhs.y > 0.0f ? lhs.y : rhs.y); }
 
 bool ImGuiEx::Canvas::Begin(const char* id, const ImVec2& size)
@@ -509,6 +520,11 @@ void ImGuiEx::Canvas::EnterLocalSpace()
     for (auto i = 0; i < IM_ARRAYSIZE(m_MouseClickedPosBackup); ++i)
         io.MouseClickedPos[i] = (m_MouseClickedPosBackup[i] - m_ViewTransformPosition) * m_View.InvScale();
 
+    // An IME position set in local space is mapped to screen space on leaving it.
+    auto& imeInputPos = ImPlatformImeInputPosRef();
+    m_ImeInputPosBackup = imeInputPos;
+    imeInputPos = ImVec2(-FLT_MAX, -FLT_MAX);
+
     m_ViewRect = CalcViewRect(m_View);;
 
 # if IMGUI_VERSION_NUM >= 19292
@@ -618,6 +634,19 @@ void ImGuiEx::Canvas::LeaveLocalSpace()
     while (m_DrawList->_ClipRectStack.Size >= m_ClipRectStackSize && m_DrawList->_ClipRectStack.Size > 0)
         m_DrawList->PopClipRect();
     m_Window->ClipRect = ImRect(m_DrawList->_ClipRectStack.back());
+
+    auto& imeInputPos = ImPlatformImeInputPosRef();
+    if (imeInputPos.x == -FLT_MAX && imeInputPos.y == -FLT_MAX)
+    {
+        imeInputPos = m_ImeInputPosBackup;
+    }
+    else
+    {
+        imeInputPos = FromLocal(imeInputPos);
+# if IMGUI_VERSION_NUM >= 18604
+        GImGui->PlatformImeData.InputLineHeight *= m_View.Scale();
+# endif
+    }
 
     RestoreInputState();
     RestoreViewportState();

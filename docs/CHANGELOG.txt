@@ -242,6 +242,9 @@ v0.9.4 (WIP):
     BUGFIX: Canvas: Give io.MouseDelta in canvas units inside a canvas
         Drag widgets and panning inside nodes moved at the wrong speed when zoomed.
 
+    BUGFIX: Canvas: Place the IME of an input inside a canvas on screen
+        InputText() published its caret in canvas coordinates, so candidate windows appeared in the wrong place.
+
 v0.9.3 (2023-10-14):
 
     CHANGE: Canvas: Use ImDrawCallback_ImCanvas macro as draw callback sentinel (#256), thanks @nspitko
