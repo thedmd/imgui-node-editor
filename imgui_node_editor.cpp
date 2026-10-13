@@ -852,7 +852,7 @@ ImRect ed::Node::GetRegionBounds(NodeRegion region) const
     else if (m_Type == NodeType::Group)
     {
         const float activeAreaMinimumSize = ImMax(ImMax(
-            Editor->GetView().InvScale * c_GroupSelectThickness,
+            Editor->GetView().InvScale() * c_GroupSelectThickness,
             m_GroupBorderWidth), c_GroupSelectThickness);
         const float minimumSize = activeAreaMinimumSize * 5;
 
@@ -2658,7 +2658,7 @@ void ed::EditorContext::MakeDirty(SaveReasonFlags reason, Node* node)
 
 ed::Link* ed::EditorContext::FindLinkAt(const ImVec2& p)
 {
-    const auto extraThickness = c_LinkSelectThickness * GetView().InvScale;
+    const auto extraThickness = c_LinkSelectThickness * GetView().InvScale();
     for (auto& link : m_Links)
         if (link->TestHit(p, extraThickness))
             return link;
@@ -4235,8 +4235,8 @@ float ed::NavigateAction::GetViewScale() const
 void ed::NavigateAction::SetViewRect(const ImRect& rect)
 {
     auto view = m_Canvas.CalcCenterView(rect);
-    m_Scroll = -view.Origin;
-    m_Zoom   =  view.Scale;
+    m_Scroll = -view.Origin();
+    m_Zoom   =  view.Scale();
 }
 
 ImRect ed::NavigateAction::GetViewRect() const
@@ -6263,7 +6263,7 @@ bool ed::HintBuilder::Begin(NodeId nodeId)
     const float c_min_zoom = 0.75f;
     const float c_max_zoom = 0.50f;
 
-    if (view.Scale > 0.75f)
+    if (view.Scale() > 0.75f)
         return false;
 
     auto node = Editor->FindNode(nodeId);
@@ -6276,7 +6276,7 @@ bool ed::HintBuilder::Begin(NodeId nodeId)
 
     Editor->Suspend(SuspendFlags::KeepSplitter);
 
-    const auto alpha = ImMax(0.0f, std::min(1.0f, (view.Scale - c_min_zoom) / (c_max_zoom - c_min_zoom)));
+    const auto alpha = ImMax(0.0f, std::min(1.0f, (view.Scale() - c_min_zoom) / (c_max_zoom - c_min_zoom)));
 
     Editor->GetDrawList()->ChannelsSetCurrent(c_UserChannel_HintsBackground);
     ImGui::PushClipRect(rect.Min + ImVec2(1, 1), rect.Max - ImVec2(1, 1), false);
