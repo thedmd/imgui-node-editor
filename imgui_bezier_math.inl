@@ -17,6 +17,7 @@
 //------------------------------------------------------------------------------
 # include "imgui_bezier_math.h"
 # include <cmath>
+# include <type_traits>
 
 
 //------------------------------------------------------------------------------
@@ -566,26 +567,26 @@ static inline void ImCubicBezierSubdivide(ImCubicBezierSubdivideCallback callbac
     tesselator.Subdivide(curve, 0);
 }
 
-template <typename F> static inline void ImCubicBezierSubdivide(F& callback, const ImVec2& p0, const ImVec2& p1, const ImVec2& p2, const ImVec2& p3, float tess_tol, ImCubicBezierSubdivideFlags flags)
+template <typename F> static inline void ImCubicBezierSubdivide(F&& callback, const ImVec2& p0, const ImVec2& p1, const ImVec2& p2, const ImVec2& p3, float tess_tol, ImCubicBezierSubdivideFlags flags)
 {
     auto handler = [](const ImCubicBezierSubdivideSample& p, void* user_pointer)
     {
-        auto& callback = *reinterpret_cast<F*>(user_pointer);
+        auto& callback = *static_cast<typename std::remove_reference<F>::type*>(user_pointer);
         callback(p);
     };
 
-    ImCubicBezierSubdivide(handler, &callback, ImCubicBezierPoints{ p0, p1, p2, p3 }, tess_tol, flags);
+    ImCubicBezierSubdivide(handler, const_cast<void*>(static_cast<const void*>(&callback)), ImCubicBezierPoints{ p0, p1, p2, p3 }, tess_tol, flags);
 }
 
-template <typename F> static inline void ImCubicBezierSubdivide(F& callback, const ImCubicBezierPoints& curve, float tess_tol, ImCubicBezierSubdivideFlags flags)
+template <typename F> static inline void ImCubicBezierSubdivide(F&& callback, const ImCubicBezierPoints& curve, float tess_tol, ImCubicBezierSubdivideFlags flags)
 {
     auto handler = [](const ImCubicBezierSubdivideSample& p, void* user_pointer)
     {
-        auto& callback = *reinterpret_cast<F*>(user_pointer);
+        auto& callback = *static_cast<typename std::remove_reference<F>::type*>(user_pointer);
         callback(p);
     };
 
-    ImCubicBezierSubdivide(handler, &callback, curve, tess_tol, flags);
+    ImCubicBezierSubdivide(handler, const_cast<void*>(static_cast<const void*>(&callback)), curve, tess_tol, flags);
 }
 
 static inline void ImCubicBezierFixedStep(ImCubicBezierFixedStepCallback callback, void* user_pointer, const ImVec2& p0, const ImVec2& p1, const ImVec2& p2, const ImVec2& p3, float step, bool overshoot, float max_value_error, float max_t_error)
@@ -675,27 +676,27 @@ static inline void ImCubicBezierFixedStep(ImCubicBezierFixedStepCallback callbac
 
 // F has signature void(const ImCubicBezierFixedStepSample& p)
 template <typename F>
-static inline void ImCubicBezierFixedStep(F& callback, const ImVec2& p0, const ImVec2& p1, const ImVec2& p2, const ImVec2& p3, float step, bool overshoot, float max_value_error, float max_t_error)
+static inline void ImCubicBezierFixedStep(F&& callback, const ImVec2& p0, const ImVec2& p1, const ImVec2& p2, const ImVec2& p3, float step, bool overshoot, float max_value_error, float max_t_error)
 {
     auto handler = [](ImCubicBezierFixedStepSample& sample, void* user_pointer)
     {
-        auto& callback = *reinterpret_cast<F*>(user_pointer);
+        auto& callback = *static_cast<typename std::remove_reference<F>::type*>(user_pointer);
         callback(sample);
     };
 
-    ImCubicBezierFixedStep(handler, &callback, p0, p1, p2, p3, step, overshoot, max_value_error, max_t_error);
+    ImCubicBezierFixedStep(handler, const_cast<void*>(static_cast<const void*>(&callback)), p0, p1, p2, p3, step, overshoot, max_value_error, max_t_error);
 }
 
 template <typename F>
-static inline void ImCubicBezierFixedStep(F& callback, const ImCubicBezierPoints& curve, float step, bool overshoot, float max_value_error, float max_t_error)
+static inline void ImCubicBezierFixedStep(F&& callback, const ImCubicBezierPoints& curve, float step, bool overshoot, float max_value_error, float max_t_error)
 {
     auto handler = [](ImCubicBezierFixedStepSample& sample, void* user_pointer)
     {
-        auto& callback = *reinterpret_cast<F*>(user_pointer);
+        auto& callback = *static_cast<typename std::remove_reference<F>::type*>(user_pointer);
         callback(sample);
     };
 
-    ImCubicBezierFixedStep(handler, &callback, curve.P0, curve.P1, curve.P2, curve.P3, step, overshoot, max_value_error, max_t_error);
+    ImCubicBezierFixedStep(handler, const_cast<void*>(static_cast<const void*>(&callback)), curve.P0, curve.P1, curve.P2, curve.P3, step, overshoot, max_value_error, max_t_error);
 }
 
 
