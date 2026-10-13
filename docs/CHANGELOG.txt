@@ -514,6 +514,9 @@ v0.10.0 (WIP):
     BUGFIX: Examples: Keep pins pointing at their nodes after a deletion in the blueprints example
         Erasing a node moved the nodes after it, and their pins kept pointing at the old places.
 
+    BUGFIX: Examples: Give each String pin its own text in the blueprints example
+        They all edited one shared buffer.
+
 v0.9.2 (2023-09-01):
 
     NEW: Editor: Add offset of hover/select to style (thanks @MultiPain)
