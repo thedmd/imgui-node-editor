@@ -458,13 +458,18 @@ private:
                 menuAction(m_File_Open);
                 if (ImGui::BeginMenu("Open Recent", !mostRecentlyOpenFiles.GetList().empty()))
                 {
+                    // Opening a file moves it to the front of the list.
+                    string clickedPath;
                     for (auto& entry : mostRecentlyOpenFiles.GetList())
                         if (ImGui::MenuItem(entry.c_str()))
-                            File_Open(entry.c_str());
+                            clickedPath = entry;
                     ImGui::Separator();
                     if (ImGui::MenuItem("Clear Recently Opened"))
                         mostRecentlyOpenFiles.Clear();
                     ImGui::EndMenu();
+
+                    if (!clickedPath.empty())
+                        File_Open(clickedPath.c_str());
                 }
                 ImGui::Separator();
                 menuAction(m_File_SaveAs);
