@@ -77,6 +77,17 @@ TEST_CASE(JsonUtf8, "json.utf8_strings_round_trip", "JSON-5", test::TestFlags_No
     test::Check(json::value::parse(R"("\ud83d")").is_discarded() && json::value::parse(R"("\ude00x")").is_discarded(), "lone surrogates are rejected");
 }
 
+TEST_CASE(JsonDepth, "json.nesting_beyond_the_limit_is_rejected", "JSON-7", test::TestFlags_None)
+{
+    // Arrays nested to the default limit of 512, one past it, and 2500 deep, which
+    // the recursive parser would follow until the stack overflows.
+    auto nested = [](int depth) { return std::string(depth, '[') + std::string(depth, ']'); };
+
+    test::Check(!json::value::parse(nested(512)).is_discarded(), "512 nested arrays parse");
+    test::Check(json::value::parse(nested(513)).is_discarded(), "513 are discarded");
+    test::Check(json::value::parse(nested(2500)).is_discarded(), "2500 are discarded");
+}
+
 TEST_CASE(JsonEscapes, "json.keys_and_values_are_escaped_alike", "JSON-6", test::TestFlags_None)
 {
     // Keys with a quote and a backslash, values with a tab and a 0x01 byte.
