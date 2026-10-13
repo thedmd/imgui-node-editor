@@ -18,19 +18,19 @@
 
 //------------------------------------------------------------------------------
 # if IMGUI_VERSION_NUM < 19002
-inline bool operator==(const ImVec2& lhs, const ImVec2& rhs)
+static inline bool operator==(const ImVec2& lhs, const ImVec2& rhs)
 {
     return lhs.x == rhs.x && lhs.y == rhs.y;
 }
 
-inline bool operator!=(const ImVec2& lhs, const ImVec2& rhs)
+static inline bool operator!=(const ImVec2& lhs, const ImVec2& rhs)
 {
     return lhs.x != rhs.x || lhs.y != rhs.y;
 }
 # endif
 
 # if IMGUI_VERSION_NUM < 18955
-inline ImVec2 operator-(const ImVec2& lhs)
+static inline ImVec2 operator-(const ImVec2& lhs)
 {
     return ImVec2(-lhs.x, -lhs.y);
 }
@@ -38,22 +38,22 @@ inline ImVec2 operator-(const ImVec2& lhs)
 
 
 //------------------------------------------------------------------------------
-inline float ImLength(float v)
+static inline float ImLength(float v)
 {
     return ImFabs(v);
 }
 
-inline float ImLength(const ImVec2& v)
+static inline float ImLength(const ImVec2& v)
 {
     return ImSqrt(ImLengthSqr(v));
 }
 
-inline float ImLengthSqr(float v)
+static inline float ImLengthSqr(float v)
 {
     return v * v;
 }
 
-inline ImVec2 ImNormalized(const ImVec2& v)
+static inline ImVec2 ImNormalized(const ImVec2& v)
 {
     return v * ImInvLength(v, 0.0f);
 }
@@ -62,13 +62,13 @@ inline ImVec2 ImNormalized(const ImVec2& v)
 
 
 //------------------------------------------------------------------------------
-inline bool ImRect_IsEmpty(const ImRect& rect)
+static inline bool ImRect_IsEmpty(const ImRect& rect)
 {
     return rect.Min.x >= rect.Max.x
         || rect.Min.y >= rect.Max.y;
 }
 
-inline ImVec2 ImRect_ClosestPoint(const ImRect& rect, const ImVec2& p, bool snap_to_edge)
+static inline ImVec2 ImRect_ClosestPoint(const ImRect& rect, const ImVec2& p, bool snap_to_edge)
 {
     if (!snap_to_edge && rect.Contains(p))
         return p;
@@ -98,7 +98,7 @@ inline ImVec2 ImRect_ClosestPoint(const ImRect& rect, const ImVec2& p, bool snap
     return result;
 }
 
-inline ImVec2 ImRect_ClosestPoint(const ImRect& rect, const ImVec2& p, bool snap_to_edge, float radius)
+static inline ImVec2 ImRect_ClosestPoint(const ImRect& rect, const ImVec2& p, bool snap_to_edge, float radius)
 {
     auto point = ImRect_ClosestPoint(rect, p, snap_to_edge);
 
@@ -112,7 +112,7 @@ inline ImVec2 ImRect_ClosestPoint(const ImRect& rect, const ImVec2& p, bool snap
     return point + offset * (ImMin(distance, radius) * (1.0f / distance));
 }
 
-inline ImVec2 ImRect_ClosestPoint(const ImRect& rect, const ImRect& other)
+static inline ImVec2 ImRect_ClosestPoint(const ImRect& rect, const ImRect& other)
 {
     ImVec2 result;
     if (other.Min.x >= rect.Max.x)
@@ -132,7 +132,7 @@ inline ImVec2 ImRect_ClosestPoint(const ImRect& rect, const ImRect& other)
     return result;
 }
 
-inline ImLine ImRect_ClosestLine(const ImRect& rect_a, const ImRect& rect_b)
+static inline ImLine ImRect_ClosestLine(const ImRect& rect_a, const ImRect& rect_b)
 {
     ImLine result;
     result.A = ImRect_ClosestPoint(rect_a, rect_b);
@@ -164,7 +164,7 @@ inline ImLine ImRect_ClosestLine(const ImRect& rect_a, const ImRect& rect_b)
     return result;
 }
 
-inline ImLine ImRect_ClosestLine(const ImRect& rect_a, const ImRect& rect_b, float radius_a, float radius_b)
+static inline ImLine ImRect_ClosestLine(const ImRect& rect_a, const ImRect& rect_b, float radius_a, float radius_b)
 {
     auto line = ImRect_ClosestLine(rect_a, rect_b);
     if (radius_a < 0)
