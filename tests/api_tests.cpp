@@ -339,3 +339,25 @@ TEST_CASE(IsFocused, "api.is_focused_follows_the_host_window", "API-13", test::T
 
     test::Check(focused && unfocused && refocused, "IsFocused() and IsActive() follow the host window's focus: %d, %d, %d", focused, unfocused, refocused);
 }
+
+TEST_CASE(OrderedNodeCount, "api.ordered_node_ids_count_without_an_array", "API-13", test::TestFlags_None)
+{
+    // Three nodes, counted without an array as GetSelectedNodes() counts.
+    test::Storage storage;
+    test::Session session(&storage);
+    int counts[2] = {};
+    session.DefaultContent = [&](int)
+    {
+        for (int id : { 1, 2, 3 })
+        {
+            ed::BeginNode(id);
+            ImGui::Text("Node %d", id);
+            ed::EndNode();
+        }
+    };
+    session.Run(2);
+    counts[0] = session.Use([] { return ed::GetOrderedNodeIds(nullptr, 0); });
+    counts[1] = session.Use([] { return ed::GetOrderedNodeIds(nullptr, 10); });
+
+    test::Check(counts[0] == 3 && counts[1] == 3, "the count is 3 whatever the size: %d and %d", counts[0], counts[1]);
+}
