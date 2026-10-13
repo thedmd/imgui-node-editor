@@ -950,7 +950,7 @@ ed::EditorContext::EditorContext(const ax::NodeEditor::Config* config)
     , m_IsInEdits(false)
     , m_ReportedView()
     , m_DrawList(nullptr)
-    , m_ExternalChannel(0)
+    , m_CanvasChannel(0)
 {
     IM_ASSERT(m_SettingsName.find_first_of("\r\n") == string::npos && "Config::SettingsName must fit on one line of imgui.ini.");
     m_Config.SettingsName = m_SettingsName.empty() ? nullptr : m_SettingsName.c_str();
@@ -1044,7 +1044,7 @@ void ed::EditorContext::Begin(const char* id, const ImVec2& size)
     m_DrawList = ImGui::GetWindowDrawList();
 
     ImDrawList_SwapSplitter(m_DrawList, m_Splitter);
-    m_ExternalChannel = m_DrawList->_Splitter._Current;
+    m_CanvasChannel = m_DrawList->_Splitter._Current;
 
     if (!m_IsFrozen && m_CurrentAction && m_CurrentAction->IsDragging() && m_NavigateAction.MoveOverEdge(canvasSize))
     {
@@ -2406,7 +2406,7 @@ void ed::EditorContext::Suspend(SuspendFlags flags)
         ImDrawList_SwapSplitter(m_DrawList, m_NodeBuilder.m_Splitter);
 
     auto lastChannel = m_DrawList->_Splitter._Current;
-    m_DrawList->ChannelsSetCurrent(m_ExternalChannel);
+    m_DrawList->ChannelsSetCurrent(m_CanvasChannel);
     if (!m_IsFrozen)
         m_Canvas.Suspend();
     m_DrawList->ChannelsSetCurrent(lastChannel);
@@ -2424,7 +2424,7 @@ void ed::EditorContext::Resume()
     if ((m_SuspendFlags & SuspendFlags::KeepSplitter) != SuspendFlags::KeepSplitter)
         ImDrawList_SwapSplitter(m_DrawList, m_Splitter);
     auto lastChannel = m_DrawList->_Splitter._Current;
-    m_DrawList->ChannelsSetCurrent(m_ExternalChannel);
+    m_DrawList->ChannelsSetCurrent(m_CanvasChannel);
     if (!m_IsFrozen)
         m_Canvas.Resume();
     m_DrawList->ChannelsSetCurrent(lastChannel);
