@@ -1254,6 +1254,10 @@ struct NodeBuilder
     bool    m_IsHoverBlocked;
     ImGuiID m_BlockedHoveredId;
 
+    // Nodes and pins that couldn't be built, whose End calls are ignored too.
+    int m_IgnoredNodes;
+    int m_IgnoredPins;
+
     NodeBuilder(EditorContext* editor);
     ~NodeBuilder();
 

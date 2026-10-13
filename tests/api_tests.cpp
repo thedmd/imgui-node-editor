@@ -361,3 +361,53 @@ TEST_CASE(OrderedNodeCount, "api.ordered_node_ids_count_without_an_array", "API-
 
     test::Check(counts[0] == 3 && counts[1] == 3, "the count is 3 whatever the size: %d and %d", counts[0], counts[1]);
 }
+
+TEST_CASE(ZeroIds, "api.zero_ids_are_refused", "API-13", test::TestFlags_None)
+{
+    // Node 0 with pin 1 in it, pin 0 in node 1, and link 0, each asserting on both
+    // frames, next to valid nodes 1 and 2 linked by link 100.
+    test::ExpectAsserts(6);
+    test::Storage storage;
+    test::Session session(&storage);
+    bool zeroLinked = true, linked = false;
+    session.DefaultContent = [&](int frame)
+    {
+        if (frame == 0)
+        {
+            ed::SetNodePosition(1, ImVec2(0.0f, 0.0f));
+            ed::SetNodePosition(2, ImVec2(300.0f, 0.0f));
+        }
+
+        ed::BeginNode(0);
+        ImGui::TextUnformatted("Zero");
+        ed::BeginPin(1, ed::PinKind::Input);
+        ed::PinPivotAlignment(ImVec2(0.0f, 0.5f));
+        ImGui::TextUnformatted("In");
+        ed::EndPin();
+        ed::EndNode();
+
+        ed::BeginNode(1);
+        ed::BeginPin(0, ed::PinKind::Output);
+        ed::PinRect(ImVec2(0.0f, 0.0f), ImVec2(10.0f, 10.0f));
+        ImGui::TextUnformatted("Zero");
+        ed::EndPin();
+        ed::BeginPin(11, ed::PinKind::Output);
+        ImGui::TextUnformatted("Out");
+        ed::EndPin();
+        ed::EndNode();
+
+        ed::BeginNode(2);
+        ed::BeginPin(21, ed::PinKind::Input);
+        ImGui::TextUnformatted("In");
+        ed::EndPin();
+        ed::EndNode();
+
+        zeroLinked = ed::Link(0, 11, 21);
+        linked     = ed::Link(100, 11, 21);
+    };
+    session.Run(2);
+
+    const auto zeroPosition = session.Use([] { return ed::GetNodePosition(0); });
+    test::Check(zeroPosition.x == FLT_MAX, "node 0 isn't created: at (%g, %g)", zeroPosition.x, zeroPosition.y);
+    test::Check(!zeroLinked && linked, "link 0 is refused, link 100 between the same pins isn't");
+}
