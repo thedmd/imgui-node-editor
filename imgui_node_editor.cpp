@@ -3298,19 +3298,23 @@ bool ed::NodeSettings::Parse(const json::value& data, NodeSettings& result)
 // Settings
 //
 //------------------------------------------------------------------------------
+static ed::vector<ed::NodeSettings>::iterator LowerBound(ed::vector<ed::NodeSettings>& nodes, ed::NodeId id)
+{
+    return std::lower_bound(nodes.begin(), nodes.end(), id, [](const ed::NodeSettings& settings, ed::NodeId key)
+    {
+        return settings.m_ID.Get() < key.Get();
+    });
+}
+
 ed::NodeSettings* ed::Settings::AddNode(NodeId id)
 {
-    m_Nodes.push_back(NodeSettings(id));
-    return &m_Nodes.back();
+    return &*m_Nodes.insert(LowerBound(m_Nodes, id), NodeSettings(id));
 }
 
 ed::NodeSettings* ed::Settings::FindNode(NodeId id)
 {
-    for (auto& settings : m_Nodes)
-        if (settings.m_ID == id)
-            return &settings;
-
-    return nullptr;
+    auto it = LowerBound(m_Nodes, id);
+    return it != m_Nodes.end() && it->m_ID == id ? &*it : nullptr;
 }
 
 void ed::Settings::RemoveNode(NodeId id)
@@ -3324,7 +3328,9 @@ void ed::Settings::RemoveNode(NodeId id)
 
 void ed::Settings::EraseNode(NodeId id)
 {
-    m_Nodes.erase(std::remove_if(m_Nodes.begin(), m_Nodes.end(), [id](const NodeSettings& settings) { return settings.m_ID == id; }), m_Nodes.end());
+    auto it = LowerBound(m_Nodes, id);
+    if (it != m_Nodes.end() && it->m_ID == id)
+        m_Nodes.erase(it);
 }
 
 void ed::Settings::ClearDirty(Node* node)
@@ -3460,7 +3466,7 @@ bool ed::Settings::Parse(const std::string& string, Settings& settings, Settings
             if (nodeSettings)
                 *nodeSettings = parsed;
             else
-                result.m_Nodes.push_back(parsed);
+                *result.AddNode(parsed.m_ID) = parsed;
         }
     }
 

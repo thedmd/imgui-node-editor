@@ -226,6 +226,27 @@ TEST_CASE(MemoryRoundTrip, "settings.memory_round_trip", "API-9", test::TestFlag
     test::Check(selected, "selection restored, from %s", data.c_str());
 }
 
+TEST_CASE(EntriesInAnyIdOrder, "settings.entries_load_in_any_id_order", "PERF-2", test::TestFlags_None)
+{
+    // JSON keeps keys in string order, which reads node 10 before node 9.
+    test::Session session(UnnamedConfig());
+    session.Use([] { ed::LoadSettingsFromMemory(R"({"nodes":{"node:10":{"location":{"x":100,"y":0}},"node:9":{"location":{"x":200,"y":0}}}})"); });
+    session.DefaultContent = [](int)
+    {
+        for (uintptr_t id : { 9, 10 })
+        {
+            ed::BeginNode(id);
+            ImGui::TextUnformatted("Node");
+            ed::EndNode();
+        }
+    };
+    session.Run(2);
+
+    const auto position9  = session.Use([] { return ed::GetNodePosition(9); });
+    const auto position10 = session.Use([] { return ed::GetNodePosition(10); });
+    test::Check(position9.x == 200.0f && position10.x == 100.0f, "both nodes start where they were saved: 9 at x %g, 10 at x %g", position9.x, position10.x);
+}
+
 TEST_CASE(ZOrderRoundTrip, "settings.z_order_survives_a_reload", "CORE-18", test::TestFlags_None)
 {
     // Node 1 is created first, so at equal z it's drawn first, under node 2.
