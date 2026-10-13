@@ -7,8 +7,8 @@
 // CREDITS
 //   Written by Michal Cichon
 //------------------------------------------------------------------------------
-# ifndef __IMGUI_EXTRA_MATH_H__
-# define __IMGUI_EXTRA_MATH_H__
+# ifndef IMGUI_EXTRA_MATH_H
+# define IMGUI_EXTRA_MATH_H
 # pragma once
 
 
@@ -71,4 +71,4 @@ inline V EaseOutQuad(V b, V c, T t)
 
 
 //------------------------------------------------------------------------------
-# endif // __IMGUI_EXTRA_MATH_H__
+# endif // IMGUI_EXTRA_MATH_H

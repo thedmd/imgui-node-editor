@@ -9,8 +9,8 @@
 // CREDITS
 //   Written by Michal Cichon
 //------------------------------------------------------------------------------
-# ifndef __IMGUI_BEZIER_MATH_INL__
-# define __IMGUI_BEZIER_MATH_INL__
+# ifndef IMGUI_BEZIER_MATH_INL
+# define IMGUI_BEZIER_MATH_INL
 # pragma once
 
 
@@ -700,4 +700,4 @@ inline void ImCubicBezierFixedStep(F& callback, const ImCubicBezierPoints& curve
 
 
 //------------------------------------------------------------------------------
-# endif // __IMGUI_BEZIER_MATH_INL__
+# endif // IMGUI_BEZIER_MATH_INL

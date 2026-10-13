@@ -9,8 +9,8 @@
 // CREDITS
 //   Written by Michal Cichon
 //------------------------------------------------------------------------------
-# ifndef __IMGUI_BEZIER_MATH_H__
-# define __IMGUI_BEZIER_MATH_H__
+# ifndef IMGUI_BEZIER_MATH_H
+# define IMGUI_BEZIER_MATH_H
 # pragma once
 
 
@@ -141,4 +141,4 @@ template <typename F> inline void ImCubicBezierFixedStep(F& callback, const ImCu
 
 
 //------------------------------------------------------------------------------
-# endif // __IMGUI_BEZIER_MATH_H__
+# endif // IMGUI_BEZIER_MATH_H

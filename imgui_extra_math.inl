@@ -7,8 +7,8 @@
 // CREDITS
 //   Written by Michal Cichon
 //------------------------------------------------------------------------------
-# ifndef __IMGUI_EXTRA_MATH_INL__
-# define __IMGUI_EXTRA_MATH_INL__
+# ifndef IMGUI_EXTRA_MATH_INL
+# define IMGUI_EXTRA_MATH_INL
 # pragma once
 
 
@@ -199,4 +199,4 @@ inline ImLine ImRect_ClosestLine(const ImRect& rect_a, const ImRect& rect_b, flo
 
 
 //------------------------------------------------------------------------------
-# endif // __IMGUI_EXTRA_MATH_INL__
+# endif // IMGUI_EXTRA_MATH_INL
