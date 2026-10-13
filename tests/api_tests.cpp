@@ -536,3 +536,51 @@ TEST_CASE(PinAlpha, "api.pin_colors_follow_style_alpha", "API-13", test::TestFla
     test::Check(hovered, "the pin is hovered");
     test::Check(halved > 0 && opaque == 0, "the pin rectangle is drawn at half alpha: %d vertices at 128, %d at 255", halved, opaque);
 }
+
+TEST_CASE(AltClickWithoutShortcuts, "api.alt_click_deletion_follows_enable_shortcuts", "API-13", test::TestFlags_None)
+{
+    // Alt+click in the middle of link 100, with shortcuts off and then on.
+    bool offered[2] = {};
+    for (int enabled = 0; enabled < 2; ++enabled)
+    {
+        test::Storage storage;
+        test::Session session(&storage);
+        session.DefaultContent = [&](int frame)
+        {
+            ed::EnableShortcuts(enabled != 0);
+            const ImVec2 pivots[2] = { ImVec2(100.0f, 100.0f), ImVec2(400.0f, 100.0f) };
+            for (int n = 0; n < 2; ++n)
+            {
+                if (frame == 0)
+                    ed::SetNodePosition(n + 1, ImVec2(n * 300.0f, 300.0f));
+                ed::BeginNode(n + 1);
+                ed::BeginPin(11 + n, n == 0 ? ed::PinKind::Output : ed::PinKind::Input);
+                ImGui::TextUnformatted("Pin");
+                ed::PinPivotRect(pivots[n], pivots[n]);
+                ed::EndPin();
+                ed::EndNode();
+            }
+            ed::Link(100, 11, 12);
+            if (ed::BeginDelete())
+            {
+                ed::LinkId linkId;
+                while (ed::QueryDeletedLink(&linkId))
+                {
+                    offered[enabled] = offered[enabled] || linkId == ed::LinkId(100);
+                    ed::RejectDeletedItem();
+                }
+                ed::EndDelete();
+            }
+        };
+        session.Run(2);
+        const auto middle = session.Use([] { return ed::CanvasToScreen(ImVec2(250.0f, 100.0f)); });
+        ImGui::GetIO().AddKeyEvent(ImGuiMod_Alt, true);
+        session.Click(middle);
+        session.Run(3);
+        ImGui::GetIO().AddKeyEvent(ImGuiMod_Alt, false);
+        session.Run(1);
+    }
+
+    test::Check(!offered[0], "with shortcuts off, Alt+click doesn't offer the link for deletion");
+    test::Check(offered[1], "with shortcuts on, it does");
+}
