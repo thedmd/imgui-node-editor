@@ -5081,17 +5081,17 @@ ed::EditorAction::AcceptResult ed::ContextMenuAction::Accept(const Control& cont
         Menu candidateMenu = ContextMenuAction::None;
         ObjectId contextId;
 
-        if (auto hotObejct = control.HotObject)
+        if (auto hotObject = control.HotObject)
         {
-            if (hotObejct->AsNode())
+            if (hotObject->AsNode())
                 candidateMenu = Node;
-            else if (hotObejct->AsPin())
+            else if (hotObject->AsPin())
                 candidateMenu = Pin;
-            else if (hotObejct->AsLink())
+            else if (hotObject->AsLink())
                 candidateMenu = Link;
 
             if (candidateMenu != None)
-                contextId = hotObejct->ID();
+                contextId = hotObject->ID();
         }
         else if (control.BackgroundHot)
             candidateMenu = Background;
@@ -5212,7 +5212,7 @@ bool ed::ContextMenuAction::ShowBackgroundContextMenu()
 
 //------------------------------------------------------------------------------
 //
-// Cut/Copy/Paste Action
+// Shortcut Action
 //
 //------------------------------------------------------------------------------
 ed::ShortcutAction::ShortcutAction(EditorContext* editor):

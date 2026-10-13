@@ -839,7 +839,7 @@ struct EditorAction
     virtual CreateItemAction*   AsCreateItem()   { return nullptr; }
     virtual DeleteItemsAction*  AsDeleteItems()  { return nullptr; }
     virtual ContextMenuAction*  AsContextMenu()  { return nullptr; }
-    virtual ShortcutAction* AsCutCopyPaste() { return nullptr; }
+    virtual ShortcutAction* AsShortcut() { return nullptr; }
 
     EditorContext* Editor;
 };
@@ -1077,7 +1077,7 @@ struct ShortcutAction final: EditorAction
 
     virtual void ForgetDeletedObjects() override final;
 
-    virtual ShortcutAction* AsCutCopyPaste() override final { return this; }
+    virtual ShortcutAction* AsShortcut() override final { return this; }
 
     bool Begin();
     void End();
