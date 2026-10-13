@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <AutoVisualizer xmlns="http://schemas.microsoft.com/vstudio/debugger/natvis/2010">
 
+    <!-- For the default CRUDE_JSON_NAMESPACE: a build with another one has to name it here. -->
     <Type Name="crude_json::value">
         <Intrinsic Name="data" Expression="(void*)m_Storage.data" />
         <Intrinsic Name="object_ptr"  Expression="(crude_json::object*)m_Storage.data" />
