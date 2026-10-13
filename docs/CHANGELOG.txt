@@ -567,6 +567,9 @@ v0.10.0 (WIP):
     BUGFIX: Examples: Don't lose mouse moves or misplace the IME at display scales above 100%
         Mouse positions are scaled where the backends read them, no longer in ImGui's private input queue.
 
+    BUGFIX: Examples: Name RelWithDebInfo builds with the _rd postfix
+        The property was misspelled, so they took the Release names.
+
 v0.9.2 (2023-09-01):
 
     NEW: Editor: Add offset of hover/select to style (thanks @MultiPain)

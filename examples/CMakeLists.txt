@@ -100,7 +100,7 @@ macro(add_example_executable name)
         RUNTIME_OUTPUT_DIRECTORY_MINSIZEREL     "${_ExampleBinDir}"
         RUNTIME_OUTPUT_DIRECTORY_RELEASE        "${_ExampleBinDir}"
         DEBUG_POSTFIX                           _d
-        RELWITHDEBINGO_POSTFIX                  _rd
+        RELWITHDEBINFO_POSTFIX                  _rd
         MINSIZEREL_POSTFIX                      _r
         VS_DEBUGGER_WORKING_DIRECTORY           ${_ExampleBinDir}
         MACOSX_BUNDLE_INFO_PLIST                "${IMGUI_NODE_EDITOR_ROOT_DIR}/examples/application/support/Info.plist.in"
