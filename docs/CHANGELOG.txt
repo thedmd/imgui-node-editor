@@ -439,6 +439,9 @@ v0.10.0 (WIP):
     BUGFIX: crude_json: Reject documents nested deeper than CRUDE_JSON_MAX_DEPTH, 512 by default
         The recursive parser followed any nesting, and 2500 nested arrays overflowed a 1 MB stack.
 
+    BREAKING: crude_json: Convert a value to type_t only explicitly
+        Through the implicit conversion, values compared equal whenever their types did; == between values no longer compiles. Use type() or static_cast<type_t>().
+
 v0.9.2 (2023-09-01):
 
     NEW: Editor: Add offset of hover/select to style (thanks @MultiPain)

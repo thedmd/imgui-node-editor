@@ -92,7 +92,7 @@ struct value
 
     type_t type() const { return m_Type; }
 
-    operator type_t() const { return m_Type; }
+    explicit operator type_t() const { return m_Type; }
 
     // Mutable lookups add missing entries, turning null into an array or an object;
     // on another type they assert and return a value that isn't in the document.
