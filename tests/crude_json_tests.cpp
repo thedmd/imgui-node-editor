@@ -291,6 +291,24 @@ TEST_CASE(JsonLoadByteOrderMark, "json.load_skips_a_utf8_byte_order_mark", "JSON
     test::Check(loaded.second && loaded.first["list"][1].is_number(), "a document after a byte order mark is read");
 }
 
+TEST_CASE(JsonUtf8Paths, "json.paths_are_utf8", "JSON-12", test::TestFlags_None)
+{
+    // On Windows the path went through the active code page, which mangled the name.
+    const char* path = "json_path_za\xC5\xBC\xC3\xB3\xC5\x82\xC4\x87.json";
+    json::value document;
+    document["key"] = 1.0;
+
+    const auto saved  = document.save(path);
+    const auto loaded = json::value::load(path);
+    test::Check(saved && loaded.second && loaded.first["key"].is_number(), "a document saved under a UTF-8 path loads back");
+
+# ifdef _WIN32
+    test::Check(_wremove(L"json_path_za\u017C\u00F3\u0142\u0107.json") == 0, "the file has the name the path spells");
+# else
+    std::remove(path);
+# endif
+}
+
 TEST_CASE(JsonNothrowMoves, "json.values_move_without_throwing", "JSON-10", test::TestFlags_None)
 {
     json::value a, b;
