@@ -188,6 +188,7 @@ static void ApplyNodeSettings(ed::Node* node, const ed::NodeSettings& settings)
     node->m_GroupBounds.Min = location;
     node->m_GroupBounds.Max = node->m_GroupBounds.Min + settings.m_GroupSize;
     ImRect_Floor(node->m_GroupBounds);
+    node->m_ZPosition       = settings.m_ZPosition;
 }
 
 // ImGui::MarkIniSettingsDirty() for a context that needn't be the current one.
@@ -1931,6 +1932,9 @@ ImVec2 ed::EditorContext::GetNodeSize(NodeId nodeId)
 
 void ed::EditorContext::SetNodeZPosition(NodeId nodeId, float z)
 {
+    if (!std::isfinite(z))
+        return;
+
     auto node = FindNode(nodeId);
     if (!node)
     {
@@ -1938,7 +1942,11 @@ void ed::EditorContext::SetNodeZPosition(NodeId nodeId, float z)
         node->m_IsLive = false;
     }
 
-    node->m_ZPosition = z;
+    if (node->m_ZPosition != z)
+    {
+        node->m_ZPosition = z;
+        MakeDirty(NodeEditor::SaveReasonFlags::Position, node);
+    }
 }
 
 float ed::EditorContext::GetNodeZPosition(NodeId nodeId)
@@ -2628,8 +2636,9 @@ void ed::EditorContext::UpdateSettings()
     for (auto& node : m_Nodes)
     {
         auto settings = m_Settings.FindNode(node->m_ID);
-        settings->m_Location = node->m_Bounds.Min;
-        settings->m_Size     = node->m_Bounds.GetSize();
+        settings->m_Location  = node->m_Bounds.Min;
+        settings->m_Size      = node->m_Bounds.GetSize();
+        settings->m_ZPosition = node->m_ZPosition;
         if (IsGroup(node))
             settings->m_GroupSize = node->m_GroupBounds.GetSize();
     }
@@ -3254,6 +3263,9 @@ ed::json::value ed::NodeSettings::Serialize()
         result["group_size"]["y"] = m_GroupSize.y;
     }
 
+    if (m_ZPosition != 0.0f)
+        result["z"] = m_ZPosition;
+
     return result;
 }
 
@@ -3276,6 +3288,19 @@ bool ed::NodeSettings::Parse(const json::value& data, NodeSettings& result)
 
     if (data.contains("group_size") && !ParseVector(data["group_size"], result.m_GroupSize))
         return false;
+
+    if (data.contains("z"))
+    {
+        const auto& z = data["z"];
+        if (!z.is_number())
+            return false;
+
+        const auto zPosition = static_cast<float>(z.get<double>());
+        if (!std::isfinite(zPosition))
+            return false;
+
+        result.m_ZPosition = zPosition;
+    }
 
     return true;
 }

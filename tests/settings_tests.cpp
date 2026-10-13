@@ -226,6 +226,37 @@ TEST_CASE(MemoryRoundTrip, "settings.memory_round_trip", "API-9", test::TestFlag
     test::Check(selected, "selection restored, from %s", data.c_str());
 }
 
+TEST_CASE(ZOrderRoundTrip, "settings.z_order_survives_a_reload", "CORE-18", test::TestFlags_None)
+{
+    // Node 1 is created first, so at equal z it's drawn first, under node 2.
+    std::string data;
+    bool changed = false;
+    {
+        test::Session session(UnnamedConfig());
+        session.DefaultContent = NodesOneAndTwo;
+        session.Run(3);
+        session.Use([] { ed::ClearWantSaveSettings(); ed::SetNodeZPosition(1, 5.0f); });
+        session.Run(1);
+        changed = session.Use([] { return ed::GetSettingsChangeReason() != ed::SaveReasonFlags::None; });
+        data    = session.Use([] { return std::string(ed::SaveSettingsToMemory()); });
+    }
+
+    test::Session session(UnnamedConfig());
+    session.Use([&] { ed::LoadSettingsFromMemory(data.c_str()); });
+    session.DefaultContent = NodesOneAndTwo;
+    session.Run(3);
+
+    ed::NodeId order[2];
+    const auto z = session.Use([&] { ed::GetOrderedNodeIds(order, 2); return ed::GetNodeZPosition(1); });
+    test::Check(changed, "SetNodeZPosition() changes the settings");
+    test::Check(data.find(R"("z":5)") != std::string::npos && data.find(R"("z":)") == data.rfind(R"("z":)"), "z is saved for node 1 only: %s", data.c_str());
+    test::Check(z == 5.0f && order[0].Get() == 2 && order[1].Get() == 1, "reloaded, node 1 is at z %g and drawn last: %d, %d", z, (int)order[0].Get(), (int)order[1].Get());
+
+    // A NaN z would break the sort by z, and couldn't be saved.
+    const auto nanZ = session.Use([] { ed::SetNodeZPosition(1, std::nanf("")); return ed::GetNodeZPosition(1); });
+    test::Check(nanZ == 5.0f, "SetNodeZPosition() ignores NaN: z is %g", nanZ);
+}
+
 TEST_CASE(Version09Settings, "settings.settings_written_by_0_9_load", "API-9", test::TestFlags_None)
 {
     // As 0.9.2 wrote them to its SettingsFile.
