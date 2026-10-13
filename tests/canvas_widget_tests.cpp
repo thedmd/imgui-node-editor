@@ -84,3 +84,82 @@ TEST_CASE(ViewRectOutsideBeginEnd, "canvas_widget.view_rect_follows_set_view", "
     test::Check(rect.Min.x == 50.0f && rect.Min.y == 25.0f && rect.Max.x == 200.0f && rect.Max.y == 175.0f,
         "the view rectangle is (50, 25) - (200, 175): (%g, %g) - (%g, %g)", rect.Min.x, rect.Min.y, rect.Max.x, rect.Max.y);
 }
+
+TEST_CASE(ClipRectAcrossSuspend, "canvas_widget.clip_rect_across_suspend_is_set_aside", "CNV-5", test::TestFlags_None)
+{
+    // At scale 2, a clip rectangle pushed inside the canvas stays pushed across
+    // Suspend(); a rectangle drawn while suspended is in screen space.
+    test::Host host;
+    host.NewFrame();
+    BeginHostWindow();
+    ImGuiEx::Canvas canvas;
+    canvas.SetView(ImVec2(0.0f, 0.0f), 2.0f);
+    canvas.Begin("canvas", ImVec2(300.0f, 300.0f));
+    auto drawList = ImGui::GetWindowDrawList();
+    ImGui::PushClipRect(ImVec2(10.0f, 10.0f), ImVec2(50.0f, 50.0f), true);
+    const auto pushed = drawList->_ClipRectStack.back();
+
+    canvas.Suspend();
+    drawList->AddRectFilled(ImVec2(200.0f, 200.0f), ImVec2(210.0f, 210.0f), c_Green);
+    canvas.Resume();
+    const auto resumed = drawList->_ClipRectStack.back();
+
+    ImGui::PopClipRect();
+    canvas.End();
+    ImGui::End();
+    host.Render();
+
+    const auto geometry = test::Capture(drawList);
+    int drawn = 0, outside = 0;
+    for (size_t i = 0; i < geometry.Colors.size(); ++i)
+    {
+        if (geometry.Colors[i] != c_Green)
+            continue;
+        ++drawn;
+        const auto& p    = geometry.Positions[i];
+        const auto& clip = geometry.ClipRects[i];
+        if (p.x < clip.x || p.y < clip.y || p.x > clip.z || p.y > clip.w)
+            ++outside;
+    }
+
+    test::Check(drawn > 0 && outside == 0, "drawing while suspended is clipped in screen space: %d of %d vertices outside their clip rectangle", outside, drawn);
+    test::Check(resumed.x == pushed.x && resumed.y == pushed.y && resumed.z == pushed.z && resumed.w == pushed.w,
+        "the pushed clip rectangle is current again after Resume(): (%g, %g) - (%g, %g)", resumed.x, resumed.y, resumed.z, resumed.w);
+}
+
+TEST_CASE(ClipRectLeftAtEnd, "canvas_widget.clip_rect_left_pushed_at_end_asserts", "CNV-5", test::TestFlags_None)
+{
+    test::ExpectAsserts(1);
+    test::Host host;
+    host.NewFrame();
+    BeginHostWindow();
+    ImGuiEx::Canvas canvas;
+    canvas.Begin("canvas", ImVec2(300.0f, 300.0f));
+    ImGui::PushClipRect(ImVec2(10.0f, 10.0f), ImVec2(50.0f, 50.0f), true);
+    canvas.End();
+    ImGui::End();
+    host.Render();
+}
+
+TEST_CASE(SuspendInChildWindow, "canvas_widget.suspend_in_another_window_asserts", "CNV-5", test::TestFlags_None)
+{
+    // A child window begun inside the canvas is current when the canvas is suspended.
+    test::ExpectAsserts(1);
+    test::Host host;
+    host.NewFrame();
+    BeginHostWindow();
+    ImGuiEx::Canvas canvas;
+    canvas.Begin("canvas", ImVec2(300.0f, 300.0f));
+    ImGui::BeginChild("child", ImVec2(100.0f, 100.0f));
+    const auto position = ImGui::GetCurrentWindow()->Pos;
+    canvas.Suspend();
+    const auto suspendedPosition = ImGui::GetCurrentWindow()->Pos;
+    canvas.Resume();
+    ImGui::EndChild();
+    canvas.End();
+    ImGui::End();
+    host.Render();
+
+    test::Check(suspendedPosition.x == position.x && suspendedPosition.y == position.y,
+        "the child window stays in place: at (%g, %g), was (%g, %g)", suspendedPosition.x, suspendedPosition.y, position.x, position.y);
+}

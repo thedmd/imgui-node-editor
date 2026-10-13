@@ -239,8 +239,11 @@ private:
     ImVec2 m_WidgetSize;
     ImRect m_WidgetRect;
 
+    ImGuiWindow* m_Window = nullptr;
     ImDrawList* m_DrawList = nullptr;
     int m_ExpectedChannel = 0;
+    int m_ClipRectStackSize = 0;
+    ImVector<ImVec4> m_SuspendedClipRects;
 
 # if IMGUI_EX_CANVAS_DEFERED()
     ImVector<Range> m_Ranges;

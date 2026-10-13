@@ -367,6 +367,9 @@ v0.10.0 (WIP):
     BUGFIX: Canvas: Keep a suspended canvas in screen space when its view changes
         SetView() and CenterView() re-entered local space, transforming earlier geometry twice and remapping the mouse.
 
+    BUGFIX: Canvas: Set clip rectangles pushed inside a canvas aside while it is suspended
+        Suspend() popped whichever was on top, so drawing while suspended in a table cell or under a user's clip rectangle was clipped in canvas space. Leaving a clip rectangle pushed, or the canvas suspended in another window, now asserts.
+
 v0.9.2 (2023-09-01):
 
     NEW: Editor: Add offset of hover/select to style (thanks @MultiPain)
