@@ -486,7 +486,7 @@ private:
                 return false;
 
             ++m_Depth;
-            const auto accepted = accept_object(result) || accept_array(result);
+            const auto accepted = peek() == '{' ? accept_object(result) : accept_array(result);
             --m_Depth;
             return accepted;
         }
