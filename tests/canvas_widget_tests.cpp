@@ -206,3 +206,40 @@ TEST_CASE(ViewScale, "canvas_widget.view_keeps_a_positive_scale", "CNV-5", test:
     test::Check(zeroRefused && othersRefused, "the view keeps scale 1 when given 0, -1 or infinity");
     test::Check(view.Scale() == 4.0f && view.InvScale() == 0.25f, "the inverse scale follows the scale: %g for %g", view.InvScale(), view.Scale());
 }
+
+TEST_CASE(ViewportWorkPos, "canvas_widget.viewport_work_area_is_in_local_space", "CNV-7", test::TestFlags_None)
+{
+# if defined(IMGUI_HAS_VIEWPORT)
+    // A main menu bar moves the viewport's work area down; the canvas sits at
+    // (100, 80) at scale 2.
+    test::Host host;
+    ImGuiEx::Canvas canvas;
+    ImVec2 position, size, workPosition, expected;
+    for (int frame = 0; frame < 2; ++frame)
+    {
+        host.NewFrame();
+        if (ImGui::BeginMainMenuBar())
+            ImGui::EndMainMenuBar();
+        BeginHostWindow();
+        ImGui::SetCursorScreenPos(ImVec2(100.0f, 80.0f));
+        canvas.SetView(ImVec2(0.0f, 0.0f), 2.0f);
+        const auto screenWorkPosition = ImGui::GetMainViewport()->WorkPos;
+        canvas.Begin("canvas", ImVec2(300.0f, 300.0f));
+        auto viewport = ImGui::GetWindowViewport();
+        position     = viewport->Pos;
+        size         = viewport->Size;
+        workPosition = viewport->WorkPos;
+        expected     = canvas.ToLocal(screenWorkPosition);
+        canvas.End();
+        ImGui::End();
+        host.Render();
+    }
+
+    test::Check(workPosition.x == expected.x && workPosition.y == expected.y,
+        "the work area starts at its local position (%g, %g): (%g, %g)", expected.x, expected.y, workPosition.x, workPosition.y);
+    test::Check(workPosition.x >= position.x && workPosition.y >= position.y && workPosition.x <= position.x + size.x && workPosition.y <= position.y + size.y,
+        "the work area starts inside the viewport (%g, %g) - (%g, %g)", position.x, position.y, position.x + size.x, position.y + size.y);
+# else
+    test::Skip("needs a Dear ImGui branch with viewports");
+# endif
+}

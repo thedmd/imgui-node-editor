@@ -376,6 +376,9 @@ v0.10.0 (WIP):
     BREAKING: Canvas: CanvasView keeps its scale and inverse scale private and in sync
         Read them with Origin(), Scale() and InvScale(), set them with Set(), SetOrigin() and SetScale(), which refuses a scale that isn't positive and finite.
 
+    BUGFIX: Canvas: Move the viewport's work area to local space with docking builds
+        It was scaled but not translated, so with a main menu bar it lay outside the viewport.
+
 v0.9.2 (2023-09-01):
 
     NEW: Editor: Add offset of hover/select to style (thanks @MultiPain)
