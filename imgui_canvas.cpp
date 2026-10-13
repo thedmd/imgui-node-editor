@@ -449,8 +449,8 @@ void ImGuiEx::Canvas::EnterLocalSpace()
         clipped_clip_rect.w = clipped_clip_rect.y;
     }
 
-    m_DrawListCommadBufferSize       = ImMax(m_DrawList->CmdBuffer.Size, 0);
-    m_DrawListStartVertexIndex       = m_DrawList->_VtxCurrentIdx + ImVtxOffsetRef(m_DrawList);
+    m_DrawListCommandBufferSize = ImMax(m_DrawList->CmdBuffer.Size, 0);
+    m_DrawListStartVertexIndex  = m_DrawList->_VtxCurrentIdx + ImVtxOffsetRef(m_DrawList);
 
     // Mark where local space begins with a draw command of its own, which also keeps
     // canvas commands from sharing one with what was drawn before. AddCallback() adds
@@ -544,7 +544,7 @@ void ImGuiEx::Canvas::LeaveLocalSpace()
 
     // The sentinel is where local space began in the command buffer it was entered with.
     int sentinelIndex = -1;
-    for (int i = ImMax(m_DrawListCommadBufferSize - 1, 0); i < m_DrawList->CmdBuffer.Size && sentinelIndex < 0; ++i)
+    for (int i = ImMax(m_DrawListCommandBufferSize - 1, 0); i < m_DrawList->CmdBuffer.Size && sentinelIndex < 0; ++i)
         if (m_DrawList->CmdBuffer[i].UserCallback == ImDrawCallback_ImCanvas && m_DrawList->CmdBuffer[i].UserCallbackData == this)
             sentinelIndex = i;
 

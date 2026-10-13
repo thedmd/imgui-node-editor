@@ -2399,7 +2399,7 @@ void ed::EditorContext::ClearState()
 
 void ed::EditorContext::Suspend(SuspendFlags flags)
 {
-    IM_ASSERT(m_DrawList != nullptr && "Suspend was called outiside of Begin/End.");
+    IM_ASSERT(m_DrawList != nullptr && "Suspend() was called outside of Begin()/End().");
 
     // Only the outermost pair leaves the editor and comes back, with the flags of its Suspend().
     if (m_SuspendCounter++ > 0)
@@ -2421,7 +2421,7 @@ void ed::EditorContext::Suspend(SuspendFlags flags)
 
 void ed::EditorContext::Resume()
 {
-    IM_ASSERT(m_DrawList != nullptr && "Reasume was called outiside of Begin/End.");
+    IM_ASSERT(m_DrawList != nullptr && "Resume() was called outside of Begin()/End().");
     IM_ASSERT(m_SuspendCounter > 0 && "Resume() without Suspend().");
     if (m_SuspendCounter == 0 || --m_SuspendCounter > 0)
         return;
