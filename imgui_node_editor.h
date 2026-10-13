@@ -403,6 +403,8 @@ IMGUI_NODE_EDITOR_API void DeselectLink(LinkId linkId);
 IMGUI_NODE_EDITOR_API bool DeleteNode(NodeId nodeId);
 IMGUI_NODE_EDITOR_API bool DeleteLink(LinkId linkId);
 
+// These see the links submitted so far: between Begin() and End(), call them after
+// the frame's links. PinHadAnyLinks() answers for the previous frame.
 IMGUI_NODE_EDITOR_API bool HasAnyLinks(NodeId nodeId); // Returns true if node has any link connected
 IMGUI_NODE_EDITOR_API bool HasAnyLinks(PinId pinId); // Return true if pin has any link connected
 IMGUI_NODE_EDITOR_API int BreakLinks(NodeId nodeId); // Break all links connected to this node
@@ -446,14 +448,14 @@ IMGUI_NODE_EDITOR_API ImGuiMouseButton GetBackgroundDoubleClickButtonIndex(); //
 
 IMGUI_NODE_EDITOR_API bool GetLinkPins(LinkId linkId, PinId* startPinId, PinId* endPinId); // pass nullptr if particular pin do not interest you; false for an unknown link and a link whose pins were deleted
 
-IMGUI_NODE_EDITOR_API bool PinHadAnyLinks(PinId pinId);
+IMGUI_NODE_EDITOR_API bool PinHadAnyLinks(PinId pinId); // Whether the pin had any link connected in the previous frame
 
 IMGUI_NODE_EDITOR_API ImVec2 GetScreenSize();
 IMGUI_NODE_EDITOR_API ImVec2 ScreenToCanvas(const ImVec2& pos);
 IMGUI_NODE_EDITOR_API ImVec2 CanvasToScreen(const ImVec2& pos);
 
 IMGUI_NODE_EDITOR_API int GetNodeCount();                                // Returns number of submitted nodes since Begin() call
-IMGUI_NODE_EDITOR_API int GetOrderedNodeIds(NodeId* nodes, int size);    // Fills an array with node id's in order they're drawn; up to 'size` elements are set. Returns actual size of filled id's, or the number of nodes when 'nodes' is null.
+IMGUI_NODE_EDITOR_API int GetOrderedNodeIds(NodeId* nodes, int size);    // Fills an array with node id's in order they're drawn; up to 'size` elements are set. Returns actual size of filled id's, or the number of nodes when 'nodes' is null. Between Begin() and End(), only nodes submitted so far.
 
 
 
