@@ -511,11 +511,11 @@ crude_blueprint::LinkQueryResult crude_blueprint::Node::AcceptLink(const Pin& re
     return {true};
 }
 
-void crude_blueprint::Node::WasLinked(const Pin& receiver, const Pin& provider)
+void crude_blueprint::Node::WasLinked(const Pin& /*receiver*/, const Pin& /*provider*/)
 {
 }
 
-void crude_blueprint::Node::WasUnlinked(const Pin& receiver, const Pin& provider)
+void crude_blueprint::Node::WasUnlinked(const Pin& /*receiver*/, const Pin& /*provider*/)
 {
 }
 
@@ -782,7 +782,7 @@ crude_blueprint::PinValue crude_blueprint::Context::GetPinValue(const Pin& pin) 
     else
         value = pin.GetValue();
 
-    return std::move(value);
+    return value;
 }
 
 crude_blueprint::StepResult crude_blueprint::Context::SetStepResult(StepResult result)
@@ -1223,7 +1223,6 @@ bool crude_blueprint::Blueprint::Load(const crude_json::value& value)
 
     Blueprint blueprint{m_NodeRegistry};
 
-    IdGenerator generator;
     std::map<uint32_t, Pin*> pinMap;
 
     for (auto& nodeValue : *nodeArray)

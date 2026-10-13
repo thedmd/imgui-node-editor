@@ -138,7 +138,7 @@ struct Pin
 
     virtual bool     SetValueType(PinType type) { return m_Type == type; } // By default, type of held value cannot be changed
     virtual PinType  GetValueType() const;                                 // Returns type of held value (may be different from GetType() for Any pin)
-    virtual bool     SetValue(PinValue value) { return false; }            // Sets new value to be held by the pin (not all allow data to be modified)
+    virtual bool     SetValue(PinValue /*value*/) { return false; }        // Sets new value to be held by the pin (not all allow data to be modified)
     virtual PinValue GetValue() const;                                     // Returns value held by this pin
 
     PinType GetType() const; // Returns type of this pin (which may differ from the type of held value for AnyPin)
@@ -383,16 +383,16 @@ struct Node
     unique_ptr<T> CreatePin(string_view name = "");
     unique_ptr<Pin> CreatePin(PinType pinType, string_view name = "");
 
-    virtual void Reset(Context& context) // Reset state of the node before execution. Allows to set initial state for the specified execution context.
+    virtual void Reset(Context& /*context*/) // Reset state of the node before execution. Allows to set initial state for the specified execution context.
     {
     }
 
-    virtual FlowPin Execute(Context& context, FlowPin& entryPoint) // Executes node logic from specified entry point. Returns exit point (flow pin on output side) or nothing.
+    virtual FlowPin Execute(Context& /*context*/, FlowPin& /*entryPoint*/) // Executes node logic from specified entry point. Returns exit point (flow pin on output side) or nothing.
     {
         return {};
     }
 
-    virtual PinValue EvaluatePin(const Context& context, const Pin& pin) const // Evaluates pin in node in specified execution context.
+    virtual PinValue EvaluatePin(const Context& /*context*/, const Pin& pin) const // Evaluates pin in node in specified execution context.
     {
         return pin.GetValue();
     }
@@ -443,14 +443,14 @@ const char* StepResultToString(StepResult stepResult);
 struct ContextMonitor
 {
     virtual ~ContextMonitor() {};
-    virtual void OnStart(Context& context) {}
-    virtual void OnError(Context& context) {}
-    virtual void OnDone(Context& context) {}
+    virtual void OnStart(Context& /*context*/) {}
+    virtual void OnError(Context& /*context*/) {}
+    virtual void OnDone(Context& /*context*/) {}
 
-    virtual void OnPreStep(Context& context) {}
-    virtual void OnPostStep(Context& context) {}
+    virtual void OnPreStep(Context& /*context*/) {}
+    virtual void OnPostStep(Context& /*context*/) {}
 
-    virtual void OnEvaluatePin(const Context& context, const Pin& pin) {}
+    virtual void OnEvaluatePin(const Context& /*context*/, const Pin& /*pin*/) {}
 };
 
 struct Context

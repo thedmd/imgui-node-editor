@@ -108,7 +108,6 @@ static ed::EditorContext* m_Editor = nullptr;
 
 
 
-# pragma region Action
 
 struct Action
 {
@@ -176,7 +175,6 @@ void Action::Execute()
     LOGV("Action: %s", m_Name.c_str());
     OnTriggered();
 }
-# pragma endregion
 
 
 
@@ -323,6 +321,8 @@ struct BlueprintEditorExample
 
     void OnFrame(float deltaTime) override
     {
+        IM_UNUSED(deltaTime);
+
         ed::SetCurrentEditor(m_Editor);
 
         UpdateActions();
