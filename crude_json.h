@@ -157,7 +157,8 @@ public:
 
     inline friend void swap(value& lhs, value& rhs) noexcept { lhs.swap(rhs); }
 
-    // Returns discarded value for invalid inputs.
+    // Returns discarded value for invalid inputs. An object that repeats a key keeps the
+    // value of its first occurrence.
     static value parse(const string& data);
 
 # if CRUDE_JSON_IO
