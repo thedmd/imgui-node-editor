@@ -17,7 +17,6 @@
 # include <map>
 # include <cstddef>
 # include <new>
-# include <algorithm>
 # include <sstream>
 
 # ifndef CRUDE_ASSERT
