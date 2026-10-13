@@ -3,6 +3,7 @@
 //------------------------------------------------------------------------------
 # include "harness.h"
 # include "blueprint_editor_document.h"
+# include "blueprint_editor_utilities.h"
 # include "crude_blueprint.h"
 # include "crude_blueprint_library.h"
 # include "crude_logger.h"
@@ -12,6 +13,7 @@
 
 using namespace crude_blueprint;
 using blueprint_editor::Document;
+using blueprint_editor_utilities::DebugOverlay;
 
 namespace {
 
@@ -175,6 +177,63 @@ TEST_CASE(DeepEvaluation, "blueprints2.a_data_loop_or_long_chain_evaluates_witho
 
     test::Check(loop.GetType() == PinType::Any && deep.GetType() == PinType::Any, "both evaluate to no value");
     test::Check(value.GetType() == PinType::Int32 && value.As<int32_t>() == 7, "a pin evaluated after them has its value");
+}
+
+TEST_CASE(DebugOverlayLayout, "blueprints2.debug_overlay_leaves_the_layout_alone", nullptr, test::TestFlags_None)
+{
+    // While execution runs, the overlay draws values beside pins: after an output pin, before an
+    // input pin. Each pin's cell in the node's layout is a group that ends after the overlay, and
+    // has to end with the pin, as Flip Flop's A does with no value to show.
+    test::Session    session(UnnamedConfig());
+    Blueprint        blueprint;
+    ExampleBlueprint example(blueprint);
+    example.m_ToString->m_String.SetValue("a value much wider than its pin");
+    blueprint.Start(*example.m_Entry);
+
+    struct Cell
+    {
+        float PinEnd  = 0.0f;
+        float CellEnd = 0.0f;
+    };
+    Cell flipFlopA, startExit, flipFlopIsA, printString;
+
+    session.Frame([&](int)
+    {
+        DebugOverlay overlay(blueprint);
+        auto cell = [&overlay](Pin& pin, ed::PinKind kind, Cell& result)
+        {
+            ImGui::BeginGroup();
+            ed::BeginPin(pin.m_Id, kind);
+            ImGui::TextUnformatted("Pin");
+            ed::EndPin();
+            result.PinEnd = ImGui::GetItemRectMax().x;
+            if (kind == ed::PinKind::Output)
+                overlay.DrawOutputPin(pin);
+            else
+                overlay.DrawInputPin(pin);
+            ImGui::EndGroup();
+            result.CellEnd = ImGui::GetItemRectMax().x;
+        };
+
+        overlay.Begin();
+        ed::BeginNode(example.m_FlipFlop->m_Id);
+        cell(example.m_FlipFlop->m_A, ed::PinKind::Output, flipFlopA);
+        cell(example.m_FlipFlop->m_IsA, ed::PinKind::Output, flipFlopIsA);
+        ed::EndNode();
+        ed::BeginNode(example.m_Entry->m_Id);
+        cell(example.m_Entry->m_Exit, ed::PinKind::Output, startExit);
+        ed::EndNode();
+        ed::BeginNode(example.m_PrintB->m_Id);
+        cell(example.m_PrintB->m_String, ed::PinKind::Input, printString);
+        ed::EndNode();
+        overlay.End();
+    });
+
+    test::Check(test::AssertCount() == 0, "the groups end without an IM_ASSERT: %d", test::AssertCount());
+    test::Check(flipFlopA.CellEnd == flipFlopA.PinEnd, "Flip Flop's A ends its cell: at %g, the pin at %g", flipFlopA.CellEnd, flipFlopA.PinEnd);
+    test::Check(startExit.CellEnd == startExit.PinEnd, "so does Start's Exit, with the current flow marker after it: at %g, the pin at %g", startExit.CellEnd, startExit.PinEnd);
+    test::Check(flipFlopIsA.CellEnd == flipFlopIsA.PinEnd, "Flip Flop's Is A, with false after it: at %g, the pin at %g", flipFlopIsA.CellEnd, flipFlopIsA.PinEnd);
+    test::Check(printString.CellEnd == printString.PinEnd, "and Print's String, with a value wider than it before it: at %g, the pin at %g", printString.CellEnd, printString.PinEnd);
 }
 
 TEST_CASE(SaveLiveState, "blueprints2.save_writes_the_blueprint_as_it_is", "EXB-5", test::TestFlags_None)
