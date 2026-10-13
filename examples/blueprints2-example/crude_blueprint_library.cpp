@@ -47,6 +47,10 @@ bool crude_blueprint::ToStringNode::Load(const crude_json::value& value)
     if (!PinTypeFromString(typeValue.get<crude_json::string>().c_str(), type))
         return false;
 
+    // The type is the one of the value, which Node::Load() read.
+    if (type != m_Value.GetValueType())
+        return false;
+
     SetType(type);
 
     return true;
@@ -73,6 +77,22 @@ bool crude_blueprint::AddNode::Load(const crude_json::value& value)
 
     PinType type;
     if (!PinTypeFromString(typeValue.get<crude_json::string>().c_str(), type))
+        return false;
+
+    // A type Add supports, or none yet, which its pins, read by Node::Load(), have too.
+    switch (type)
+    {
+        case PinType::Any:
+        case PinType::Int32:
+        case PinType::Float:
+        case PinType::String:
+            break;
+
+        default:
+            return false;
+    }
+
+    if (m_A.GetValueType() != type || m_B.GetValueType() != type || m_Result.GetValueType() != type)
         return false;
 
     SetType(type);
