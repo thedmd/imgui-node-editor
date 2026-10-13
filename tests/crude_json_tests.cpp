@@ -376,3 +376,14 @@ TEST_CASE(JsonNothrowMoves, "json.values_move_without_throwing", "JSON-10", test
         values.emplace_back(2.0);
     test::Check(&values[0]["key"] == entry, "a growing array moves its elements");
 }
+
+std::string RenamedCrudeJsonRoundTrip(const std::string& text); // crude_json_renamed.cpp
+
+TEST_CASE(JsonRenamedNamespace, "json.a_copy_in_another_namespace_links_beside_it", "JSON-13", test::TestFlags_None)
+{
+    // Another library's copy, built with CRUDE_JSON_NAMESPACE of its own, in one program with the editor's.
+    const char* document = R"({"a":[1,true,"x"],"b":null})";
+    const auto renamed = RenamedCrudeJsonRoundTrip(document);
+    const auto own     = json::value::parse(document).dump();
+    test::Check(renamed == own && renamed == document, "both copies read and write the document: %s and %s", renamed.c_str(), own.c_str());
+}

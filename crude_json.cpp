@@ -33,7 +33,7 @@
 #     endif
 # endif
 
-namespace crude_json {
+namespace CRUDE_JSON_NAMESPACE {
 
 // Numbers are converted independently of the global C and C++ locales.
 static bool parse_number(const string& text, number& result)
@@ -1034,4 +1034,4 @@ bool value::save(const string& path, const int indent, const char indent_char) c
 
 # endif
 
-} // namespace crude_json
+} // namespace CRUDE_JSON_NAMESPACE

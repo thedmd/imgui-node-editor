@@ -9,8 +9,6 @@
 //
 // CREDITS
 //   Written by Michal Cichon
-# ifndef __CRUDE_JSON_H__
-# define __CRUDE_JSON_H__
 # pragma once
 
 # include <type_traits>
@@ -37,7 +35,13 @@
 #     define CRUDE_JSON_MAX_DEPTH 512
 # endif
 
-namespace crude_json {
+// A program with another copy of crude_json can build this one into a namespace of its
+// own, for the two to link together.
+# ifndef CRUDE_JSON_NAMESPACE
+#     define CRUDE_JSON_NAMESPACE crude_json
+# endif
+
+namespace CRUDE_JSON_NAMESPACE {
 
 struct value;
 
@@ -291,6 +295,4 @@ template <> inline       string*  value::get_ptr<string>()        { if (m_Type =
 template <> inline       boolean* value::get_ptr<boolean>()       { if (m_Type == type_t::boolean) return boolean_ptr(m_Storage); else return nullptr; }
 template <> inline       number*  value::get_ptr<number>()        { if (m_Type == type_t::number)  return number_ptr(m_Storage);  else return nullptr; }
 
-} // namespace crude_json
-
-# endif // __CRUDE_JSON_H__
+} // namespace CRUDE_JSON_NAMESPACE
