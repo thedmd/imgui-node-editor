@@ -104,10 +104,11 @@ macro(add_example_executable name)
         MINSIZEREL_POSTFIX                      _r
         VS_DEBUGGER_WORKING_DIRECTORY           ${_ExampleBinDir}
         MACOSX_BUNDLE_INFO_PLIST                "${IMGUI_NODE_EDITOR_ROOT_DIR}/examples/application/support/Info.plist.in"
-        MACOSX_BUNDLE_BUNDLE_NAME               "${PACKAGE_NAME}"
-        MACOSX_BUNDLE_GUI_IDENTIFIER            "com.sandbox.collisions"
-        MACOSX_BUNDLE_LONG_VERSION_STRING       "${PACKAGE_VERSION}"
-        MACOSX_BUNDLE_SHORT_VERSION_STRING      "${PACKAGE_VERSION_MAJOR}.${PACKAGE_VERSION_MINOR}"
+        MACOSX_BUNDLE_BUNDLE_NAME               "${name}"
+        MACOSX_BUNDLE_GUI_IDENTIFIER            "io.github.thedmd.imgui-node-editor.${name}"
+        MACOSX_BUNDLE_BUNDLE_VERSION            "${imgui_node_editor_VERSION}"
+        MACOSX_BUNDLE_LONG_VERSION_STRING       "${imgui_node_editor_VERSION}"
+        MACOSX_BUNDLE_SHORT_VERSION_STRING      "${imgui_node_editor_VERSION}"
         MACOSX_BUNDLE_ICON_FILE                 Icon.icns
     )
 
