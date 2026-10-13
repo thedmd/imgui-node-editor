@@ -4,6 +4,7 @@
 # include "harness.h"
 # include "imgui_canvas.h"
 # include <cfloat>
+# include <limits>
 
 namespace {
 
@@ -189,4 +190,19 @@ TEST_CASE(SuspendOutsideBeginEnd, "canvas_widget.suspend_outside_begin_end_asser
     host.Render();
 
     test::Check(mouseAfter.x == mouse.x && mouseAfter.y == mouse.y, "the mouse stays where it is: (%g, %g), was (%g, %g)", mouseAfter.x, mouseAfter.y, mouse.x, mouse.y);
+}
+
+TEST_CASE(ViewScale, "canvas_widget.view_keeps_a_positive_scale", "CNV-5", test::TestFlags_None)
+{
+    // Scales of 0, -1 and infinity are each refused with an assert.
+    test::ExpectAsserts(3);
+    ImGuiEx::CanvasView view(ImVec2(10.0f, 20.0f), 0.0f);
+    const bool zeroRefused = view.Scale() == 1.0f && view.InvScale() == 1.0f;
+    view.SetScale(-1.0f);
+    view.SetScale(std::numeric_limits<float>::infinity());
+    const bool othersRefused = view.Scale() == 1.0f && view.InvScale() == 1.0f;
+    view.SetScale(4.0f);
+
+    test::Check(zeroRefused && othersRefused, "the view keeps scale 1 when given 0, -1 or infinity");
+    test::Check(view.Scale() == 4.0f && view.InvScale() == 0.25f, "the inverse scale follows the scale: %g for %g", view.InvScale(), view.Scale());
 }
