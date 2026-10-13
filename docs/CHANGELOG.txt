@@ -4,8 +4,27 @@ v0.9.4 (WIP):
 
     NEW: Canvas: Add IsVisible(); Begin() returns true also for a canvas out of view
 
+    NEW: Canvas: Add example of zooming at fixed point (#270)
+
+    NEW: Examples: Choose GLFW and OpenGL on Windows
+        IMGUI_NODE_EDITOR_EXAMPLES_BACKEND takes win32 or glfw, IMGUI_NODE_EDITOR_EXAMPLES_RENDERER dx11 or opengl3.
+
+    NEW: Examples: Pass definitions to Dear ImGui and the examples with IMGUI_NODE_EDITOR_EXAMPLES_DEFINITIONS
+        For example IMGUI_DISABLE_OBSOLETE_FUNCTIONS, for a strict build.
+
     CHANGE: Canvas: CanvasView keeps its scale and inverse scale private and in sync
         Read them with Origin(), Scale() and InvScale(), set them with Set(), SetOrigin() and SetScale(), which refuses a scale that isn't positive and finite.
+
+    CHANGE: Examples: Fetch Dear ImGui, stb and GLFW at pinned revisions
+        Examples build only against thedmd/imgui feature/layout-external (Dear ImGui 1.93.0 WIP
+        with Stack Layout v2.1), no longer against the copy in external/, and need CMake 3.24.
+
+    CHANGE: Examples: Drop the shortcut toggling from the widgets example
+        The editor ignores its shortcuts while a widget inside it is active.
+
+    CHANGE: Examples: Build as standard C++, without compiler extensions
+
+    CHANGE: Examples: Build with -Wall -Wextra on GCC and Clang
 
     BUGFIX: Canvas: Remember index of first command buffer to not miss updating any used (#260)
 
@@ -319,6 +338,81 @@ v0.9.4 (WIP):
     BUGFIX: Editor: Keep flow markers on very long links
         Flow paths were sampled to a fixed fraction of the curve, so on links tens of thousands of units long
         samples collapsed onto each other and some markers were drawn at non-finite positions.
+
+    BUGFIX: Examples: Let ImGui rasterize fonts at framebuffer density
+
+    BUGFIX: Examples: Let renderer backends apply framebuffer scale
+
+    BUGFIX: Examples: Copy data files without racing in parallel builds
+
+    BUGFIX: Examples: Exit when closed while minimized on Win32
+        The process kept running without a window, and never saved its state.
+
+    BUGFIX: Examples: Don't quit on Escape on Win32
+        Escape skipped CanClose() and hung the shutdown, also when it was meant to close a popup.
+
+    BUGFIX: Examples: Keep pins pointing at their nodes after a deletion in the blueprints example
+        Erasing a node moved the nodes after it, and their pins kept pointing at the old places.
+
+    BUGFIX: Examples: Give each String pin its own text in the blueprints example
+        They all edited one shared buffer.
+
+    BUGFIX: Examples: Don't start link flows with Z while typing in the blueprints example
+
+    BUGFIX: Examples: Read the icon heights with GetTextureHeight() in the blueprints example
+
+    BUGFIX: Examples: Name every node type in the blueprints example's node context menu
+        Simple and Houdini nodes were reported as Comment.
+
+    BUGFIX: Examples: Check the start pin of a new link for null before using it in the blueprints example
+
+    BUGFIX: Examples: Take one link per input in the blueprints example
+        A second link into an input was accepted, and so was a duplicate of a link.
+
+    BUGFIX: Examples: Forget node touches once they fade in the blueprints example
+        Every node ever saved kept an entry, deleted nodes too.
+
+    BUGFIX: Examples: Initialize the header color of the blueprints example's node builder
+        End() read it for a first node without a header.
+
+    BUGFIX: Examples: Title each example's window with its name
+        Every example was titled Application.
+
+    BUGFIX: Examples: Show UTF-8 window titles correctly on Windows
+        They went to the Win32 A functions, which read them in the active code page.
+
+    BUGFIX: Examples: Link an output to an input in the basic interaction and widgets examples
+        They stored the pins in drag order as input and output, and took links between two pins of one kind.
+
+    BUGFIX: Examples: Find data and settings next to the executable
+        Started from another directory, the examples failed to load their fonts and textures, and wrote their settings there.
+
+    BUGFIX: Examples: Destroy the window after the renderer
+        With GLFW, the OpenGL objects of the backend and the examples were released after the window and its context were gone.
+
+    BUGFIX: Examples: Report a failed start and exit with an error
+        They exited silently with code 0.
+
+    BUGFIX: Examples: Fall back to feature level 10_0 and to WARP for the DX11 device
+        A hardware device with feature level 11_0 was required.
+
+    BUGFIX: Examples: Scale the UI with the content scale on X11, as on Windows (#254), thanks @Tianyun-Xuan
+        The UI was sized in pixels while the framebuffer scale was the content scale, so only a magnified corner of it showed.
+
+    BUGFIX: Examples: Don't lose mouse moves or misplace the IME at display scales above 100%
+        Mouse positions are scaled where the backends read them, no longer in ImGui's private input queue.
+
+    BUGFIX: Examples: Name RelWithDebInfo builds with the _rd postfix
+        The property was misspelled, so they took the Release names.
+
+    BUGFIX: Examples: Spell the path of the Windows icon and resource script as it is on disk
+        It failed on case-sensitive file systems.
+
+    BUGFIX: Examples: Name, identify and version the macOS bundles
+        They used undefined PACKAGE_* variables and another project's identifier.
+
+    BUGFIX: Examples: Leave .DS_Store files out of the macOS bundles
+        Only the data copied next to the executables left them out.
 
 v0.9.3 (2023-10-14):
 

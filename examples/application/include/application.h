@@ -23,6 +23,10 @@ struct Application
 
     const std::string& GetName() const;
 
+    // A relative path is relative to the directory of the executable, or to the
+    // Resources of its macOS bundle, not to the working directory.
+    static std::string ResolvePath(const std::string& path);
+
     ImFont* DefaultFont() const;
     ImFont* HeaderFont() const;
 
@@ -34,14 +38,14 @@ struct Application
 
     virtual void OnStart() {}
     virtual void OnStop() {}
-    virtual void OnFrame(float deltaTime) {}
+    virtual void OnFrame(float deltaTime) { IM_UNUSED(deltaTime); }
 
     virtual ImGuiWindowFlags GetWindowFlags() const;
 
     virtual bool CanClose() { return true; }
 
 private:
-    void RecreateFontAtlas();
+    void LoadFonts();
 
     void Frame();
 
@@ -52,6 +56,7 @@ private:
     ImGuiContext*               m_Context = nullptr;
     ImFont*                     m_DefaultFont = nullptr;
     ImFont*                     m_HeaderFont = nullptr;
+    void                      (*m_SetImeData)(ImGuiContext*, ImGuiViewport*, ImGuiPlatformImeData*) = nullptr;
 };
 
 int Main(int argc, char** argv);

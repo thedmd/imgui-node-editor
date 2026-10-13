@@ -11,8 +11,10 @@ struct Example:
 
     void OnStart() override
     {
+        m_SettingsFile = ResolvePath("Simple.json");
+
         ed::Config config;
-        config.SettingsFile = "Simple.json";
+        config.SettingsFile = m_SettingsFile.c_str();
         m_Context = ed::CreateEditor(&config);
     }
 
@@ -23,6 +25,8 @@ struct Example:
 
     void OnFrame(float deltaTime) override
     {
+        IM_UNUSED(deltaTime);
+
         auto& io = ImGui::GetIO();
 
         ImGui::Text("FPS: %.2f (%.2gms)", io.Framerate, io.Framerate ? 1000.0f / io.Framerate : 0.0f);
@@ -49,6 +53,7 @@ struct Example:
 	    //ImGui::ShowMetricsWindow();
     }
 
+    std::string        m_SettingsFile;
     ed::EditorContext* m_Context = nullptr;
 };
 
@@ -59,5 +64,5 @@ int Main(int argc, char** argv)
     if (exampe.Create())
         return exampe.Run();
 
-    return 0;
+    return 1;
 }

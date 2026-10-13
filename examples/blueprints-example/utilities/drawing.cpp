@@ -5,7 +5,6 @@
 void ax::Drawing::DrawIcon(ImDrawList* drawList, const ImVec2& a, const ImVec2& b, IconType type, bool filled, ImU32 color, ImU32 innerColor)
 {
           auto rect           = ImRect(a, b);
-          auto rect_x         = rect.Min.x;
           auto rect_y         = rect.Min.y;
           auto rect_w         = rect.Max.x - rect.Min.x;
           auto rect_h         = rect.Max.y - rect.Min.y;
@@ -69,7 +68,7 @@ void ax::Drawing::DrawIcon(ImDrawList* drawList, const ImVec2& a, const ImVec2& 
             if (innerColor & 0xFF000000)
                 drawList->AddConvexPolyFilled(drawList->_Path.Data, drawList->_Path.Size, innerColor);
 
-            drawList->PathStroke(color, true, 2.0f * outline_scale);
+            drawList->PathStroke(color, 2.0f * outline_scale, ImDrawFlags_Closed);
         }
         else
             drawList->PathFillConvex(color);
@@ -82,7 +81,6 @@ void ax::Drawing::DrawIcon(ImDrawList* drawList, const ImVec2& a, const ImVec2& 
 
         rect.Min.x    += rect_offset;
         rect.Max.x    += rect_offset;
-        rect_x        += rect_offset;
         rect_center_x += rect_offset * 0.5f;
         rect_center.x += rect_offset * 0.5f;
 
@@ -112,11 +110,7 @@ void ax::Drawing::DrawIcon(ImDrawList* drawList, const ImVec2& a, const ImVec2& 
                 const auto p0 = rect_center - ImVec2(r, r);
                 const auto p1 = rect_center + ImVec2(r, r);
 
-#if IMGUI_VERSION_NUM > 18101
-                drawList->AddRectFilled(p0, p1, color, 0, ImDrawFlags_RoundCornersAll);
-#else
-                drawList->AddRectFilled(p0, p1, color, 0, 15);
-#endif
+                drawList->AddRectFilled(p0, p1, color, 0, ImDrawFlags_RoundAll);
             }
             else
             {
@@ -126,18 +120,10 @@ void ax::Drawing::DrawIcon(ImDrawList* drawList, const ImVec2& a, const ImVec2& 
 
                 if (innerColor & 0xFF000000)
                 {
-#if IMGUI_VERSION_NUM > 18101
-                    drawList->AddRectFilled(p0, p1, innerColor, 0, ImDrawFlags_RoundCornersAll);
-#else
-                    drawList->AddRectFilled(p0, p1, innerColor, 0, 15);
-#endif
+                    drawList->AddRectFilled(p0, p1, innerColor, 0, ImDrawFlags_RoundAll);
                 }
 
-#if IMGUI_VERSION_NUM > 18101
-                drawList->AddRect(p0, p1, color, 0, ImDrawFlags_RoundCornersAll, 2.0f * outline_scale);
-#else
-                drawList->AddRect(p0, p1, color, 0, 15, 2.0f * outline_scale);
-#endif
+                drawList->AddRect(p0, p1, color, 0, 2.0f * outline_scale, ImDrawFlags_RoundAll);
             }
         }
 
@@ -180,11 +166,7 @@ void ax::Drawing::DrawIcon(ImDrawList* drawList, const ImVec2& a, const ImVec2& 
                 const auto p0 = rect_center - ImVec2(r, r);
                 const auto p1 = rect_center + ImVec2(r, r);
 
-#if IMGUI_VERSION_NUM > 18101
-                drawList->AddRectFilled(p0, p1, color, cr, ImDrawFlags_RoundCornersAll);
-#else
-                drawList->AddRectFilled(p0, p1, color, cr, 15);
-#endif
+                drawList->AddRectFilled(p0, p1, color, cr, ImDrawFlags_RoundAll);
             }
             else
             {
@@ -195,18 +177,10 @@ void ax::Drawing::DrawIcon(ImDrawList* drawList, const ImVec2& a, const ImVec2& 
 
                 if (innerColor & 0xFF000000)
                 {
-#if IMGUI_VERSION_NUM > 18101
-                    drawList->AddRectFilled(p0, p1, innerColor, cr, ImDrawFlags_RoundCornersAll);
-#else
-                    drawList->AddRectFilled(p0, p1, innerColor, cr, 15);
-#endif
+                    drawList->AddRectFilled(p0, p1, innerColor, cr, ImDrawFlags_RoundAll);
                 }
 
-#if IMGUI_VERSION_NUM > 18101
-                drawList->AddRect(p0, p1, color, cr, ImDrawFlags_RoundCornersAll, 2.0f * outline_scale);
-#else
-                drawList->AddRect(p0, p1, color, cr, 15, 2.0f * outline_scale);
-#endif
+                drawList->AddRect(p0, p1, color, cr, 2.0f * outline_scale, ImDrawFlags_RoundAll);
             }
         }
         else if (type == IconType::Diamond)
@@ -235,7 +209,7 @@ void ax::Drawing::DrawIcon(ImDrawList* drawList, const ImVec2& a, const ImVec2& 
                 if (innerColor & 0xFF000000)
                     drawList->AddConvexPolyFilled(drawList->_Path.Data, drawList->_Path.Size, innerColor);
 
-                drawList->PathStroke(color, true, 2.0f * outline_scale);
+                drawList->PathStroke(color, 2.0f * outline_scale, ImDrawFlags_Closed);
             }
         }
         else

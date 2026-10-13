@@ -27,6 +27,7 @@ struct PlatformGLFW final
     void ApplicationStop() override;
     bool OpenMainWindow(const char* title, int width, int height) override;
     bool CloseMainWindow() override;
+    void DestroyMainWindow() override;
     void* GetMainWindowHandle() const override;
     void SetMainWindowTitle(const char* title) override;
     void ShowMainWindow() override;
@@ -59,6 +60,9 @@ PlatformGLFW::PlatformGLFW(Application& application)
 
 bool PlatformGLFW::ApplicationStart(int argc, char** argv)
 {
+    IM_UNUSED(argc);
+    IM_UNUSED(argv);
+
     if (!glfwInit())
         return false;
 
@@ -97,9 +101,10 @@ bool PlatformGLFW::OpenMainWindow(const char* title, int width, int height)
     initializer = &ImGui_ImplGlfw_InitForOpenGL;
 # else
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-    initializer = &ImGui_ImplGlfw_InitForNone;
+    initializer = &ImGui_ImplGlfw_InitForOther;
 # endif
     glfwWindowHint(GLFW_SCALE_TO_MONITOR, GL_TRUE);
+    glfwWindowHint(GLFW_SCALE_FRAMEBUFFER, GL_TRUE);
 
     width  = width  < 0 ? 1440 : width;
     height = height < 0 ?  800 : height;
@@ -116,6 +121,14 @@ bool PlatformGLFW::OpenMainWindow(const char* title, int width, int height)
     }
 
     glfwSetWindowUserPointer(m_Window, this);
+
+    // Replaces the backend's callback, to pass positions in ImGui units.
+    glfwSetCursorPosCallback(m_Window, [](GLFWwindow* window, double x, double y)
+    {
+        auto self = reinterpret_cast<PlatformGLFW*>(glfwGetWindowUserPointer(window));
+        const auto scale = self->GetWindowScale();
+        ImGui_ImplGlfw_CursorPosCallback(window, x * scale, y * scale);
+    });
 
     glfwSetWindowCloseCallback(m_Window, [](GLFWwindow* window)
     {
@@ -152,6 +165,8 @@ bool PlatformGLFW::OpenMainWindow(const char* title, int width, int height)
 
     auto onWindowContentScaleChanged = [](GLFWwindow* window, float xscale, float yscale)
     {
+        IM_UNUSED(xscale);
+        IM_UNUSED(yscale);
         auto self = reinterpret_cast<PlatformGLFW*>(glfwGetWindowUserPointer(window));
         self->UpdatePixelDensity();
     };
@@ -177,6 +192,17 @@ bool PlatformGLFW::CloseMainWindow()
     glfwSetWindowShouldClose(m_Window, canClose ? 1 : 0);
 
     return canClose;
+}
+
+void PlatformGLFW::DestroyMainWindow()
+{
+    if (m_Window == nullptr)
+        return;
+
+    ImGui_ImplGlfw_Shutdown();
+
+    glfwDestroyWindow(m_Window);
+    m_Window = nullptr;
 }
 
 void* PlatformGLFW::GetMainWindowHandle() const
@@ -211,16 +237,7 @@ bool PlatformGLFW::ProcessMainWindowEvents()
     else
         glfwPollEvents();
 
-    if (m_QuitRequested || glfwWindowShouldClose(m_Window))
-    {
-        ImGui_ImplGlfw_Shutdown();
-
-        glfwDestroyWindow(m_Window);
-
-        return false;
-    }
-
-    return true;
+    return !m_QuitRequested && !glfwWindowShouldClose(m_Window);
 }
 
 bool PlatformGLFW::IsMainWindowVisible() const
@@ -271,15 +288,17 @@ void PlatformGLFW::UpdatePixelDensity()
     glfwGetWindowContentScale(m_Window, &xscale, &yscale);
     float scale = xscale > yscale ? xscale : yscale;
 
-# if PLATFORM(WINDOWS)
-    float windowScale      = scale;
-    float framebufferScale = scale;
-# else
-    float windowScale      = 1.0f;
-    float framebufferScale = scale;
-# endif
+    // Windows and X11 size windows in pixels at any content scale, macOS and Wayland in points.
+    int windowWidth = 0, framebufferWidth = 0;
+    glfwGetWindowSize(m_Window, &windowWidth, nullptr);
+    glfwGetFramebufferSize(m_Window, &framebufferWidth, nullptr);
+    if (windowWidth <= 0 || framebufferWidth <= 0)
+        return;
 
-    SetWindowScale(windowScale); // this is how windows is scaled, not window content
+    float windowScale      = scale * windowWidth / framebufferWidth;
+    float framebufferScale = scale;
+
+    SetWindowScale(1.0f / windowScale); // this is how windows is scaled, not window content
 
     SetFramebufferScale(framebufferScale);
 }

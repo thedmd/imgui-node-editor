@@ -2,9 +2,9 @@ project(application)
 
 set(_Application_Sources
     include/application.h
+    include/splitter.h
     source/application.cpp
     source/entry_point.cpp
-    source/imgui_extra_keys.h
     source/config.h.in
     source/setup.h
     source/platform.h
@@ -13,91 +13,59 @@ set(_Application_Sources
     source/renderer.h
     source/renderer_dx11.cpp
     source/renderer_ogl3.cpp
+    source/splitter.cpp
 )
 
 add_library(application STATIC)
+set_example_warnings(application)
 
 target_include_directories(application PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
-find_package(imgui REQUIRED)
-find_package(stb_image REQUIRED)
-find_package(ScopeGuard REQUIRED)
-target_link_libraries(application PUBLIC imgui)
-target_link_libraries(application PRIVATE stb_image ScopeGuard)
-
 if (WIN32)
-    list(APPEND _Application_Sources
-        source/imgui_impl_dx11.cpp
-        source/imgui_impl_dx11.h
-        source/imgui_impl_win32.cpp
-        source/imgui_impl_win32.h
-    )
-
-    set(_DXSDK_Dir  ${IMGUI_NODE_EDITOR_ROOT_DIR}/external/DXSDK)
-    set(_DXSDK_Arch x86)
-    if (${CMAKE_SIZEOF_VOID_P} EQUAL 8)
-        set(_DXSDK_Arch x64)
-    endif()
-
-    add_library(dxerr STATIC ${_DXSDK_Dir}/src/dxerr.cpp)
-    target_include_directories(dxerr PUBLIC "${_DXSDK_Dir}/include")
-    set_property(TARGET dxerr PROPERTY FOLDER "external")
-
-    add_library(d3dx11 UNKNOWN IMPORTED)
-    set_target_properties(d3dx11 PROPERTIES
-        IMPORTED_LOCATION               "${_DXSDK_Dir}/lib/${_DXSDK_Arch}/d3dx11.lib"
-        IMPORTED_LOCATION_DEBUG         "${_DXSDK_Dir}/lib/${_DXSDK_Arch}/d3dx11d.lib"
-        INTERFACE_INCLUDE_DIRECTORIES   "${_DXSDK_Dir}/include"
-        INTERFACE_LINK_LIBRARIES        "$<$<CONFIG:Debug>:dxerr>"
-    )
-
-    target_link_libraries(application PRIVATE d3d11.lib d3dcompiler.lib d3dx11)
+    set(IMGUI_NODE_EDITOR_EXAMPLES_BACKEND  "win32" CACHE STRING "Platform backend of the examples: win32 or glfw")
+    set(IMGUI_NODE_EDITOR_EXAMPLES_RENDERER "dx11"  CACHE STRING "Renderer of the examples: dx11, or opengl3 with the glfw backend")
+    set_property(CACHE IMGUI_NODE_EDITOR_EXAMPLES_BACKEND  PROPERTY STRINGS win32 glfw)
+    set_property(CACHE IMGUI_NODE_EDITOR_EXAMPLES_RENDERER PROPERTY STRINGS dx11 opengl3)
+    target_compile_definitions(application PRIVATE UNICODE _UNICODE)
 else()
-    find_package(OpenGL REQUIRED)
-    find_package(glfw3 3 REQUIRED)
-
-    if (APPLE)
-        target_link_libraries(application PRIVATE
-            "-framework CoreFoundation"
-            "-framework Cocoa"
-            "-framework IOKit"
-            "-framework CoreVideo"
-        )
-    endif()
+    set(IMGUI_NODE_EDITOR_EXAMPLES_BACKEND  glfw)
+    set(IMGUI_NODE_EDITOR_EXAMPLES_RENDERER opengl3)
 endif()
+
+if (IMGUI_NODE_EDITOR_EXAMPLES_BACKEND STREQUAL "win32")
+    target_compile_definitions(application PRIVATE BACKEND_CONFIG=IMGUI_WIN32)
+elseif (IMGUI_NODE_EDITOR_EXAMPLES_BACKEND STREQUAL "glfw")
+    find_package(glfw REQUIRED)
+    set(HAVE_GLFW3 YES)
+    target_compile_definitions(application PRIVATE BACKEND_CONFIG=IMGUI_GLFW)
+else()
+    message(FATAL_ERROR "IMGUI_NODE_EDITOR_EXAMPLES_BACKEND must be win32 or glfw, not ${IMGUI_NODE_EDITOR_EXAMPLES_BACKEND}")
+endif()
+
+if (IMGUI_NODE_EDITOR_EXAMPLES_RENDERER STREQUAL "dx11")
+    target_compile_definitions(application PRIVATE RENDERER_CONFIG=IMGUI_DX11)
+elseif (IMGUI_NODE_EDITOR_EXAMPLES_RENDERER STREQUAL "opengl3")
+    # The renderer uses the context GLFW creates with the window.
+    if (NOT IMGUI_NODE_EDITOR_EXAMPLES_BACKEND STREQUAL "glfw")
+        message(FATAL_ERROR "The opengl3 renderer of the examples needs the glfw backend")
+    endif()
+    target_compile_definitions(application PRIVATE RENDERER_CONFIG=IMGUI_OGL3)
+else()
+    message(FATAL_ERROR "IMGUI_NODE_EDITOR_EXAMPLES_RENDERER must be dx11 or opengl3, not ${IMGUI_NODE_EDITOR_EXAMPLES_RENDERER}")
+endif()
+
+find_package(imgui REQUIRED COMPONENTS ${IMGUI_NODE_EDITOR_EXAMPLES_BACKEND} ${IMGUI_NODE_EDITOR_EXAMPLES_RENDERER})
+find_package(stb REQUIRED COMPONENTS image)
+target_link_libraries(application PUBLIC imgui)
+target_link_libraries(application PRIVATE imgui::${IMGUI_NODE_EDITOR_EXAMPLES_BACKEND} imgui::${IMGUI_NODE_EDITOR_EXAMPLES_RENDERER} stb::image)
 
 if (OpenGL_FOUND)
     set(HAVE_OPENGL YES)
-
-    target_include_directories(application PRIVATE ${OPENGL_INCLUDE_DIR})
-    target_link_libraries(application PRIVATE ${OPENGL_gl_LIBRARY})
-    list(APPEND _Application_Sources
-        source/imgui_impl_opengl3.cpp
-        source/imgui_impl_opengl3.h
-        source/imgui_impl_opengl3_loader.h
-    )
-endif()
-
-if (glfw3_FOUND)
-    set(HAVE_GLFW3 YES)
-
-    list(APPEND _Application_Sources
-        source/imgui_impl_glfw.cpp
-        source/imgui_impl_glfw.h
-    )
-    target_link_libraries(application PRIVATE
-        glfw
-    )
 endif()
 
 configure_file(
     source/config.h.in
     ${CMAKE_CURRENT_BINARY_DIR}/source/config.h
-)
-
-target_compile_definitions(application PRIVATE
-    #BACKEND_CONFIG=IMGUI_GLFW
-    #RENDERER_CONFIG=IMGUI_OGL3
 )
 
 target_include_directories(application PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/source)
@@ -106,4 +74,4 @@ source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES ${_Application_Sources})
 
 target_sources(application PRIVATE ${_Application_Sources})
 
-set_property(TARGET application PROPERTY FOLDER "examples")
+set_property(TARGET application PROPERTY FOLDER "lib")

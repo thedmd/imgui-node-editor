@@ -2,13 +2,77 @@
 # include "setup.h"
 # include "platform.h"
 # include "renderer.h"
+# include "stb_image.h"
+# include <imgui_internal.h>
+# include <cstdio>
+# if PLATFORM(WINDOWS)
+#     define NOMINMAX
+#     define WIN32_LEAN_AND_MEAN
+#     include <windows.h>
+# elif PLATFORM(MACOS)
+#     include <mach-o/dyld.h>
+#     include <climits>
+#     include <cstdlib>
+# else
+#     include <unistd.h>
+# endif
 
-extern "C" {
-#define STB_IMAGE_IMPLEMENTATION
-#define STB_IMAGE_STATIC
-#include "stb_image.h"
+// Where the data and the settings of an example are: next to its executable, or in
+// the Resources of its macOS bundle. Empty when the executable can't be found.
+static std::string GetBaseDirectory()
+{
+    std::string executable;
+# if PLATFORM(WINDOWS)
+    wchar_t path[MAX_PATH];
+    const auto length = static_cast<int>(GetModuleFileNameW(nullptr, path, MAX_PATH));
+    if (length == 0 || length == MAX_PATH)
+        return std::string();
+    executable.resize(WideCharToMultiByte(CP_UTF8, 0, path, length, nullptr, 0, nullptr, nullptr));
+    WideCharToMultiByte(CP_UTF8, 0, path, length, &executable[0], static_cast<int>(executable.size()), nullptr, nullptr);
+# elif PLATFORM(MACOS)
+    char path[PATH_MAX], resolved[PATH_MAX];
+    uint32_t size = sizeof(path);
+    if (_NSGetExecutablePath(path, &size) != 0 || !realpath(path, resolved))
+        return std::string();
+    executable = resolved;
+# else
+    char path[4096];
+    const auto length = readlink("/proc/self/exe", path, sizeof(path));
+    if (length <= 0 || length == static_cast<ssize_t>(sizeof(path)))
+        return std::string();
+    executable.assign(path, static_cast<size_t>(length));
+# endif
+
+    auto directory = executable.substr(0, executable.find_last_of("/\\") + 1);
+# if PLATFORM(MACOS)
+    const std::string bundle = "/Contents/MacOS/";
+    if (directory.size() >= bundle.size() && directory.compare(directory.size() - bundle.size(), bundle.size(), bundle) == 0)
+        directory.replace(directory.size() - bundle.size(), bundle.size(), "/Contents/Resources/");
+# endif
+    return directory;
 }
 
+static void ShowError(const std::string& title, const char* message)
+{
+# if PLATFORM(WINDOWS)
+    auto widen = [](const std::string& text)
+    {
+        std::wstring result(MultiByteToWideChar(CP_UTF8, 0, text.c_str(), -1, nullptr, 0), L'\0');
+        MultiByteToWideChar(CP_UTF8, 0, text.c_str(), -1, &result[0], static_cast<int>(result.size()));
+        return result;
+    };
+    MessageBoxW(nullptr, widen(message).c_str(), widen(title).c_str(), MB_OK | MB_ICONERROR);
+# else
+    fprintf(stderr, "%s: %s\n", title.c_str(), message);
+# endif
+}
+
+std::string Application::ResolvePath(const std::string& path)
+{
+    static const auto base = GetBaseDirectory();
+    const auto isAbsolute = !path.empty() && (path[0] == '/' || path[0] == '\\' || (path.size() > 1 && path[1] == ':'));
+    return isAbsolute ? path : base + path;
+}
 
 Application::Application(const char* name)
     : Application(name, 0, nullptr)
@@ -27,6 +91,8 @@ Application::~Application()
 {
     m_Renderer->Destroy();
 
+    m_Platform->DestroyMainWindow();
+
     m_Platform->ApplicationStop();
 
     if (m_Context)
@@ -41,13 +107,35 @@ bool Application::Create(int width /*= -1*/, int height /*= -1*/)
     m_Context = ImGui::CreateContext();
     ImGui::SetCurrentContext(m_Context);
 
-    if (!m_Platform->OpenMainWindow("Application", width, height))
+    if (!m_Platform->OpenMainWindow(m_Name.c_str(), width, height))
+    {
+        ShowError(m_Name, "Could not open the window.");
         return false;
+    }
 
     if (!m_Renderer->Create(*m_Platform))
+    {
+        ShowError(m_Name, "Could not create the renderer.");
         return false;
+    }
 
-    m_IniFilename = m_Name + ".ini";
+    // The IME takes positions in window units.
+    auto& platformIO = ImGui::GetPlatformIO();
+    m_SetImeData = platformIO.Platform_SetImeDataFn;
+    platformIO.Platform_ImeUserData = this;
+    platformIO.Platform_SetImeDataFn = [](ImGuiContext* context, ImGuiViewport* viewport, ImGuiPlatformImeData* data)
+    {
+        auto self = static_cast<Application*>(ImGui::GetPlatformIO().Platform_ImeUserData);
+        const auto scale = self->m_Platform->GetWindowScale();
+        auto windowData = *data;
+        windowData.InputPos.x      /= scale;
+        windowData.InputPos.y      /= scale;
+        windowData.InputLineHeight /= scale;
+        if (self->m_SetImeData)
+            self->m_SetImeData(context, viewport, &windowData);
+    };
+
+    m_IniFilename = ResolvePath(m_Name + ".ini");
 
     ImGuiIO& io = ImGui::GetIO();
     //io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;  // Enable Keyboard Controls
@@ -56,7 +144,7 @@ bool Application::Create(int width /*= -1*/, int height /*= -1*/)
 
     ImGui::StyleColorsDark();
 
-    RecreateFontAtlas();
+    LoadFonts();
 
     m_Platform->AcknowledgeWindowScaleChanged();
     m_Platform->AcknowledgeFramebufferScaleChanged();
@@ -85,23 +173,15 @@ int Application::Run()
     return 0;
 }
 
-void Application::RecreateFontAtlas()
+void Application::LoadFonts()
 {
     ImGuiIO& io = ImGui::GetIO();
 
-    IM_DELETE(io.Fonts);
-
-    io.Fonts = IM_NEW(ImFontAtlas);
-
     ImFontConfig config;
-    config.OversampleH = 4;
-    config.OversampleV = 4;
-    config.PixelSnapH = false;
+    config.PixelSnapH = true;
 
-    m_DefaultFont = io.Fonts->AddFontFromFileTTF("data/Play-Regular.ttf", 18.0f, &config);
-    m_HeaderFont  = io.Fonts->AddFontFromFileTTF("data/Cuprum-Bold.ttf",  20.0f, &config);
-
-    io.Fonts->Build();
+    m_DefaultFont = io.Fonts->AddFontFromFileTTF(ResolvePath("data/Play-Regular.ttf").c_str(), 18.0f, &config);
+    m_HeaderFont  = io.Fonts->AddFontFromFileTTF(ResolvePath("data/Cuprum-Bold.ttf").c_str(),  20.0f, &config);
 }
 
 void Application::Frame()
@@ -112,30 +192,15 @@ void Application::Frame()
         m_Platform->AcknowledgeWindowScaleChanged();
 
     if (m_Platform->HasFramebufferScaleChanged())
-    {
-        RecreateFontAtlas();
         m_Platform->AcknowledgeFramebufferScaleChanged();
-    }
 
     const float windowScale      = m_Platform->GetWindowScale();
     const float framebufferScale = m_Platform->GetFramebufferScale();
 
-    if (io.WantSetMousePos)
-    {
-        io.MousePos.x *= windowScale;
-        io.MousePos.y *= windowScale;
-    }
-
     m_Platform->NewFrame();
 
-    // Don't touch "uninitialized" mouse position
-    if (io.MousePos.x > -FLT_MAX && io.MousePos.y > -FLT_MAX)
-    {
-        io.MousePos.x    /= windowScale;
-        io.MousePos.y    /= windowScale;
-    }
-    io.DisplaySize.x /= windowScale;
-    io.DisplaySize.y /= windowScale;
+    io.DisplaySize.x *= windowScale;
+    io.DisplaySize.y *= windowScale;
 
     io.DisplayFramebufferScale.x = framebufferScale;
     io.DisplayFramebufferScale.y = framebufferScale;
@@ -163,6 +228,7 @@ void Application::Frame()
     // Rendering
     m_Renderer->Clear(ImColor(32, 32, 32, 255));
     ImGui::Render();
+
     m_Renderer->RenderDrawData(ImGui::GetDrawData());
 
     m_Platform->FinishFrame();
@@ -200,15 +266,20 @@ ImFont* Application::HeaderFont() const
 
 ImTextureID Application::LoadTexture(const char* path)
 {
+    // ImFileOpen() takes UTF-8 paths on Windows too, unlike stbi_load().
+    auto file = ImFileOpen(ResolvePath(path).c_str(), "rb");
+    if (!file)
+        return ImTextureID{};
+
     int width = 0, height = 0, component = 0;
-    if (auto data = stbi_load(path, &width, &height, &component, 4))
-    {
-        auto texture = CreateTexture(data, width, height);
-        stbi_image_free(data);
-        return texture;
-    }
-    else
-        return nullptr;
+    auto data = stbi_load_from_file(file, &width, &height, &component, 4);
+    ImFileClose(file);
+    if (!data)
+        return ImTextureID{};
+
+    auto texture = CreateTexture(data, width, height);
+    stbi_image_free(data);
+    return texture;
 }
 
 ImTextureID Application::CreateTexture(const void* data, int width, int height)

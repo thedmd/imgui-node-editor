@@ -13,14 +13,14 @@
 //   and the nodes can't tell these widgets how wide it is. The work-around is to set up a fake
 //   table with a static column width, then draw your header and tree widgets in that column.
 // - Clickable tabs don't work in nodes.  Tabs appear, but you cannot actually change the tab, so they're functionally useless.
-// - Editable text areas work, but you have to manually manage disabling the editor shorcuts while typing is detected.
-//   Look around for the call to ed::EnableShortcuts() for an example.
+// - Editable text areas work. The editor ignores its shortcuts while a text area, or any other widget, is active.
 // - Most of the cool graph widgets can't be used because they are hard-coded in ImGui to spawn tooltips, which don't work.
 
 # include <imgui.h>
 # include <imgui_internal.h>
 # include <imgui_node_editor.h>
 # include <application.h>
+# include <utility>
 
 namespace ed = ax::NodeEditor;
 
@@ -40,14 +40,16 @@ struct Example:
     struct LinkInfo
     {
         ed::LinkId Id;
-        ed::PinId  InputId;
-        ed::PinId  OutputId;
+        ed::PinId  StartPinId; // an output pin, where the link starts
+        ed::PinId  EndPinId;   // an input pin, where it ends
     };
 
     void OnStart() override
     {
+        m_SettingsFile = ResolvePath("Widgets.json");
+
         ed::Config config;
-        config.SettingsFile = "Widgets.json";
+        config.SettingsFile = m_SettingsFile.c_str();
         m_Context = ed::CreateEditor(&config);
     }
 
@@ -58,6 +60,8 @@ struct Example:
 
     void OnFrame(float deltaTime) override
     {
+        IM_UNUSED(deltaTime);
+
         static bool firstframe = true; // Used to position the nodes on startup
         auto& io = ImGui::GetIO();
 
@@ -69,12 +73,14 @@ struct Example:
         ed::SetCurrentEditor(m_Context);
         ed::Begin("My Editor", ImVec2(0.0, 0.0f));
             int uniqueId = 1;
+            ImVector<ed::PinId> inputPins; // to tell inputs from outputs when a link is created
 
 
             // Basic Widgets Demo  ==============================================================================================
             auto basic_id = uniqueId++;
             ed::BeginNode(basic_id);
             ImGui::Text("Basic Widget Demo");
+            inputPins.push_back(uniqueId);
             ed::BeginPin(uniqueId++, ed::PinKind::Input);
             ImGui::Text("-> In");
             ed::EndPin();
@@ -128,17 +134,14 @@ struct Example:
             // Arrow buttons with Repeater
             static int counter = 0;
             float spacing = ImGui::GetStyle().ItemInnerSpacing.x;
-            ImGui::PushButtonRepeat(true);
+            ImGui::PushItemFlag(ImGuiItemFlags_ButtonRepeat, true);
             if (ImGui::ArrowButton("##left", ImGuiDir_Left)) { counter--; }
             ImGui::SameLine(0.0f, spacing);
             if (ImGui::ArrowButton("##right", ImGuiDir_Right)) { counter++; }
-            ImGui::PopButtonRepeat();
+            ImGui::PopItemFlag();
             ImGui::SameLine();
             ImGui::Text("%d", counter);
 
-            // The input widgets also require you to manually disable the editor shortcuts so the view doesn't fly around.
-            // (note that this is a per-frame setting, so it disables it for all text boxes.  I left it here so you could find it!)
-            ed::EnableShortcuts(!io.WantTextInput);
             // The input widgets require some guidance on their widths, or else they're very large. (note matching pop at the end).
             ImGui::PushItemWidth(200);
             static char str1[128] = "";
@@ -168,6 +171,7 @@ struct Example:
                 ImGui::Text("Tree Widget Demo");
 
                 // Pins Row
+                inputPins.push_back(uniqueId);
                 ed::BeginPin(uniqueId++, ed::PinKind::Input);
                     ImGui::Text("-> In");
                 ed::EndPin();
@@ -226,6 +230,7 @@ struct Example:
             auto popup_id = uniqueId++;
             ed::BeginNode(popup_id);
                 ImGui::Text("Tool Tip & Pop-up Demo");
+                inputPins.push_back(uniqueId);
                 ed::BeginPin(uniqueId++, ed::PinKind::Input);
                     ImGui::Text("-> In");
                 ed::EndPin();
@@ -324,6 +329,7 @@ struct Example:
             auto plot_id = uniqueId++;
             ed::BeginNode(plot_id);
                 ImGui::Text("Plot Demo");
+                inputPins.push_back(uniqueId);
                 ed::BeginPin(uniqueId++, ed::PinKind::Input);
                     ImGui::Text("-> In");
                 ed::EndPin();
@@ -363,7 +369,7 @@ struct Example:
             // Link Drawing Section
 
             for (auto& linkInfo : m_Links)
-                ed::Link(linkInfo.Id, linkInfo.InputId, linkInfo.OutputId);
+                ed::Link(linkInfo.Id, linkInfo.StartPinId, linkInfo.EndPinId);
 
             // ==================================================================================================
             // Interaction Handling Section
@@ -372,15 +378,20 @@ struct Example:
             // Handle creation action ---------------------------------------------------------------------------
             if (ed::BeginCreate())
             {
-                ed::PinId inputPinId, outputPinId;
-                if (ed::QueryNewLink(&inputPinId, &outputPinId))
+                ed::PinId startPinId, endPinId;
+                if (ed::QueryNewLink(&startPinId, &endPinId))
                 {
-                    if (inputPinId && outputPinId)
+                    if (startPinId && endPinId)
                     {
-                        if (ed::AcceptNewItem())
+                        if (inputPins.contains(startPinId))
+                            std::swap(startPinId, endPinId);
+
+                        if (inputPins.contains(startPinId) || !inputPins.contains(endPinId))
+                            ed::RejectNewItem(ImVec4(1.0f, 0.0f, 0.0f, 1.0f), 2.0f);
+                        else if (ed::AcceptNewItem())
                         {
-                            m_Links.push_back({ ed::LinkId(m_NextLinkId++), inputPinId, outputPinId });
-                            ed::Link(m_Links.back().Id, m_Links.back().InputId, m_Links.back().OutputId);
+                            m_Links.push_back({ ed::LinkId(m_NextLinkId++), startPinId, endPinId });
+                            ed::Link(m_Links.back().Id, m_Links.back().StartPinId, m_Links.back().EndPinId);
                         }
                     }
                 }
@@ -415,6 +426,7 @@ struct Example:
         //ImGui::ShowDemoWindow();
     }
 
+    std::string        m_SettingsFile;
     ed::EditorContext* m_Context = nullptr;
 
     ImVector<LinkInfo>   m_Links;                // List of live links. It is dynamic unless you want to create read-only view over nodes.
@@ -428,5 +440,5 @@ int Main(int argc, char** argv)
     if (exampe.Create())
         return exampe.Run();
 
-    return 0;
+    return 1;
 }

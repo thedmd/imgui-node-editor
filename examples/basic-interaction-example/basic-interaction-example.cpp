@@ -1,6 +1,7 @@
 ﻿# include <imgui.h>
 # include <imgui_node_editor.h>
 # include <application.h>
+# include <utility>
 
 namespace ed = ax::NodeEditor;
 
@@ -14,16 +15,18 @@ struct Example:
     struct LinkInfo
     {
         ed::LinkId Id;
-        ed::PinId  InputId;
-        ed::PinId  OutputId;
+        ed::PinId  StartPinId; // an output pin, where the link starts
+        ed::PinId  EndPinId;   // an input pin, where it ends
     };
 
     using Application::Application;
 
     void OnStart() override
     {
+        m_SettingsFile = ResolvePath("BasicInteraction.json");
+
         ed::Config config;
-        config.SettingsFile = "BasicInteraction.json";
+        config.SettingsFile = m_SettingsFile.c_str();
         m_Context = ed::CreateEditor(&config);
     }
 
@@ -51,6 +54,8 @@ struct Example:
 
     void OnFrame(float deltaTime) override
     {
+        IM_UNUSED(deltaTime);
+
         auto& io = ImGui::GetIO();
 
         ImGui::Text("FPS: %.2f (%.2gms)", io.Framerate, io.Framerate ? 1000.0f / io.Framerate : 0.0f);
@@ -112,7 +117,12 @@ struct Example:
 
         // Submit Links
         for (auto& linkInfo : m_Links)
-            ed::Link(linkInfo.Id, linkInfo.InputId, linkInfo.OutputId);
+            ed::Link(linkInfo.Id, linkInfo.StartPinId, linkInfo.EndPinId);
+
+        auto isInput = [&](ed::PinId pinId)
+        {
+            return pinId == nodeA_InputPinId || pinId == nodeB_InputPinId1 || pinId == nodeB_InputPinId2;
+        };
 
         //
         // 2) Handle interactions
@@ -121,36 +131,40 @@ struct Example:
         // Handle creation action, returns true if editor want to create new object (node or link)
         if (ed::BeginCreate())
         {
-            ed::PinId inputPinId, outputPinId;
-            if (ed::QueryNewLink(&inputPinId, &outputPinId))
+            ed::PinId startPinId, endPinId;
+            if (ed::QueryNewLink(&startPinId, &endPinId))
             {
-                // QueryNewLink returns true if editor want to create new link between pins.
+                // QueryNewLink returns true while user drags a new link.
                 //
-                // Link can be created only for two valid pins, it is up to you to
-                // validate if connection make sense. Editor is happy to make any.
+                // startPinId is the pin the drag started from, and endPinId the pin
+                // it is over, or 0 while it is over none. User may start from an
+                // input or an output, and editor offers a link between any two pins:
+                // it is up to you to validate if connection make sense.
                 //
-                // Link always goes from input to output. User may choose to drag
-                // link from output pin or input pin. This determine which pin ids
-                // are valid and which are not:
-                //   * input valid, output invalid - user started to drag new ling from input pin
-                //   * input invalid, output valid - user started to drag new ling from output pin
-                //   * input valid, output valid   - user dragged link over other pin, can be validated
+                // Here a link joins an output to an input. It is stored from the
+                // output to the input, which is the direction ed::Link() draws.
 
-                if (inputPinId && outputPinId) // both are valid, let's accept link
+                if (startPinId && endPinId) // over other pin, connection can be validated
                 {
+                    // Dragged from an input pin, the link goes the other way.
+                    if (isInput(startPinId))
+                        std::swap(startPinId, endPinId);
+
+                    if (isInput(startPinId) || !isInput(endPinId))
+                    {
+                        // Two inputs or two outputs. ed::RejectNewItem() gives visual
+                        // feedback by changing link thickness and color.
+                        ed::RejectNewItem(ImVec4(1.0f, 0.0f, 0.0f, 1.0f), 2.0f);
+                    }
                     // ed::AcceptNewItem() return true when user release mouse button.
-                    if (ed::AcceptNewItem())
+                    else if (ed::AcceptNewItem())
                     {
                         // Since we accepted new link, lets add one to our list of links.
-                        m_Links.push_back({ ed::LinkId(m_NextLinkId++), inputPinId, outputPinId });
+                        m_Links.push_back({ ed::LinkId(m_NextLinkId++), startPinId, endPinId });
 
                         // Draw new link.
-                        ed::Link(m_Links.back().Id, m_Links.back().InputId, m_Links.back().OutputId);
+                        ed::Link(m_Links.back().Id, m_Links.back().StartPinId, m_Links.back().EndPinId);
                     }
-
-                    // You may choose to reject connection between these nodes
-                    // by calling ed::RejectNewItem(). This will allow editor to give
-                    // visual feedback by changing link thickness and color.
                 }
             }
         }
@@ -185,7 +199,6 @@ struct Example:
         ed::EndDelete(); // Wrap up deletion action
 
 
-
         // End of interaction with editor.
         ed::End();
 
@@ -199,6 +212,7 @@ struct Example:
         // ImGui::ShowMetricsWindow();
     }
 
+    std::string          m_SettingsFile;         // Config::SettingsFile, which has to outlive the editor.
     ed::EditorContext*   m_Context = nullptr;    // Editor context, required to trace a editor state.
     bool                 m_FirstFrame = true;    // Flag set for first frame only, some action need to be executed once.
     ImVector<LinkInfo>   m_Links;                // List of live links. It is dynamic unless you want to create read-only view over nodes.
@@ -212,5 +226,5 @@ int Main(int argc, char** argv)
     if (exampe.Create())
         return exampe.Run();
 
-    return 0;
+    return 1;
 }

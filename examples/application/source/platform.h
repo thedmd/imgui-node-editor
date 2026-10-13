@@ -14,6 +14,8 @@ struct Platform
 
     virtual bool OpenMainWindow(const char* title, int width, int height) = 0;
     virtual bool CloseMainWindow() = 0;
+    // After Renderer::Destroy(): an OpenGL context goes away with its window.
+    virtual void DestroyMainWindow() = 0;
     virtual void* GetMainWindowHandle() const = 0;
     virtual void SetMainWindowTitle(const char* title) = 0;
     virtual void ShowMainWindow() = 0;

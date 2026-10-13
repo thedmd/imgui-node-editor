@@ -9,7 +9,9 @@
 # define NOMINMAX
 # define WIN32_LEAN_AND_MEAN
 # include <windows.h>
+# include <windowsx.h>
 # include <tchar.h>
+# include <cmath>
 # include <string>
 
 # include <imgui.h>
@@ -43,6 +45,7 @@ struct PlatformWin32 final
     void ApplicationStop() override;
     bool OpenMainWindow(const char* title, int width, int height) override;
     bool CloseMainWindow() override;
+    void DestroyMainWindow() override;
     void* GetMainWindowHandle() const override;
     void SetMainWindowTitle(const char* title) override;
     void ShowMainWindow() override;
@@ -53,7 +56,7 @@ struct PlatformWin32 final
     void FinishFrame() override;
     void Quit() override;
 
-    void SetDpiScale(float dpiScale);
+    //void SetDpiScale(float dpiScale);
 
     LRESULT WinProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
@@ -85,6 +88,8 @@ bool PlatformWin32::ApplicationStart(int argc, char** argv)
 
     s_Instance = this;
 
+    ImGui_ImplWin32_EnableDpiAwareness();
+
     auto winProc = [](HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) -> LRESULT
     {
         return s_Instance->WinProc(hWnd, msg, wParam, lParam);
@@ -114,8 +119,6 @@ bool PlatformWin32::ApplicationStart(int argc, char** argv)
         return false;
     }
 
-    ImGui_ImplWin32_EnableDpiAwareness();
-
     return true;
 }
 
@@ -135,26 +138,73 @@ bool PlatformWin32::OpenMainWindow(const char* title, int width, int height)
     if (m_MainWindowHandle)
         return false;
 
-    m_MainWindowHandle = CreateWindow(
+    const auto windowStyle = WS_OVERLAPPEDWINDOW;
+    const auto windowStyleEx = WS_EX_OVERLAPPEDWINDOW;
+
+    RECT rect;
+    rect.left = 0;
+    rect.top = 0;
+    rect.right = width;
+    rect.bottom = height;
+    AdjustWindowRectEx(&rect, windowStyle, false, windowStyleEx);
+
+    auto windowWidth = rect.right - rect.left;
+    auto windowHeight = rect.bottom - rect.top;
+
+    m_MainWindowHandle = CreateWindowEx(
+        WS_EX_OVERLAPPEDWINDOW,
         m_WindowClass.lpszClassName,
         Utf8ToNative(title).c_str(),
         WS_OVERLAPPEDWINDOW,
         CW_USEDEFAULT, CW_USEDEFAULT,
-        width < 0 ? CW_USEDEFAULT : width,
-        height < 0 ? CW_USEDEFAULT : height,
+        width < 0 ? CW_USEDEFAULT : windowWidth,
+        height < 0 ? CW_USEDEFAULT : windowHeight,
         nullptr, nullptr, m_WindowClass.hInstance, nullptr);
 
     if (!m_MainWindowHandle)
         return false;
 
+# if RENDERER(IMGUI_OGL3)
+    if (!ImGui_ImplWin32_InitForOpenGL(m_MainWindowHandle))
+# else
     if (!ImGui_ImplWin32_Init(m_MainWindowHandle))
+# endif
     {
         DestroyWindow(m_MainWindowHandle);
         m_MainWindowHandle = nullptr;
         return false;
     }
 
-    SetDpiScale(ImGui_ImplWin32_GetDpiScaleForHwnd(m_MainWindowHandle));
+    const auto windowScale = ImGui_ImplWin32_GetDpiScaleForHwnd(m_MainWindowHandle);
+
+    RECT clientRect;
+    GetClientRect(m_MainWindowHandle, &clientRect);
+
+    POINT origin = { clientRect.left, clientRect.top };
+    ClientToScreen(m_MainWindowHandle, &origin);
+
+    // move rect by origin
+    clientRect.right  += origin.x - clientRect.left;
+    clientRect.bottom += origin.y - clientRect.top;
+    clientRect.left    = origin.x;
+    clientRect.top     = origin.y;
+
+    if (width >= 0)
+        clientRect.right = static_cast<int>((clientRect.right - clientRect.left) * windowScale) + clientRect.left;
+    if (height >= 0)
+        clientRect.bottom = static_cast<int>((clientRect.bottom - clientRect.top) * windowScale) + clientRect.top;
+
+    RECT windowRect = clientRect;
+    AdjustWindowRectEx(&windowRect, windowStyle, false, windowStyleEx);
+
+    SetWindowPos(m_MainWindowHandle, nullptr,
+        windowRect.left, windowRect.top,
+        windowRect.right - windowRect.left,
+        windowRect.bottom - windowRect.top,
+        SWP_NOZORDER | SWP_NOACTIVATE);
+
+    SetWindowScale(1.0f / windowScale);
+    SetFramebufferScale(windowScale);
 
     return true;
 }
@@ -167,6 +217,15 @@ bool PlatformWin32::CloseMainWindow()
     SendMessage(m_MainWindowHandle, WM_CLOSE, 0, 0);
 
     return m_CanCloseResult;
+}
+
+void PlatformWin32::DestroyMainWindow()
+{
+    if (m_MainWindowHandle == nullptr)
+        return;
+
+    ImGui_ImplWin32_Shutdown();
+    DestroyWindow(m_MainWindowHandle);
 }
 
 void* PlatformWin32::GetMainWindowHandle() const
@@ -194,19 +253,17 @@ bool PlatformWin32::ProcessMainWindowEvents()
     if (m_MainWindowHandle == nullptr)
         return false;
 
-    auto fetchMessage = [this](MSG* msg) -> bool
-    {
-        if (!m_IsMinimized)
-            return PeekMessage(msg, nullptr, 0U, 0U, PM_REMOVE) != 0;
-        else
-            return GetMessage(msg, nullptr, 0U, 0U) != 0;
-    };
-
     MSG msg = {};
-    while (fetchMessage(&msg))
+    while (true)
     {
-        if (msg.message == WM_KEYDOWN && (msg.wParam == VK_ESCAPE))
-            PostQuitMessage(0);
+        // While minimized, wait for messages. GetMessage() returns 0 for WM_QUIT.
+        if (!m_IsMinimized)
+        {
+            if (!PeekMessage(&msg, nullptr, 0U, 0U, PM_REMOVE))
+                break;
+        }
+        else if (GetMessage(&msg, nullptr, 0U, 0U) <= 0)
+            return false;
 
         if (msg.message == WM_QUIT)
             return false;
@@ -256,15 +313,20 @@ void PlatformWin32::Quit()
     PostQuitMessage(0);
 }
 
-void PlatformWin32::SetDpiScale(float dpiScale)
-{
-    SetWindowScale(dpiScale);
-    SetFramebufferScale(dpiScale);
-}
-
 LRESULT PlatformWin32::WinProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
-    if (ImGui_ImplWin32_WndProcHandler(hWnd, msg, wParam, lParam))
+    // ImGui works in window units times the window scale. Positions the backend reads itself, while
+    // the cursor is outside the window, stay in window units: outside of ImGui's display as well.
+    auto imguiParam = lParam;
+    if (msg == WM_MOUSEMOVE)
+    {
+        const auto scale = GetWindowScale();
+        imguiParam = MAKELPARAM(
+            static_cast<int>(std::floor(GET_X_LPARAM(lParam) * scale)),
+            static_cast<int>(std::floor(GET_Y_LPARAM(lParam) * scale)));
+    }
+
+    if (ImGui_ImplWin32_WndProcHandler(hWnd, msg, wParam, imguiParam))
         return 1;
 
     switch (msg)
@@ -272,10 +334,7 @@ LRESULT PlatformWin32::WinProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam
         case WM_CLOSE:
             m_CanCloseResult = m_Application.CanClose();
             if (m_CanCloseResult)
-            {
-                ImGui_ImplWin32_Shutdown();
-                DestroyWindow(hWnd);
-            }
+                PostQuitMessage(0);
             return 0;
 
         case WM_SIZE:
@@ -299,11 +358,25 @@ LRESULT PlatformWin32::WinProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam
             break;
 
         case WM_DPICHANGED:
-            SetDpiScale(ImGui_ImplWin32_GetDpiScaleForHwnd(hWnd));
+        {
+            RECT* const prcNewWindow = (RECT*)lParam;
+            SetWindowPos(hWnd,
+                NULL,
+                prcNewWindow ->left,
+                prcNewWindow ->top,
+                prcNewWindow->right - prcNewWindow->left,
+                prcNewWindow->bottom - prcNewWindow->top,
+                SWP_NOZORDER | SWP_NOACTIVATE);
+
+            const auto windowScale = ImGui_ImplWin32_GetDpiScaleForHwnd(hWnd);
+            SetWindowScale(1.0f / windowScale);
+            SetFramebufferScale(windowScale);
             return 0;
+        }
 
         case WM_DESTROY:
-            PostQuitMessage(0);
+            m_MainWindowHandle = nullptr;
+            m_IsMinimized      = false;
             return 0;
     }
 

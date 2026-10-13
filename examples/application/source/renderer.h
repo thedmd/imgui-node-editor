@@ -1,17 +1,16 @@
 # pragma once
 # include "setup.h"
+# include <imgui.h>
 # include <memory>
 
 struct Platform;
-struct ImDrawData;
-struct ImVec4;
-using ImTextureID= void*;
 
 struct Renderer
 {
     virtual ~Renderer() {};
 
     virtual bool Create(Platform& platform) = 0;
+    // Does nothing unless Create() succeeded.
     virtual void Destroy() = 0;
 
     virtual void NewFrame() = 0;
