@@ -530,10 +530,6 @@ struct NodeSettings
     bool   m_WasUsed;
     bool   m_WasLoaded;
 
-    bool            m_Saved;
-    bool            m_IsDirty;
-    SaveReasonFlags m_DirtyReason;
-
     NodeSettings(NodeId id)
         : m_ID(id)
         , m_Location(0, 0)
@@ -542,14 +538,8 @@ struct NodeSettings
         , m_ZPosition(0.0f)
         , m_WasUsed(false)
         , m_WasLoaded(false)
-        , m_Saved(false)
-        , m_IsDirty(false)
-        , m_DirtyReason(SaveReasonFlags::None)
     {
     }
-
-    void ClearDirty();
-    void MakeDirty(SaveReasonFlags reason);
 
     json::value Serialize();
 
@@ -582,8 +572,8 @@ struct Settings
     void RemoveNode(NodeId id); // empties the entry: every node object has one until it's freed
     void EraseNode(NodeId id);
 
-    void ClearDirty(Node* node = nullptr);
-    void MakeDirty(SaveReasonFlags reason, Node* node = nullptr);
+    void ClearDirty();
+    void MakeDirty(SaveReasonFlags reason);
 
     std::string Serialize(SettingsContentFlags content);
 
@@ -1512,7 +1502,6 @@ struct EditorContext
     bool IsFrozen() const { return m_IsFrozen; }
 
     void MakeDirty(SaveReasonFlags reason);
-    void MakeDirty(SaveReasonFlags reason, Node* node);
 
     int CountLiveNodes() const;
     int CountLivePins() const;
