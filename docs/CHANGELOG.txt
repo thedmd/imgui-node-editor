@@ -608,6 +608,10 @@ v0.10.0 (WIP):
 
     CHANGE: Examples: Save and restore node state in blueprints-example through typed node state
 
+    NEW: Examples: Add blueprints2-example, a blueprint editor with documents and undo
+        It keeps node layout and selection with the typed state API, one editor per document, and turns the edits the
+        user completes into undo steps.
+
 v0.9.3 (2023-10-14):
 
     CHANGE: Canvas: Use ImDrawCallback_ImCanvas macro as draw callback sentinel (#256), thanks @nspitko

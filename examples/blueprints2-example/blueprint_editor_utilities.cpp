@@ -1,7 +1,7 @@
+# define IMGUI_DEFINE_MATH_OPERATORS
 # include "blueprint_editor_utilities.h"
 # include "blueprint_editor_document.h"
 # include "crude_logger.h"
-# define IMGUI_DEFINE_MATH_OPERATORS
 # include <imgui_internal.h>
 # include "imgui_extras.h"
 # include <algorithm>
@@ -446,7 +446,8 @@ blueprint_editor_utilities::ItemBuilder::ItemBuilder()
 
 blueprint_editor_utilities::ItemBuilder::~ItemBuilder()
 {
-    ax::NodeEditor::EndCreate();
+    if (m_InCreate)
+        ax::NodeEditor::EndCreate();
 }
 
 blueprint_editor_utilities::ItemBuilder::operator bool() const
@@ -501,7 +502,8 @@ blueprint_editor_utilities::ItemDeleter::ItemDeleter()
 
 blueprint_editor_utilities::ItemDeleter::~ItemDeleter()
 {
-    ax::NodeEditor::EndDelete();
+    if (m_InDelete)
+        ax::NodeEditor::EndDelete();
 }
 
 blueprint_editor_utilities::ItemDeleter::operator bool() const
