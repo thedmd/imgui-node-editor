@@ -2281,6 +2281,8 @@ void ed::EditorContext::FreeDeletedObjects()
         if (node->m_DeleteOnNewFrame)
             m_Settings.EraseNode(node->m_ID);
 
+    m_NodeIndex.erase(std::remove_if(m_NodeIndex.begin(), m_NodeIndex.end(), [](const ObjectWrapper<Node>& node) { return node.m_Object->m_DeleteOnNewFrame; }), m_NodeIndex.end());
+
     static auto freeDeleted = [](auto& objects)
     {
         objects.erase(std::remove_if(objects.begin(), objects.end(), [](auto objectWrapper)
@@ -2468,7 +2470,8 @@ ed::Node* ed::EditorContext::CreateNode(NodeId id)
     IM_ASSERT(nullptr == FindObject(id));
     auto node = new Node(this, id);
     m_Nodes.push_back({id, node});
-    //std::sort(Nodes.begin(), Nodes.end());
+    const ObjectWrapper<Node> indexed = {id, node};
+    m_NodeIndex.insert(std::lower_bound(m_NodeIndex.begin(), m_NodeIndex.end(), indexed), indexed);
 
     auto settings = m_Settings.FindNode(id);
     if (!settings)
@@ -2498,24 +2501,6 @@ ed::Link* ed::EditorContext::CreateLink(LinkId id)
 }
 
 template <typename C, typename Id>
-static inline auto FindItemInLinear(C& container, Id id)
-{
-# if defined(_DEBUG)
-    auto start = container.data();
-    auto end   = container.data() + container.size();
-    for (auto it = start; it < end; ++it)
-        if ((*it).m_ID == id)
-            return it->m_Object;
-# else
-    for (auto item : container)
-        if (item.m_ID == id)
-            return item.m_Object;
-# endif
-
-   return static_cast<decltype(container[0].m_Object)>(nullptr);
-}
-
-template <typename C, typename Id>
 static inline auto FindItemIn(C& container, Id id)
 {
 //# if defined(_DEBUG)
@@ -2541,7 +2526,7 @@ static inline auto FindItemIn(C& container, Id id)
 
 ed::Node* ed::EditorContext::FindNode(NodeId id)
 {
-    return FindItemInLinear(m_Nodes, id);
+    return FindItemIn(m_NodeIndex, id);
 }
 
 ed::Pin* ed::EditorContext::FindPin(PinId id)
