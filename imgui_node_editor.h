@@ -200,6 +200,8 @@ enum StyleVar
     StyleVar_Count
 };
 
+// Flags and booleans are floats, the type style variables push, and HoverNodeBorderOffset
+// is pushed as StyleVar_HoveredNodeBorderOffset; both are kept for compatibility.
 struct Style
 {
     ImVec4  NodePadding;
@@ -221,14 +223,14 @@ struct Style
     ImVec2  PivotAlignment;
     ImVec2  PivotSize;
     ImVec2  PivotScale;
-    float   PinCorners;
+    float   PinCorners;               // ImDrawFlags
     float   PinRadius;
     float   PinArrowSize;
     float   PinArrowWidth;
     float   GroupRounding;
     float   GroupBorderWidth;
-    float   HighlightConnectedLinks;
-    float   SnapLinkToPinDir; // when true link will start on the line defined by pin direction
+    float   HighlightConnectedLinks;  // a boolean: non-zero highlights the links of a selected node
+    float   SnapLinkToPinDir;         // a boolean: non-zero starts links on the line defined by pin direction
     ImVec4  Colors[StyleColor_Count];
 
     Style()
