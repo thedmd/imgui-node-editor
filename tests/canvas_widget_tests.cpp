@@ -322,3 +322,37 @@ TEST_CASE(PixelSnappedOrigin, "canvas_widget.view_origin_is_on_whole_pixels", "C
         "the rectangle lands on whole pixels: (%g, %g) - (%g, %g)", rect.Min.x, rect.Min.y, rect.Max.x, rect.Max.y);
     test::Check(mouseMapped.x == 170.0f && mouseMapped.y == 110.0f, "mapping to the screen and back is exact: (%g, %g)", mouseMapped.x, mouseMapped.y);
 }
+
+TEST_CASE(SuspendWithAnotherSplitter, "canvas_widget.suspend_with_another_splitter_asserts", "CNV-1", test::TestFlags_None)
+{
+    // A splitter of the application's own has its second channel current when the
+    // canvas is suspended; its channel numbers match the window's.
+    test::ExpectAsserts(1);
+    test::Host host;
+    host.NewFrame();
+    BeginHostWindow();
+    ImGuiEx::Canvas canvas;
+    canvas.Begin("canvas", ImVec2(300.0f, 300.0f));
+    auto drawList = ImGui::GetWindowDrawList();
+    ImDrawListSplitter splitter;
+    splitter.Split(drawList, 2);
+    splitter.SetCurrentChannel(drawList, 1);
+    bool asserted = false;
+    try
+    {
+        test::ThrowOnAssert throwOnAssert;
+        canvas.Suspend();
+    }
+    catch (const test::AssertFailure&)
+    {
+        asserted = true;
+    }
+    splitter.SetCurrentChannel(drawList, 0);
+    splitter.Merge(drawList);
+    canvas.End();
+    ImGui::End();
+    host.Render();
+
+    test::Check(asserted, "Suspend() asserts");
+    test::Check(host.StrayCallbacks == 0, "no canvas callback is left for the renderer: %d", host.StrayCallbacks);
+}
