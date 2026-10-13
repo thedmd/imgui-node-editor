@@ -381,3 +381,33 @@ TEST_CASE(SentinelAfterMisuse, "canvas_widget.misused_canvas_leaves_no_sentinel"
 
     test::Check(host.StrayCallbacks == 0, "no canvas callback is left for the renderer: %d", host.StrayCallbacks);
 }
+
+TEST_CASE(LocalLayoutFrame, "canvas_widget.layout_starts_at_the_local_origin", "CNV-6", test::TestFlags_None)
+{
+    // A 200 by 150 canvas at scale 1 in a padded window at (300, 100).
+    test::Host host;
+    host.NewFrame();
+    ImGui::SetNextWindowPos(ImVec2(300.0f, 100.0f));
+    ImGui::SetNextWindowSize(ImVec2(600.0f, 400.0f));
+    ImGui::Begin("Host", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoSavedSettings);
+    ImGuiEx::Canvas canvas;
+    canvas.Begin("canvas", ImVec2(200.0f, 150.0f));
+    ImGui::TextUnformatted("First");
+    ImGui::TextUnformatted("Second");
+    const auto second = ImGui::GetItemRectMin();
+    ImGui::SameLine(50.0f);
+    ImGui::TextUnformatted("Third");
+    const auto third  = ImGui::GetItemRectMin();
+    const auto cursor = ImGui::GetCursorScreenPos();
+    const auto avail  = ImGui::GetContentRegionAvail();
+    canvas.End();
+    const auto position = ImGui::GetWindowPos();
+    ImGui::End();
+    host.Render();
+
+    test::Check(second.x == 0.0f, "a new line starts at local x = 0: %g", second.x);
+    test::Check(third.x == 50.0f, "SameLine(50) starts at local x = 50: %g", third.x);
+    test::Check(avail.x == 200.0f - cursor.x && avail.y == 150.0f - cursor.y,
+        "the content region ends where the canvas does: (%g, %g) available at (%g, %g)", avail.x, avail.y, cursor.x, cursor.y);
+    test::Check(position.x == 300.0f && position.y == 100.0f, "the window is back at (300, 100) after the canvas: (%g, %g)", position.x, position.y);
+}
