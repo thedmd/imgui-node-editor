@@ -18,21 +18,6 @@
 # include <sstream>
 # include <type_traits>
 
-// https://stackoverflow.com/a/8597498
-# define DECLARE_HAS_NESTED(Name, Member)                                          \
-                                                                                   \
-    template<class T>                                                              \
-    struct has_nested_ ## Name                                                     \
-    {                                                                              \
-        typedef char yes;                                                          \
-        typedef yes(&no)[2];                                                       \
-                                                                                   \
-        template<class U> static yes test(decltype(U::Member)*);                   \
-        template<class U> static no  test(...);                                    \
-                                                                                   \
-        static bool const value = sizeof(test<T>(0)) == sizeof(yes);               \
-    };
-
 
 //------------------------------------------------------------------------------
 namespace ed = ax::NodeEditor::Detail;
