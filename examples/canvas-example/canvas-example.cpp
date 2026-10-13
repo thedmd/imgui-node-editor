@@ -3,6 +3,7 @@
 # include <imgui_internal.h>
 # include <imgui_canvas.h>
 # include <application.h>
+# include <splitter.h>
 
 static void DrawScale(const ImVec2& from, const ImVec2& to, float majorUnit, float minorUnit, float labelAlignment, float sign = 1.0f)
 {
@@ -44,18 +45,6 @@ static void DrawScale(const ImVec2& from, const ImVec2& to, float majorUnit, flo
 
         drawList->AddText(labelPosition, IM_COL32(255, 255, 255, 255), label);
     }
-}
-
-static bool Splitter(bool split_vertically, float thickness, float* size1, float* size2, float min_size1, float min_size2, float splitter_long_axis_size = -1.0f)
-{
-    using namespace ImGui;
-    ImGuiContext& g = *GImGui;
-    ImGuiWindow* window = g.CurrentWindow;
-    ImGuiID id = window->GetID("##Splitter");
-    ImRect bb;
-    bb.Min = window->DC.CursorPos + (split_vertically ? ImVec2(*size1, 0.0f) : ImVec2(0.0f, *size1));
-    bb.Max = bb.Min + CalcItemSize(split_vertically ? ImVec2(thickness, splitter_long_axis_size) : ImVec2(splitter_long_axis_size, thickness), 0.0f, 0.0f);
-    return SplitterBehavior(bb, id, split_vertically ? ImGuiAxis_X : ImGuiAxis_Y, size1, size2, min_size1, min_size2, 0.0f);
 }
 
 struct Example:
