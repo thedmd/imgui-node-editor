@@ -326,7 +326,7 @@ void blueprint_editor_utilities::DebugOverlay::DrawNode(const Node& node)
     auto markerMin = pivot - ImVec2(40.0f, 35.0f);
     auto markerMax = pivot + ImVec2(40.0f, 0.0f);
 
-    auto color = ImGui::GetStyleColorVec4(isCurrentNode ? ImGuiCol_PlotHistogram : ImGuiCol_NavHighlight);
+    auto color = ImGui::GetStyleColorVec4(isCurrentNode ? ImGuiCol_PlotHistogram : ImGuiCol_NavCursor);
 
     DrawIcon(m_DrawList, markerMin, markerMax, IconType::FlowDown, true, ImColor(color), 0);
 
@@ -360,7 +360,7 @@ void blueprint_editor_utilities::DebugOverlay::DrawInputPin(const Pin& pin)
     auto vertexStartIdx = m_DrawList->_CmdHeader.VtxOffset + m_DrawList->_VtxCurrentIdx;
 
     auto isCurrentNode = (m_CurrentNode == pin.m_Node);
-    auto color = ImGui::GetStyleColorVec4(isCurrentNode ? ImGuiCol_PlotHistogram : ImGuiCol_NavHighlight);
+    auto color = ImGui::GetStyleColorVec4(isCurrentNode ? ImGuiCol_PlotHistogram : ImGuiCol_NavCursor);
 
     // Actual drawing
     PinValueBackgroundRenderer bg(color, 0.5f);
@@ -403,7 +403,7 @@ void blueprint_editor_utilities::DebugOverlay::DrawOutputPin(const Pin& pin)
         + ImVec2(1.75f * ImGui::GetStyle().ItemSpacing.x, 0.0f));
 
     auto isCurrentNode = m_CurrentNode == pin.m_Node;
-    auto color = ImGui::GetStyleColorVec4(isCurrentNode ? ImGuiCol_PlotHistogram : ImGuiCol_NavHighlight);
+    auto color = ImGui::GetStyleColorVec4(isCurrentNode ? ImGuiCol_PlotHistogram : ImGuiCol_NavCursor);
 
     // Actual drawing
     PinValueBackgroundRenderer bg(color, 0.5f);
@@ -439,7 +439,7 @@ void blueprint_editor_utilities::DebugOverlay::OnEvaluatePin(const Context& cont
 
 
 blueprint_editor_utilities::ItemBuilder::ItemBuilder()
-    : m_InCreate(ax::NodeEditor::BeginCreate(ImGui::GetStyleColorVec4(ImGuiCol_NavHighlight)))
+    : m_InCreate(ax::NodeEditor::BeginCreate(ImGui::GetStyleColorVec4(ImGuiCol_NavCursor)))
 {
 
 }

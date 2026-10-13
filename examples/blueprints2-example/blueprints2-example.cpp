@@ -608,7 +608,7 @@ private:
                     //drawList->AddRectFilledMultiColor(itemMin, itemMax, IM_COL32(255, 0, 0, 64), rounding, ImDrawFlags_RoundTop);
                 });
 
-                ImGui::PushFont(HeaderFont());
+                ImGui::PushFont(HeaderFont(), HeaderFont()->LegacySize);
                 ImGui::TextUnformatted(nodeName.data(), nodeName.data() + nodeName.size());
                 ImGui::PopFont();
 
