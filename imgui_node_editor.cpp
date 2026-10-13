@@ -3631,7 +3631,10 @@ ed::Animation::Animation(EditorContext* editor):
 
 ed::Animation::~Animation()
 {
-    Stop();
+    // Not Stop(): its OnStop() would run as Animation's here, and only the editor's teardown,
+    // which leaves nothing to update, destroys animations.
+    if (IsPlaying())
+        Editor->UnregisterAnimation(this);
 }
 
 void ed::Animation::Play(float duration)
