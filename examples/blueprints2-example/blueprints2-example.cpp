@@ -23,6 +23,7 @@
 //#include <float.h>
 //unsigned int fp_control_state = _controlfp(_EM_INEXACT, _MCW_EM);
 
+# include <chrono>
 # include <functional>
 # include <type_traits>
 # include <map>
@@ -325,6 +326,7 @@ struct BlueprintEditorExample
 
         ed::SetCurrentEditor(m_Editor);
 
+        Blueprint_ContinueRun();
         UpdateActions();
         UpdateTitle();
 
@@ -430,9 +432,9 @@ private:
         bool isExecuting   = hasBlueprint && (m_Blueprint->CurrentNode() != nullptr);
 
         m_Blueprint_Start.SetEnabled(hasBlueprint && hasEntryPoint);
-        m_Blueprint_Step.SetEnabled(hasBlueprint && isExecuting);
+        m_Blueprint_Step.SetEnabled(hasBlueprint && isExecuting && !m_IsRunning);
         m_Blueprint_Stop.SetEnabled(hasBlueprint && isExecuting);
-        m_Blueprint_Run.SetEnabled(hasBlueprint && hasEntryPoint);
+        m_Blueprint_Run.SetEnabled(hasBlueprint && hasEntryPoint && !m_IsRunning);
     }
 
     void ShowMainMenu()
@@ -1308,6 +1310,7 @@ private:
 
         LOGI("Execution: Start");
         m_Blueprint->Start(*entryNode);
+        m_IsRunning = false;
     }
 
     void Blueprint_Step()
@@ -1324,6 +1327,7 @@ private:
     {
         LOGI("Execution: Stop");
         m_Blueprint->Stop();
+        m_IsRunning = false;
     }
 
     void Blueprint_Run()
@@ -1331,10 +1335,36 @@ private:
         auto entryNode = FindEntryPointNode(*m_Blueprint);
 
         LOGI("Execution: Run");
-        auto result = m_Blueprint->Execute(*entryNode);
+        m_Blueprint->Start(*entryNode);
+        m_IsRunning = true;
+    }
+
+    // Run takes a few milliseconds of steps each frame, so the window stays
+    // responsive and Stop can end a flow that never does.
+    void Blueprint_ContinueRun()
+    {
+        if (!m_IsRunning)
+            return;
+
+        // An edit or another document ended the execution.
+        if (!m_Blueprint || m_Blueprint->LastStepResult() != StepResult::Success)
+        {
+            m_IsRunning = false;
+            return;
+        }
+
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(5);
+        auto result = StepResult::Success;
+        while (result == StepResult::Success && std::chrono::steady_clock::now() < deadline)
+            result = m_Blueprint->Step();
+
+        if (result == StepResult::Success)
+            return;
+
+        m_IsRunning = false;
         if (result == StepResult::Done)
             LOGI("Execution: Done (%" PRIu32 " steps)", m_Blueprint->StepCount());
-        else if (result == StepResult::Error)
+        else
             LOGI("Execution: Failed at step %" PRIu32, m_Blueprint->StepCount());
     }
 
@@ -1343,6 +1373,7 @@ private:
 
     unique_ptr<Document> m_Document;
     Blueprint*           m_Blueprint = nullptr;
+    bool                 m_IsRunning = false;
 
     CreateNodeDialog m_CreateNodeDailog;
     NodeContextMenu  m_NodeContextMenu;
