@@ -10,6 +10,7 @@
 # include "nonstd/variant.hpp" // variant
 # include <stddef.h> // size_t
 # include <stdint.h> // intX_t, uintX_t
+# include <cmath>
 # include <string>
 # include <vector>
 # include <memory>
@@ -295,6 +296,10 @@ struct FloatPin final : Pin
     bool SetValue(PinValue value) override
     {
         if (value.GetType() != TypeId)
+            return false;
+
+        // Documents have no numbers that aren't finite.
+        if (!std::isfinite(value.As<float>()))
             return false;
 
         m_Value = value.As<float>();
