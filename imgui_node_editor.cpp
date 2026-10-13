@@ -1171,6 +1171,7 @@ ed::EditorContext::EditorContext(const ax::NodeEditor::Config* config)
     , m_Pins()
     , m_Links()
     , m_SelectionId(1)
+    , m_SelectionChangedBeforeBegin(false)
     , m_LastActiveLink(nullptr)
     , m_Canvas()
     , m_IsCanvasVisible(false)
@@ -1371,7 +1372,8 @@ void ed::EditorContext::Begin(const char* id, const ImVec2& size)
     // Content drawn before the first node goes over the grid, under links and nodes.
     m_DrawList->ChannelsSetCurrent(c_UserChannel_Underlay);
 
-    if (HasSelectionChanged())
+    m_SelectionChangedBeforeBegin = HasSelectionChangedSinceBegin();
+    if (m_SelectionChangedBeforeBegin)
         ++m_SelectionId;
 
     m_LastSelectedObjects = m_SelectedObjects;
@@ -1780,7 +1782,7 @@ void ed::EditorContext::End()
                 SelectObject(object);
     }
 
-    if (HasSelectionChanged())
+    if (HasSelectionChangedSinceBegin())
         MakeDirty(SaveReasonFlags::Selection);
 
     if (m_Settings.m_IsDirty && !m_CurrentAction && m_IsCanvasVisible)
@@ -2016,6 +2018,11 @@ bool ed::EditorContext::IsAnyLinkSelected()
 }
 
 bool ed::EditorContext::HasSelectionChanged()
+{
+    return HasSelectionChangedSinceBegin() || (m_DrawList && m_SelectionChangedBeforeBegin);
+}
+
+bool ed::EditorContext::HasSelectionChangedSinceBegin() const
 {
     return m_LastSelectedObjects != m_SelectedObjects;
 }

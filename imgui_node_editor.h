@@ -367,7 +367,7 @@ IMGUI_NODE_EDITOR_API bool IsSuspended();
 
 IMGUI_NODE_EDITOR_API bool IsActive();
 
-IMGUI_NODE_EDITOR_API bool HasSelectionChanged();
+IMGUI_NODE_EDITOR_API bool HasSelectionChanged(); // Selection changed in the last frame, also when asked between Begin() and End()
 IMGUI_NODE_EDITOR_API int  GetSelectedObjectCount();
 IMGUI_NODE_EDITOR_API int  GetSelectedNodes(NodeId* nodes, int size);
 IMGUI_NODE_EDITOR_API int  GetSelectedLinks(LinkId* links, int size);

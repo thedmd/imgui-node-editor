@@ -275,6 +275,9 @@ v0.9.4 (WIP):
     BUGFIX: Editor: Respect EnableShortcuts(false) in Alt+click link deletion
         It offered the clicked link for deletion with shortcuts disabled.
 
+    BUGFIX: Editor: Report selection changes made by the mouse to HasSelectionChanged() between Begin() and End()
+        It missed them there, since Begin() had taken them in already.
+
 v0.9.3 (2023-10-14):
 
     CHANGE: Canvas: Use ImDrawCallback_ImCanvas macro as draw callback sentinel (#256), thanks @nspitko
