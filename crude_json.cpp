@@ -949,7 +949,10 @@ std::pair<value, bool> value::load(const string& path)
     if (ferror(file.get()))
         return {value{}, false};
 
-    return {parse(data), true};
+    const char byte_order_mark[] = "\xEF\xBB\xBF";
+    const auto start = data.compare(0, 3, byte_order_mark) == 0 ? 3 : 0;
+    auto p = parser(data.c_str() + start, data.c_str() + data.size());
+    return {p.parse(), true};
 }
 
 bool value::save(const string& path, const int indent, const char indent_char) const

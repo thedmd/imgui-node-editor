@@ -281,6 +281,16 @@ TEST_CASE(JsonLoadEmptyFile, "json.load_tells_an_empty_file_from_a_missing_one",
     test::Check(fromDocument.second && fromDocument.first["list"][1].is_number(), "a document is read");
 }
 
+TEST_CASE(JsonLoadByteOrderMark, "json.load_skips_a_utf8_byte_order_mark", "JSON-12", test::TestFlags_None)
+{
+    // Editors that write one made the document discarded.
+    TestFile file("json_load_byte_order_mark.json");
+    file.Write("\xEF\xBB\xBF" R"({"list":[1,2]})");
+
+    const auto loaded = json::value::load(file.Path);
+    test::Check(loaded.second && loaded.first["list"][1].is_number(), "a document after a byte order mark is read");
+}
+
 TEST_CASE(JsonNothrowMoves, "json.values_move_without_throwing", "JSON-10", test::TestFlags_None)
 {
     json::value a, b;
