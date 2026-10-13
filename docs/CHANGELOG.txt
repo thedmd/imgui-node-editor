@@ -287,6 +287,9 @@ v0.9.4 (WIP):
     BUGFIX: crude_json: Reject documents nested deeper than CRUDE_JSON_MAX_DEPTH, 512 by default
         The recursive parser followed any nesting, and 2500 nested arrays overflowed a 1 MB stack.
 
+    BUGFIX: crude_json: Reject a document when a number in it is rejected
+        A number out of range followed by a literal was read as the literal: [1e999null] as [null].
+
 v0.9.3 (2023-10-14):
 
     CHANGE: Canvas: Use ImDrawCallback_ImCanvas macro as draw callback sentinel (#256), thanks @nspitko
