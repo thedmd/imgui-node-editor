@@ -76,6 +76,8 @@ Application::~Application()
 {
     m_Renderer->Destroy();
 
+    m_Platform->DestroyMainWindow();
+
     m_Platform->ApplicationStop();
 
     if (m_Context)

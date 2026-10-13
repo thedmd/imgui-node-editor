@@ -28,6 +28,7 @@ struct PlatformGLFW final
     void ApplicationStop() override;
     bool OpenMainWindow(const char* title, int width, int height) override;
     bool CloseMainWindow() override;
+    void DestroyMainWindow() override;
     void* GetMainWindowHandle() const override;
     void SetMainWindowTitle(const char* title) override;
     void ShowMainWindow() override;
@@ -182,6 +183,17 @@ bool PlatformGLFW::CloseMainWindow()
     return canClose;
 }
 
+void PlatformGLFW::DestroyMainWindow()
+{
+    if (m_Window == nullptr)
+        return;
+
+    ImGui_ImplGlfw_Shutdown();
+
+    glfwDestroyWindow(m_Window);
+    m_Window = nullptr;
+}
+
 void* PlatformGLFW::GetMainWindowHandle() const
 {
 # if PLATFORM(WINDOWS)
@@ -214,16 +226,7 @@ bool PlatformGLFW::ProcessMainWindowEvents()
     else
         glfwPollEvents();
 
-    if (m_QuitRequested || glfwWindowShouldClose(m_Window))
-    {
-        ImGui_ImplGlfw_Shutdown();
-
-        glfwDestroyWindow(m_Window);
-
-        return false;
-    }
-
-    return true;
+    return !m_QuitRequested && !glfwWindowShouldClose(m_Window);
 }
 
 bool PlatformGLFW::IsMainWindowVisible() const
