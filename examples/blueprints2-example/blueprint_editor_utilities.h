@@ -62,11 +62,9 @@ private:
 
 // Show overlay while blueprint is executed presenting
 // current state and execution point.
-struct DebugOverlay:
-    private ContextMonitor
+struct DebugOverlay
 {
     DebugOverlay(Blueprint& blueprint);
-    ~DebugOverlay();
 
     void Begin();
     void End();
@@ -76,8 +74,6 @@ struct DebugOverlay:
     void DrawOutputPin(const Pin& pin);
 
 private:
-    void OnEvaluatePin(const Context& context, const Pin& pin) override;
-
     Blueprint* m_Blueprint = nullptr;
     const Node* m_CurrentNode = nullptr;
     const Node* m_NextNode = nullptr;

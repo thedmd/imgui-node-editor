@@ -275,12 +275,6 @@ void blueprint_editor_utilities::PinValueBackgroundRenderer::Discard()
 blueprint_editor_utilities::DebugOverlay::DebugOverlay(Blueprint& blueprint)
     : m_Blueprint(&blueprint)
 {
-    m_Blueprint->SetContextMonitor(this);
-}
-
-blueprint_editor_utilities::DebugOverlay::~DebugOverlay()
-{
-    m_Blueprint->SetContextMonitor(nullptr);
 }
 
 void blueprint_editor_utilities::DebugOverlay::Begin()
@@ -303,6 +297,15 @@ void blueprint_editor_utilities::DebugOverlay::End()
         return;
 
     m_Splitter.Merge(m_DrawList);
+
+    // The branch execution takes next. Its link has the ID of the pin that holds it, and
+    // fades out once a step leaves it behind.
+    if (m_CurrentFlowPin.m_Link)
+    {
+        ax::NodeEditor::PushStyleVar(ax::NodeEditor::StyleVar_FlowDuration, 0.5f);
+        ax::NodeEditor::Flow(m_CurrentFlowPin.m_Id);
+        ax::NodeEditor::PopStyleVar();
+    }
 }
 
 void blueprint_editor_utilities::DebugOverlay::DrawNode(const Node& node)
@@ -426,18 +429,6 @@ void blueprint_editor_utilities::DebugOverlay::DrawOutputPin(const Pin& pin)
 
     // Switch back to normal layer
     m_Splitter.SetCurrentChannel(m_DrawList, 0);
-}
-
-void blueprint_editor_utilities::DebugOverlay::OnEvaluatePin(const Context& context, const Pin& pin)
-{
-    IM_UNUSED(context);
-
-    auto nodeEditor = ax::NodeEditor::GetCurrentEditor();
-    if (!nodeEditor)
-        return;
-
-    //if (pin.m_Link)
-    ax::NodeEditor::Flow(pin.m_Id);
 }
 
 

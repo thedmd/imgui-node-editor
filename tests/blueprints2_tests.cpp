@@ -310,6 +310,107 @@ TEST_CASE(DebugOverlayLayout, "blueprints2.debug_overlay_leaves_the_layout_alone
     test::Check(printString.CellEnd == printString.PinEnd, "and Print's String, with a value wider than it before it: at %g, the pin at %g", printString.CellEnd, printString.PinEnd);
 }
 
+TEST_CASE(DebugOverlayFlow, "blueprints2.debug_overlay_flows_only_the_next_branch", nullptr, test::TestFlags_None)
+{
+    // Execution paused in Flip Flop, with Print A to run next through Flip Flop's A. Every node
+    // shows its pins with the overlay's values beside them, as in the example, in two rows that
+    // leave the link from Flip Flop's A to Print A alone between those two pins.
+    test::Session    session(UnnamedConfig());
+    Blueprint        blueprint;
+    ExampleBlueprint example(blueprint);
+    blueprint.Start(*example.m_Entry);
+    blueprint.Step();
+    blueprint.Step();
+
+    const std::pair<const Node*, ImVec2> layout[] =
+    {
+        { example.m_Entry,    ImVec2(  0.0f,   0.0f) },
+        { example.m_DoN,      ImVec2(200.0f,   0.0f) },
+        { example.m_FlipFlop, ImVec2(420.0f,   0.0f) },
+        { example.m_PrintA,   ImVec2(700.0f,   0.0f) },
+        { example.m_Add,      ImVec2(200.0f, 260.0f) },
+        { example.m_ToString, ImVec2(420.0f, 260.0f) },
+        { example.m_PrintB,   ImVec2(700.0f, 260.0f) },
+    };
+
+    const ImU32 flowColor = IM_COL32(255, 0, 255, 255);
+    ImVec2 flipFlopA, printAEnter;
+    session.DefaultContent = [&](int frame)
+    {
+        if (frame == 0)
+        {
+            auto& style = ed::GetStyle();
+            style.Colors[ed::StyleColor_Flow]       = ImColor(flowColor);
+            style.Colors[ed::StyleColor_FlowMarker] = ImColor(flowColor);
+            for (auto& entry : layout)
+                ed::SetNodePosition(entry.first->m_Id, entry.second);
+        }
+
+        DebugOverlay overlay(blueprint);
+        overlay.Begin();
+        for (auto node : blueprint.GetNodes())
+        {
+            ed::BeginNode(node->m_Id);
+            const auto name = node->GetName();
+            ImGui::TextUnformatted(name.data(), name.data() + name.size());
+            for (auto kind : { ed::PinKind::Input, ed::PinKind::Output })
+            {
+                if (kind == ed::PinKind::Output)
+                    ImGui::SameLine(0.0f, 40.0f);
+                ImGui::BeginGroup();
+                for (auto pin : kind == ed::PinKind::Input ? node->GetInputPins() : node->GetOutputPins())
+                {
+                    ed::BeginPin(pin->m_Id, kind);
+                    ImGui::TextUnformatted(kind == ed::PinKind::Input ? "> in" : "out >");
+                    ed::EndPin();
+                    const auto center = ed::CanvasToScreen((ImGui::GetItemRectMin() + ImGui::GetItemRectMax()) * 0.5f);
+                    if (pin == &example.m_FlipFlop->m_A)
+                        flipFlopA = center;
+                    if (pin == &example.m_PrintA->m_Enter)
+                        printAEnter = center;
+                    if (kind == ed::PinKind::Input)
+                        overlay.DrawInputPin(*pin);
+                    else
+                        overlay.DrawOutputPin(*pin);
+                }
+                ImGui::EndGroup();
+            }
+            ed::EndNode();
+        }
+        for (auto pin : blueprint.GetPins())
+            if (pin->m_Link)
+                ed::Link(pin->m_Id, pin->m_Id, pin->m_Link->m_Id);
+        overlay.End();
+    };
+
+    int inside = 0, outside = 0;
+    session.AfterEditor = [&]
+    {
+        // Flow is drawn over the whole link: its vertices may stray from the line between the
+        // pins by the link's thickness.
+        const ImRect nextBranch(ImMin(flipFlopA, printAEnter) - ImVec2(8.0f, 8.0f), ImMax(flipFlopA, printAEnter) + ImVec2(8.0f, 8.0f));
+        const auto geometry = test::Capture(session.DrawList);
+        inside = outside = 0;
+        for (size_t i = 0; i < geometry.Colors.size(); ++i)
+            if ((geometry.Colors[i] & ~IM_COL32_A_MASK) == (flowColor & ~IM_COL32_A_MASK))
+                ++(nextBranch.Contains(geometry.Positions[i]) ? inside : outside);
+    };
+    session.Run(3);
+
+    test::Check(blueprint.CurrentNode() == example.m_FlipFlop && blueprint.NextNode() == example.m_PrintA, "execution paused in Flip Flop, with Print A next");
+    test::Check(inside > 0, "the link from Flip Flop's A to Print A flows: %d flow vertices", inside);
+    test::Check(outside == 0, "and no other link does: %d flow vertices elsewhere", outside);
+
+    // The next step runs Print A and returns to Do N, through no link. Frames take 1/60 s.
+    blueprint.Step();
+    session.Run(15);
+    const int fading = inside + outside;
+    session.Run(21);
+    const int faded = inside + outside;
+    test::Check(fading > 0, "a quarter of a second after the step, the link it took still fades: %d flow vertices", fading);
+    test::Check(faded == 0, "and 0.6 seconds after it, no link flows: %d flow vertices", faded);
+}
+
 TEST_CASE(SaveLiveState, "blueprints2.save_writes_the_blueprint_as_it_is", "EXB-5", test::TestFlags_None)
 {
     // Do N's count changes, as an edit in place did, after the last undo step.
