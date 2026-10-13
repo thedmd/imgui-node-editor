@@ -258,7 +258,9 @@ struct Example:
         if (!a || !b || a == b || a->Kind == b->Kind || a->Type != b->Type || a->Node == b->Node)
             return false;
 
-        return true;
+        // An input takes one link, which also rules out a second link between the same pins.
+        auto input = a->Kind == PinKind::Input ? a : b;
+        return !IsPinLinked(input->ID);
     }
 
     //void DrawItemRect(ImColor color, float expand = 0.0f)
@@ -1493,6 +1495,11 @@ struct Example:
                             {
                                 showLabel("x Incompatible Pin Type", ImColor(45, 32, 32, 180));
                                 ed::RejectNewItem(ImColor(255, 128, 128), 1.0f);
+                            }
+                            else if (IsPinLinked(endPinId))
+                            {
+                                showLabel("x Input Already Linked", ImColor(45, 32, 32, 180));
+                                ed::RejectNewItem(ImColor(255, 0, 0), 2.0f);
                             }
                             else
                             {
