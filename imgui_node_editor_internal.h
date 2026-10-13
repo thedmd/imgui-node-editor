@@ -1603,7 +1603,8 @@ private:
     int                 m_BeginColorStackSize;
     int                 m_BeginVarStackSize;
 
-    vector<ObjectWrapper<Node>> m_Nodes;
+    vector<ObjectWrapper<Node>> m_Nodes;     // in draw order
+    vector<ObjectWrapper<Node>> m_NodeIndex; // the same nodes, sorted by ID
     vector<ObjectWrapper<Pin>>  m_Pins;
     vector<ObjectWrapper<Link>> m_Links;
 

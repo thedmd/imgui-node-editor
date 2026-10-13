@@ -490,6 +490,9 @@ v0.10.0 (WIP):
     NEW: Editor: Save the z position of nodes with their settings
         As an optional z key, written only when not 0. SetNodeZPosition() ignores a value that isn't finite.
 
+    CHANGE: Editor: Find nodes through an index sorted by ID
+        Every lookup scanned all nodes, so submitting N nodes took O(N^2) per frame.
+
 v0.9.2 (2023-09-01):
 
     NEW: Editor: Add offset of hover/select to style (thanks @MultiPain)
