@@ -3445,7 +3445,7 @@ void ed::FlowAnimation::UpdatePath()
     const auto step = ImMax(m_MarkerDistance * 0.5f, 15.0f);
 
     m_Path.resize(0);
-    ImCubicBezierFixedStep(collectPointsCallback, curve, step, false, 0.5f, 0.001f);
+    ImCubicBezierFixedStep(collectPointsCallback, curve, step, false, 0.5f);
 }
 
 void ed::FlowAnimation::ClearPath()

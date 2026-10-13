@@ -316,6 +316,10 @@ v0.9.4 (WIP):
         At some positions and zoom levels it came back a fraction of a pixel inside the canvas, and renderers
         that truncate scissor rectangles cut a row or column of pixels off its edge.
 
+    BUGFIX: Editor: Keep flow markers on very long links
+        Flow paths were sampled to a fixed fraction of the curve, so on links tens of thousands of units long
+        samples collapsed onto each other and some markers were drawn at non-finite positions.
+
 v0.9.3 (2023-10-14):
 
     CHANGE: Canvas: Use ImDrawCallback_ImCanvas macro as draw callback sentinel (#256), thanks @nspitko
