@@ -385,6 +385,9 @@ v0.10.0 (WIP):
     BUGFIX: Canvas: Place the IME of an input inside a canvas on screen
         InputText() published its caret in canvas coordinates, so candidate windows appeared in the wrong place.
 
+    BUGFIX: Canvas: Put the view origin on whole pixels
+        After zooming in and back out, content at zoom 1.0 rendered between pixels and looked blurry.
+
 v0.9.2 (2023-09-01):
 
     NEW: Editor: Add offset of hover/select to style (thanks @MultiPain)
