@@ -891,16 +891,9 @@ struct NavigateAction final: EditorAction
     bool MoveOverEdge(const ImVec2& canvasSize);
     bool IsSettled() const { return !m_IsActive && !m_Animation.IsPlaying() && !m_MovingOverEdge; }
     void StopMoveOverEdge();
-    bool IsMovingOverEdge() const { return m_MovingOverEdge; }
     ImVec2 GetMoveScreenOffset() const { return m_MoveScreenOffset; }
 
-    void SetWindow(ImVec2 position, ImVec2 size);
-    ImVec2 GetWindowScreenPos() const { return m_WindowScreenPos; };
-    ImVec2 GetWindowScreenSize() const { return m_WindowScreenSize; };
-
     ImGuiEx::CanvasView GetView() const;
-    ImVec2 GetViewOrigin() const;
-    float GetViewScale() const;
 
     void SetViewRect(const ImRect& rect);
     ImRect GetViewRect() const;
@@ -910,8 +903,6 @@ struct NavigateAction final: EditorAction
 
 private:
     ImGuiEx::Canvas&   m_Canvas;
-    ImVec2             m_WindowScreenPos;
-    ImVec2             m_WindowScreenSize;
 
     NavigateAnimation  m_Animation;
     NavigationReason   m_Reason;

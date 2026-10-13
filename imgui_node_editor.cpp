@@ -1075,9 +1075,6 @@ void ed::EditorContext::Begin(const char* id, const ImVec2& size)
 
     m_IsFocused = ImGui::IsWindowFocused();
 
-    //
-    m_NavigateAction.SetWindow(m_Canvas.ViewRect().Min, m_Canvas.ViewRect().GetSize());
-
     // Handle canvas size change. Scale to Y axis, center on X.
     if (!m_IsFrozen && !ImRect_IsEmpty(previousVisibleRect) && previousSize != canvasSize)
     {
@@ -1144,7 +1141,7 @@ void ed::EditorContext::End()
     IM_ASSERT(m_Style.GetVarStackSize() == m_BeginVarStackSize && "PushStyleVar() and PopStyleVar() calls don't match between Begin() and End().");
 
     //auto& io          = ImGui::GetIO();
-    auto  control     = BuildControl(m_CurrentAction && m_CurrentAction->IsDragging()); // NavigateAction.IsMovingOverEdge()
+    auto  control     = BuildControl(m_CurrentAction && m_CurrentAction->IsDragging());
     //auto& editorStyle = GetStyle();
 
     m_HoveredNode             = control.HotNode && m_CurrentAction == nullptr ? control.HotNode->m_ID : 0;
@@ -4023,8 +4020,6 @@ ed::NavigateAction::NavigateAction(EditorContext* editor, ImGuiEx::Canvas& canva
     m_ScrollDelta(0, 0),
     m_IsUserNavigation(false),
     m_Canvas(canvas),
-    m_WindowScreenPos(0, 0),
-    m_WindowScreenSize(0, 0),
     m_Animation(editor, *this),
     m_Reason(NavigationReason::Unknown),
     m_LastSelectionId(0),
@@ -4337,25 +4332,9 @@ void ed::NavigateAction::StopMoveOverEdge()
     }
 }
 
-void ed::NavigateAction::SetWindow(ImVec2 position, ImVec2 size)
-{
-    m_WindowScreenPos  = position;
-    m_WindowScreenSize = size;
-}
-
 ImGuiEx::CanvasView ed::NavigateAction::GetView() const
 {
     return ImGuiEx::CanvasView(-m_Scroll, m_Zoom);
-}
-
-ImVec2 ed::NavigateAction::GetViewOrigin() const
-{
-    return -m_Scroll;
-}
-
-float ed::NavigateAction::GetViewScale() const
-{
-    return m_Zoom;
 }
 
 void ed::NavigateAction::SetViewRect(const ImRect& rect)
