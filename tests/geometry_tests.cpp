@@ -214,3 +214,39 @@ TEST_CASE(PlacementBeyondBorder, "geometry.node_placed_beyond_the_border_stops_t
 
     test::Check(wrong == 0, "nodes placed beyond the border are placed at it, with their size");
 }
+
+TEST_CASE(GrowthAtBorder, "geometry.node_growing_at_the_border_moves_inside", "CNV-8", test::TestFlags_None)
+{
+    // Node 1 grows from 100 to 300 wide 200 from the right border. Node 2 is placed
+    // at FLT_MAX before it was ever measured, so it is placed as if it had no size.
+    const float extent = 250000.0f;
+    test::Storage storage;
+    test::Session session(&storage);
+    float width = 100.0f;
+    session.DefaultContent = [&width, extent](int frame)
+    {
+        if (frame == 0)
+        {
+            ed::SetNodePosition(1, ImVec2(extent - 200.0f, 0.0f));
+            ed::SetNodePosition(2, ImVec2(FLT_MAX, FLT_MAX));
+        }
+        ed::BeginNode(1);
+        ImGui::Dummy(ImVec2(width, 40.0f));
+        ed::EndNode();
+        ed::BeginNode(2);
+        ImGui::Dummy(ImVec2(100.0f, 40.0f));
+        ed::EndNode();
+    };
+    session.Run(3);
+    width = 300.0f;
+    session.Run(3);
+
+    const auto position1 = session.Use([] { return ed::GetNodePosition(1); });
+    const auto size1     = session.Use([] { return ed::GetNodeSize(1); });
+    const auto position2 = session.Use([] { return ed::GetNodePosition(2); });
+    const auto size2     = session.Use([] { return ed::GetNodeSize(2); });
+    test::Check(size1.x > 300.0f && position1.x == extent - size1.x && position1.y == 0.0f,
+        "the grown node ends at the border: at (%g, %g), %g by %g", position1.x, position1.y, size1.x, size1.y);
+    test::Check(size2.x > 100.0f && position2.x == extent - size2.x && position2.y == extent - size2.y,
+        "the node placed at FLT_MAX ends at the border: at (%g, %g), %g by %g", position2.x, position2.y, size2.x, size2.y);
+}
