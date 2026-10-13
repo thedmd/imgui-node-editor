@@ -11,6 +11,13 @@ endif()
 set(CMAKE_CXX_STANDARD_REQUIRED YES)
 
 set(IMGUI_DIR "" CACHE PATH "Dear ImGui sources to test against. When empty, the pinned revision the examples use is fetched.")
+# Like the examples, blueprints2-example builds only against the pinned revision.
+if (IMGUI_DIR)
+    set(_IsPinnedImGui OFF)
+else()
+    set(_IsPinnedImGui ON)
+endif()
+option(IMGUI_NODE_EDITOR_TESTS_BLUEPRINTS2 "Also test blueprints2-example's blueprint model and documents" ${_IsPinnedImGui})
 set(IMGUI_NODE_EDITOR_TESTS_DEFINITIONS "" CACHE STRING "Definitions for Dear ImGui and the editor, for example IMGUI_DISABLE_OBSOLETE_FUNCTIONS")
 option(IMGUI_NODE_EDITOR_TESTS_SANITIZE "Build with AddressSanitizer and run the tests that need it" OFF)
 option(IMGUI_NODE_EDITOR_WARNINGS_AS_ERRORS "Treat warnings in the node editor sources as errors" OFF)
@@ -99,6 +106,32 @@ set(_TestSources
     view_tests.cpp
 )
 
+# The example without its window and file dialogs.
+if (IMGUI_NODE_EDITOR_TESTS_BLUEPRINTS2)
+    set(_Blueprints2Dir ${IMGUI_NODE_EDITOR_ROOT_DIR}/examples/blueprints2-example)
+    add_library(blueprints2_for_tests STATIC
+        ${_Blueprints2Dir}/blueprint_editor_document.cpp
+        ${_Blueprints2Dir}/blueprint_editor_icons.cpp
+        ${_Blueprints2Dir}/blueprint_editor_utilities.cpp
+        ${_Blueprints2Dir}/crude_blueprint.cpp
+        ${_Blueprints2Dir}/crude_blueprint_library.cpp
+        ${_Blueprints2Dir}/crude_layout.cpp
+        ${_Blueprints2Dir}/crude_logger.cpp
+        ${_Blueprints2Dir}/imgui_extras.cpp
+    )
+    target_include_directories(blueprints2_for_tests PUBLIC ${_Blueprints2Dir})
+    target_include_directories(blueprints2_for_tests SYSTEM PUBLIC ${_Blueprints2Dir}/external/nonstd/include)
+    target_link_libraries(blueprints2_for_tests PUBLIC imgui_node_editor_for_tests)
+    # The example is C++14 and uses nonstd's own types, such as string_view::to_string(),
+    # which under C++17 would give way to the standard ones.
+    target_compile_definitions(blueprints2_for_tests PUBLIC
+        nssv_CONFIG_SELECT_STRING_VIEW=nssv_STRING_VIEW_NONSTD
+        span_CONFIG_SELECT_SPAN=span_SPAN_NONSTD
+        variant_CONFIG_SELECT_VARIANT=variant_VARIANT_NONSTD
+    )
+    list(APPEND _TestSources blueprints2_tests.cpp)
+endif()
+
 add_executable(node_editor_tests
     harness.cpp
     harness.h
@@ -107,6 +140,9 @@ add_executable(node_editor_tests
     ${_TestSources}
 )
 target_link_libraries(node_editor_tests PRIVATE imgui_node_editor_for_tests)
+if (IMGUI_NODE_EDITOR_TESTS_BLUEPRINTS2)
+    target_link_libraries(node_editor_tests PRIVATE blueprints2_for_tests)
+endif()
 if (IMGUI_NODE_EDITOR_TESTS_SANITIZE)
     target_compile_definitions(node_editor_tests PRIVATE IMGUI_NODE_EDITOR_TESTS_SANITIZE)
 endif()
