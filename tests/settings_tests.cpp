@@ -130,7 +130,7 @@ TEST_CASE(MalformedSettings, "settings.malformed_settings_load_safely", "CORE-12
             });
 
         const ImVec2 position = session.Use([] { return ed::GetNodePosition(2); });
-        const float  zoom     = 1.0f / session.Use([] { return ed::GetCurrentZoom(); });
+        const float  zoom     = session.Use([] { return ed::GetCurrentZoom(); });
         test::Check(position.x == 300.0f && position.y == 40.0f && zoom >= 0.1f && zoom <= 8.0f,
             "node 2 at (%g, %g), zoom %g, from %s", position.x, position.y, zoom, document.c_str());
     }
@@ -426,7 +426,7 @@ TEST_CASE(ContentWithoutNodes, "settings.content_without_nodes_leaves_layout_out
     session.Use([] { ed::LoadSettingsFromMemory(R"({"nodes":{"node:1":{"location":{"x":10,"y":20}}},"view":{"scroll":{"x":0,"y":0},"zoom":2}})"); });
     session.Run(2);
     const auto position = session.Use([] { return ed::GetNodePosition(1); });
-    const auto zoom     = 1.0f / session.Use([] { return ed::GetCurrentZoom(); });
+    const auto zoom     = session.Use([] { return ed::GetCurrentZoom(); });
 
     test::Check(saved.find("\"nodes\"") == std::string::npos && saved.find("\"view\"") != std::string::npos, "saved settings hold the view but no node layout: %s", saved.c_str());
     test::Check(position.x == 500.0f && position.y == 300.0f, "loaded settings leave nodes in place: (%g, %g)", position.x, position.y);

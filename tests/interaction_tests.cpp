@@ -206,7 +206,7 @@ void SmallNode(int)
 // The editor's zoom, 1 at 100%.
 float Zoom(test::Session& session)
 {
-    return 1.0f / session.Use([] { return ed::GetCurrentZoom(); });
+    return session.Use([] { return ed::GetCurrentZoom(); });
 }
 
 // One wheel event of 'delta' over the editor, and time to settle.
@@ -536,7 +536,7 @@ TEST_CASE(DragAnchorSurvivesZoom, "interaction.dragged_node_stays_under_mouse_wh
     test::MouseWheel(1.0f);
     session.Run(30);
     const auto after = grabOffset();
-    const float zoom = 1.0f / session.Use([] { return ed::GetCurrentZoom(); });
+    const float zoom = session.Use([] { return ed::GetCurrentZoom(); });
 
     test::MouseButton(0, false);
     session.Run(2);
