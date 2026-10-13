@@ -238,6 +238,7 @@ private:
     };
 # endif
 
+    ImVec2 CalcViewTransformPosition(const CanvasView& view) const;
     void UpdateViewTransformPosition();
 
     void SaveInputState();

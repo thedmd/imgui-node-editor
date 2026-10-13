@@ -543,8 +543,9 @@ TEST_CASE(DragAnchorSurvivesZoom, "interaction.dragged_node_stays_under_mouse_wh
     ImGui::GetIO().AddKeyEvent(ImGuiMod_Alt, false);
     session.Run(1);
 
+    // Node positions are whole canvas units, which at zoom 1.3 the mouse isn't on.
     test::Check(zoom > 1.0f, "zoomed in during the drag: zoom %g", zoom);
-    test::Check(ImFabs(after.x - before.x) < 0.5f && ImFabs(after.y - before.y) < 0.5f, "the node stays where the mouse holds it: offset (%g, %g) -> (%g, %g)", before.x, before.y, after.x, after.y);
+    test::Check(ImFabs(after.x - before.x) < 1.0f && ImFabs(after.y - before.y) < 1.0f, "the node stays where the mouse holds it: offset (%g, %g) -> (%g, %g)", before.x, before.y, after.x, after.y);
 }
 
 namespace {

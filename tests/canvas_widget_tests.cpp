@@ -4,6 +4,7 @@
 # include "harness.h"
 # include "imgui_canvas.h"
 # include <cfloat>
+# include <cmath>
 # include <limits>
 
 namespace {
@@ -297,4 +298,27 @@ TEST_CASE(ImePosition, "canvas_widget.ime_position_is_in_screen_space", "CNV-8",
     test::Check(ime.InputPos.x >= item.Min.x - 2.0f && ime.InputPos.y >= item.Min.y - 2.0f && ime.InputPos.x <= item.Max.x && ime.InputPos.y <= item.Max.y,
         "the IME is placed at the input on screen, (%g, %g) - (%g, %g): at (%g, %g)", item.Min.x, item.Min.y, item.Max.x, item.Max.y, ime.InputPos.x, ime.InputPos.y);
     test::Check(ime.InputLineHeight == ImGui::GetFontSize() * 2.0f, "the IME line is as tall as on screen: %g", ime.InputLineHeight);
+}
+
+TEST_CASE(PixelSnappedOrigin, "canvas_widget.view_origin_is_on_whole_pixels", "CNV-9", test::TestFlags_None)
+{
+    // At scale 1 with the origin at (-150.5, -90.25), as zooming in and back out can
+    // leave it, a rectangle on whole canvas units.
+    test::Host host;
+    host.NewFrame();
+    BeginHostWindow();
+    ImGuiEx::Canvas canvas;
+    canvas.SetView(ImVec2(-150.5f, -90.25f), 1.0f);
+    canvas.Begin("canvas", ImVec2(300.0f, 300.0f));
+    auto drawList = ImGui::GetWindowDrawList();
+    drawList->AddRectFilled(ImVec2(160.0f, 100.0f), ImVec2(200.0f, 140.0f), c_Red);
+    const auto mouseMapped = canvas.ToLocal(canvas.FromLocal(ImVec2(170.0f, 110.0f)));
+    canvas.End();
+    ImGui::End();
+    host.Render();
+
+    const auto rect = VertexBounds(drawList, c_Red);
+    test::Check(rect.Min.x == std::floor(rect.Min.x) && rect.Min.y == std::floor(rect.Min.y) && rect.Max.x == std::floor(rect.Max.x) && rect.Max.y == std::floor(rect.Max.y),
+        "the rectangle lands on whole pixels: (%g, %g) - (%g, %g)", rect.Min.x, rect.Min.y, rect.Max.x, rect.Max.y);
+    test::Check(mouseMapped.x == 170.0f && mouseMapped.y == 110.0f, "mapping to the screen and back is exact: (%g, %g)", mouseMapped.x, mouseMapped.y);
 }
