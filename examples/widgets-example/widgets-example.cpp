@@ -13,8 +13,7 @@
 //   and the nodes can't tell these widgets how wide it is. The work-around is to set up a fake
 //   table with a static column width, then draw your header and tree widgets in that column.
 // - Clickable tabs don't work in nodes.  Tabs appear, but you cannot actually change the tab, so they're functionally useless.
-// - Editable text areas work, but you have to manually manage disabling the editor shorcuts while typing is detected.
-//   Look around for the call to ed::EnableShortcuts() for an example.
+// - Editable text areas work. The editor ignores its shortcuts while a text area, or any other widget, is active.
 // - Most of the cool graph widgets can't be used because they are hard-coded in ImGui to spawn tooltips, which don't work.
 
 # include <imgui.h>
@@ -138,9 +137,6 @@ struct Example:
             ImGui::SameLine();
             ImGui::Text("%d", counter);
 
-            // The input widgets also require you to manually disable the editor shortcuts so the view doesn't fly around.
-            // (note that this is a per-frame setting, so it disables it for all text boxes.  I left it here so you could find it!)
-            ed::EnableShortcuts(!io.WantTextInput);
             // The input widgets require some guidance on their widths, or else they're very large. (note matching pop at the end).
             ImGui::PushItemWidth(200);
             static char str1[128] = "";
