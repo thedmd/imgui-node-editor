@@ -2,10 +2,7 @@
 .vscode
 .build*
 .DS_Store
-bin
-[Bb]uild
+/[Bb]uild*/
 *.VC.db
 *.VC.opendb
 *.user
-*.ini
-*.json
