@@ -88,8 +88,6 @@ macro(add_example_executable name)
 
     add_executable(${name} ${_Example_Type} ${_Example_Sources} ${_Example_Resources} ${_Example_CommonResources})
 
-    find_package(imgui REQUIRED)
-    find_package(imgui_node_editor REQUIRED)
     target_link_libraries(${name} PRIVATE imgui imgui_node_editor application)
 
     set(_ExampleBinDir ${CMAKE_BINARY_DIR}/bin)
@@ -123,6 +121,9 @@ endmacro()
 
 file(GLOB _Examples_CommonData CONFIGURE_DEPENDS "${IMGUI_NODE_EDITOR_ROOT_DIR}/examples/data/*")
 add_example_data_target(examples-data "${IMGUI_NODE_EDITOR_ROOT_DIR}/examples/data" ${_Examples_CommonData})
+
+find_package(imgui REQUIRED)
+find_package(imgui_node_editor REQUIRED)
 
 add_subdirectory(application)
 
