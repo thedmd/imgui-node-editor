@@ -521,6 +521,7 @@ struct NodeSettings
     ImVec2 m_Location;
     ImVec2 m_Size;
     ImVec2 m_GroupSize;
+    float  m_ZPosition;
     bool   m_WasUsed;
     bool   m_WasLoaded;
 
@@ -533,6 +534,7 @@ struct NodeSettings
         , m_Location(0, 0)
         , m_Size(0, 0)
         , m_GroupSize(0, 0)
+        , m_ZPosition(0.0f)
         , m_WasUsed(false)
         , m_WasLoaded(false)
         , m_Saved(false)
