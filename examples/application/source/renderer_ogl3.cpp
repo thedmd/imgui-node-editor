@@ -72,8 +72,6 @@ std::unique_ptr<Renderer> CreateRenderer()
 
 bool RendererOpenGL3::Create(Platform& platform)
 {
-    m_Platform = &platform;
-
     // Technically we should initialize OpenGL context here,
     // but for now we relay on one created by GLFW3
 
@@ -106,6 +104,7 @@ bool RendererOpenGL3::Create(Platform& platform)
     if (!ImGui_ImplOpenGL3_Init(glslVersion))
         return false;
 
+    m_Platform = &platform;
     m_Platform->SetRenderer(this);
 
     return true;

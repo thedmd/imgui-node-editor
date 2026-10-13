@@ -10,6 +10,7 @@ struct Renderer
     virtual ~Renderer() {};
 
     virtual bool Create(Platform& platform) = 0;
+    // Does nothing unless Create() succeeded.
     virtual void Destroy() = 0;
 
     virtual void NewFrame() = 0;

@@ -66,8 +66,6 @@ std::unique_ptr<Renderer> CreateRenderer()
 
 bool RendererDX11::Create(Platform& platform)
 {
-    m_Platform = &platform;
-
     auto hr = CreateDeviceD3D(reinterpret_cast<HWND>(platform.GetMainWindowHandle()));
     if (FAILED(hr))
         return false;
@@ -78,6 +76,7 @@ bool RendererDX11::Create(Platform& platform)
         return false;
     }
 
+    m_Platform = &platform;
     m_Platform->SetRenderer(this);
 
     return true;
