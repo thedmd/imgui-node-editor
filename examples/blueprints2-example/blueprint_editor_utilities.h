@@ -39,7 +39,7 @@ IconType PinTypeToIconType(PinType pinType); // Returns icon for corresponding p
 ImVec4 PinTypeToColor(PinType pinType); // Returns color for corresponding pin type.
 bool DrawPinValue(const PinValue& value); // Draw widget representing pin value.
 bool EditPinValue(Pin& pin); // Show editor for pin. Returns true if edit is complete.
-void DrawPinValueWithEditor(Pin& pin); // Draw pin value or editor if value is clicked.
+bool DrawPinValueWithEditor(Pin& pin); // Draw pin value or editor if value is clicked. Returns true when an edit changed the value.
 const vector<Node*> GetSelectedNodes(Blueprint& blueprint); // Returns selected nodes as a vector.
 const vector<Pin*> GetSelectedLinks(Blueprint& blueprint); // Returns selected links as a vector.
 
