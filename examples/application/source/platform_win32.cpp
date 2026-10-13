@@ -9,11 +9,12 @@
 # define NOMINMAX
 # define WIN32_LEAN_AND_MEAN
 # include <windows.h>
+# include <windowsx.h>
 # include <tchar.h>
+# include <cmath>
 # include <string>
 
 # include <imgui.h>
-# include <imgui_internal.h>
 # include "imgui_impl_win32.h"
 
 # if defined(_UNICODE)
@@ -66,7 +67,6 @@ struct PlatformWin32 final
     bool            m_WasMinimized = false;
     bool            m_CanCloseResult = false;
     Renderer*       m_Renderer = nullptr;
-    ImU32           m_LastEventId = 0;
 };
 
 std::unique_ptr<Platform> CreatePlatform(Application& application)
@@ -293,30 +293,7 @@ void PlatformWin32::SetRenderer(Renderer* renderer)
 
 void PlatformWin32::NewFrame()
 {
-    auto& io = ImGui::GetIO();
-    auto& ctx = *ImGui::GetCurrentContext();
-
     ImGui_ImplWin32_NewFrame();
-    auto inputEventCountAfterUpdate = ctx.InputEventsQueue.Size;
-
-    auto windowScale = GetWindowScale();
-
-    for (auto& event : ctx.InputEventsQueue)
-    {
-        if (event.EventId <= m_LastEventId)
-            continue;
-
-        m_LastEventId = event.EventId;
-
-        if (event.Type == ImGuiInputEventType_MousePos)
-        {
-            if (event.MousePos.PosX > -FLT_MAX && event.MousePos.PosY > -FLT_MAX)
-            {
-                event.MousePos.PosX *= windowScale;
-                event.MousePos.PosY *= windowScale;
-            }
-        }
-    }
 
     if (m_WasMinimized)
     {
@@ -338,7 +315,18 @@ void PlatformWin32::Quit()
 
 LRESULT PlatformWin32::WinProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
-    if (ImGui_ImplWin32_WndProcHandler(hWnd, msg, wParam, lParam))
+    // ImGui works in window units times the window scale. Positions the backend reads itself, while
+    // the cursor is outside the window, stay in window units: outside of ImGui's display as well.
+    auto imguiParam = lParam;
+    if (msg == WM_MOUSEMOVE)
+    {
+        const auto scale = GetWindowScale();
+        imguiParam = MAKELPARAM(
+            static_cast<int>(std::floor(GET_X_LPARAM(lParam) * scale)),
+            static_cast<int>(std::floor(GET_Y_LPARAM(lParam) * scale)));
+    }
+
+    if (ImGui_ImplWin32_WndProcHandler(hWnd, msg, wParam, imguiParam))
         return 1;
 
     switch (msg)

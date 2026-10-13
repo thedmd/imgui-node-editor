@@ -52,6 +52,7 @@ private:
     ImGuiContext*               m_Context = nullptr;
     ImFont*                     m_DefaultFont = nullptr;
     ImFont*                     m_HeaderFont = nullptr;
+    void                      (*m_SetImeData)(ImGuiContext*, ImGuiViewport*, ImGuiPlatformImeData*) = nullptr;
 };
 
 int Main(int argc, char** argv);
