@@ -1418,6 +1418,8 @@ struct EditorContext
 
     void RemoveSettings(Object* object);
 
+    bool ForgetNode(NodeId nodeId);
+
     void ClearSelection();
     void SelectObject(Object* object);
     void DeselectObject(Object* object);

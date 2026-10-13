@@ -403,6 +403,12 @@ IMGUI_NODE_EDITOR_API void DeselectLink(LinkId linkId);
 IMGUI_NODE_EDITOR_API bool DeleteNode(NodeId nodeId);
 IMGUI_NODE_EDITOR_API bool DeleteLink(LinkId linkId);
 
+// Forgets the node, its pins, the links to them, its saved state and its selection.
+// A node submitted later with the same ID starts as a new one, from the state
+// Config::LoadNodeSettings gives, if any. Call it outside Begin()/End().
+// Returns false if the editor doesn't know the node.
+IMGUI_NODE_EDITOR_API bool ForgetNode(NodeId nodeId);
+
 // These see the links submitted so far: between Begin() and End(), call them after
 // the frame's links. PinHadAnyLinks() answers for the previous frame.
 IMGUI_NODE_EDITOR_API bool HasAnyLinks(NodeId nodeId); // Returns true if node has any link connected

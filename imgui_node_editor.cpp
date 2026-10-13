@@ -2290,6 +2290,48 @@ void ed::EditorContext::FreeDeletedObjects()
     freeDeleted(m_Links);
 }
 
+bool ed::EditorContext::ForgetNode(NodeId nodeId)
+{
+    IM_ASSERT(m_DrawList == nullptr && "ForgetNode() is called outside of Begin()/End().");
+    if (m_DrawList)
+        return false;
+
+    auto node = FindNode(nodeId);
+    if (!node && !m_Settings.FindNode(nodeId))
+        return false;
+
+    vector<ObjectId> forgotten = { nodeId };
+    if (node)
+    {
+        node->m_DeleteOnNewFrame = true;
+
+        for (auto& pin : m_Pins)
+            if (pin->m_Node == node)
+                pin->m_DeleteOnNewFrame = true;
+
+        vector<Link*> links;
+        FindLinksForDeletedPins(links);
+        for (auto link : links)
+        {
+            link->m_DeleteOnNewFrame = true;
+            forgotten.push_back(link->m_ID);
+        }
+    }
+
+    auto& selection = m_Settings.m_Selection;
+    selection.erase(std::remove_if(selection.begin(), selection.end(), [&forgotten](const ObjectId& id)
+    {
+        return std::any_of(forgotten.begin(), forgotten.end(), [&id](const ObjectId& forgottenId) { return IsSameObject(forgottenId, id); });
+    }), selection.end());
+
+    m_Settings.EraseNode(nodeId);
+    MakeDirty(SaveReasonFlags::RemoveNode);
+
+    FreeDeletedObjects();
+
+    return true;
+}
+
 void ed::EditorContext::Suspend(SuspendFlags flags)
 {
     IM_ASSERT(m_DrawList != nullptr && "Suspend was called outiside of Begin/End.");
