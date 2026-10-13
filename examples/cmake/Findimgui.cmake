@@ -1,6 +1,6 @@
-if (NOT TARGET imgui)
-    include(FetchContent)
+include(FetchContent)
 
+if (NOT TARGET imgui)
     FetchContent_Declare(
         imgui
         GIT_REPOSITORY      https://github.com/thedmd/imgui.git
@@ -32,13 +32,20 @@ if (NOT TARGET imgui)
     )
 endif()
 
+FetchContent_GetProperties(imgui)
+
 foreach(component ${imgui_FIND_COMPONENTS})
 
     if (TARGET imgui_${component})
+        set(imgui_${component}_FOUND TRUE)
         continue()
     endif()
 
     file(GLOB COMPONENT_SOURCES CONFIGURE_DEPENDS "${imgui_SOURCE_DIR}/backends/imgui_impl_${component}*")
+    if (NOT COMPONENT_SOURCES)
+        set(imgui_${component}_FOUND FALSE)
+        continue()
+    endif()
 
     source_group(TREE ${imgui_SOURCE_DIR}/backends FILES ${COMPONENT_SOURCES})
 
@@ -68,12 +75,19 @@ foreach(component ${imgui_FIND_COMPONENTS})
             FOLDER "external"
     )
 
+    set(imgui_${component}_FOUND TRUE)
+
 endforeach()
+
+if (TARGET imgui)
+    set(imgui_LIBRARY imgui)
+endif()
 
 include(FindPackageHandleStandardArgs)
 
 find_package_handle_standard_args(
     imgui
-    DEFAULT_MSG
+    REQUIRED_VARS imgui_LIBRARY
+    HANDLE_COMPONENTS
 )
 
