@@ -3,97 +3,11 @@
 # endif
 # include "imgui_canvas.h"
 # include <cmath>
-# include <type_traits>
-
-// https://stackoverflow.com/a/36079786
-# define DECLARE_HAS_MEMBER(TraitName, MemberName)                                   \
-                                                                                     \
-    template <typename T>                                                            \
-    class TraitName                                                                  \
-    {                                                                                \
-        using check_type = ::std::remove_const_t<T>;                                 \
-        struct no_type {char x[2];};                                                 \
-        using  yes_type = char;                                                      \
-                                                                                     \
-        struct  base { void MemberName() {}};                                        \
-        struct mixin : public base, public check_type {};                            \
-                                                                                     \
-        template <void (base::*)()> struct aux {};                                   \
-                                                                                     \
-        template <typename U> static no_type  test(aux<&U::MemberName>*);            \
-        template <typename U> static yes_type test(...);                             \
-                                                                                     \
-        public:                                                                      \
-                                                                                     \
-        static constexpr bool value = (sizeof(yes_type) == sizeof(test<mixin>(0)));  \
-    }
 
 // Special sentinel value. This needs to be unique, so allow it to be overridden in the user's ImGui config
 # ifndef ImDrawCallback_ImCanvas
 #     define ImDrawCallback_ImCanvas        (ImDrawCallback)(-2)
 # endif
-
-namespace ImCanvasDetails {
-
-DECLARE_HAS_MEMBER(HasFringeScale, _FringeScale);
-
-struct FringeScaleRef
-{
-    // Overload is present when ImDrawList does have _FringeScale member variable.
-    template <typename T>
-    static float& Get(typename std::enable_if<HasFringeScale<T>::value, T>::type* drawList)
-    {
-        return drawList->_FringeScale;
-    }
-
-    // Overload is present when ImDrawList does not have _FringeScale member variable.
-    template <typename T>
-    static float& Get(typename std::enable_if<!HasFringeScale<T>::value, T>::type*)
-    {
-        static float placeholder = 1.0f;
-        return placeholder;
-    }
-};
-
-DECLARE_HAS_MEMBER(HasVtxCurrentOffset, _VtxCurrentOffset);
-
-struct VtxCurrentOffsetRef
-{
-    // Overload is present when ImDrawList does have _FringeScale member variable.
-    template <typename T>
-    static unsigned int& Get(typename std::enable_if<HasVtxCurrentOffset<T>::value, T>::type* drawList)
-    {
-        return drawList->_VtxCurrentOffset;
-    }
-
-    // Overload is present when ImDrawList does not have _FringeScale member variable.
-    template <typename T>
-    static unsigned int& Get(typename std::enable_if<!HasVtxCurrentOffset<T>::value, T>::type* drawList)
-    {
-        return drawList->_CmdHeader.VtxOffset;
-    }
-};
-
-} // namespace ImCanvasDetails
-
-# undef DECLARE_HAS_MEMBER
-
-# if IMGUI_VERSION_NUM < 19292
-// Returns a reference to _FringeScale extension to ImDrawList
-//
-// If ImDrawList does not have _FringeScale a placeholder is returned.
-static inline float& ImFringeScaleRef(ImDrawList* drawList)
-{
-    using namespace ImCanvasDetails;
-    return FringeScaleRef::Get<ImDrawList>(drawList);
-}
-# endif
-
-static inline unsigned int& ImVtxOffsetRef(ImDrawList* drawList)
-{
-    using namespace ImCanvasDetails;
-    return VtxCurrentOffsetRef::Get<ImDrawList>(drawList);
-}
 
 static inline ImVec2 ImSelectPositive(const ImVec2& lhs, const ImVec2& rhs) { return ImVec2(lhs.x > 0.0f ? lhs.x : rhs.x, lhs.y > 0.0f ? lhs.y : rhs.y); }
 
@@ -450,7 +364,7 @@ void ImGuiEx::Canvas::EnterLocalSpace()
     }
 
     m_DrawListCommandBufferSize = ImMax(m_DrawList->CmdBuffer.Size, 0);
-    m_DrawListStartVertexIndex  = m_DrawList->_VtxCurrentIdx + ImVtxOffsetRef(m_DrawList);
+    m_DrawListStartVertexIndex  = m_DrawList->_VtxCurrentIdx + m_DrawList->_CmdHeader.VtxOffset;
 
     // Mark where local space begins with a draw command of its own, which also keeps
     // canvas commands from sharing one with what was drawn before. AddCallback() adds
@@ -526,7 +440,7 @@ void ImGuiEx::Canvas::EnterLocalSpace()
     m_LastPixelDensity = m_DrawList->_InvFringeScale;
     m_DrawList->_SetPixelDensity(m_LastPixelDensity * m_View.Scale());
 # else
-    auto& fringeScale = ImFringeScaleRef(m_DrawList);
+    auto& fringeScale = m_DrawList->_FringeScale;
     m_LastFringeScale = fringeScale;
     fringeScale *= m_View.InvScale();
 
@@ -556,7 +470,7 @@ void ImGuiEx::Canvas::LeaveLocalSpace()
 
     // Move vertices to screen space.
     auto vertex    = m_DrawList->VtxBuffer.Data + m_DrawListStartVertexIndex;
-    auto vertexEnd = m_DrawList->VtxBuffer.Data + m_DrawList->_VtxCurrentIdx + ImVtxOffsetRef(m_DrawList);
+    auto vertexEnd = m_DrawList->VtxBuffer.Data + m_DrawList->_VtxCurrentIdx + m_DrawList->_CmdHeader.VtxOffset;
 
     // If canvas view is not scaled take a faster path.
     if (m_View.Scale() != 1.0f)
@@ -600,7 +514,7 @@ void ImGuiEx::Canvas::LeaveLocalSpace()
 # if IMGUI_VERSION_NUM >= 19292
     m_DrawList->_SetPixelDensity(m_LastPixelDensity);
 # else
-    auto& fringeScale = ImFringeScaleRef(m_DrawList);
+    auto& fringeScale = m_DrawList->_FringeScale;
     fringeScale = m_LastFringeScale;
 
     m_DrawList->_Data->CurveTessellationTol = m_LastCurveTessellationTol;
