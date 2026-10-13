@@ -427,6 +427,9 @@ v0.10.0 (WIP):
     BUGFIX: Editor: Respect EnableShortcuts(false) in Alt+click link deletion
         It offered the clicked link for deletion with shortcuts disabled.
 
+    BUGFIX: Editor: Report selection changes made by the mouse to HasSelectionChanged() between Begin() and End()
+        It missed them there, since Begin() had taken them in already.
+
 v0.9.2 (2023-09-01):
 
     NEW: Editor: Add offset of hover/select to style (thanks @MultiPain)
