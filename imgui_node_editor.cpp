@@ -261,7 +261,8 @@ static void ImDrawListSplitter_Grow(ImDrawList* draw_list, ImDrawListSplitter* s
     int old_channels_count = splitter->_Channels.Size;
     if (old_channels_count < channels_count)
     {
-        splitter->_Channels.reserve(channels_count);
+        if (splitter->_Channels.Capacity < channels_count)
+            splitter->_Channels.reserve(ImMax(channels_count, splitter->_Channels.Capacity * 2));
         splitter->_Channels.resize(channels_count);
     }
     int old_used_channels_count = splitter->_Count;
