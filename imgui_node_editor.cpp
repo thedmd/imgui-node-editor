@@ -2509,6 +2509,9 @@ ImU32 ed::EditorContext::GetColor(StyleColor colorIndex, float alpha) const
 
 int ed::EditorContext::GetNodeIds(NodeId* nodes, int size) const
 {
+    if (!nodes)
+        return static_cast<int>(std::count_if(m_Nodes.begin(), m_Nodes.end(), [](const auto& node) { return node->m_IsLive; }));
+
     if (size <= 0)
         return 0;
 
