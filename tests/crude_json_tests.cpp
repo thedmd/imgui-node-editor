@@ -4,6 +4,8 @@
 # include "harness.h"
 # include <crude_json.h>
 # include <limits>
+# include <type_traits>
+# include <utility>
 
 namespace json = crude_json;
 
@@ -75,6 +77,25 @@ TEST_CASE(JsonUtf8, "json.utf8_strings_round_trip", "JSON-5", test::TestFlags_No
     test::Check(ParsedString(R"("\u20ac")") == "\xE2\x82\xAC", "\\u20ac reads as UTF-8 for the euro sign");
     test::Check(ParsedString(R"("\ud83d\ude00")") == "\xF0\x9F\x98\x80", "a surrogate pair reads as the 4 bytes of one code point");
     test::Check(json::value::parse(R"("\ud83d")").is_discarded() && json::value::parse(R"("\ude00x")").is_discarded(), "lone surrogates are rejected");
+}
+
+namespace {
+
+// Whether 'lhs == rhs' compiles for the types.
+template <typename T, typename U, typename = void>
+struct IsEqualityComparable : std::false_type {};
+
+template <typename T, typename U>
+struct IsEqualityComparable<T, U, decltype(void(std::declval<const T&>() == std::declval<const U&>()))> : std::true_type {};
+
+} // namespace
+
+TEST_CASE(JsonNoTypeComparison, "json.values_dont_compare_by_type", "JSON-8", test::TestFlags_None)
+{
+    // Through the conversion to type_t, value(1.0) == value(2.0) compared only the
+    // type tags, and held.
+    test::Check(!IsEqualityComparable<json::value, json::value>::value, "values don't compare with ==");
+    test::Check(static_cast<json::type_t>(json::value(1.0)) == json::type_t::number, "the type is still there for an explicit conversion");
 }
 
 TEST_CASE(JsonDepth, "json.nesting_beyond_the_limit_is_rejected", "JSON-7", test::TestFlags_None)
