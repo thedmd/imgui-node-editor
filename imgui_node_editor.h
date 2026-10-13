@@ -7,8 +7,8 @@
 // CREDITS
 //   Written by Michal Cichon
 //------------------------------------------------------------------------------
-# ifndef __IMGUI_NODE_EDITOR_H__
-# define __IMGUI_NODE_EDITOR_H__
+# ifndef IMGUI_NODE_EDITOR_H
+# define IMGUI_NODE_EDITOR_H
 # pragma once
 
 
@@ -640,4 +640,4 @@ struct Edit
 
 
 //------------------------------------------------------------------------------
-# endif // __IMGUI_NODE_EDITOR_H__
+# endif // IMGUI_NODE_EDITOR_H

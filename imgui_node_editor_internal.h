@@ -7,8 +7,8 @@
 // CREDITS
 //   Written by Michal Cichon
 //------------------------------------------------------------------------------
-# ifndef __IMGUI_NODE_EDITOR_INTERNAL_H__
-# define __IMGUI_NODE_EDITOR_INTERNAL_H__
+# ifndef IMGUI_NODE_EDITOR_INTERNAL_H
+# define IMGUI_NODE_EDITOR_INTERNAL_H
 # pragma once
 
 
@@ -69,21 +69,21 @@ inline ImVec2 ImGui_GetMouseClickPos(ImGuiMouseButton buttonIndex);
 
 //------------------------------------------------------------------------------
 // https://stackoverflow.com/a/36079786
-# define DECLARE_HAS_MEMBER(__trait_name__, __member_name__)                         \
+# define DECLARE_HAS_MEMBER(TraitName, MemberName)                                   \
                                                                                      \
-    template <typename __boost_has_member_T__>                                       \
-    class __trait_name__                                                             \
+    template <typename T>                                                            \
+    class TraitName                                                                  \
     {                                                                                \
-        using check_type = ::std::remove_const_t<__boost_has_member_T__>;            \
+        using check_type = ::std::remove_const_t<T>;                                 \
         struct no_type {char x[2];};                                                 \
         using  yes_type = char;                                                      \
                                                                                      \
-        struct  base { void __member_name__() {}};                                   \
+        struct  base { void MemberName() {}};                                        \
         struct mixin : public base, public check_type {};                            \
                                                                                      \
         template <void (base::*)()> struct aux {};                                   \
                                                                                      \
-        template <typename U> static no_type  test(aux<&U::__member_name__>*);       \
+        template <typename U> static no_type  test(aux<&U::MemberName>*);            \
         template <typename U> static yes_type test(...);                             \
                                                                                      \
         public:                                                                      \
@@ -1728,4 +1728,4 @@ private:
 
 
 //------------------------------------------------------------------------------
-# endif // __IMGUI_NODE_EDITOR_INTERNAL_H__
+# endif // IMGUI_NODE_EDITOR_INTERNAL_H
