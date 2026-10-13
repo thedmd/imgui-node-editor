@@ -1,5 +1,5 @@
-# include "crude_logger.h"
 # define IMGUI_DEFINE_MATH_OPERATORS
+# include "crude_logger.h"
 # include <imgui_internal.h>
 
 # ifdef _WIN32
@@ -105,9 +105,8 @@ void crude_logger::OverlayLogger::Draw(const ImVec2& a, const ImVec2& b)
     float outlineSize = m_OutlineSize;
 
     // Draw messages from the last to first
-    int entryIndex = 0;
     auto cursor = ImVec2(canvasMin.x, canvasMax.y);
-    for (auto it = m_Entries.rbegin(), itEnd = m_Entries.rend(); it != itEnd; ++it, ++entryIndex)
+    for (auto it = m_Entries.rbegin(), itEnd = m_Entries.rend(); it != itEnd; ++it)
     {
         auto& entry = *it;
         auto message = entry.m_Text.data();
@@ -172,20 +171,16 @@ void crude_logger::OverlayLogger::Draw(const ImVec2& a, const ImVec2& b)
         if (isHovered || entry.m_IsPinned)
             drawList->AddRect(cursor, cursor + itemSize, isHovered ? m_HighlightBorder : m_PinBorder);
 
-        if (entry.m_IsPinned || isHovered)
+        // The log lies over the node editor, whose items keep the mouse from any item here.
+        if (isHovered)
         {
-            ImGui::SetItemAllowOverlap();
-            ImGui::SetCursorScreenPos(cursor);
-            ImGui::PushID(entryIndex);
-            if (ImGui::InvisibleButton("##pin", itemSize))
+            if (ImGui::IsMouseClicked(ImGuiMouseButton_Left))
             {
                 entry.m_IsPinned = !entry.m_IsPinned;
                 entry.m_Timer    = 0.0f;
             }
-            ImGui::PopID();
 
-            if (ImGui::IsItemHovered(ImGuiHoveredFlags_None))
-                ImGui::SetTooltip("Click to %s message", entry.m_IsPinned ? "unpin" : "pin");
+            ImGui::SetTooltip("Click to %s message", entry.m_IsPinned ? "unpin" : "pin");
         }
 
         if (cursor.y < canvasMin.y)

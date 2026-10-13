@@ -1,5 +1,5 @@
-# include "blueprint_editor_icons.h"
 # define IMGUI_DEFINE_MATH_OPERATORS
+# include "blueprint_editor_icons.h"
 # include <imgui_internal.h>
 
 void blueprint_editor_utilities::DrawIcon(ImDrawList* drawList, const ImVec2& a, const ImVec2& b, IconType type, bool filled, ImU32 color, ImU32 innerColor)
@@ -94,7 +94,7 @@ void blueprint_editor_utilities::DrawIcon(ImDrawList* drawList, const ImVec2& a,
             if (innerColor & 0xFF000000)
                 drawList->AddConvexPolyFilled(drawList->_Path.Data, drawList->_Path.Size, innerColor);
 
-            drawList->PathStroke(color, true, 2.0f * outline_scale);
+            drawList->PathStroke(color, 2.0f * outline_scale, ImDrawFlags_Closed);
         }
         else
             drawList->PathFillConvex(color);
@@ -135,7 +135,7 @@ void blueprint_editor_utilities::DrawIcon(ImDrawList* drawList, const ImVec2& a,
                 const auto p0 = rect_center - ImVec2(r, r);
                 const auto p1 = rect_center + ImVec2(r, r);
 
-                drawList->AddRectFilled(p0, p1, color, 0, 15 + extra_segments);
+                drawList->AddRectFilled(p0, p1, color, 0, ImDrawFlags_RoundAll);
             }
             else
             {
@@ -144,9 +144,9 @@ void blueprint_editor_utilities::DrawIcon(ImDrawList* drawList, const ImVec2& a,
                 const auto p1 = rect_center + ImVec2(r, r);
 
                 if (innerColor & 0xFF000000)
-                    drawList->AddRectFilled(p0, p1, innerColor, 0, 15 + extra_segments);
+                    drawList->AddRectFilled(p0, p1, innerColor, 0, ImDrawFlags_RoundAll);
 
-                drawList->AddRect(p0, p1, color, 0, 15 + extra_segments, 2.0f * outline_scale);
+                drawList->AddRect(p0, p1, color, 0, 2.0f * outline_scale, ImDrawFlags_RoundAll);
             }
         }
 
@@ -189,7 +189,7 @@ void blueprint_editor_utilities::DrawIcon(ImDrawList* drawList, const ImVec2& a,
                 const auto p0 = rect_center - ImVec2(r, r);
                 const auto p1 = rect_center + ImVec2(r, r);
 
-                drawList->AddRectFilled(p0, p1, color, cr, 15);
+                drawList->AddRectFilled(p0, p1, color, cr, ImDrawFlags_RoundAll);
             }
             else
             {
@@ -199,9 +199,9 @@ void blueprint_editor_utilities::DrawIcon(ImDrawList* drawList, const ImVec2& a,
                 const auto p1 = rect_center + ImVec2(r, r);
 
                 if (innerColor & 0xFF000000)
-                    drawList->AddRectFilled(p0, p1, innerColor, cr, 15);
+                    drawList->AddRectFilled(p0, p1, innerColor, cr, ImDrawFlags_RoundAll);
 
-                drawList->AddRect(p0, p1, color, cr, 15, 2.0f * outline_scale);
+                drawList->AddRect(p0, p1, color, cr, 2.0f * outline_scale, ImDrawFlags_RoundAll);
             }
         }
         else if (type == IconType::Diamond)
@@ -230,7 +230,7 @@ void blueprint_editor_utilities::DrawIcon(ImDrawList* drawList, const ImVec2& a,
                 if (innerColor & 0xFF000000)
                     drawList->AddConvexPolyFilled(drawList->_Path.Data, drawList->_Path.Size, innerColor);
 
-                drawList->PathStroke(color, true, 2.0f * outline_scale);
+                drawList->PathStroke(color, 2.0f * outline_scale, ImDrawFlags_Closed);
             }
         }
         else

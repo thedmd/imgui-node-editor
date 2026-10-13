@@ -1,5 +1,5 @@
-# include <application.h>
 # define IMGUI_DEFINE_MATH_OPERATORS
+# include <application.h>
 # include <imgui_internal.h>
 # include <tinyfiledialogs.h>
 # include <inttypes.h>
@@ -185,137 +185,68 @@ struct BlueprintEditorExample
 {
     using Application::Application;
 
-    void InstallDocumentCallbacks(ed::Config& config)
+    // Each document has its own editor, so nothing of one shows in the next. The
+    // document keeps the layout; the editor stays out of imgui.ini.
+    void CreateDocumentEditor()
     {
-        config.UserPointer = this;
-        //config.BeginSaveSession = [](void* userPointer)
-        //{
-        //    auto self = reinterpret_cast<BlueprintEditorExample*>(userPointer);
+        ed::DestroyEditor(m_Editor);
 
-        //    if (self->m_Document)
-        //        self->m_Document->OnSaveBegin();
-        //};
-        //config.EndSaveSession = [](void* userPointer)
-        //{
-        //    auto self = reinterpret_cast<BlueprintEditorExample*>(userPointer);
+        ed::Config config;
+        config.SettingsName = nullptr;
+        m_Editor = ed::CreateEditor(&config);
+        ed::SetCurrentEditor(m_Editor);
+    }
 
-        //    if (self->m_Document)
-        //        self->m_Document->OnSaveEnd();
-        //};
-        //config.SaveSettingsJson = [](const crude_json::value& state, ed::SaveReasonFlags reason, void* userPointer) -> bool
-        //{
-        //    auto self = reinterpret_cast<BlueprintEditorExample*>(userPointer);
+    void DestroyDocumentEditor()
+    {
+        ed::DestroyEditor(m_Editor);
+        m_Editor = nullptr;
+    }
 
-        //    if (self->m_Document)
-        //        return self->m_Document->OnSaveState(state, reason);
-        //    else
-        //        return false;
-        //};
-        //config.LoadSettingsJson = [](void* userPointer) -> crude_json::value
-        //{
-        //    auto self = reinterpret_cast<BlueprintEditorExample*>(userPointer);
+    // The edits the user completed in a frame make one undo step. Navigation isn't reported.
+    void RecordEdits(Document& document)
+    {
+        if (!ed::BeginEdits())
+            return;
 
-        //    if (self->m_Document)
-        //        return self->m_Document->OnLoadState();
-        //    else
-        //        return {};
-        //};
-        //config.SaveNodeSettingsJson = [](ed::NodeId nodeId, const crude_json::value& value, ed::SaveReasonFlags reason, void* userPointer) -> bool
-        //{
-        //    auto self = reinterpret_cast<BlueprintEditorExample*>(userPointer);
+        auto transaction = document.BeginUndoTransaction("Edit");
+        auto& blueprint = document.GetBlueprint();
 
-        //    if (self->m_Document)
-        //        return self->m_Document->OnSaveNodeState(static_cast<uint32_t>(nodeId.Get()), value, reason);
-        //    else
-        //        return false;
-        //};
-        //config.LoadNodeSettingsJson = [](ed::NodeId nodeId, void* userPointer) -> crude_json::value
-        //{
-        //    auto self = reinterpret_cast<BlueprintEditorExample*>(userPointer);
-
-        //    if (self->m_Document)
-        //        return self->m_Document->OnLoadNodeState(static_cast<uint32_t>(nodeId.Get()));
-        //    else
-        //        return {};
-        //};
-
-        struct TransactionWrapper final: ed::ITransaction
+        ed::Edit edit;
+        while (ed::QueryEdit(&edit))
         {
-            static const char* ActionToString(ed::TransactionAction action)
+            auto node = edit.NodeCount > 0 ? blueprint.FindNode(static_cast<uint32_t>(edit.NodesAfter[0].Id.Get())) : nullptr;
+            switch (edit.Type)
             {
-                switch (action)
-                {
-                    case ed::TransactionAction::Unknown:    return "Unknown";
-                    case ed::TransactionAction::Navigation: return "Navigation";
-                    case ed::TransactionAction::Drag:       return "Drag";
-                }
+                case ed::EditType::Move:
+                    if (edit.NodeCount == 1 && node)
+                        transaction->AddAction("Move %" PRI_node, FMT_node(node));
+                    else
+                        transaction->AddAction("Move %d nodes", edit.NodeCount);
+                    break;
 
-                return "";
+                case ed::EditType::Resize:
+                    if (node)
+                        transaction->AddAction("Resize %" PRI_node, FMT_node(node));
+                    else
+                        transaction->AddAction("Resize");
+                    break;
+
+                case ed::EditType::Select:
+                    if (edit.SelectionAfter.NodeCount > 0)
+                        transaction->AddAction("Select %d nodes", edit.SelectionAfter.NodeCount);
+                    else if (edit.SelectionAfter.LinkCount > 0)
+                        transaction->AddAction("Select %d links", edit.SelectionAfter.LinkCount);
+                    else
+                        transaction->AddAction("Clear selection");
+                    break;
+
+                case ed::EditType::Navigate:
+                    break;
             }
+        }
 
-            TransactionWrapper(shared_ptr<Document::UndoTransaction> transaction)
-                : m_Transaction(std::move(transaction))
-            {
-            }
-
-            void AddAction(ed::TransactionAction action, const char* name) override
-            {
-                ++m_ActionCount;
-
-                m_Transaction->AddAction(name);
-            }
-
-            void Commit() override
-            {
-                ImGuiTextBuffer name;
-                 if (m_ActionCount == m_DragActionCount && m_DragActionCount > 1)
-                    name.appendf("Drag %d nodes", static_cast<int>(m_DragActionCount));
-
-                m_Transaction->Commit(name.c_str());
-            }
-
-            void Discard() override
-            {
-                m_Transaction->Discard();
-            }
-
-            void AddAction(ed::TransactionAction action, ed::NodeId nodeId, const char* name) override
-            {
-                ++m_ActionCount;
-
-                m_NodeIds.push_back(nodeId);
-
-                if (action == ed::TransactionAction::Drag)
-                {
-                    ++m_DragActionCount;
-
-                    auto& blueprint = m_Transaction->GetDocument()->GetBlueprint();
-                    auto  node      = blueprint.FindNode(static_cast<uint32_t>(nodeId.Get()));
-
-                    m_Transaction->AddAction("Drag %" PRI_node, FMT_node(node));
-                }
-                else
-                    m_Transaction->AddAction(name);
-            }
-
-            shared_ptr<Document::UndoTransaction> m_Transaction;
-            size_t m_ActionCount = 0;
-            size_t m_DragActionCount = 0;
-            vector<ed::NodeId> m_NodeIds;
-        };
-
-        config.TransactionInterface.Constructor = [](const char* name, void* userPointer) -> ed::ITransaction*
-        {
-            auto self = reinterpret_cast<BlueprintEditorExample*>(userPointer);
-            return new TransactionWrapper(self->m_Document->BeginUndoTransaction(name));
-        };
-
-        config.TransactionInterface.Destructor = [](ed::ITransaction* transaction, void* userPointer)
-        {
-            delete transaction;
-        };
-
-        config.TransactionInterface.UserPointer = this;
+        ed::EndEdits();
     }
 
     void CreateExampleDocument()
@@ -351,6 +282,9 @@ struct BlueprintEditorExample
 
         flipFlopNode->m_A.LinkTo(printNode1Node->m_Enter);
         flipFlopNode->m_B.LinkTo(toStringNode->m_Enter);
+
+        // The state the first undo step goes back to.
+        m_Document->m_DocumentState = m_Document->BuildDocumentState();
     }
 
     void OnStart() override
@@ -372,10 +306,7 @@ struct BlueprintEditorExample
             LOGI("PrintNode(%" PRIu32 "): \"%" PRI_sv "\"", node.m_Id, FMT_sv(message));
         };
 
-        ed::Config config;
-        InstallDocumentCallbacks(config);
-        m_Editor = ed::CreateEditor(&config);
-        ed::SetCurrentEditor(m_Editor);
+        CreateDocumentEditor();
 
         CreateExampleDocument();
 
@@ -387,7 +318,7 @@ struct BlueprintEditorExample
 
     void OnStop() override
     {
-        ed::DestroyEditor(m_Editor);
+        DestroyDocumentEditor();
     }
 
     void OnFrame(float deltaTime) override
@@ -418,6 +349,8 @@ struct BlueprintEditorExample
             ShowInfoTooltip(*m_Blueprint);
 
             ed::End();
+
+            RecordEdits(*m_Document);
         }
         else
         {
@@ -670,9 +603,9 @@ private:
                     itemMax.x = nodeStart.x + nodeSize.x - border + 0.5f;
                     itemMax.y = itemMax.y + ImGui::GetStyle().ItemSpacing.y + 0.5f;
 
-                    drawList->AddRectFilled(itemMin, itemMax, IM_COL32(255, 255, 255, 64), rounding, ImDrawFlags_RoundCornersTop);
+                    drawList->AddRectFilled(itemMin, itemMax, IM_COL32(255, 255, 255, 64), rounding, ImDrawFlags_RoundTop);
 
-                    //drawList->AddRectFilledMultiColor(itemMin, itemMax, IM_COL32(255, 0, 0, 64), rounding, ImDrawFlags_RoundCornersTop);
+                    //drawList->AddRectFilledMultiColor(itemMin, itemMax, IM_COL32(255, 0, 0, 64), rounding, ImDrawFlags_RoundTop);
                 });
 
                 ImGui::PushFont(HeaderFont());
@@ -1131,8 +1064,11 @@ private:
 
         LOGI("[File] New");
 
+        CreateDocumentEditor();
+
         m_Document = make_unique<Document>();
         m_Blueprint = &m_Document->m_Blueprint;
+        m_Document->m_DocumentState = m_Document->BuildDocumentState();
     }
 
     bool File_Open(string_view path, string* error = nullptr)
@@ -1160,6 +1096,8 @@ private:
         mostRecentlyOpenFiles.Add(path.to_string());
 
         document->SetPath(path);
+
+        CreateDocumentEditor();
 
         m_Document = std::move(document);
         m_Blueprint = &m_Document->m_Blueprint;
@@ -1225,6 +1163,8 @@ private:
         m_Blueprint = nullptr;
         m_Document = nullptr;
 
+        DestroyDocumentEditor();
+
         UpdateTitle();
 
         return true;
@@ -1235,7 +1175,14 @@ private:
         if (!File_IsOpen())
             return true;
 
-        if (!m_Document->Save(path))
+        // Closing the window saves outside OnFrame(), where no editor is current.
+        auto previousEditor = ed::GetCurrentEditor();
+        ed::SetCurrentEditor(m_Editor);
+        m_Document->CaptureView();
+        const auto saved = m_Document->Save(path);
+        ed::SetCurrentEditor(previousEditor);
+
+        if (!saved)
         {
             LOGE("Failed to save blueprint to file \"%" PRI_sv "\".", FMT_sv(path));
             return false;

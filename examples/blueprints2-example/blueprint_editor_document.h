@@ -25,20 +25,24 @@ using crude_blueprint::Blueprint;
 
 struct Document
 {
+    // What undo restores: the blueprint, and the layout and selection of its nodes.
     struct DocumentState
     {
-        crude_json::value m_NodesState;
-        crude_json::value m_SelectionState;
-        crude_json::value m_BlueprintState;
+        vector<ed::NodeState> m_NodesState;
+        vector<ed::NodeId>    m_SelectedNodes;
+        vector<ed::LinkId>    m_SelectedLinks;
+        crude_json::value     m_BlueprintState;
 
         crude_json::value Serialize() const;
 
         static bool Deserialize(const crude_json::value& value, DocumentState& result);
     };
 
+    // Kept with the document, outside undo.
     struct NavigationState
     {
-        crude_json::value                   m_ViewState;
+        ed::ViewState m_ViewState;
+        bool          m_HasViewState = false;
     };
 
     struct UndoState
@@ -103,14 +107,7 @@ struct Document
     void ApplyState(const NavigationState& state);
 
     void OnMakeCurrent();
-
-    void OnSaveBegin();
-    bool OnSaveNodeState(uint32_t nodeId, const crude_json::value& value, ed::SaveReasonFlags reason);
-    bool OnSaveState(const crude_json::value& value, ed::SaveReasonFlags reason);
-    void OnSaveEnd();
-
-    crude_json::value OnLoadNodeState(uint32_t nodeId) const;
-    crude_json::value OnLoadState() const;
+    void CaptureView();
 
           Blueprint& GetBlueprint()       { return m_Blueprint; }
     const Blueprint& GetBlueprint() const { return m_Blueprint; }
@@ -125,8 +122,6 @@ struct Document
     NavigationState         m_NavigationState;
 
     UndoTransaction* m_MasterTransaction = nullptr;
-
-    shared_ptr<UndoTransaction> m_SaveTransaction = nullptr;
 
     Blueprint               m_Blueprint;
 };

@@ -1,5 +1,5 @@
-# include "imgui_extras.h"
 # define IMGUI_DEFINE_MATH_OPERATORS
+# include "imgui_extras.h"
 # include <imgui_internal.h>
 # include <algorithm>
 # include <stdio.h>
@@ -49,7 +49,8 @@ ImEx::ScopedDisableItem::ScopedDisableItem(bool disable, float disabledAlpha)
     if (!m_Disable)
         return;
 
-    auto wasDisabled = (ImGui::GetItemFlags() & ImGuiItemFlags_Disabled) == ImGuiItemFlags_Disabled;
+    // GetItemFlags() answers for the last item, not for the flags pushed so far.
+    auto wasDisabled = (ImGui::GetCurrentContext()->CurrentItemFlags & ImGuiItemFlags_Disabled) == ImGuiItemFlags_Disabled;
 
     ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true);
 

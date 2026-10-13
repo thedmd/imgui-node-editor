@@ -1,34 +1,49 @@
 # include "blueprint_editor_document.h"
 # include "blueprint_editor_utilities.h"
 # include "crude_logger.h"
+# include <cmath>
 # include <stdarg.h>
+# include <stdlib.h>
 
 namespace blueprint_editor {
 
-static string SaveReasonFlagsToString(ed::SaveReasonFlags flags, string_view separator = ", ")
+static bool ParseId(const crude_json::value& value, uintptr_t& id)
 {
-    ImGuiTextBuffer builder;
+    if (!value.is_number())
+        return false;
 
-    auto testFlag = [flags](ed::SaveReasonFlags flag)
+    const auto number = value.get<crude_json::number>();
+    if (!(number >= 1.0 && number <= 4294967295.0) || number != static_cast<double>(static_cast<uint32_t>(number)))
+        return false;
+
+    id = static_cast<uintptr_t>(number);
+    return true;
+}
+
+template <typename Id>
+static bool ParseIds(const crude_json::value& value, vector<Id>& result)
+{
+    if (!value.is_array())
+        return false;
+
+    for (auto& item : value.get<crude_json::array>())
     {
-        return (flags & flag) == flag;
-    };
+        uintptr_t id = 0;
+        if (!ParseId(item, id))
+            return false;
+        result.push_back(Id(id));
+    }
 
-    if (testFlag(ed::SaveReasonFlags::Navigation))
-        builder.appendf("Navigation%" PRI_sv, FMT_sv(separator));
-    if (testFlag(ed::SaveReasonFlags::Position))
-        builder.appendf("Position%" PRI_sv, FMT_sv(separator));
-    if (testFlag(ed::SaveReasonFlags::Size))
-        builder.appendf("Size%" PRI_sv, FMT_sv(separator));
-    if (testFlag(ed::SaveReasonFlags::Selection))
-        builder.appendf("Selection%" PRI_sv, FMT_sv(separator));
-    if (testFlag(ed::SaveReasonFlags::User))
-        builder.appendf("User%" PRI_sv, FMT_sv(separator));
+    return true;
+}
 
-    if (builder.empty())
-        return "None";
-    else
-        return string(builder.c_str(), builder.size() - separator.size());
+static bool ParseVector(const crude_json::value& value, ImVec2& result)
+{
+    if (!value.is_object() || !value["x"].is_number() || !value["y"].is_number())
+        return false;
+
+    result = ImVec2(static_cast<float>(value["x"].get<crude_json::number>()), static_cast<float>(value["y"].get<crude_json::number>()));
+    return std::isfinite(result.x) && std::isfinite(result.y);
 }
 
 } // namespace blueprint_editor {
@@ -37,11 +52,24 @@ static string SaveReasonFlagsToString(ed::SaveReasonFlags flags, string_view sep
 
 
 
+// Nodes are kept in the text FormatNodeState() writes, which needs the document's editor current.
 crude_json::value blueprint_editor::Document::DocumentState::Serialize() const
 {
+    crude_json::value nodes(crude_json::type_t::object);
+    for (auto& state : m_NodesState)
+        nodes[std::to_string(state.Id.Get())] = crude_json::value::parse(ed::FormatNodeState(state));
+
+    crude_json::value selection(crude_json::type_t::object);
+    selection["nodes"] = crude_json::value(crude_json::type_t::array);
+    for (auto id : m_SelectedNodes)
+        selection["nodes"].push_back(id.Get());
+    selection["links"] = crude_json::value(crude_json::type_t::array);
+    for (auto id : m_SelectedLinks)
+        selection["links"].push_back(id.Get());
+
     crude_json::value result;
-    result["nodes"] = m_NodesState;
-    result["selection"] = m_SelectionState;
+    result["nodes"]     = std::move(nodes);
+    result["selection"] = std::move(selection);
     result["blueprint"] = m_BlueprintState;
     return result;
 }
@@ -60,11 +88,28 @@ bool blueprint_editor::Document::DocumentState::Deserialize(const crude_json::va
     auto& selectionValue = value["selection"];
     auto& dataValue = value["blueprint"];
 
-    if (!nodesValue.is_object())
+    if (!nodesValue.is_object() || !selectionValue.is_object())
         return false;
 
-    state.m_NodesState     = nodesValue;
-    state.m_SelectionState = selectionValue;
+    for (auto& node : nodesValue.get<crude_json::object>())
+    {
+        char* end = nullptr;
+        const auto id = strtoul(node.first.c_str(), &end, 10);
+        if (end == node.first.c_str() || *end != '\0' || id == 0)
+            return false;
+
+        ed::NodeState nodeState;
+        nodeState.Id = static_cast<uintptr_t>(id);
+        const auto nodeText = node.second.dump();
+        if (!ed::ParseNodeState(nodeText.c_str(), nodeText.size(), &nodeState))
+            return false;
+
+        state.m_NodesState.push_back(nodeState);
+    }
+
+    if (!ParseIds(selectionValue["nodes"], state.m_SelectedNodes) || !ParseIds(selectionValue["links"], state.m_SelectedLinks))
+        return false;
+
     state.m_BlueprintState = dataValue;
 
     result = std::move(state);
@@ -195,60 +240,6 @@ void blueprint_editor::Document::UndoTransaction::Discard()
 
 
 
-void blueprint_editor::Document::OnSaveBegin()
-{
-    m_SaveTransaction = BeginUndoTransaction("Save");
-}
-
-bool blueprint_editor::Document::OnSaveNodeState(uint32_t nodeId, const crude_json::value& value, ed::SaveReasonFlags reason)
-{
-    //m_DocumentState.m_NodeStateMap[nodeId] = value;
-
-    if (reason != ed::SaveReasonFlags::Size)
-    {
-        auto node = m_Blueprint.FindNode(nodeId);
-
-        ImGuiTextBuffer buffer;
-        buffer.appendf("%" PRI_node " %s", FMT_node(node), SaveReasonFlagsToString(reason).c_str());
-        m_SaveTransaction->AddAction(buffer.c_str());
-    }
-
-    return true;
-}
-
-bool blueprint_editor::Document::OnSaveState(const crude_json::value& value, ed::SaveReasonFlags reason)
-{
-    if ((reason & ed::SaveReasonFlags::Selection) == ed::SaveReasonFlags::Selection)
-    {
-        m_DocumentState.m_SelectionState = ed::GetState(ed::StateType::Selection);
-        m_SaveTransaction->AddAction("Selection Changed");
-    }
-
-    if ((reason & ed::SaveReasonFlags::Navigation) == ed::SaveReasonFlags::Navigation)
-    {
-        m_NavigationState.m_ViewState = ed::GetState(ed::StateType::View);
-    }
-
-    return true;
-}
-
-void blueprint_editor::Document::OnSaveEnd()
-{
-    m_SaveTransaction = nullptr;
-
-    m_DocumentState = BuildDocumentState();
-}
-
-crude_json::value blueprint_editor::Document::OnLoadNodeState(uint32_t nodeId) const
-{
-    return {};
-}
-
-crude_json::value blueprint_editor::Document::OnLoadState() const
-{
-    return {};
-}
-
 blueprint_editor::shared_ptr<blueprint_editor::Document::UndoTransaction> blueprint_editor::Document::BeginUndoTransaction(string_view name, string_view action /*= ""*/)
 {
     auto transaction = std::make_shared<UndoTransaction>(*this, name);
@@ -276,7 +267,17 @@ crude_json::value blueprint_editor::Document::Serialize() const
 {
     crude_json::value result;
     result["document"] = m_DocumentState.Serialize();
-    result["view"] = m_NavigationState.m_ViewState;
+
+    auto& view = result["view"];
+    if (m_NavigationState.m_HasViewState)
+    {
+        auto& state = m_NavigationState.m_ViewState;
+        view["min"]["x"] = state.VisibleMin.x;
+        view["min"]["y"] = state.VisibleMin.y;
+        view["max"]["x"] = state.VisibleMax.x;
+        view["max"]["y"] = state.VisibleMax.y;
+    }
+
     return result;
 }
 
@@ -285,7 +286,7 @@ bool blueprint_editor::Document::Deserialize(const crude_json::value& value, Doc
     if (!value.is_object())
         return false;
 
-    if (!value.contains("document") || !value.contains("view"))
+    if (!value.contains("document"))
         return false;
 
     auto& documentValue = value["document"];
@@ -295,7 +296,8 @@ bool blueprint_editor::Document::Deserialize(const crude_json::value& value, Doc
     if (!DocumentState::Deserialize(documentValue, document.m_DocumentState))
         return false;
 
-    document.m_NavigationState.m_ViewState = viewValue;
+    auto& view = document.m_NavigationState.m_ViewState;
+    document.m_NavigationState.m_HasViewState = ParseVector(viewValue["min"], view.VisibleMin) && ParseVector(viewValue["max"], view.VisibleMax);
 
     if (!document.m_Blueprint.Load(document.m_DocumentState.m_BlueprintState))
         return false;
@@ -372,15 +374,27 @@ blueprint_editor::Document::DocumentState blueprint_editor::Document::BuildDocum
 {
     DocumentState result;
     m_Blueprint.Save(result.m_BlueprintState);
-    result.m_SelectionState = ed::GetState(ed::StateType::Selection);
-    result.m_NodesState = ed::GetState(ed::StateType::Nodes);
+
+    // The editor still knows the nodes undo took out of the blueprint; the document doesn't.
+    vector<ed::NodeState> nodes(static_cast<size_t>(ed::GetNodeStates(nullptr, 0)));
+    nodes.resize(static_cast<size_t>(ed::GetNodeStates(nodes.data(), static_cast<int>(nodes.size()))));
+    for (auto& node : nodes)
+        if (m_Blueprint.FindNode(static_cast<uint32_t>(node.Id.Get())))
+            result.m_NodesState.push_back(node);
+
+    const auto selected = static_cast<size_t>(ed::GetSelectedObjectCount());
+    result.m_SelectedNodes.resize(selected);
+    result.m_SelectedNodes.resize(static_cast<size_t>(ed::GetSelectedNodes(result.m_SelectedNodes.data(), static_cast<int>(selected))));
+    result.m_SelectedLinks.resize(selected);
+    result.m_SelectedLinks.resize(static_cast<size_t>(ed::GetSelectedLinks(result.m_SelectedLinks.data(), static_cast<int>(selected))));
     return result;
 }
 
 void blueprint_editor::Document::ApplyState(const NavigationState& state)
 {
     m_NavigationState = state;
-    ed::ApplyState(ed::StateType::View, m_NavigationState.m_ViewState);
+    if (m_NavigationState.m_HasViewState)
+        ed::SetViewState(m_NavigationState.m_ViewState);
 }
 
 void blueprint_editor::Document::ApplyState(const DocumentState& state)
@@ -388,12 +402,20 @@ void blueprint_editor::Document::ApplyState(const DocumentState& state)
     m_Blueprint.Load(state.m_BlueprintState);
 
     m_DocumentState = state;
-    ed::ApplyState(ed::StateType::Nodes, m_DocumentState.m_NodesState);
-    ed::ApplyState(ed::StateType::Selection, m_DocumentState.m_SelectionState);
+    ed::SetNodeStates(m_DocumentState.m_NodesState.data(), static_cast<int>(m_DocumentState.m_NodesState.size()));
+    ed::SetSelection(
+        m_DocumentState.m_SelectedNodes.data(), static_cast<int>(m_DocumentState.m_SelectedNodes.size()),
+        m_DocumentState.m_SelectedLinks.data(), static_cast<int>(m_DocumentState.m_SelectedLinks.size()));
 }
 
 void blueprint_editor::Document::OnMakeCurrent()
 {
     ApplyState(m_DocumentState);
     ApplyState(m_NavigationState);
+}
+
+void blueprint_editor::Document::CaptureView()
+{
+    m_NavigationState.m_ViewState    = ed::GetViewState();
+    m_NavigationState.m_HasViewState = true;
 }
