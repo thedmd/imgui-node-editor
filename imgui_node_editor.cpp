@@ -2332,6 +2332,33 @@ bool ed::EditorContext::ForgetNode(NodeId nodeId)
     return true;
 }
 
+void ed::EditorContext::ClearState()
+{
+    IM_ASSERT(m_DrawList == nullptr && "ClearState() is called outside of Begin()/End().");
+    if (m_DrawList)
+        return;
+
+    for (auto& node : m_Nodes)
+        node->m_DeleteOnNewFrame = true;
+    for (auto& pin : m_Pins)
+        pin->m_DeleteOnNewFrame = true;
+    for (auto& link : m_Links)
+        link->m_DeleteOnNewFrame = true;
+
+    // The stored settings the first Begin() loads would bring the state back.
+    if (!m_IsSettingsLoaded)
+        m_HasMemorySettings = true;
+
+    m_Settings = Settings();
+    MakeDirty(SaveReasonFlags::RemoveNode | SaveReasonFlags::Selection | SaveReasonFlags::Navigation);
+
+    FreeDeletedObjects();
+
+    m_NavigateAction.StopNavigation();
+    if (m_IsInitialized)
+        RestoreView();
+}
+
 void ed::EditorContext::Suspend(SuspendFlags flags)
 {
     IM_ASSERT(m_DrawList != nullptr && "Suspend was called outiside of Begin/End.");

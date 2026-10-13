@@ -409,6 +409,10 @@ IMGUI_NODE_EDITOR_API bool DeleteLink(LinkId linkId);
 // Returns false if the editor doesn't know the node.
 IMGUI_NODE_EDITOR_API bool ForgetNode(NodeId nodeId);
 
+// Forgets all nodes, pins and links with their saved state, the selection and the
+// view, as for a new document. Call it outside Begin()/End().
+IMGUI_NODE_EDITOR_API void ClearState();
+
 // These see the links submitted so far: between Begin() and End(), call them after
 // the frame's links. PinHadAnyLinks() answers for the previous frame.
 IMGUI_NODE_EDITOR_API bool HasAnyLinks(NodeId nodeId); // Returns true if node has any link connected

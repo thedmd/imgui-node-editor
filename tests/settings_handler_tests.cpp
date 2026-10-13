@@ -134,6 +134,21 @@ TEST_CASE(LateEditorLoadsSection, "settings_handler.editor_created_later_loads_i
     test::Check(position.x == 200.0f && position.y == 20.0f, "B, created after 100 frames, starts from its section: node at (%g, %g)", position.x, position.y);
 }
 
+TEST_CASE(ClearStateBeforeFirstFrame, "settings_handler.clear_state_before_the_first_frame_wins", "CORE-7", test::TestFlags_None)
+{
+    // The section loads in the first Begin(), after ClearState().
+    test::Session session(NamedConfig("A"));
+    ed::InstallSettingsHandler(session.HostContext.Context);
+    LoadIni(session, Section("A", State(100, 10)));
+
+    session.Use([] { ed::ClearState(); });
+    session.DefaultContent = OneNode;
+    session.Run(3);
+
+    const auto position = NodePosition(session);
+    test::Check(position.x == 0.0f && position.y == 0.0f, "node 1 starts at the origin, not from the section: (%g, %g)", position.x, position.y);
+}
+
 TEST_CASE(RecreatedEditorGetsLatestState, "settings_handler.recreated_editor_gets_latest_state", "API-9", test::TestFlags_None)
 {
     const auto config = NamedConfig("A");
