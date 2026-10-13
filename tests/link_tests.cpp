@@ -190,3 +190,39 @@ TEST_CASE(TessellationAtZoom, "links.tessellation_follows_zoom", "CORE-15", test
 
     test::Check(vertices[0] > 0 && vertices[1] >= 2 * vertices[0], "the link has at least twice the vertices at zoom 8: %d at zoom 1, %d at zoom 8", vertices[0], vertices[1]);
 }
+
+TEST_CASE(FallingIds, "links.pins_and_links_in_falling_id_order", "PERF-1", test::TestFlags_None)
+{
+    // Nodes 30, 20 and 10, their pins and links 302, 301 and 300 are created in this
+    // order, so each new one goes before all the others.
+    test::Storage storage;
+    test::Session session(&storage);
+    bool linked[3] = {};
+    session.DefaultContent = [&](int frame)
+    {
+        for (uintptr_t id = 30; id >= 10; id -= 10)
+        {
+            if (frame == 0)
+                ed::SetNodePosition(id, ImVec2(id * 20.0f, 0.0f));
+            ed::BeginNode(id);
+            ed::BeginPin(id + 2, ed::PinKind::Output);
+            ImGui::TextUnformatted("out");
+            ed::EndPin();
+            ed::BeginPin(id + 1, ed::PinKind::Input);
+            ImGui::TextUnformatted("in");
+            ed::EndPin();
+            ed::EndNode();
+        }
+        linked[0] = ed::Link(302, 22, 31);
+        linked[1] = ed::Link(301, 12, 21);
+        linked[2] = ed::Link(300, 32, 11);
+    };
+    session.Run(3);
+
+    ed::PinId start, end;
+    const bool pins    = session.Use([&] { return ed::GetLinkPins(301, &start, &end); });
+    const bool linksOf = session.Use([] { return ed::HasAnyLinks(ed::PinId(31)) && ed::HasAnyLinks(ed::NodeId(10)); });
+    test::Check(linked[0] && linked[1] && linked[2], "every link is accepted: %d %d %d", linked[0], linked[1], linked[2]);
+    test::Check(pins && start.Get() == 12 && end.Get() == 21, "link 301 joins pins 12 and 21: %d, %d", (int)start.Get(), (int)end.Get());
+    test::Check(linksOf, "pin 31 and node 10 have their links");
+}

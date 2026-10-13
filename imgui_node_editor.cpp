@@ -2455,13 +2455,18 @@ int ed::EditorContext::CountLiveLinks() const
     return (int)std::count_if(m_Links.begin(),  m_Links.end(),  [](const Link* link)  { return link->m_IsLive; });
 }
 
+template <typename T>
+static void InsertSorted(ed::vector<T>& objects, const T& object)
+{
+    objects.insert(std::lower_bound(objects.begin(), objects.end(), object), object);
+}
+
 ed::Pin* ed::EditorContext::CreatePin(PinId id, PinKind kind)
 {
     IM_ASSERT(nullptr == FindObject(id));
     auto pin = new Pin(this, id, kind);
     pin->m_IsLive = false;
-    m_Pins.push_back({id, pin});
-    std::sort(m_Pins.begin(), m_Pins.end());
+    InsertSorted(m_Pins, {id, pin});
     return pin;
 }
 
@@ -2470,8 +2475,7 @@ ed::Node* ed::EditorContext::CreateNode(NodeId id)
     IM_ASSERT(nullptr == FindObject(id));
     auto node = new Node(this, id);
     m_Nodes.push_back({id, node});
-    const ObjectWrapper<Node> indexed = {id, node};
-    m_NodeIndex.insert(std::lower_bound(m_NodeIndex.begin(), m_NodeIndex.end(), indexed), indexed);
+    InsertSorted(m_NodeIndex, {id, node});
 
     auto settings = m_Settings.FindNode(id);
     if (!settings)
@@ -2494,8 +2498,7 @@ ed::Link* ed::EditorContext::CreateLink(LinkId id)
 {
     IM_ASSERT(nullptr == FindObject(id));
     auto link = new Link(this, id);
-    m_Links.push_back({id, link});
-    std::sort(m_Links.begin(), m_Links.end());
+    InsertSorted(m_Links, {id, link});
 
     return link;
 }
