@@ -284,6 +284,7 @@ private:
     ImVec2 m_ImeInputPosBackup;
     ImVec2 m_MouseClickedPosBackup[IM_ARRAYSIZE(ImGuiIO::MouseClickedPos)];
     ImVec2 m_WindowCursorMaxBackup;
+    ImVec2 m_WindowIdealMaxBackup;
     ImVec2 m_WindowPosBackup;
     float  m_WindowIndentBackup = 0.0f;
     float  m_WindowColumnsOffsetBackup = 0.0f;
