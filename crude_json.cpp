@@ -477,9 +477,18 @@ private:
 
     bool accept_value(value& result)
     {
-        return accept_object(result)
-            || accept_array(result)
-            || accept_string(result)
+        if (peek() == '{' || peek() == '[')
+        {
+            if (m_Depth >= CRUDE_JSON_MAX_DEPTH)
+                return false;
+
+            ++m_Depth;
+            const auto accepted = accept_object(result) || accept_array(result);
+            --m_Depth;
+            return accepted;
+        }
+
+        return accept_string(result)
             || accept_number(result)
             || accept_boolean(result)
             || accept_null(result);
@@ -906,6 +915,7 @@ private:
 
     const char* m_Cursor;
     const char* m_End;
+    int         m_Depth = 0;
 };
 
 value value::parse(const string& data)

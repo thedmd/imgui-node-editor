@@ -30,6 +30,12 @@
 #     define CRUDE_JSON_IO 1
 # endif
 
+// parse() rejects documents nested deeper. Values built in code may nest deeper, but
+// dump(), copies and destruction recurse as well, so keep them shallow too.
+# ifndef CRUDE_JSON_MAX_DEPTH
+#     define CRUDE_JSON_MAX_DEPTH 512
+# endif
+
 namespace crude_json {
 
 struct value;
