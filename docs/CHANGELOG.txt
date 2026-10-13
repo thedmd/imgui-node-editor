@@ -358,6 +358,9 @@ v0.10.0 (WIP):
     CHANGE: Editor: Keep nodes restored from saved state within the canvas border
         State saved before the border existed places such nodes at it.
 
+    CHANGE: Editor: Stop dragged nodes at the canvas border together
+        Each node stopped on its own, so a selection dragged into the border lost its arrangement.
+
 v0.9.2 (2023-09-01):
 
     NEW: Editor: Add offset of hover/select to style (thanks @MultiPain)

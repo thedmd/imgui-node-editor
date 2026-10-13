@@ -4623,6 +4623,17 @@ bool ed::DragAction::Process(const Control& control)
         if (!ImGui::GetIO().KeyAlt)
             dragOffset = alignedOffset;
 
+        // The dragged nodes stop at the canvas border together.
+        ImRect startBounds(FLT_MAX, FLT_MAX, -FLT_MAX, -FLT_MAX);
+        for (auto object : m_Objects)
+        {
+            const auto start = object->DragStartLocation();
+            startBounds.Add(ImRect(start, start + object->GetBounds().GetSize()));
+        }
+        dragOffset = ImClamp(dragOffset,
+            ImVec2(-c_CanvasExtent, -c_CanvasExtent) - startBounds.Min,
+            ImVec2( c_CanvasExtent,  c_CanvasExtent) - startBounds.Max);
+
         for (auto object : m_Objects)
             object->UpdateDrag(dragOffset);
     }

@@ -275,3 +275,46 @@ TEST_CASE(LoadBeyondBorder, "geometry.node_loaded_beyond_the_border_stops_there"
     test::Check(position.x == -extent && position.y == extent - size.y,
         "the loaded node is placed at the border: at (%g, %g), %g by %g", position.x, position.y, size.x, size.y);
 }
+
+TEST_CASE(DragIntoBorder, "geometry.dragged_nodes_stop_at_the_border_together", "CNV-8", test::TestFlags_None)
+{
+    // Nodes 1 and 2 are selected, 50 and 250 from the left border, and node 1 is
+    // dragged 200 to the left.
+    const float extent = 250000.0f;
+    char state[128];
+    snprintf(state, sizeof(state), R"({"view":{"scroll":{"x":%g,"y":-100},"zoom":1}})", -extent - 100.0f);
+    test::Storage storage;
+    storage.Global = state;
+    test::Session session(&storage);
+    session.DefaultContent = [extent](int frame)
+    {
+        if (frame == 0)
+        {
+            ed::SetNodePosition(1, ImVec2(-extent + 50.0f, 0.0f));
+            ed::SetNodePosition(2, ImVec2(-extent + 250.0f, 30.0f));
+        }
+        for (int id : { 1, 2 })
+        {
+            ed::BeginNode(id);
+            ImGui::Text("Node %d", id);
+            ImGui::Dummy(ImVec2(80.0f, 20.0f));
+            ed::EndNode();
+        }
+        if (frame == 1)
+        {
+            ed::SelectNode(1);
+            ed::SelectNode(2, true);
+        }
+    };
+    session.Run(3);
+
+    const auto from = session.Use([] { return ed::CanvasToScreen(ed::GetNodePosition(1) + ImVec2(10.0f, 8.0f)); });
+    session.Drag(from, from - ImVec2(200.0f, 0.0f));
+    session.Run(2);
+
+    const auto position1 = session.Use([] { return ed::GetNodePosition(1); });
+    const auto position2 = session.Use([] { return ed::GetNodePosition(2); });
+    test::Check(position1.x == -extent && position1.y == 0.0f, "the node dragged into the border stops at it: at (%g, %g)", position1.x, position1.y);
+    test::Check(position2.x - position1.x == 200.0f && position2.y - position1.y == 30.0f,
+        "the other selected node keeps its place relative to it: (%g, %g) apart", position2.x - position1.x, position2.y - position1.y);
+}
