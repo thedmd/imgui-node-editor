@@ -261,7 +261,7 @@ private:
     ImVector<ImVec4> m_SuspendedClipRects;
 
     int m_DrawListFirstCommandIndex = 0;
-    int m_DrawListCommadBufferSize = 0;
+    int m_DrawListCommandBufferSize = 0;
     int m_DrawListStartVertexIndex = 0;
 
     CanvasView  m_View;
