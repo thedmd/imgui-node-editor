@@ -3,37 +3,33 @@
 // Canvas allows you to draw your widgets anywhere over infinite space and provide
 // view over it with support for panning and scaling.
 //
-// When you enter a canvas ImGui is moved to virtual space which mean:
-//   - ImGui::GetCursorScreenPos() return (0, 0) and which correspond to top left corner
-//     of the canvas on the screen (this can be changed using CanvasView()).
-//   - Mouse input is brought to canvas space, so widgets works as usual.
-//   - Everything you draw with ImDrawList will be in virtual space.
+// Between Canvas::Begin() and Canvas::End() ImGui works in the canvas' local space:
+//   - ImGui::GetCursorScreenPos() starts at the local origin, which the view places
+//     on the screen.
+//   - Mouse input is brought to local space, so widgets work as usual.
+//   - Everything drawn with ImDrawList is in local space.
 //
-// By default origin point is on top left corner of canvas widget. It can be
-// changed with call to CanvasView() where you can specify what part of space
-// should be viewed by setting viewport origin point and scale. Current state
-// can be queried with CanvasViewOrigin() and CanvasViewScale().
+// The view decides which part of local space is shown. SetView() takes the offset of
+// the local origin from the canvas' top left corner, and a scale; View(), ViewOrigin()
+// and ViewScale() return them. CenterView() moves the view to a point or rectangle,
+// and CalcCenterView() returns that view without setting it.
 //
-// Viewport size is controlled by 'size' parameter in BeginCanvas(). You can query
-// it using CanvasContentMin/Max/Size functions. They are useful if you to not specify
-// canvas size in which case all free space is used.
+// The canvas takes the 'size' given to Begin(), and a component of zero or less takes
+// the space left on that axis. Rect() returns the canvas' rectangle, and ViewRect()
+// the visible part of local space, which CalcViewRect() returns for any view. What is
+// drawn outside of it is clipped as usual in ImGui.
 //
-// Bounds of visible region of infinite space can be queried using CanvasViewMin/Max/Size
-// functions. Everything that is drawn outside of this region will be clipped
-// as usual in ImGui.
+// FromLocal() and ToLocal() transform points between local space and the space the
+// canvas is in; FromLocalV() and ToLocalV() transform vectors.
 //
-// While drawing inside canvas you can translate position from world (usual ImGui space)
-// to virtual space and back using CanvasFromWorld()/CanvasToWorld().
+// Canvases can be nested, since a canvas is a regular widget of the space it begins in.
 //
-// Canvas can be nested in each other (they are regular widgets after all). There
-// is a way to transform position between current and parent canvas with
-// CanvasFromParent()/CanvasToParent().
-//
-// Sometimes in more elaborate scenarios you want to move out canvas virtual space,
-// do something and came back. You can do that with SuspendCanvas() and ResumeCanvas().
+// Suspend() goes back to the space the canvas is in, to draw or begin windows there,
+// and Resume() returns to local space.
 //
 // Note:
-//     It is not valid to call canvas API outside of BeginCanvas() / EndCanvas() scope.
+//     Suspend() and Resume() are valid only between Begin() and End(). The view can be
+//     set and read at any time, and uses the canvas' rectangle from its last Begin().
 //
 // Limitations:
 //   - Windows begun inside the canvas, such as popups, tooltips, combo boxes and
@@ -117,7 +113,7 @@ private:
 // same way ImGui do. To avoid `missing widgets` artifacts first
 // setup visible region with SetView() then draw content.
 //
-// Everything drawn with ImDrawList betwen calls to Begin()/End()
+// Everything drawn with ImDrawList between calls to Begin()/End()
 // will be drawn on canvas plane. This behavior can be suspended
 // by calling Suspend() and resumed by calling Resume().
 //
@@ -145,7 +141,7 @@ struct Canvas
 
     // Ends interaction with canvas plane.
     //
-    // Must be called only when Begin() retuned true.
+    // Must be called only when Begin() returned true.
     IMGUIEX_CANVAS_API void End();
 
     // Returns true if any part of the canvas is visible.
@@ -184,7 +180,7 @@ struct Canvas
     // Suspends canvas by returning to normal ImGui transformation space.
     // While suspended UI will not be drawn on canvas plane.
     //
-    // Calls to Suspend()/Resume() are symetrical. Each call to Suspend()
+    // Calls to Suspend()/Resume() are symmetrical. Each call to Suspend()
     // must be matched with call to Resume().
     IMGUIEX_CANVAS_API void Suspend();
     IMGUIEX_CANVAS_API void Resume();
@@ -193,7 +189,7 @@ struct Canvas
     IMGUIEX_CANVAS_API ImVec2 FromLocal(const ImVec2& point) const;
     IMGUIEX_CANVAS_API ImVec2 FromLocal(const ImVec2& point, const CanvasView& view) const;
 
-    // Transforms vector from canvas plant to ImGui.
+    // Transforms vector from canvas plane to ImGui.
     IMGUIEX_CANVAS_API ImVec2 FromLocalV(const ImVec2& vector) const;
     IMGUIEX_CANVAS_API ImVec2 FromLocalV(const ImVec2& vector, const CanvasView& view) const;
 
