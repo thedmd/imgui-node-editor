@@ -7,6 +7,7 @@
 # include "crude_blueprint.h"
 # include "crude_blueprint_library.h"
 # include "crude_logger.h"
+# include "imgui_extras.h"
 # include <crude_json.h>
 # include <cmath>
 # include <cstdint>
@@ -554,4 +555,27 @@ TEST_CASE(Utf8Documents, "blueprints2.utf8_text_and_paths_round_trip", "EXB-9", 
 # else
     std::remove(path);
 # endif
+}
+
+TEST_CASE(RecentFilesIni, "blueprints2.recent_files_take_only_indices_in_order", "EXB-11", test::TestFlags_None)
+{
+    // An imgui.ini edited by hand. The list writes its entries from index 0 up.
+    test::Host host;
+    ImEx::MostRecentlyUsedList::Install(host.Context);
+    ImGui::LoadIniSettingsFromMemory(
+        "[MostRecentlyUsedList][EXB-11]\n"
+        "0=a.bp\n"
+        "-1=negative.bp\n"
+        "1=b.bp\n"
+        "7=gap.bp\n"
+        "4294967296=wraps.bp\n"
+        "2000000000=huge.bp\n"
+        "1=b2.bp\n");
+
+    ImEx::MostRecentlyUsedList list("EXB-11");
+    std::string entries;
+    for (auto& entry : list.GetList())
+        entries += entry + "|";
+
+    test::Check(entries == "a.bp|b2.bp|", "only entries at an index of the list, or the next one, are read: %s", entries.c_str());
 }
