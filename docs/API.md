@@ -282,5 +282,5 @@ The editor draws through a canvas, which transforms ImGui's coordinates and draw
   ed::Resume();
   ```
 
-- Text is drawn from glyphs rasterized at the font's size and scaled with the view, so it looks blurry when zoomed in.
+- Text is rasterized for the zoom, so it stays sharp, with Dear ImGui 1.92 or later and a renderer backend that sets `ImGuiBackendFlags_RendererHasTextures`. The zoom is taken in quarter octave steps from 0.5 up, and glyphs are rasterized at most 8 times their size. Otherwise glyphs are rasterized at the font's size and scaled with the view, so text looks blurry when zoomed in. Text after a window that began and ended inside the editor without `ed::Suspend()`, or drawn with `ImDrawList::AddText()` and a font other than the current one, is rasterized at the density ImGui last set for it.
 - Before Dear ImGui 1.93, circles and rounded corners get the same number of segments at any zoom.

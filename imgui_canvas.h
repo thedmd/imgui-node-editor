@@ -35,8 +35,12 @@
 //   - Windows begun inside the canvas, such as popups, tooltips, combo boxes and
 //     child windows, are placed at canvas coordinates as if they were screen ones,
 //     and are not transformed. Begin them between Suspend() and Resume().
-//   - Text is drawn from glyphs rasterized at the font's size and scaled with the
-//     view, so it looks blurry when zoomed in.
+//   - Text is rasterized for the view's scale, so it stays sharp when zoomed in, only
+//     with Dear ImGui 1.92 or later and a renderer backend that sets
+//     ImGuiBackendFlags_RendererHasTextures; see SetRasterizeTextForScale(). Otherwise
+//     glyphs are rasterized at the font's size and scaled with the view. Text after a
+//     window that began and ended inside the canvas, or drawn with a font other than
+//     the current one, is rasterized at the density ImGui last set for it.
 //   - Before Dear ImGui 1.93, circles and rounded corners get the same number of
 //     segments at any scale.
 //
@@ -230,6 +234,13 @@ struct Canvas
     // See: Suspend()/Resume()
     bool IsSuspended() const { return m_SuspendCounter > 0; }
 
+    // Rasterizes text in local space for the view's scale, so it stays sharp when
+    // zoomed in. The scale is taken in quarter octave steps from 0.5 up, and glyphs
+    // are rasterized at most 8 times their size, or at the framebuffer's density when
+    // that is higher. On by default; see Limitations.
+    void SetRasterizeTextForScale(bool rasterize) { m_RasterizeTextForScale = rasterize; }
+    bool RasterizeTextForScale() const { return m_RasterizeTextForScale; }
+
 private:
     ImVec2 CalcViewTransformPosition(const CanvasView& view) const;
     void UpdateViewTransformPosition();
@@ -270,6 +281,11 @@ private:
     ImVec2 m_ViewTransformPosition;
 
     int m_SuspendCounter = 0;
+
+    bool m_RasterizeTextForScale = true;
+# if IMGUI_VERSION_NUM >= 19200
+    float m_LastTextDensity = 0.0f;
+# endif
 
 # if IMGUI_VERSION_NUM >= 19292
     float m_LastPixelDensity = 1.0f;

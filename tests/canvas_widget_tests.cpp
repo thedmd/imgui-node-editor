@@ -523,3 +523,131 @@ TEST_CASE(CanvasItemId, "canvas_widget.canvas_is_an_item_of_its_id", "CNV-11", t
     test::Check(itemId == id, "after End(), the last item is the canvas: ID %08X, the canvas' %08X", itemId, id);
     test::Check(itemRect.Min.x == canvas.Rect().Min.x && itemRect.Max.y == canvas.Rect().Max.y, "with its rectangle");
 }
+
+# if IMGUI_VERSION_NUM >= 19200
+namespace {
+
+// Density the current font is rasterized at.
+float CurrentTextDensity()
+{
+    return ImGui::GetFontBaked()->RasterizerDensity;
+}
+
+// Density of text inside a canvas at 'viewScale', with a framebuffer at 'framebufferScale'.
+float TextDensityInCanvas(float framebufferScale, float viewScale, bool rasterizeForScale = true)
+{
+    test::Host host;
+    ImGui::GetIO().DisplayFramebufferScale = ImVec2(framebufferScale, framebufferScale);
+    host.NewFrame();
+    BeginHostWindow();
+    ImGuiEx::Canvas canvas;
+    canvas.SetRasterizeTextForScale(rasterizeForScale);
+    canvas.SetView(ImVec2(0.0f, 0.0f), viewScale);
+    canvas.Begin("canvas", ImVec2(300.0f, 300.0f));
+    ImGui::TextUnformatted("Text");
+    const float density = CurrentTextDensity();
+    canvas.End();
+    ImGui::End();
+    host.Render();
+    return density;
+}
+
+} // namespace
+# endif
+
+TEST_CASE(TextDensity, "canvas_widget.text_is_rasterized_for_the_view_scale", nullptr, test::TestFlags_None)
+{
+# if IMGUI_VERSION_NUM >= 19200
+    // A framebuffer at twice the display's density, and a canvas at scale 3, which a
+    // quarter octave step takes to 2^1.5.
+    test::Host host;
+    ImGui::GetIO().DisplayFramebufferScale = ImVec2(2.0f, 2.0f);
+    host.NewFrame();
+    BeginHostWindow();
+    const float before = CurrentTextDensity();
+    ImGuiEx::Canvas canvas;
+    canvas.SetView(ImVec2(0.0f, 0.0f), 3.0f);
+    canvas.Begin("canvas", ImVec2(300.0f, 300.0f));
+    ImGui::TextUnformatted("Text");
+    const float inside = CurrentTextDensity();
+    canvas.Suspend();
+    const float suspended = CurrentTextDensity();
+    canvas.Resume();
+    const float resumed = CurrentTextDensity();
+    canvas.End();
+    const float after = CurrentTextDensity();
+    ImGui::End();
+    host.Render();
+
+    const float expected = 2.0f * powf(2.0f, 1.5f);
+    test::Check(before == 2.0f, "text before the canvas is rasterized at the framebuffer's density: %g", before);
+    test::Check(inside == expected && resumed == expected, "text inside it at %g: %g, and %g after Resume()", expected, inside, resumed);
+    test::Check(suspended == 2.0f && after == 2.0f, "suspended, and after the canvas, at 2 again: %g and %g", suspended, after);
+# else
+    test::Skip("needs Dear ImGui 1.92, which rasterizes glyphs on demand");
+# endif
+}
+
+TEST_CASE(TextDensitySteps, "canvas_widget.text_density_takes_quarter_octave_steps_within_bounds", nullptr, test::TestFlags_None)
+{
+# if IMGUI_VERSION_NUM >= 19200
+    struct Case { float FramebufferScale, ViewScale, Expected; };
+    const Case cases[] =
+    {
+        { 1.0f,  1.0f, 1.0f             }, // as without a canvas
+        { 1.0f,  1.5f, powf(2.0f, 0.5f) }, // the nearest quarter octave
+        { 1.0f,  0.3f, 0.5f             }, // no less than half
+        { 1.0f, 20.0f, 8.0f             }, // no more than 8 times the font's size
+        { 2.0f,  8.0f, 8.0f             }, // whatever the framebuffer's density
+        { 2.0f,  0.3f, 1.0f             }, // half of it
+    };
+    for (auto& c : cases)
+    {
+        const float density = TextDensityInCanvas(c.FramebufferScale, c.ViewScale);
+        test::Check(density == c.Expected, "framebuffer at %g, view at %g: text at %g, %g expected", c.FramebufferScale, c.ViewScale, density, c.Expected);
+    }
+# else
+    test::Skip("needs Dear ImGui 1.92, which rasterizes glyphs on demand");
+# endif
+}
+
+TEST_CASE(TextDensityOff, "canvas_widget.text_density_stays_when_asked", nullptr, test::TestFlags_None)
+{
+# if IMGUI_VERSION_NUM >= 19200
+    const float density = TextDensityInCanvas(1.0f, 3.0f, false);
+    test::Check(density == 1.0f, "with SetRasterizeTextForScale(false), text at scale 3 is rasterized at 1: %g", density);
+# else
+    test::Skip("needs Dear ImGui 1.92, which rasterizes glyphs on demand");
+# endif
+}
+
+TEST_CASE(TextDensityStaticAtlas, "canvas_widget.text_density_stays_with_a_prebuilt_atlas", nullptr, test::TestFlags_None)
+{
+# if IMGUI_VERSION_NUM >= 19200 && !defined(IMGUI_DISABLE_OBSOLETE_FUNCTIONS)
+    // A renderer without ImGuiBackendFlags_RendererHasTextures uses an atlas built up
+    // front, which can't take glyphs of another density.
+    test::Host host;
+    auto& io = ImGui::GetIO();
+    io.BackendFlags &= ~ImGuiBackendFlags_RendererHasTextures;
+    unsigned char* pixels = nullptr;
+    int width = 0, height = 0;
+    io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
+    io.Fonts->SetTexID((ImTextureID)(intptr_t)1);
+    host.NewFrame();
+    BeginHostWindow();
+    ImGuiEx::Canvas canvas;
+    canvas.SetView(ImVec2(0.0f, 0.0f), 3.0f);
+    canvas.Begin("canvas", ImVec2(300.0f, 300.0f));
+    ImGui::TextUnformatted("Text");
+    const float density = CurrentTextDensity();
+    canvas.End();
+    ImGui::End();
+    host.Render();
+
+    test::Check(density == 1.0f, "text at scale 3 is rasterized at 1: %g", density);
+# elif IMGUI_VERSION_NUM >= 19200
+    test::Skip("a renderer without dynamic textures needs functions this Dear ImGui build leaves out");
+# else
+    test::Skip("needs Dear ImGui 1.92, which rasterizes glyphs on demand");
+# endif
+}
