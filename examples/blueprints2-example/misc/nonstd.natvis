@@ -14,9 +14,6 @@
     </Type>
 
     <Type Name="nonstd::sv_lite::basic_string_view&lt;*&gt;">
-        <!--<DisplayString Condition="m_Type == 1">{m_Type,en} {*(crude_json::object*)&amp;m_Storage,view(simple)}</DisplayString>-->
-        <!--<StringView Condition="m_Type == 3">*(crude_json::string*)&amp;m_Storage</StringView>-->
-
         <DisplayString>{data_,[size_]na}</DisplayString>
         <StringView>data_,[size_]</StringView>
         <Expand>

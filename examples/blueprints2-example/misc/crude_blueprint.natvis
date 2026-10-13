@@ -2,7 +2,8 @@
 <AutoVisualizer xmlns="http://schemas.microsoft.com/vstudio/debugger/natvis/2010">
 
     <Type Name="crude_blueprint::Node">
-        <DisplayString>{{ {m_Id}: {m_Name} }} Node</DisplayString>
+        <DisplayString Optional="true">{{ {m_Id}: {m_Name} }} Node</DisplayString>
+        <DisplayString>{{ {m_Id} }} Node</DisplayString>
     </Type>
 
     <Type Name="crude_blueprint::Pin">
