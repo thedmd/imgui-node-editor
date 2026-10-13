@@ -419,6 +419,9 @@ v0.9.4 (WIP):
 
     BUGFIX: Examples: Spell the example variable right in the examples and the README (#342), thanks @vaezim
 
+    BUGFIX: Canvas: Ignore Suspend() and Resume() outside Begin() and End(), with an assert
+        They left local space with stale state, restoring the mouse from an earlier frame.
+
 v0.9.3 (2023-10-14):
 
     CHANGE: Canvas: Use ImDrawCallback_ImCanvas macro as draw callback sentinel (#256), thanks @nspitko

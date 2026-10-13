@@ -307,6 +307,11 @@ ImGuiEx::CanvasView ImGuiEx::Canvas::CalcCenterView(const ImRect& canvasRect) co
 
 void ImGuiEx::Canvas::Suspend()
 {
+    // If you're here, Begin() wasn't called, or End() already was.
+    IM_ASSERT(m_InBeginEnd);
+    if (!m_InBeginEnd)
+        return;
+
     // If you're here, please make sure you do not interleave
     // channel splitter with canvas.
     // Always call canvas function with using same channel.
@@ -320,6 +325,11 @@ void ImGuiEx::Canvas::Suspend()
 
 void ImGuiEx::Canvas::Resume()
 {
+    // If you're here, Begin() wasn't called, or End() already was.
+    IM_ASSERT(m_InBeginEnd);
+    if (!m_InBeginEnd)
+        return;
+
     // If you're here, please make sure you do not interleave
     // channel splitter with canvas.
     // Always call canvas function with using same channel.
