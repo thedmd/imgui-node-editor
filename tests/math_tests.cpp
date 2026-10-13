@@ -693,3 +693,23 @@ TEST_CASE(ClosestPointSnap, "math.closest_point_snaps_to_the_edge", "MATH-8", te
 
     test::Check(wrong == 0, "points go to the closest point of the rectangle, or of its edge when snapping");
 }
+
+TEST_CASE(FixedStepLongLinks, "math.fixed_step_keeps_its_spacing_on_long_links", "MATH-9", test::TestFlags_None)
+{
+    // Links tens of thousands long, at the default tolerances: within 0.5 of their length.
+    int samples = 0, off = 0, miscounted = 0;
+    for (float span : { 8000.0f, 20000.0f, 60000.0f })
+        for (float handle : { 100.0f, span * 0.25f })
+        {
+            const ImVec2 a(-span * 0.5f, 0.0f), b(span * 0.5f, span * 0.3f);
+            const ImCubicBezierPoints link{ a, a + ImVec2(handle, 0.0f), b - ImVec2(handle, 0.0f), b };
+            const auto steps = FixedSteps(link, 15.0f, false, 0.5f, 1e-5f);
+            if (static_cast<int>(steps.size()) != static_cast<int>(ImCubicBezierLength(link) / 15.0f) + 1)
+                ++miscounted;
+            for (size_t k = 0; k < steps.size(); ++k, ++samples)
+                if (std::fabs(steps[k].Length - 15.0 * static_cast<double>(k)) > 0.5 || (k > 0 && !(steps[k].T > steps[k - 1].T)))
+                    ++off;
+        }
+
+    test::Check(miscounted == 0 && off == 0, "samples lie every 15 along the links: %d of 6 links miscounted, %d of %d samples off", miscounted, off, samples);
+}
