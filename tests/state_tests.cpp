@@ -5,6 +5,7 @@
 # include <cfloat>
 # include <cmath>
 # include <limits>
+# include <string>
 # include <vector>
 
 namespace {
@@ -20,12 +21,13 @@ ed::Config UnnamedConfig()
 // link 10 between them, and group 3 of 300 x 200 at (100, 400). Groups have no pins.
 struct Scene
 {
-    bool Node2 = true;
+    bool Place  = true;
+    bool Node2  = true;
     bool Group3 = true;
 
     void Submit(int frame)
     {
-        if (frame == 0)
+        if (frame == 0 && Place)
         {
             ed::SetNodePosition(1, ImVec2(100.0f, 100.0f));
             ed::SetNodePosition(2, ImVec2(400.0f, 100.0f));
@@ -171,12 +173,12 @@ TEST_CASE(SetNodeStateValidates, "state.set_node_state_validates_input", "BPN-9"
     bad.GroupSize = ImVec2(-10.0f, 10.0f);
     const bool rejectedSize = !set(bad);
     bad = state;
-    bad.Id = 99;
-    const bool rejectedUnknown = !set(bad);
+    bad.Id = 0;
+    const bool rejectedZero = !set(bad);
 
     const auto unchanged = StateOf(session, 1);
     test::Check(rejectedPosition && rejectedZ && rejectedSize, "positions, z positions and group sizes that aren't valid are refused");
-    test::Check(rejectedUnknown, "a node the editor doesn't know is refused");
+    test::Check(rejectedZero, "node ID 0 is refused");
     test::Check(unchanged.Position.x == 100.0f && unchanged.Position.y == 100.0f && unchanged.ZPosition == 0.0f, "node 1 is unchanged: (%g, %g), z %g",
         unchanged.Position.x, unchanged.Position.y, unchanged.ZPosition);
 
@@ -186,6 +188,76 @@ TEST_CASE(SetNodeStateValidates, "state.set_node_state_validates_input", "BPN-9"
     const auto clamped = StateOf(session, 1);
     const auto size    = session.Use([] { return ed::GetNodeSize(1); });
     test::Check(clamped.Position.x == 250000.0f - size.x && clamped.Position.y == -250000.0f, "a position far away stops at the canvas border: (%g, %g)", clamped.Position.x, clamped.Position.y);
+}
+
+TEST_CASE(RestoreBeforeFirstFrame, "state.restore_before_the_first_frame", "BPN-2", test::TestFlags_None)
+{
+    // A document opens: its layout is set before the editor has created any node.
+    ed::NodeState states[3];
+    states[0].Id = 1; states[0].Position = ImVec2(150.0f, 50.0f);
+    states[1].Id = 2; states[1].Position = ImVec2(600.0f, 80.0f); states[1].ZPosition = 2.0f;
+    states[2].Id = 3; states[2].Position = ImVec2(200.0f, 500.0f); states[2].GroupSize = ImVec2(350.0f, 250.0f);
+
+    test::Session session(UnnamedConfig());
+    const bool changed = session.Use([&] { return ed::SetNodeStates(states, 3); });
+    Scene scene;
+    scene.Place = false;
+    session.DefaultContent = [&](int frame) { scene.Submit(frame); };
+    session.Run(3);
+
+    const auto one   = StateOf(session, 1);
+    const auto two   = StateOf(session, 2);
+    const auto three = StateOf(session, 3);
+    const auto saved = session.Use([] { return std::string(ed::SaveSettingsToMemory()); });
+    test::Check(changed, "SetNodeStates() takes state for nodes not created yet");
+    test::Check(one.Position.x == 150.0f && one.Position.y == 50.0f, "node 1 starts where the document had it: (%g, %g)", one.Position.x, one.Position.y);
+    test::Check(two.Position.x == 600.0f && two.Position.y == 80.0f && two.ZPosition == 2.0f, "node 2 too, with its z position: (%g, %g), z %g", two.Position.x, two.Position.y, two.ZPosition);
+    test::Check(three.Position.x == 200.0f && three.Position.y == 500.0f && three.GroupSize.x == 350.0f && three.GroupSize.y == 250.0f,
+        "group 3 too, with its size: (%g, %g), %g x %g", three.Position.x, three.Position.y, three.GroupSize.x, three.GroupSize.y);
+    test::Check(saved.find(R"("node:1":{"location":{"x":150,"y":50}})") != std::string::npos, "the first save keeps the restored layout: %s", saved.c_str());
+}
+
+TEST_CASE(UndoDeletion, "state.undoing_a_deletion_restores_the_node", "EXB-6", test::TestFlags_None)
+{
+    test::Session session(UnnamedConfig());
+    Scene scene;
+    session.DefaultContent = [&](int frame) { scene.Submit(frame); };
+    session.Run(3);
+    const auto before = StateOf(session, 2);
+
+    // The user deletes node 2, and the application records the step.
+    session.Use([] { ed::DeleteNode(2); });
+    bool accepted = false;
+    for (int i = 0; i < 3 && !accepted; ++i)
+    {
+        session.Frame([&](int frame)
+        {
+            scene.Submit(frame);
+            if (ed::BeginDelete())
+            {
+                ed::NodeId nodeId;
+                while (ed::QueryDeletedNode(&nodeId))
+                    accepted |= ed::AcceptDeletedItem() && nodeId == ed::NodeId(2);
+                ed::LinkId linkId;
+                while (ed::QueryDeletedLink(&linkId))
+                    ed::AcceptDeletedItem();
+                ed::EndDelete();
+            }
+        });
+    }
+    scene.Node2 = false;
+    session.Run(2);
+    const bool gone = !session.Use([] { ed::NodeState state; return ed::GetNodeState(2, &state); });
+
+    // Undo: the application restores the node's state, then submits it again.
+    const bool restored = session.Use([&] { return ed::SetNodeState(before); });
+    scene.Node2 = true;
+    session.Run(2);
+    const auto after = StateOf(session, 2);
+    test::Check(accepted && gone, "node 2 was deleted");
+    test::Check(restored, "SetNodeState() takes the state of the deleted node");
+    test::Check(after.Position.x == before.Position.x && after.Position.y == before.Position.y, "node 2 comes back where it was: (%g, %g), was (%g, %g)",
+        after.Position.x, after.Position.y, before.Position.x, before.Position.y);
 }
 
 TEST_CASE(SetNodeStateDuringDrag, "state.set_node_state_during_a_drag_cancels_it", "BPN-11", test::TestFlags_None)

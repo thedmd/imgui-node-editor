@@ -2044,12 +2044,19 @@ int ed::EditorContext::GetNodeStates(NodeState* states, int capacity)
 
 bool ed::EditorContext::SetNodeState(const NodeState& state)
 {
-    if (!IsFinite(state.Position) || !IsFinite(state.GroupSize) || state.GroupSize.x < 0.0f || state.GroupSize.y < 0.0f || !std::isfinite(state.ZPosition))
+    if (!state.Id || !IsFinite(state.Position) || !IsFinite(state.GroupSize) || state.GroupSize.x < 0.0f || state.GroupSize.y < 0.0f || !std::isfinite(state.ZPosition))
         return false;
 
     auto node = FindNode(state.Id);
-    if (!node || node->m_DeleteOnNewFrame)
+    if (node && node->m_DeleteOnNewFrame)
         return false;
+
+    // A node the editor doesn't know yet holds the state until the application submits it.
+    if (!node)
+    {
+        node = CreateNode(state.Id);
+        node->m_IsLive = false;
+    }
 
     SettleGesturesOn(node);
 

@@ -206,6 +206,7 @@ ed::SetSelection(selectedNodes, selectedNodeCount, nullptr, 0);
 
 - `GetNodeStates()` returns every node the editor knows, by ID: nodes submitted in the last frame, nodes no longer submitted, and nodes only loaded from settings. The selection is read with `GetSelectedNodes()` and `GetSelectedLinks()`.
 - The Set functions return whether anything changed, and mark the settings changed. They refuse values that aren't finite, keep nodes inside the canvas border and the zoom within the zoom levels, and report no edits.
+- `SetNodeState()` also takes the state of a node the editor doesn't know: the node starts with it when the application submits it. That restores a document before the editor's first frame, and a deleted node brought back by undo. A node being deleted is refused until the next frame frees it.
 - `SetNodeState()` on a node the user is dragging or resizing ends that gesture, and puts the other nodes it moved back.
 - `SetSelection()` replaces the selection. It skips objects the editor doesn't know and objects being deleted, and selects links only when no nodes are given. Before the editor's first frame, it also takes nodes not created yet.
 - With `SettingsContent` left without `Nodes`, node layout stays out of the editor's own settings, so the two don't compete.
