@@ -265,8 +265,9 @@ void blueprint_editor::Document::SetPath(string_view path)
 
 crude_json::value blueprint_editor::Document::Serialize() const
 {
+    // The blueprint as it is, which may have changed since the last undo step.
     crude_json::value result;
-    result["document"] = m_DocumentState.Serialize();
+    result["document"] = BuildDocumentState().Serialize();
 
     auto& view = result["view"];
     if (m_NavigationState.m_HasViewState)
@@ -370,7 +371,7 @@ bool blueprint_editor::Document::Redo()
     return true;
 }
 
-blueprint_editor::Document::DocumentState blueprint_editor::Document::BuildDocumentState()
+blueprint_editor::Document::DocumentState blueprint_editor::Document::BuildDocumentState() const
 {
     DocumentState result;
     m_Blueprint.Save(result.m_BlueprintState);

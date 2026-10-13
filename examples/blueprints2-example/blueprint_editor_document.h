@@ -102,7 +102,7 @@ struct Document
     bool Undo();
     bool Redo();
 
-    DocumentState BuildDocumentState();
+    DocumentState BuildDocumentState() const;
     void ApplyState(const DocumentState& state);
     void ApplyState(const NavigationState& state);
 
