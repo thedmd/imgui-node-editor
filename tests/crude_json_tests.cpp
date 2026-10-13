@@ -105,6 +105,19 @@ TEST_CASE(JsonRejectedNumber, "json.rejected_number_rejects_the_document", "JSON
     test::Check(json::value::parse("1e999true").is_discarded(), "1e999true is discarded");
 }
 
+TEST_CASE(JsonSubnormal, "json.subnormal_numbers_round_trip", "JSON-9", test::TestFlags_None)
+{
+    // The smallest subnormal, written by dump() and read back.
+    const auto smallest = std::numeric_limits<double>::denorm_min();
+    const json::value written = smallest;
+    const auto text   = written.dump();
+    const auto parsed = json::value::parse(text);
+    test::Check(parsed.is_number() && parsed.get<json::number>() == smallest, "%s reads back as the same number", text.c_str());
+
+    const auto literal = json::value::parse("5e-324");
+    test::Check(literal.is_number() && literal.get<json::number>() == smallest, "5e-324 reads as the smallest subnormal");
+}
+
 TEST_CASE(JsonDepth, "json.nesting_beyond_the_limit_is_rejected", "JSON-7", test::TestFlags_None)
 {
     // Arrays nested to the default limit of 512, one past it, and 2500 deep, which

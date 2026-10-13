@@ -37,7 +37,10 @@ static bool parse_number(const string& text, number& result)
     std::istringstream stream(text);
     stream.imbue(std::locale::classic());
     stream >> result;
-    return !stream.fail() && stream.peek() == std::char_traits<char>::eof();
+    // libc++ fails the extraction of a subnormal, on the range error from strtod(),
+    // and stores the converted value.
+    const auto subnormal = result != 0 && std::fabs(result) < std::numeric_limits<number>::min();
+    return (!stream.fail() || subnormal) && stream.eof();
 # endif
 }
 
@@ -685,7 +688,7 @@ private:
 
         string n;
         number v = 0;
-        if (!(accept_int(n) && accept_frac(n) && accept_exp(n)) || !parse_number(n, v) || (v != 0 && !std::isnormal(v)))
+        if (!(accept_int(n) && accept_frac(n) && accept_exp(n)) || !parse_number(n, v) || !std::isfinite(v))
         {
             s.reset();
             return false;
