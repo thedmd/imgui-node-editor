@@ -2,12 +2,15 @@
 // blueprints2-example's blueprint model and documents, without its window.
 //------------------------------------------------------------------------------
 # include "harness.h"
+# include "blueprint_editor_document.h"
 # include "crude_blueprint.h"
 # include "crude_blueprint_library.h"
+# include <cstdio>
 # include <string>
 # include <vector>
 
 using namespace crude_blueprint;
+using blueprint_editor::Document;
 
 namespace {
 
@@ -18,11 +21,31 @@ void Capture(const PrintNode&, string_view message)
     s_Printed.push_back(message.to_string());
 }
 
+ed::Config UnnamedConfig()
+{
+    ed::Config config;
+    config.SettingsName = nullptr;
+    return config;
+}
+
+struct TestFile
+{
+    explicit TestFile(const char* path): Path(path) { std::remove(Path.c_str()); }
+    ~TestFile() { std::remove(Path.c_str()); }
+
+    std::string Path;
+};
+
 // The example's document: Start runs Do N five times, and Flip Flop alternates
 // between printing "FlipFlop slot A!" and the counter plus 3.
 struct ExampleBlueprint
 {
-    Blueprint       m_Blueprint;
+    explicit ExampleBlueprint(Blueprint& blueprint): m_Blueprint(blueprint)
+    {
+        Link();
+    }
+
+    Blueprint&      m_Blueprint;
     PrintNode*      m_PrintB     = m_Blueprint.CreateNode<PrintNode>();
     EntryPointNode* m_Entry      = m_Blueprint.CreateNode<EntryPointNode>();
     PrintNode*      m_PrintA     = m_Blueprint.CreateNode<PrintNode>();
@@ -31,7 +54,7 @@ struct ExampleBlueprint
     DoNNode*        m_DoN        = m_Blueprint.CreateNode<DoNNode>();
     AddNode*        m_Add        = m_Blueprint.CreateNode<AddNode>();
 
-    ExampleBlueprint()
+    void Link()
     {
         m_Entry->m_Exit.LinkTo(m_DoN->m_Enter);
         m_DoN->m_N.SetValue(5);
@@ -60,7 +83,8 @@ struct ExampleBlueprint
 
 TEST_CASE(Blueprints2Runs, "blueprints2.example_blueprint_runs", nullptr, test::TestFlags_None)
 {
-    ExampleBlueprint example;
+    Blueprint        blueprint;
+    ExampleBlueprint example(blueprint);
     const auto result = example.m_Blueprint.Execute(*example.m_Entry);
 
     std::string printed;
@@ -72,8 +96,8 @@ TEST_CASE(Blueprints2Runs, "blueprints2.example_blueprint_runs", nullptr, test::
 TEST_CASE(DeleteStopsExecution, "blueprints2.deleting_a_node_stops_execution", "EXB-1", test::TestFlags_None)
 {
     // Execution paused after Do N's first step, with Flip Flop to run next; the user deletes Flip Flop.
-    ExampleBlueprint example;
-    auto& blueprint = example.m_Blueprint;
+    Blueprint        blueprint;
+    ExampleBlueprint example(blueprint);
     blueprint.Start(*example.m_Entry);
     blueprint.Step();
     const bool paused = blueprint.CurrentNode() == example.m_DoN && blueprint.NextNode() == example.m_FlipFlop;
@@ -90,7 +114,8 @@ TEST_CASE(DeleteStopsExecution, "blueprints2.deleting_a_node_stops_execution", "
 TEST_CASE(PinCopyOutlivesNode, "blueprints2.a_pin_copy_outlives_its_node", "EXB-1", test::TestFlags_NeedsSanitizer)
 {
     // The debug overlay keeps a copy of the current flow pin for the frame, in which the user may delete its node.
-    ExampleBlueprint example;
+    Blueprint        blueprint;
+    ExampleBlueprint example(blueprint);
     {
         FlowPin copy = example.m_DoN->m_Exit;
         example.m_Blueprint.DeleteNode(example.m_DoN);
@@ -140,4 +165,24 @@ TEST_CASE(DeepEvaluation, "blueprints2.a_data_loop_or_long_chain_evaluates_witho
 
     test::Check(loop.GetType() == PinType::Any && deep.GetType() == PinType::Any, "both evaluate to no value");
     test::Check(value.GetType() == PinType::Int32 && value.As<int32_t>() == 7, "a pin evaluated after them has its value");
+}
+
+TEST_CASE(SaveLiveState, "blueprints2.save_writes_the_blueprint_as_it_is", "EXB-5", test::TestFlags_None)
+{
+    // Do N's count changes, as an edit in place did, after the last undo step.
+    test::Session    session(UnnamedConfig());
+    Document         document;
+    ExampleBlueprint example(document.m_Blueprint);
+    session.Use([&] { document.m_DocumentState = document.BuildDocumentState(); });
+    example.m_DoN->m_N.SetValue(7);
+
+    TestFile file("blueprints2_save.bp");
+    const bool saved  = session.Use([&] { return document.Save(file.Path); });
+    Document reloaded;
+    const bool loaded = reloaded.Load(file.Path);
+    auto doN = loaded ? reloaded.m_Blueprint.FindNode(example.m_DoN->m_Id) : nullptr;
+    const auto count = doN ? static_cast<DoNNode*>(doN)->m_N.GetValue() : PinValue();
+
+    test::Check(saved && loaded && doN, "the document saves and loads");
+    test::Check(count.GetType() == PinType::Int32 && count.As<int32_t>() == 7, "with the count Do N had when saved");
 }
