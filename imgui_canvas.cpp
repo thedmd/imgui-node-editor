@@ -500,6 +500,11 @@ void ImGuiEx::Canvas::EnterLocalSpace()
     for (auto i = 0; i < IM_ARRAYSIZE(m_MouseClickedPosBackup); ++i)
         io.MouseClickedPos[i] = (m_MouseClickedPosBackup[i] - m_ViewTransformPosition) * m_View.InvScale();
 
+    // An IME position set in local space is mapped to screen space on leaving it.
+    auto& imeData = GImGui->PlatformImeData;
+    m_ImeInputPosBackup = imeData.InputPos;
+    imeData.InputPos = ImVec2(-FLT_MAX, -FLT_MAX);
+
     m_ViewRect = CalcViewRect(m_View);;
 
 # if IMGUI_VERSION_NUM >= 19292
@@ -607,6 +612,17 @@ void ImGuiEx::Canvas::LeaveLocalSpace()
     while (m_DrawList->_ClipRectStack.Size >= m_ClipRectStackSize && m_DrawList->_ClipRectStack.Size > 0)
         m_DrawList->PopClipRect();
     m_Window->ClipRect = ImRect(m_DrawList->_ClipRectStack.back());
+
+    auto& imeData = GImGui->PlatformImeData;
+    if (imeData.InputPos.x == -FLT_MAX && imeData.InputPos.y == -FLT_MAX)
+    {
+        imeData.InputPos = m_ImeInputPosBackup;
+    }
+    else
+    {
+        imeData.InputPos        = FromLocal(imeData.InputPos);
+        imeData.InputLineHeight = imeData.InputLineHeight * m_View.Scale();
+    }
 
     RestoreInputState();
     RestoreViewportState();

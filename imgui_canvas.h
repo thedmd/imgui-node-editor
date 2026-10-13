@@ -288,6 +288,7 @@ private:
     ImVec2 m_MousePosBackup;
     ImVec2 m_MousePosPrevBackup;
     ImVec2 m_MouseDeltaBackup;
+    ImVec2 m_ImeInputPosBackup;
     ImVec2 m_MouseClickedPosBackup[IM_ARRAYSIZE(ImGuiIO::MouseClickedPos)];
     ImVec2 m_WindowCursorMaxBackup;
 
