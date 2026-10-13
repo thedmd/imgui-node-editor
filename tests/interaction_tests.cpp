@@ -1159,3 +1159,42 @@ TEST_CASE(PivotClosestToGrid, "interaction.drag_snaps_the_pin_closest_to_the_gri
     const auto position = DragNodeOnGrid(ImVec2(0.0f, 12.0f), { 10.0f, 20.0f });
     test::Check(position.x == 0.0f && position.y == 12.0f, "the node dragged down by 12 snaps by its pin at 20 to (0, 12): at (%g, %g)", position.x, position.y);
 }
+
+TEST_CASE(GroupHeaderPossibleActions, "interaction.group_header_offers_drag_and_keeps_its_menu", "CORE-18", test::TestFlags_None)
+{
+    // Over a group's header, resizing (Arrow, for the header), dragging (ResizeAll) and,
+    // on a right press, the node's context menu are all possible in one frame.
+    test::Storage storage;
+    test::Session session(&storage);
+    ImVec2     header;
+    bool       menu = false;
+    ed::NodeId menuNode;
+    session.DefaultContent = [&](int frame)
+    {
+        if (frame == 0)
+            ed::SetNodePosition(1, ImVec2(100.0f, 100.0f));
+        ed::BeginNode(1);
+        ImGui::TextUnformatted("Group");
+        ed::Group(ImVec2(300.0f, 200.0f));
+        ed::EndNode();
+        header = ed::CanvasToScreen(ed::GetNodePosition(1) + ImVec2(40.0f, 12.0f));
+
+        ed::NodeId node;
+        if (ed::ShowNodeContextMenu(&node))
+        {
+            menu     = true;
+            menuNode = node;
+        }
+    };
+    session.Run(3);
+    test::MouseMove(header);
+    session.Run(2);
+    const auto cursor = ImGui::GetMouseCursor();
+    test::MouseButton(1, true);
+    session.Run(2);
+    test::MouseButton(1, false);
+    session.Run(2);
+
+    test::Check(cursor == ImGuiMouseCursor_ResizeAll, "the cursor offers dragging the group: %d", static_cast<int>(cursor));
+    test::Check(menu && menuNode == ed::NodeId(1), "and a right-click opens the group's context menu");
+}

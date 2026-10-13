@@ -1514,16 +1514,16 @@ void ed::EditorContext::End()
     {
         EditorAction* possibleAction   = nullptr;
 
+        // The last action that is only possible shows its cursor, and none is rejected: a right
+        // press that may open a context menu goes on beside a group's possible resize or drag.
         auto accept = [&possibleAction, &control](EditorAction& action)
         {
             auto result = action.Accept(control);
 
             if (result == EditorAction::True)
                 return true;
-            else if (/*!possibleAction &&*/ result == EditorAction::Possible)
-                possibleAction = &action;
             else if (result == EditorAction::Possible)
-                action.Reject();
+                possibleAction = &action;
 
             return false;
         };
