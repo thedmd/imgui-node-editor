@@ -239,3 +239,43 @@ TEST_CASE(FlowBeforeLink, "flow.flow_called_before_the_link_is_submitted", "INT-
     const int vertices = FlowVertices(session.DrawList);
     test::Check(vertices > 0, "link 100 flows when ed::Flow() comes before ed::Link() in the frame: %d flow vertices", vertices);
 }
+
+TEST_CASE(FlowOnLongLink, "flow.markers_stay_on_a_very_long_link", "MATH-9", test::TestFlags_None)
+{
+    // Nodes 80,000 units apart, with the link between them across the view and pulled
+    // out by its strength. Markers that left the link would be drawn at non-finite
+    // positions, which the harness fails.
+    test::Storage storage;
+    test::Session session(&storage);
+    int vertices = 0;
+    session.DefaultContent = [&](int frame)
+    {
+        if (frame == 0)
+        {
+            auto& style = ed::GetStyle();
+            style.Colors[ed::StyleColor_Flow]       = ImColor(c_FlowColor | IM_COL32_A_MASK);
+            style.Colors[ed::StyleColor_FlowMarker] = ImColor(c_FlowColor | IM_COL32_A_MASK);
+            style.FlowDuration = 100.0f;
+            style.LinkStrength = 20000.0f;
+            ed::SetNodePosition(1, ImVec2(-40000.0f, 300.0f));
+            ed::SetNodePosition(11, ImVec2(40000.0f, 300.0f));
+        }
+        ed::BeginNode(1);
+        ed::BeginPin(3, ed::PinKind::Output);
+        ImGui::TextUnformatted("out >");
+        ed::EndPin();
+        ed::EndNode();
+        ed::BeginNode(11);
+        ed::BeginPin(12, ed::PinKind::Input);
+        ImGui::TextUnformatted("> in");
+        ed::EndPin();
+        ed::EndNode();
+        ed::Link(100, 3, 12);
+        if (frame == 3)
+            ed::Flow(100);
+    };
+    session.AfterEditor = [&] { vertices = FlowVertices(session.DrawList); };
+    session.Run(6);
+
+    test::Check(vertices > 0, "the long link flows: %d flow vertices", vertices);
+}
