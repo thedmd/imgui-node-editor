@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   examples:
-    name: Examples, ${{ matrix.os }}, ${{ matrix.config }}${{ matrix.strict && ', strict' || '' }}
+    name: Examples, ${{ matrix.os }}, ${{ matrix.config }}${{ matrix.strict && ', strict' || '' }}${{ matrix.glfw && ', GLFW and OpenGL' || '' }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -17,9 +17,11 @@ jobs:
         os: [windows-2025, macos-15, ubuntu-24.04]
         config: [Debug, Release]
         strict: [false]
+        glfw: [false]
         include:
           - { os: windows-2025, config: Release, strict: true }
           - { os: ubuntu-24.04, config: Release, strict: true }
+          - { os: windows-2025, config: Release, glfw: true }
 
     steps:
     - uses: actions/checkout@v5
@@ -32,6 +34,7 @@ jobs:
       run: >
         cmake -S examples -B build -DCMAKE_BUILD_TYPE=${{ matrix.config }}
         ${{ matrix.strict && '"-DIMGUI_NODE_EDITOR_EXAMPLES_DEFINITIONS=IMGUI_DISABLE_OBSOLETE_FUNCTIONS;IMGUI_DISABLE_OBSOLETE_KEYIO"' || '' }}
+        ${{ matrix.glfw && '-DIMGUI_NODE_EDITOR_EXAMPLES_BACKEND=glfw -DIMGUI_NODE_EDITOR_EXAMPLES_RENDERER=opengl3' || '' }}
     - name: Build
       run: cmake --build build --config ${{ matrix.config }} --parallel
 
