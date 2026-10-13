@@ -208,6 +208,21 @@ TEST_CASE(JsonEscapes, "json.keys_and_values_are_escaped_alike", "JSON-6", test:
         "and read back");
 }
 
+TEST_CASE(JsonIntegers, "json.integers_are_stored_as_numbers", "JSON-12", test::TestFlags_None)
+{
+    // value(int) was ambiguous between bool and double.
+    json::value document;
+    document["int"]      = 42;
+    document["negative"] = -3LL;
+    document["size"]     = static_cast<size_t>(1) << 40;
+    document["unsigned"] = 7u;
+    const json::value constructed = 5;
+
+    const auto text = document.dump();
+    test::Check(text == R"({"int":42,"negative":-3,"size":1099511627776,"unsigned":7})", "assigned integers written as %s", text.c_str());
+    test::Check(constructed.is_number() && constructed.get<json::number>() == 5.0, "value(5) is the number 5");
+}
+
 TEST_CASE(JsonNothrowMoves, "json.values_move_without_throwing", "JSON-10", test::TestFlags_None)
 {
     json::value a, b;

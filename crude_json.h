@@ -60,6 +60,11 @@ enum class type_t
 
 struct value
 {
+private:
+    template <typename T>
+    using if_integer = typename std::enable_if<std::is_integral<T>::value && !std::is_same<T, boolean>::value, int>::type;
+
+public:
     value(type_t type = type_t::null): m_Type(construct(m_Storage, type)) {}
     // MSVC's std::map allocates when moved; running out of memory there terminates.
     value(value&& other) noexcept;
@@ -75,6 +80,9 @@ struct value
     value(const char*    v): m_Type(construct(m_Storage,           v))  {}
     value(      boolean  v): m_Type(construct(m_Storage,           v))  {}
     value(      number   v): m_Type(construct(m_Storage,           v))  {}
+    // Integers are stored as numbers, exact up to 2^53.
+    template <typename T, if_integer<T> = 0>
+    value(      T        v): m_Type(construct(m_Storage, static_cast<number>(v))) {}
     ~value() { destruct(m_Storage, m_Type); }
 
     value& operator=(value&& other) noexcept { if (this != &other) { value(std::move(other)).swap(*this); } return *this; }
@@ -90,6 +98,8 @@ struct value
     value& operator=(const char*    v) { auto other = value(          v);  swap(other); return *this; }
     value& operator=(      boolean  v) { auto other = value(          v);  swap(other); return *this; }
     value& operator=(      number   v) { auto other = value(          v);  swap(other); return *this; }
+    template <typename T, if_integer<T> = 0>
+    value& operator=(      T        v) { auto other = value(          v);  swap(other); return *this; }
 
     type_t type() const { return m_Type; }
 
