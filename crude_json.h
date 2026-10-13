@@ -61,7 +61,8 @@ enum class type_t
 struct value
 {
     value(type_t type = type_t::null): m_Type(construct(m_Storage, type)) {}
-    value(value&& other);
+    // MSVC's std::map allocates when moved; running out of memory there terminates.
+    value(value&& other) noexcept;
     value(const value& other);
 
     value(      null)      : m_Type(construct(m_Storage,      null()))  {}
@@ -76,8 +77,8 @@ struct value
     value(      number   v): m_Type(construct(m_Storage,           v))  {}
     ~value() { destruct(m_Storage, m_Type); }
 
-    value& operator=(value&& other)      { if (this != &other) { value(std::move(other)).swap(*this); } return *this; }
-    value& operator=(const value& other) { if (this != &other) { value(          other).swap(*this);  } return *this; }
+    value& operator=(value&& other) noexcept { if (this != &other) { value(std::move(other)).swap(*this); } return *this; }
+    value& operator=(const value& other)     { if (this != &other) { value(          other).swap(*this);  } return *this; }
 
     value& operator=(      null)       { auto other = value(           );  swap(other); return *this; }
     value& operator=(      object&& v) { auto other = value(std::move(v)); swap(other); return *this; }
@@ -131,9 +132,9 @@ struct value
 
     string dump(const int indent = -1, const char indent_char = ' ') const;
 
-    void swap(value& other);
+    void swap(value& other) noexcept;
 
-    inline friend void swap(value& lhs, value& rhs) { lhs.swap(rhs); }
+    inline friend void swap(value& lhs, value& rhs) noexcept { lhs.swap(rhs); }
 
     // Returns discarded value for invalid inputs.
     static value parse(const string& data);

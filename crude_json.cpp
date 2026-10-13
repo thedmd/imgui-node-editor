@@ -44,7 +44,7 @@ static bool parse_number(const string& text, number& result)
 # endif
 }
 
-value::value(value&& other)
+value::value(value&& other) noexcept
     : m_Type(other.m_Type)
 {
     switch (m_Type)
@@ -219,7 +219,7 @@ size_t value::erase(const string& key)
     return 1;
 }
 
-void value::swap(value& other)
+void value::swap(value& other) noexcept
 {
     using std::swap;
 
