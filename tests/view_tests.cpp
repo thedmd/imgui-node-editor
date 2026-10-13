@@ -27,13 +27,14 @@ struct NodeText
 };
 
 // A node with a line of text, in a view loaded at 'zoom'.
-NodeText ShowNodeText(float zoom)
+NodeText ShowNodeText(float zoom, bool rasterizeTextForZoom = true)
 {
     test::Storage storage;
     storage.Global = R"({"view":{"scroll":{"x":0,"y":0},"zoom":)" + std::to_string(zoom) + "}}";
     auto config = test::MakeConfig(&storage);
     config.CustomZoomLevels.push_back(1.0f);
     config.CustomZoomLevels.push_back(3.0f);
+    config.RasterizeTextForZoom = rasterizeTextForZoom;
     test::Session session(config);
     session.Settings = &storage;
 
@@ -100,6 +101,17 @@ TEST_CASE(ZoomedText, "view.text_is_rasterized_for_the_zoom_and_nodes_keep_their
     test::Check(normal.Zoom == 1.0f && zoomed.Zoom == 3.0f, "views at zoom 1 and 3: %g and %g", normal.Zoom, zoomed.Zoom);
     test::Check(normal.Density == 1.0f && zoomed.Density == powf(2.0f, 1.5f), "the node's text is rasterized at 1 and 2^1.5: %g and %g", normal.Density, zoomed.Density);
     test::Check(zoomed.Size.x == normal.Size.x && zoomed.Size.y == normal.Size.y, "the node keeps its size: %g x %g, %g x %g at zoom 1", zoomed.Size.x, zoomed.Size.y, normal.Size.x, normal.Size.y);
+# else
+    test::Skip("needs Dear ImGui 1.92, which rasterizes glyphs on demand");
+# endif
+}
+
+TEST_CASE(ZoomedTextOff, "view.text_keeps_its_density_without_rasterize_text_for_zoom", nullptr, test::TestFlags_None)
+{
+# if IMGUI_VERSION_NUM >= 19200
+    const auto zoomed = ShowNodeText(3.0f, false);
+    test::Check(zoomed.Zoom == 3.0f, "view at zoom 3: %g", zoomed.Zoom);
+    test::Check(zoomed.Density == 1.0f, "with Config::RasterizeTextForZoom off, the node's text is rasterized at 1: %g", zoomed.Density);
 # else
     test::Skip("needs Dear ImGui 1.92, which rasterizes glyphs on demand");
 # endif

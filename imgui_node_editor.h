@@ -117,6 +117,7 @@ struct Config
     int                     ContextMenuButtonIndex; // Mouse button index context menu action will react to (0-left, 1-right, 2-middle)
     bool                    EnableSmoothZoom;
     float                   SmoothZoomPower;
+    bool                    RasterizeTextForZoom;   // Text is rasterized for the zoom, so it stays sharp; needs Dear ImGui 1.92 and a renderer backend that sets ImGuiBackendFlags_RendererHasTextures
     bool                    ReportNavigationEdits;  // Edits report navigation too, once the view settles
 
     Config()
@@ -135,6 +136,7 @@ struct Config
 # else
         , SmoothZoomPower(1.3f)
 # endif
+        , RasterizeTextForZoom(true)
         , ReportNavigationEdits(false)
     {
     }

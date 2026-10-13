@@ -649,6 +649,10 @@ v0.10.0 (WIP):
         taken in quarter octave steps from 0.5 up, and glyphs are rasterized at most 8 times their size.
         Canvas::SetRasterizeTextForScale(false) keeps glyphs at the font's size.
 
+    NEW: Editor: Add Config::RasterizeTextForZoom, on by default
+        Text in the editor is rasterized for the zoom, as the canvas does for its view's scale. Set it to false to keep glyphs
+        at the font's size.
+
 v0.9.3 (2023-10-14):
 
     CHANGE: Canvas: Use ImDrawCallback_ImCanvas macro as draw callback sentinel (#256), thanks @nspitko
