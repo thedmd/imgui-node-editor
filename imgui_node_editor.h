@@ -102,18 +102,13 @@ enum class SettingsContentFlags: uint32_t
 inline SettingsContentFlags operator |(SettingsContentFlags lhs, SettingsContentFlags rhs) { return static_cast<SettingsContentFlags>(static_cast<uint32_t>(lhs) | static_cast<uint32_t>(rhs)); }
 inline SettingsContentFlags operator &(SettingsContentFlags lhs, SettingsContentFlags rhs) { return static_cast<SettingsContentFlags>(static_cast<uint32_t>(lhs) & static_cast<uint32_t>(rhs)); }
 
-using ConfigSaveNodeSettings = bool   (*)(NodeId nodeId, const char* data, size_t size, SaveReasonFlags reason, void* userPointer);
-using ConfigLoadNodeSettings = size_t (*)(NodeId nodeId, char* data, void* userPointer);
-
 struct Config
 {
     using CanvasSizeModeAlias = ax::NodeEditor::CanvasSizeMode;
 
     const char*             SettingsName;           // Section [NodeEditor][SettingsName] in imgui.ini, see InstallSettingsHandler(); copied by CreateEditor(); nullptr keeps the editor out of imgui.ini
     SettingsContentFlags    SettingsContent;        // What the settings hold: node layout, the selection and the view; leave Nodes out when the application keeps node layout itself
-    ConfigSaveNodeSettings  SaveNodeSettings;
-    ConfigLoadNodeSettings  LoadNodeSettings;
-    void*                   UserPointer;
+    void*                   UserPointer;            // The application's; the editor doesn't use it
     ImVector<float>         CustomZoomLevels;
     CanvasSizeModeAlias     CanvasSizeMode;
     int                     DragButtonIndex;        // Mouse button index drag action will react to (0-left, 1-right, 2-middle)
@@ -127,8 +122,6 @@ struct Config
     Config()
         : SettingsName("NodeEditor")
         , SettingsContent(SettingsContentFlags::All)
-        , SaveNodeSettings(nullptr)
-        , LoadNodeSettings(nullptr)
         , UserPointer(nullptr)
         , CustomZoomLevels()
         , CanvasSizeMode(CanvasSizeModeAlias::FitVerticalView)
@@ -398,8 +391,6 @@ IMGUI_NODE_EDITOR_API void CenterNodeOnScreen(NodeId nodeId);
 IMGUI_NODE_EDITOR_API void SetNodeZPosition(NodeId nodeId, float z); // Sets node z position, nodes with higher value are drawn over nodes with lower value; saved with the node's settings
 IMGUI_NODE_EDITOR_API float GetNodeZPosition(NodeId nodeId); // Returns node z position, defaults is 0.0f
 
-IMGUI_NODE_EDITOR_API void RestoreNodeState(NodeId nodeId);
-
 // Leaves the editor's canvas space, inside a node too. Begin popups, tooltips and
 // child windows between Suspend() and Resume(): the canvas doesn't transform them.
 IMGUI_NODE_EDITOR_API void Suspend();
@@ -425,8 +416,8 @@ IMGUI_NODE_EDITOR_API bool DeleteNode(NodeId nodeId);
 IMGUI_NODE_EDITOR_API bool DeleteLink(LinkId linkId);
 
 // Forgets the node, its pins, the links to them, its saved state and its selection.
-// A node submitted later with the same ID starts as a new one, from the state
-// Config::LoadNodeSettings gives, if any. Call it outside Begin()/End().
+// A node submitted later with the same ID starts as a new one. Call it outside
+// Begin()/End().
 // Returns false if the editor doesn't know the node.
 IMGUI_NODE_EDITOR_API bool ForgetNode(NodeId nodeId);
 

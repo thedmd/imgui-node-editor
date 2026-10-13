@@ -7,7 +7,6 @@
 # include <cmath>
 # include <cstdarg>
 # include <cstdio>
-# include <cstring>
 
 namespace test {
 
@@ -351,29 +350,6 @@ ed::Config MakeConfig(Storage* storage)
     config.SmoothZoomPower = 1.3f; // the default on all but Apple platforms, where it is 1.1
     config.SettingsName = nullptr;
     config.UserPointer  = storage;
-
-    config.LoadNodeSettings = [](ed::NodeId nodeId, char* data, void* userPointer) -> size_t
-    {
-        auto storage = static_cast<Storage*>(userPointer);
-        auto it = storage->Nodes.find(nodeId.Get());
-        if (it == storage->Nodes.end())
-            return 0;
-        if (data)
-            memcpy(data, it->second.data(), it->second.size());
-        return it->second.size();
-    };
-
-    config.SaveNodeSettings = [](ed::NodeId nodeId, const char* data, size_t size, ed::SaveReasonFlags reason, void* userPointer) -> bool
-    {
-        auto storage = static_cast<Storage*>(userPointer);
-        storage->Nodes[nodeId.Get()].assign(data, size);
-
-        char line[512];
-        snprintf(line, sizeof(line), "node %d, reason 0x%02X: %.*s", (int)nodeId.Get(), (unsigned)reason, (int)size, data);
-        storage->NodeSaveLog.push_back(line);
-        return true;
-    };
-
     return config;
 }
 

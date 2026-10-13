@@ -51,8 +51,8 @@ std::string SavedSettings(test::Session& session)
 
 TEST_CASE(ForgetNodeReusedId, "forget.reused_node_id_starts_fresh", "CORE-7", test::TestFlags_None)
 {
-    // The application drops node 1 and its link, with its own state for them, and
-    // later reuses the ID. The editor kept the node selected, saved and placed.
+    // The application drops node 1 and its link, and later reuses the ID. The
+    // editor kept the node selected, saved and placed.
     test::Storage storage;
     test::Session session(&storage);
     TwoNodes scene;
@@ -68,7 +68,6 @@ TEST_CASE(ForgetNodeReusedId, "forget.reused_node_id_starts_fresh", "CORE-7", te
     session.Run(3);
 
     scene.Node1 = scene.Link100 = false;
-    storage.Nodes.erase(1);
     const auto forgotten = session.Use([] { return ed::ForgetNode(1); });
     const auto settings  = SavedSettings(session);
     const auto selected  = session.Use([] { return ed::GetSelectedObjectCount(); });
@@ -160,7 +159,6 @@ TEST_CASE(ClearStateNewDocument, "forget.clear_state_starts_a_new_document", "CO
     session.Run(3);
     const auto zoomBefore = session.Use([] { return ed::GetCurrentZoom(); });
 
-    storage.Nodes.clear();
     session.Use([] { ed::ClearState(); });
     const auto settings = SavedSettings(session);
     test::Check(settings.find("node:") == std::string::npos && settings.find("link:") == std::string::npos && settings.find(R"("zoom":1)") != std::string::npos,
@@ -206,7 +204,6 @@ TEST_CASE(ClearStateBoundsGrowth, "forget.clear_state_keeps_settings_bounded", "
 
 TEST_CASE(ClearStateInFrame, "forget.clear_state_between_begin_and_end_asserts", "CORE-7", test::TestFlags_None)
 {
-    // Without the application's own state for node 1, only the kept node is still placed.
     test::ExpectAsserts(1);
     test::Storage storage;
     test::Session session(&storage);
@@ -215,10 +212,7 @@ TEST_CASE(ClearStateInFrame, "forget.clear_state_between_begin_and_end_asserts",
     {
         scene.Submit(frame);
         if (frame == 2)
-        {
-            storage.Nodes.clear();
             ed::ClearState();
-        }
     };
     session.Run(4);
 

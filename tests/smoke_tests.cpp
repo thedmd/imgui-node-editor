@@ -5,6 +5,7 @@
 # include "harness.h"
 # include <cmath>
 # include <cstdio>
+# include <map>
 
 namespace {
 

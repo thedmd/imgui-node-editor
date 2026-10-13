@@ -370,13 +370,12 @@ TEST_CASE(ParseErrorsReported, "settings.parse_errors_are_reported_to_the_debug_
 {
 # if !defined(IMGUI_DISABLE_DEBUG_TOOLS)
     test::Storage storage;
-    storage.Global   = R"({"nodes":{"node:1":{"location":{"x":"a","y":0}},"node:2":{"location":{"x":200,"y":0}},"bogus":{}},"selection":["pin:3",5,"node:2"],"view":{"zoom":-1}})";
-    storage.Nodes[3] = "not json";
+    storage.Global = R"({"nodes":{"node:1":{"location":{"x":"a","y":0}},"node:2":{"location":{"x":200,"y":0}},"bogus":{}},"selection":["pin:3",5,"node:2"],"view":{"zoom":-1}})";
 
     test::Session session(&storage);
     session.DefaultContent = [](int)
     {
-        for (uintptr_t id : { 1, 2, 3 })
+        for (uintptr_t id : { 1, 2 })
         {
             ed::BeginNode(id);
             ImGui::TextUnformatted("Node");
@@ -390,7 +389,6 @@ TEST_CASE(ParseErrorsReported, "settings.parse_errors_are_reported_to_the_debug_
     test::Check(CountOf(log, "\"bogus\" in \"nodes\" ignored, it isn't a node ID") == 1, "the key that isn't a node ID reported");
     test::Check(CountOf(log, "an entry of \"selection\" ignored") == 2, "the pin and the number in the selection reported");
     test::Check(CountOf(log, "the view's \"zoom\" ignored") == 1, "the negative zoom reported");
-    test::Check(CountOf(log, "node:3: what Config::LoadNodeSettings gave is ignored") == 1, "node 3's per-node data reported");
 
     const auto position = session.Use([] { return ed::GetNodePosition(2); });
     const bool selected = session.Use([] { return ed::IsNodeSelected(2) && ed::GetSelectedObjectCount() == 1; });

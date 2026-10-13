@@ -227,10 +227,6 @@ if (ed::ParseNodeState(node.Layout.c_str(), node.Layout.size(), &state))
 - The text is `{"group_size":{"x":300,"y":200},"location":{"x":100,"y":400},"z":2}`, with `group_size` only for a group and `z` only when it isn't 0. That is what 0.9's `Config::SaveNodeSettings` gave, so text it wrote loads too.
 - The text holds no ID: `ParseNodeState()` leaves `state.Id` as it is, and changes nothing when the text doesn't parse.
 
-### Per node
-
-`Config::LoadNodeSettings` gives a node's saved state when the editor creates the node, and `Config::SaveNodeSettings` receives each change of a node with the reasons for it. `RestoreNodeState()` asks `LoadNodeSettings` again, and applies the answer when the node is next submitted.
-
 ## Edits
 
 The editor reports each edit the user completes, with the state before and after it, for an application's undo history:
