@@ -22,6 +22,15 @@
 # if CRUDE_JSON_IO
 #     include <stdio.h>
 #     include <memory>
+#     ifdef _WIN32
+#         ifndef WIN32_LEAN_AND_MEAN
+#             define WIN32_LEAN_AND_MEAN
+#         endif
+#         ifndef NOMINMAX
+#             define NOMINMAX
+#         endif
+#         include <windows.h>
+#     endif
 # endif
 
 namespace crude_json {
@@ -955,26 +964,38 @@ std::pair<value, bool> value::load(const string& path)
     return {p.parse(), true};
 }
 
+// Replaces 'to' when it exists.
+static bool replace_file(const string& from, const string& to)
+{
+# if defined(_WIN32)
+    return MoveFileExA(from.c_str(), to.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != 0;
+# else
+    return rename(from.c_str(), to.c_str()) == 0;
+# endif
+}
+
 bool value::save(const string& path, const int indent, const char indent_char) const
 {
-    // Modern C++, so beautiful...
-    std::unique_ptr<FILE, void(*)(FILE*)> file{nullptr, [](FILE* file) { if (file) fclose(file); }};
-# if defined(_MSC_VER) || (defined(__STDC_LIB_EXT1__) && __STDC_WANT_LIB_EXT1__)
-    FILE* handle = nullptr;
-    if (fopen_s(&handle, path.c_str(), "wb") != 0)
-        return false;
-    file.reset(handle);
-# else
-    file.reset(fopen(path.c_str(), "wb"));
-# endif
+    const auto data      = dump(indent, indent_char);
+    const auto temp_path = path + ".tmp";
 
+    FILE* file = nullptr;
+# if defined(_MSC_VER) || (defined(__STDC_LIB_EXT1__) && __STDC_WANT_LIB_EXT1__)
+    if (fopen_s(&file, temp_path.c_str(), "wb") != 0)
+        return false;
+# else
+    file = fopen(temp_path.c_str(), "wb");
+# endif
     if (!file)
         return false;
 
-    auto data = dump(indent, indent_char);
-
-    if (fwrite(data.data(), data.size(), 1, file.get()) != 1)
+    const auto written = fwrite(data.data(), 1, data.size(), file) == data.size();
+    const auto closed  = fclose(file) == 0;
+    if (!written || !closed || !replace_file(temp_path, path))
+    {
+        remove(temp_path.c_str());
         return false;
+    }
 
     return true;
 }
