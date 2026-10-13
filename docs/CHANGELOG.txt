@@ -521,6 +521,9 @@ v0.10.0 (WIP):
 
     BUGFIX: Examples: Read the icon heights with GetTextureHeight() in the blueprints example
 
+    BUGFIX: Examples: Name every node type in the blueprints example's node context menu
+        Simple and Houdini nodes were reported as Comment.
+
 v0.9.2 (2023-09-01):
 
     NEW: Editor: Add offset of hover/select to style (thanks @MultiPain)
