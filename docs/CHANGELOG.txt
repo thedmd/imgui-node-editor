@@ -448,6 +448,9 @@ v0.10.0 (WIP):
     BUGFIX: crude_json: Read subnormal numbers
         dump() writes them, but they were rejected, which discarded the whole document.
 
+    CHANGE: crude_json: Write numbers with 17 significant digits
+        That is enough to read back the same double; the 18th digit was noise, as in 0.100000000000000006.
+
 v0.9.2 (2023-09-01):
 
     NEW: Editor: Add offset of hover/select to style (thanks @MultiPain)

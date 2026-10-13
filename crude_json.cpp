@@ -250,7 +250,7 @@ string value::dump(const int indent, const char indent_char) const
     dump_context_t context(indent, indent_char);
 
     context.out.imbue(std::locale::classic());
-    context.out.precision(std::numeric_limits<double>::max_digits10 + 1);
+    context.out.precision(std::numeric_limits<double>::max_digits10);
     context.out << std::defaultfloat;
 
     dump(context, 0);
