@@ -281,7 +281,6 @@ struct Object
     virtual bool EndDrag() { return false; }
     virtual ImVec2 DragStartLocation() { return GetBounds().Min; }
 
-    virtual bool IsDraggable() { bool result = AcceptDrag(); EndDrag(); return result; }
     virtual bool IsSelectable() { return false; }
 
     virtual bool TestHit(const ImVec2& point, float extraThickness = 0.0f) const
