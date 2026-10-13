@@ -3,6 +3,7 @@
 # include <crude_json.h>
 # include <algorithm>
 # include <map>
+# include <set>
 # include <stdio.h>
 # include <string.h>
 //# include <stdlib.h>
@@ -180,6 +181,31 @@ crude_blueprint::PinType crude_blueprint::Pin::GetType() const
     return m_Type;
 }
 
+// Whether data reaches 'node' from 'source', through the links into the nodes between them.
+static bool TakesDataFrom(const crude_blueprint::Node& node, const crude_blueprint::Node& source)
+{
+    using crude_blueprint::Node;
+
+    std::vector<const Node*> pending(1, &node);
+    std::set<const Node*>    visited;
+    while (!pending.empty())
+    {
+        auto current = pending.back();
+        pending.pop_back();
+        if (current == &source)
+            return true;
+
+        if (!visited.insert(current).second)
+            continue;
+
+        for (auto pin : const_cast<Node*>(current)->GetInputPins())
+            if (pin->m_Link)
+                pending.push_back(pin->m_Link->m_Node);
+    }
+
+    return false;
+}
+
 crude_blueprint::LinkQueryResult crude_blueprint::Pin::CanLinkTo(const Pin& pin) const
 {
     auto result = m_Node->AcceptLink(*this, pin);
@@ -189,6 +215,10 @@ crude_blueprint::LinkQueryResult crude_blueprint::Pin::CanLinkTo(const Pin& pin)
     auto result2 = pin.m_Node->AcceptLink(*this, pin);
     if (!result2)
         return result2;
+
+    // Evaluating a pin of a loop would never end. Nodes may override AcceptLink(), so it's checked here.
+    if (GetType() != PinType::Flow && TakesDataFrom(*pin.m_Node, *m_Node))
+        return { false, "Link would make a loop" };
 
     if (result.Reason().empty())
         return result2;
@@ -793,6 +823,19 @@ crude_blueprint::PinValue crude_blueprint::Context::GetPinValue(const Pin& pin) 
     auto valueIt = m_Values.find(pin.m_Id);
     if (valueIt != m_Values.end())
         return valueIt->second;
+
+    // A loop of links, which a file may hold, or a very long chain of them would run
+    // out of stack: deeper than this, a pin has no value.
+    const int c_MaxEvaluationDepth = 256;
+    if (m_EvaluationDepth >= c_MaxEvaluationDepth)
+        return {};
+
+    struct DepthScope
+    {
+        int& m_Depth;
+        DepthScope(int& depth): m_Depth(depth) { ++m_Depth; }
+        ~DepthScope() { --m_Depth; }
+    } depthScope(m_EvaluationDepth);
 
     PinValue value;
     if (pin.m_Link)

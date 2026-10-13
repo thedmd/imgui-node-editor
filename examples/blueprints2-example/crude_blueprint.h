@@ -502,6 +502,7 @@ private:
     uint32_t                m_StepCount = 0;
     map<uint32_t, PinValue> m_Values;
     ContextMonitor*         m_Monitor = nullptr;
+    mutable int             m_EvaluationDepth = 0;
 };
 
 template <typename T>
