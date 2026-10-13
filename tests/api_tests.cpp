@@ -2,6 +2,7 @@
 // Public API misuse.
 //------------------------------------------------------------------------------
 # include "harness.h"
+# include <type_traits>
 # include <limits>
 
 TEST_CASE(DestroyCurrentEditor, "api.destroying_current_editor_clears_it", "API-8", test::TestFlags_None)
@@ -663,4 +664,16 @@ TEST_CASE(LinkQueryPhase, "api.link_queries_see_links_submitted_so_far", "CORE-1
 
     test::Check(!inPin && hadInPin, "inside the pin, before the frame's links, HasAnyLinks() is false and PinHadAnyLinks() true");
     test::Check(afterLinks, "after the frame's links, HasAnyLinks() is true");
+}
+
+TEST_CASE(IdKinds, "api.ids_of_one_kind_dont_convert_to_another", "API-13", test::TestFlags_None)
+{
+    const bool crossKind =
+        std::is_constructible<ed::NodeId, ed::PinId>::value || std::is_convertible<ed::PinId, ed::NodeId>::value ||
+        std::is_constructible<ed::PinId, ed::LinkId>::value || std::is_convertible<ed::LinkId, ed::NodeId>::value;
+    const bool fromIntegers = std::is_convertible<int, ed::NodeId>::value && std::is_convertible<uintptr_t, ed::LinkId>::value;
+    const bool fromPointers = std::is_constructible<ed::PinId, int*>::value && !std::is_convertible<int*, ed::PinId>::value;
+
+    test::Check(!crossKind, "a node, pin or link ID doesn't convert to another kind");
+    test::Check(fromIntegers && fromPointers, "IDs convert from integers, and explicitly from pointers");
 }
