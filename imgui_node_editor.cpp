@@ -2295,6 +2295,31 @@ bool ed::EditorContext::SetSelection(const NodeId* nodes, int nodeCount, const L
     return changed;
 }
 
+const char* ed::EditorContext::FormatNodeState(const NodeState& state, size_t* outSize)
+{
+    NodeSettings settings(state.Id);
+    settings.m_Location  = state.Position;
+    settings.m_GroupSize = state.GroupSize;
+    settings.m_ZPosition = state.ZPosition;
+
+    m_NodeStateMemory = settings.Serialize().dump();
+    if (outSize)
+        *outSize = m_NodeStateMemory.size();
+    return m_NodeStateMemory.c_str();
+}
+
+bool ed::EditorContext::ParseNodeState(const char* data, size_t size, NodeState& state)
+{
+    NodeSettings settings(state.Id);
+    if (!NodeSettings::Parse(string(data, size > 0 ? size : strlen(data)), settings))
+        return false;
+
+    state.Position  = settings.m_Location;
+    state.GroupSize = settings.m_GroupSize;
+    state.ZPosition = settings.m_ZPosition;
+    return true;
+}
+
 void ed::EditorContext::MarkNodeToRestoreState(Node* node)
 {
     node->m_RestoreState = true;

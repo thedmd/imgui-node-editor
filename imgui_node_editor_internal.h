@@ -1461,6 +1461,9 @@ struct EditorContext
     bool      SetViewState(const ViewState& state, float duration);
     bool      SetSelection(const NodeId* nodes, int nodeCount, const LinkId* links, int linkCount);
 
+    const char* FormatNodeState(const NodeState& state, size_t* outSize);
+    static bool ParseNodeState(const char* data, size_t size, NodeState& state);
+
     bool BeginEdits();
     bool QueryEdit(Edit& edit);
     void EndEdits();
@@ -1709,6 +1712,7 @@ private:
     SettingsStore*      m_SettingsStore;
     bool                m_HasMemorySettings;    // set before the first Begin(), by LoadSettingsFromMemory() or ClearState()
     string              m_SettingsMemory;       // returned by SaveSettingsToMemory()
+    string              m_NodeStateMemory;      // returned by FormatNodeState()
     bool                m_HasSettingsChanged;   // since ClearWantSaveSettings()
     SaveReasonFlags     m_SettingsChangeReason;
     double              m_SettingsChangeTime;

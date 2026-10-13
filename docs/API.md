@@ -211,6 +211,22 @@ ed::SetSelection(selectedNodes, selectedNodeCount, nullptr, 0);
 - `SetSelection()` replaces the selection. It skips objects the editor doesn't know and objects being deleted, and selects links only when no nodes are given. Before the editor's first frame, it also takes nodes not created yet.
 - With `SettingsContent` left without `Nodes`, node layout stays out of the editor's own settings, so the two don't compete.
 
+Documents that keep a node's layout as text use `FormatNodeState()` and `ParseNodeState()`:
+
+```cpp
+// Keeping it
+node.Layout = ed::FormatNodeState(state);
+
+// Restoring it
+ed::NodeState state;
+state.Id = node.Id;
+if (ed::ParseNodeState(node.Layout.c_str(), node.Layout.size(), &state))
+    ed::SetNodeState(state);
+```
+
+- The text is `{"group_size":{"x":300,"y":200},"location":{"x":100,"y":400},"z":2}`, with `group_size` only for a group and `z` only when it isn't 0. That is what 0.9's `Config::SaveNodeSettings` gave, so text it wrote loads too.
+- The text holds no ID: `ParseNodeState()` leaves `state.Id` as it is, and changes nothing when the text doesn't parse.
+
 ### Per node
 
 `Config::LoadNodeSettings` gives a node's saved state when the editor creates the node, and `Config::SaveNodeSettings` receives each change of a node with the reasons for it. `RestoreNodeState()` asks `LoadNodeSettings` again, and applies the answer when the node is next submitted.
