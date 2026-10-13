@@ -1232,6 +1232,10 @@ struct NodeBuilder
     bool    m_IsHoverBlocked;
     ImGuiID m_BlockedHoveredId;
 
+    // Misnested nodes and pins, whose End calls are ignored too.
+    int m_IgnoredNodes;
+    int m_IgnoredPins;
+
     NodeBuilder(EditorContext* editor);
     ~NodeBuilder();
 

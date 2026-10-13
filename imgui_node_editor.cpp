@@ -5591,8 +5591,11 @@ ed::NodeBuilder::NodeBuilder(EditorContext* editor):
     Editor(editor),
     m_CurrentNode(nullptr),
     m_CurrentPin(nullptr),
+    m_IsGroup(false),
     m_IsHoverBlocked(false),
-    m_BlockedHoveredId(0)
+    m_BlockedHoveredId(0),
+    m_IgnoredNodes(0),
+    m_IgnoredPins(0)
 {
 }
 
@@ -5604,7 +5607,12 @@ ed::NodeBuilder::~NodeBuilder()
 
 void ed::NodeBuilder::Begin(NodeId nodeId)
 {
-    IM_ASSERT(nullptr == m_CurrentNode);
+    IM_ASSERT(nullptr == m_CurrentNode && m_IgnoredNodes == 0 && "BeginNode() inside another node.");
+    if (m_CurrentNode || m_IgnoredNodes > 0)
+    {
+        ++m_IgnoredNodes;
+        return;
+    }
 
     m_CurrentNode = Editor->GetNode(nodeId);
 
@@ -5671,7 +5679,15 @@ void ed::NodeBuilder::Begin(NodeId nodeId)
 
 void ed::NodeBuilder::End()
 {
-    IM_ASSERT(nullptr != m_CurrentNode);
+    if (m_IgnoredNodes > 0)
+    {
+        --m_IgnoredNodes;
+        return;
+    }
+
+    IM_ASSERT(nullptr != m_CurrentNode && "EndNode() without BeginNode().");
+    if (!m_CurrentNode)
+        return;
 
     if (m_IsHoverBlocked)
     {
@@ -5727,13 +5743,25 @@ void ed::NodeBuilder::End()
         m_CurrentNode->m_Type        = NodeType::Node;
 
     m_CurrentNode = nullptr;
+    m_IsGroup     = false;
 }
 
 void ed::NodeBuilder::BeginPin(PinId pinId, PinKind kind)
 {
-    IM_ASSERT(nullptr != m_CurrentNode);
-    IM_ASSERT(nullptr == m_CurrentPin);
-    IM_ASSERT(false   == m_IsGroup);
+    if (m_IgnoredNodes > 0)
+    {
+        ++m_IgnoredPins;
+        return;
+    }
+
+    IM_ASSERT(nullptr != m_CurrentNode && "BeginPin() outside a node.");
+    IM_ASSERT(nullptr == m_CurrentPin && m_IgnoredPins == 0 && "BeginPin() inside another pin.");
+    IM_ASSERT(false == m_IsGroup && "BeginPin() in a group.");
+    if (!m_CurrentNode || m_CurrentPin || m_IgnoredPins > 0 || m_IsGroup)
+    {
+        ++m_IgnoredPins;
+        return;
+    }
 
     auto& editorStyle = Editor->GetStyle();
 
@@ -5782,7 +5810,15 @@ void ed::NodeBuilder::BeginPin(PinId pinId, PinKind kind)
 
 void ed::NodeBuilder::EndPin()
 {
-    IM_ASSERT(nullptr != m_CurrentPin);
+    if (m_IgnoredPins > 0)
+    {
+        --m_IgnoredPins;
+        return;
+    }
+
+    IM_ASSERT(nullptr != m_CurrentPin && "EndPin() without BeginPin().");
+    if (!m_CurrentPin)
+        return;
 
     if (auto drawList = Editor->GetDrawList())
     {
@@ -5819,7 +5855,12 @@ void ed::NodeBuilder::EndPin()
 
 void ed::NodeBuilder::PinRect(const ImVec2& a, const ImVec2& b)
 {
-    IM_ASSERT(nullptr != m_CurrentPin);
+    if (m_IgnoredPins > 0)
+        return;
+
+    IM_ASSERT(nullptr != m_CurrentPin && "Pin call outside a pin.");
+    if (!m_CurrentPin)
+        return;
 
     m_CurrentPin->m_Bounds = ImRect(a, b);
     FloorRect(m_CurrentPin->m_Bounds);
@@ -5828,7 +5869,12 @@ void ed::NodeBuilder::PinRect(const ImVec2& a, const ImVec2& b)
 
 void ed::NodeBuilder::PinPivotRect(const ImVec2& a, const ImVec2& b)
 {
-    IM_ASSERT(nullptr != m_CurrentPin);
+    if (m_IgnoredPins > 0)
+        return;
+
+    IM_ASSERT(nullptr != m_CurrentPin && "Pin call outside a pin.");
+    if (!m_CurrentPin)
+        return;
 
     m_CurrentPin->m_Pivot = ImRect(a, b);
     m_ResolvePivot      = false;
@@ -5836,7 +5882,12 @@ void ed::NodeBuilder::PinPivotRect(const ImVec2& a, const ImVec2& b)
 
 void ed::NodeBuilder::PinPivotSize(const ImVec2& size)
 {
-    IM_ASSERT(nullptr != m_CurrentPin);
+    if (m_IgnoredPins > 0)
+        return;
+
+    IM_ASSERT(nullptr != m_CurrentPin && "Pin call outside a pin.");
+    if (!m_CurrentPin)
+        return;
 
     m_PivotSize    = size;
     m_ResolvePivot = true;
@@ -5844,7 +5895,12 @@ void ed::NodeBuilder::PinPivotSize(const ImVec2& size)
 
 void ed::NodeBuilder::PinPivotScale(const ImVec2& scale)
 {
-    IM_ASSERT(nullptr != m_CurrentPin);
+    if (m_IgnoredPins > 0)
+        return;
+
+    IM_ASSERT(nullptr != m_CurrentPin && "Pin call outside a pin.");
+    if (!m_CurrentPin)
+        return;
 
     m_PivotScale   = scale;
     m_ResolvePivot = true;
@@ -5852,7 +5908,12 @@ void ed::NodeBuilder::PinPivotScale(const ImVec2& scale)
 
 void ed::NodeBuilder::PinPivotAlignment(const ImVec2& alignment)
 {
-    IM_ASSERT(nullptr != m_CurrentPin);
+    if (m_IgnoredPins > 0)
+        return;
+
+    IM_ASSERT(nullptr != m_CurrentPin && "Pin call outside a pin.");
+    if (!m_CurrentPin)
+        return;
 
     m_PivotAlignment = alignment;
     m_ResolvePivot   = true;
@@ -5860,9 +5921,14 @@ void ed::NodeBuilder::PinPivotAlignment(const ImVec2& alignment)
 
 void ed::NodeBuilder::Group(const ImVec2& size)
 {
-    IM_ASSERT(nullptr != m_CurrentNode);
-    IM_ASSERT(nullptr == m_CurrentPin);
-    IM_ASSERT(false   == m_IsGroup);
+    if (m_IgnoredNodes > 0)
+        return;
+
+    IM_ASSERT(nullptr != m_CurrentNode && "Group() outside a node.");
+    IM_ASSERT(nullptr == m_CurrentPin && "Group() in a pin.");
+    IM_ASSERT(false   == m_IsGroup && "Group() called twice.");
+    if (!m_CurrentNode || m_CurrentPin || m_IsGroup)
+        return;
 
     m_IsGroup = true;
 
