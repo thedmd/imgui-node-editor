@@ -469,3 +469,30 @@ TEST_CASE(MisnestedBuilding, "api.misnested_building_is_ignored", "API-13", test
     test::Check(size.x > 0.0f && size.y > 0.0f, "the node around it is built: %g by %g", size.x, size.y);
     test::Check(linked, "link 100 joins the pins built after the misuse");
 }
+
+TEST_CASE(GroupHintAlpha, "api.group_hint_multiplies_style_alpha", "API-13", test::TestFlags_None)
+{
+    // At zoom 0.6 a group hint fades to 0.6; the application's style alpha is 0.5.
+    test::Storage storage;
+    storage.Global = R"({"view":{"scroll":{"x":0,"y":0},"zoom":0.6}})";
+    test::Session session(&storage);
+    ImGui::GetStyle().Alpha = 0.5f;
+    float alpha = -1.0f;
+    session.DefaultContent = [&](int frame)
+    {
+        if (frame == 0)
+            ed::SetNodePosition(10, ImVec2(0.0f, 0.0f));
+        ed::BeginNode(10);
+        ImGui::TextUnformatted("Group");
+        ed::Group(ImVec2(300.0f, 200.0f));
+        ed::EndNode();
+        if (ed::BeginGroupHint(10))
+        {
+            alpha = ImGui::GetStyle().Alpha;
+            ed::EndGroupHint();
+        }
+    };
+    session.Run(3);
+
+    test::Check(ImFabs(alpha - 0.3f) < 1e-4f, "the hint draws at 0.5 times 0.6: %g", alpha);
+}
