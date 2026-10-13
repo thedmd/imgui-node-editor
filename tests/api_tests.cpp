@@ -411,3 +411,61 @@ TEST_CASE(ZeroIds, "api.zero_ids_are_refused", "API-13", test::TestFlags_None)
     test::Check(zeroPosition.x == FLT_MAX, "node 0 isn't created: at (%g, %g)", zeroPosition.x, zeroPosition.y);
     test::Check(!zeroLinked && linked, "link 0 is refused, link 100 between the same pins isn't");
 }
+
+TEST_CASE(MisnestedBuilding, "api.misnested_building_is_ignored", "API-13", test::TestFlags_None)
+{
+    // Seven misuses, each asserting on both frames, before nodes 1 and 2 linked by
+    // link 100.
+    test::ExpectAsserts(14);
+    test::Storage storage;
+    test::Session session(&storage);
+    bool linked = false;
+    session.DefaultContent = [&](int frame)
+    {
+        if (frame == 0)
+        {
+            ed::SetNodePosition(1, ImVec2(0.0f, 0.0f));
+            ed::SetNodePosition(2, ImVec2(300.0f, 0.0f));
+            ed::SetNodePosition(3, ImVec2(0.0f, 200.0f));
+        }
+
+        ed::BeginPin(5, ed::PinKind::Input);            // outside a node
+        ed::EndPin();
+        ed::EndNode();                                  // without BeginNode()
+        ed::EndPin();                                   // without BeginPin()
+        ed::PinRect(ImVec2(0.0f, 0.0f), ImVec2(1.0f, 1.0f)); // outside a pin
+
+        ed::BeginNode(1);
+        ed::BeginNode(4);                               // inside another node
+        ImGui::TextUnformatted("Nested");
+        ed::EndNode();
+        ed::BeginPin(11, ed::PinKind::Output);
+        ed::BeginPin(12, ed::PinKind::Output);          // inside another pin
+        ed::EndPin();
+        ImGui::TextUnformatted("Out");
+        ed::EndPin();
+        ed::EndNode();
+
+        ed::BeginNode(3);
+        ImGui::TextUnformatted("Group");
+        ed::Group(ImVec2(100.0f, 50.0f));
+        ed::BeginPin(31, ed::PinKind::Input);           // in a group
+        ed::EndPin();
+        ed::EndNode();
+
+        ed::BeginNode(2);
+        ed::BeginPin(21, ed::PinKind::Input);
+        ImGui::TextUnformatted("In");
+        ed::EndPin();
+        ed::EndNode();
+
+        linked = ed::Link(100, 11, 21);
+    };
+    session.Run(2);
+
+    const auto nested = session.Use([] { return ed::GetNodePosition(4); });
+    const auto size   = session.Use([] { return ed::GetNodeSize(1); });
+    test::Check(nested.x == FLT_MAX, "the nested node isn't created: at (%g, %g)", nested.x, nested.y);
+    test::Check(size.x > 0.0f && size.y > 0.0f, "the node around it is built: %g by %g", size.x, size.y);
+    test::Check(linked, "link 100 joins the pins built after the misuse");
+}
