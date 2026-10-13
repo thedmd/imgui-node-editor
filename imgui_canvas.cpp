@@ -474,7 +474,7 @@ void ImGuiEx::Canvas::EnterLocalSpace()
     viewport->Pos  = viewport_min;
     viewport->Size = viewport_max - viewport_min;
 
-    viewport->WorkPos  = m_ViewportWorkPosBackup  * m_View.InvScale();
+    viewport->WorkPos  = (m_ViewportWorkPosBackup - m_ViewTransformPosition) * m_View.InvScale();
     viewport->WorkSize = m_ViewportWorkSizeBackup * m_View.InvScale();
 # endif
 
