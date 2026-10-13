@@ -68,56 +68,6 @@ inline ImVec2 ImGui_GetMouseClickPos(ImGuiMouseButton buttonIndex);
 
 
 //------------------------------------------------------------------------------
-// https://stackoverflow.com/a/36079786
-# define DECLARE_HAS_MEMBER(TraitName, MemberName)                                   \
-                                                                                     \
-    template <typename T>                                                            \
-    class TraitName                                                                  \
-    {                                                                                \
-        using check_type = ::std::remove_const_t<T>;                                 \
-        struct no_type {char x[2];};                                                 \
-        using  yes_type = char;                                                      \
-                                                                                     \
-        struct  base { void MemberName() {}};                                        \
-        struct mixin : public base, public check_type {};                            \
-                                                                                     \
-        template <void (base::*)()> struct aux {};                                   \
-                                                                                     \
-        template <typename U> static no_type  test(aux<&U::MemberName>*);            \
-        template <typename U> static yes_type test(...);                             \
-                                                                                     \
-        public:                                                                      \
-                                                                                     \
-        static constexpr bool value = (sizeof(yes_type) == sizeof(test<mixin>(0)));  \
-    }
-
-DECLARE_HAS_MEMBER(HasFringeScale, _FringeScale);
-
-# undef DECLARE_HAS_MEMBER
-
-struct FringeScaleRef
-{
-    // Overload is present when ImDrawList does have _FringeScale member variable.
-    template <typename T>
-    static float& Get(typename std::enable_if<HasFringeScale<T>::value, T>::type* drawList)
-    {
-        return drawList->_FringeScale;
-    }
-
-    // Overload is present when ImDrawList does not have _FringeScale member variable.
-    template <typename T>
-    static float& Get(typename std::enable_if<!HasFringeScale<T>::value, T>::type*)
-    {
-        static float placeholder = 1.0f;
-        return placeholder;
-    }
-};
-
-static inline float& ImFringeScaleRef(ImDrawList* drawList)
-{
-    return FringeScaleRef::Get<ImDrawList>(drawList);
-}
-
 struct FringeScaleScope
 {
 # if IMGUI_VERSION_NUM >= 19292
@@ -136,14 +86,14 @@ private:
     float m_LastPixelDensity;
 # else
     FringeScaleScope(float scale)
-        : m_LastFringeScale(ImFringeScaleRef(ImGui::GetWindowDrawList()))
+        : m_LastFringeScale(ImGui::GetWindowDrawList()->_FringeScale)
     {
-        ImFringeScaleRef(ImGui::GetWindowDrawList()) = scale;
+        ImGui::GetWindowDrawList()->_FringeScale = scale;
     }
 
     ~FringeScaleScope()
     {
-        ImFringeScaleRef(ImGui::GetWindowDrawList()) = m_LastFringeScale;
+        ImGui::GetWindowDrawList()->_FringeScale = m_LastFringeScale;
     }
 
 private:
