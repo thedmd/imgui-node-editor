@@ -1016,11 +1016,15 @@ private:
         }
         else if (auto hoveredLinkId = ed::GetHoveredLink())
         {
+            // A link deleted in this frame is still hovered, and its pins may be gone.
             ed::PinId startPinId, endPinId;
-            ed::GetLinkPins(hoveredLinkId, &startPinId, &endPinId);
+            if (!ed::GetLinkPins(hoveredLinkId, &startPinId, &endPinId))
+                return;
 
             auto startPin = blueprint.FindPin(static_cast<uint32_t>(startPinId.Get()));
             auto endPin = blueprint.FindPin(static_cast<uint32_t>(endPinId.Get()));
+            if (!startPin || !endPin)
+                return;
 
             ed::Suspend();
             ImGui::BeginTooltip();
