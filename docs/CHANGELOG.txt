@@ -583,6 +583,9 @@ v0.10.0 (WIP):
 
     CHANGE: Examples: Build with -Wall -Wextra on GCC and Clang
 
+    NEW: Examples: Choose GLFW and OpenGL on Windows
+        IMGUI_NODE_EDITOR_EXAMPLES_BACKEND takes win32 or glfw, IMGUI_NODE_EDITOR_EXAMPLES_RENDERER dx11 or opengl3.
+
 v0.9.2 (2023-09-01):
 
     NEW: Editor: Add offset of hover/select to style (thanks @MultiPain)
