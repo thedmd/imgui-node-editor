@@ -416,27 +416,6 @@ static void ImDrawList_AddLineCompat(ImDrawList* drawList, const ImVec2& a, cons
 # endif
 }
 
-static void ImDrawList_PathStrokeClosed(ImDrawList* drawList, ImU32 col, float thickness)
-{
-# if IMGUI_VERSION_NUM >= 19276
-    drawList->PathStroke(col, thickness, ImDrawFlags_Closed);
-# else
-    drawList->PathStroke(col, ImDrawFlags_Closed, thickness);
-# endif
-}
-
-static void ImDrawList_PathBezierOffset(ImDrawList* drawList, float offset, const ImVec2& p0, const ImVec2& p1, const ImVec2& p2, const ImVec2& p3)
-{
-    using namespace ed;
-
-    auto acceptPoint = [drawList, offset](const ImCubicBezierSubdivideSample& r)
-    {
-        drawList->PathLineTo(r.Point + ImNormalized(ImVec2(-r.Tangent.y, r.Tangent.x)) * offset);
-    };
-
-    ImCubicBezierSubdivide(acceptPoint, p0, p1, p2, p3);
-}
-
 /*
 static void ImDrawList_PolyFillScanFlood(ImDrawList *draw, std::vector<ImVec2>* poly, ImColor color, int gap = 1, float strokeWidth = 1.0f)
 {
@@ -550,7 +529,7 @@ static void ImDrawList_PolyFillScanFlood(ImDrawList *draw, std::vector<ImVec2>* 
 
 static void ImDrawList_AddBezierWithArrows(ImDrawList* drawList, const ImCubicBezierPoints& curve, float thickness,
     float startArrowSize, float startArrowWidth, float endArrowSize, float endArrowWidth,
-    bool fill, ImU32 color, float strokeThickness, const ImVec2* startDirHint = nullptr, const ImVec2* endDirHint = nullptr)
+    ImU32 color, const ImVec2* startDirHint = nullptr, const ImVec2* endDirHint = nullptr)
 {
     using namespace ax;
 
@@ -559,71 +538,32 @@ static void ImDrawList_AddBezierWithArrows(ImDrawList* drawList, const ImCubicBe
 
     const auto half_thickness = thickness * 0.5f;
 
-    if (fill)
+    drawList->AddBezierCubic(curve.P0, curve.P1, curve.P2, curve.P3, color, thickness);
+
+    if (startArrowSize > 0.0f)
     {
-        drawList->AddBezierCubic(curve.P0, curve.P1, curve.P2, curve.P3, color, thickness);
+        const auto start_dir  = ImNormalized(startDirHint ? *startDirHint : ImCubicBezierTangent(curve.P0, curve.P1, curve.P2, curve.P3, 0.0f));
+        const auto start_n    = ImVec2(-start_dir.y, start_dir.x);
+        const auto half_width = startArrowWidth * 0.5f;
+        const auto tip        = curve.P0 - start_dir * startArrowSize;
 
-        if (startArrowSize > 0.0f)
-        {
-            const auto start_dir  = ImNormalized(startDirHint ? *startDirHint : ImCubicBezierTangent(curve.P0, curve.P1, curve.P2, curve.P3, 0.0f));
-            const auto start_n    = ImVec2(-start_dir.y, start_dir.x);
-            const auto half_width = startArrowWidth * 0.5f;
-            const auto tip        = curve.P0 - start_dir * startArrowSize;
-
-            drawList->PathLineTo(curve.P0 - start_n * ImMax(half_width, half_thickness));
-            drawList->PathLineTo(curve.P0 + start_n * ImMax(half_width, half_thickness));
-            drawList->PathLineTo(tip);
-            drawList->PathFillConvex(color);
-        }
-
-        if (endArrowSize > 0.0f)
-        {
-            const auto    end_dir = ImNormalized(endDirHint ? -*endDirHint : ImCubicBezierTangent(curve.P0, curve.P1, curve.P2, curve.P3, 1.0f));
-            const auto    end_n   = ImVec2(  -end_dir.y,   end_dir.x);
-            const auto half_width = endArrowWidth * 0.5f;
-            const auto tip        = curve.P3 + end_dir * endArrowSize;
-
-            drawList->PathLineTo(curve.P3 + end_n * ImMax(half_width, half_thickness));
-            drawList->PathLineTo(curve.P3 - end_n * ImMax(half_width, half_thickness));
-            drawList->PathLineTo(tip);
-            drawList->PathFillConvex(color);
-        }
+        drawList->PathLineTo(curve.P0 - start_n * ImMax(half_width, half_thickness));
+        drawList->PathLineTo(curve.P0 + start_n * ImMax(half_width, half_thickness));
+        drawList->PathLineTo(tip);
+        drawList->PathFillConvex(color);
     }
-    else
+
+    if (endArrowSize > 0.0f)
     {
-        if (startArrowSize > 0.0f)
-        {
-            const auto start_dir  = ImNormalized(ImCubicBezierTangent(curve.P0, curve.P1, curve.P2, curve.P3, 0.0f));
-            const auto start_n    = ImVec2(-start_dir.y, start_dir.x);
-            const auto half_width = startArrowWidth * 0.5f;
-            const auto tip        = curve.P0 - start_dir * startArrowSize;
+        const auto    end_dir = ImNormalized(endDirHint ? -*endDirHint : ImCubicBezierTangent(curve.P0, curve.P1, curve.P2, curve.P3, 1.0f));
+        const auto    end_n   = ImVec2(  -end_dir.y,   end_dir.x);
+        const auto half_width = endArrowWidth * 0.5f;
+        const auto tip        = curve.P3 + end_dir * endArrowSize;
 
-            if (half_width > half_thickness)
-                drawList->PathLineTo(curve.P0 - start_n * half_width);
-            drawList->PathLineTo(tip);
-            if (half_width > half_thickness)
-                drawList->PathLineTo(curve.P0 + start_n * half_width);
-        }
-
-        ImDrawList_PathBezierOffset(drawList, half_thickness, curve.P0, curve.P1, curve.P2, curve.P3);
-
-        if (endArrowSize > 0.0f)
-        {
-            const auto    end_dir = ImNormalized(ImCubicBezierTangent(curve.P0, curve.P1, curve.P2, curve.P3, 1.0f));
-            const auto    end_n   = ImVec2(  -end_dir.y,   end_dir.x);
-            const auto half_width = endArrowWidth * 0.5f;
-            const auto tip        = curve.P3 + end_dir * endArrowSize;
-
-            if (half_width > half_thickness)
-                drawList->PathLineTo(curve.P3 + end_n * half_width);
-            drawList->PathLineTo(tip);
-            if (half_width > half_thickness)
-                drawList->PathLineTo(curve.P3 - end_n * half_width);
-        }
-
-        ImDrawList_PathBezierOffset(drawList, half_thickness, curve.P3, curve.P2, curve.P1, curve.P0);
-
-        ImDrawList_PathStrokeClosed(drawList, color, strokeThickness);
+        drawList->PathLineTo(curve.P3 + end_n * ImMax(half_width, half_thickness));
+        drawList->PathLineTo(curve.P3 - end_n * ImMax(half_width, half_thickness));
+        drawList->PathLineTo(tip);
+        drawList->PathFillConvex(color);
     }
 }
 
@@ -1010,7 +950,7 @@ void ed::Link::Draw(ImDrawList* drawList, ImU32 color, float extraThickness) con
         m_StartPin && m_StartPin->m_ArrowWidth > 0.0f ? m_StartPin->m_ArrowWidth + extraThickness : 0.0f,
           m_EndPin &&   m_EndPin->m_ArrowSize  > 0.0f ?   m_EndPin->m_ArrowSize  + extraThickness : 0.0f,
           m_EndPin &&   m_EndPin->m_ArrowWidth > 0.0f ?   m_EndPin->m_ArrowWidth + extraThickness : 0.0f,
-        true, color, 1.0f,
+        color,
         m_StartPin && m_StartPin->m_SnapLinkToDir ? &m_StartPin->m_Dir : nullptr,
         m_EndPin   &&   m_EndPin->m_SnapLinkToDir ?   &m_EndPin->m_Dir : nullptr);
 }
