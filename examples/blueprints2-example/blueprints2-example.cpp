@@ -1109,12 +1109,31 @@ private:
         return true;
     }
 
+    // On Linux and macOS the dialogs build shell command lines from their arguments, and
+    // a shell expands '$' and '`' in them, so text from files stays out: the error message
+    // is fixed, and a dialog starts in the document's directory only when its name has none
+    // of those characters.
+    static string DialogDirectory(string_view documentPath)
+    {
+        auto separator = documentPath.find_last_of("\\/");
+        if (separator == string_view::npos)
+            return {};
+
+        auto directory = documentPath.substr(0, separator + 1).to_string();
+# if !defined(_WIN32)
+        if (directory.find_first_of("$`\"'\\") != string::npos)
+            return {};
+# endif
+        return directory;
+    }
+
     bool File_Open()
     {
         const char* filterPatterns[1] = { "*.bp" };
+        auto directory = m_Document ? DialogDirectory(m_Document->m_Path) : string();
         auto path = tinyfd_openFileDialog(
             "Open Blueprint...",
-            m_Document ? m_Document->m_Path.c_str() : nullptr,
+            directory.empty() ? nullptr : directory.c_str(),
             1, filterPatterns,
             "Blueprint Files (*.bp)", 0);
         if (!path)
@@ -1125,7 +1144,7 @@ private:
         {
             tinyfd_messageBox(
                 (string(GetName()) + " - Open Blueprint...").c_str(),
-                error.c_str(),
+                "The blueprint could not be loaded. The log says which file failed.",
                 "ok", "error", 1);
 
             LOGE("%s", error.c_str());
@@ -1198,9 +1217,10 @@ private:
     bool File_SaveAs()
     {
         const char* filterPatterns[1] = { "*.bp" };
+        auto directory = DialogDirectory(m_Document->m_Path);
         auto path = tinyfd_saveFileDialog(
             "Save Blueprint...",
-            m_Document->m_Path.c_str(),
+            directory.empty() ? nullptr : directory.c_str(),
             1, filterPatterns,
             "Blueprint Files (*.bp)");
         if (!path)
