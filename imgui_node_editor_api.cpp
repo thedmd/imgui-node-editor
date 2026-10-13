@@ -636,6 +636,19 @@ bool ax::NodeEditor::SetSelection(const NodeId* nodes, int nodeCount, const Link
     return CurrentEditor()->SetSelection(nodes, nodeCount, links, linkCount);
 }
 
+const char* ax::NodeEditor::FormatNodeState(const NodeState& state, size_t* outSize)
+{
+    return CurrentEditor()->FormatNodeState(state, outSize);
+}
+
+bool ax::NodeEditor::ParseNodeState(const char* data, size_t size, NodeState* state)
+{
+    IM_ASSERT(data && state);
+    if (!data || !state)
+        return false;
+    return ax::NodeEditor::Detail::EditorContext::ParseNodeState(data, size, *state);
+}
+
 bool ax::NodeEditor::BeginEdits()
 {
     return CurrentEditor()->BeginEdits();

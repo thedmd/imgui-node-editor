@@ -597,6 +597,9 @@ v0.10.0 (WIP):
         BeginEdits(), QueryEdit() and EndEdits() give each drag, group resize and selection change with the state before
         and after it; navigation too, with Config::ReportNavigationEdits.
 
+    NEW: Editor: Add FormatNodeState() and ParseNodeState()
+        A node's state as text, in the format 0.9's Config::SaveNodeSettings gave, for documents that keep node layout as text.
+
 v0.9.3 (2023-10-14):
 
     CHANGE: Canvas: Use ImDrawCallback_ImCanvas macro as draw callback sentinel (#256), thanks @nspitko

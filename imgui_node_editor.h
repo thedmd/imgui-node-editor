@@ -445,6 +445,11 @@ IMGUI_NODE_EDITOR_API ViewState GetViewState();                                 
 IMGUI_NODE_EDITOR_API bool      SetViewState(const ViewState& state, float duration = 0.0f); // keeps the zoom within the zoom levels
 IMGUI_NODE_EDITOR_API bool      SetSelection(const NodeId* nodes, int nodeCount, const LinkId* links, int linkCount); // skips unknown objects and objects being deleted; links only without nodes; before the first frame, also nodes not created yet
 
+// A node's state as text, in the format 0.9's Config::SaveNodeSettings gave, for
+// documents that keep node layout as text. The text has no node ID.
+IMGUI_NODE_EDITOR_API const char* FormatNodeState(const NodeState& state, size_t* outSize = nullptr); // zero-terminated, valid until the next call
+IMGUI_NODE_EDITOR_API bool        ParseNodeState(const char* data, size_t size, NodeState* state);   // also what 0.9 wrote; leaves state->Id alone; false for text that doesn't parse, changing nothing; size 0: zero-terminated
+
 // Edits the user completed in the last frame, in order: a drag or resize once it ends,
 // a selection change, and navigation once the view settles. Changes the application
 // makes aren't reported. Call EndEdits() only when BeginEdits() returned true, and

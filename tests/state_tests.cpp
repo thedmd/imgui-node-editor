@@ -4,6 +4,7 @@
 # include "harness.h"
 # include <cfloat>
 # include <cmath>
+# include <cstring>
 # include <limits>
 # include <string>
 # include <vector>
@@ -413,4 +414,90 @@ TEST_CASE(SetSelectionBeforeFirstFrame, "state.set_selection_before_the_first_fr
     session.Run(3);
     test::Check(changed, "SetSelection() takes the selection before the first frame");
     test::Check(session.Use([] { return ed::IsNodeSelected(2) && ed::GetSelectedObjectCount() == 1; }), "node 2 is selected once it exists");
+}
+
+TEST_CASE(NodeStateTextRoundTrip, "state.node_state_text_round_trip", "BPN-8", test::TestFlags_None)
+{
+    test::Session session(UnnamedConfig());
+
+    ed::NodeState states[3];
+    states[0].Id = 1; states[0].Position = ImVec2(100.0f, 100.0f);
+    states[1].Id = 2; states[1].Position = ImVec2(0.1f, -2.5e-3f); states[1].ZPosition = -3.75f;
+    states[2].Id = 3; states[2].Position = ImVec2(-249999.75f, 1234.5678f); states[2].GroupSize = ImVec2(300.25f, 0.1f); states[2].ZPosition = 1e-7f;
+
+    for (const auto& state : states)
+    {
+        size_t size = 0;
+        const auto text = session.Use([&] { return std::string(ed::FormatNodeState(state, &size)); });
+        ed::NodeState parsed;
+        parsed.Id = 42;
+        const bool read = session.Use([&] { return ed::ParseNodeState(text.c_str(), text.size(), &parsed); });
+        test::Check(size == text.size(), "the size of %s: %d", text.c_str(), static_cast<int>(size));
+        test::Check(read && parsed.Position.x == state.Position.x && parsed.Position.y == state.Position.y && parsed.GroupSize.x == state.GroupSize.x
+            && parsed.GroupSize.y == state.GroupSize.y && parsed.ZPosition == state.ZPosition, "%s reads back exactly", text.c_str());
+        test::Check(parsed.Id == ed::NodeId(42), "and leaves the ID alone: %d", static_cast<int>(parsed.Id.Get()));
+    }
+}
+
+TEST_CASE(NodeStateText09, "state.node_state_text_is_what_0_9_wrote", "API-9", test::TestFlags_None)
+{
+    test::Session session(UnnamedConfig());
+    auto format = [&](const ed::NodeState& state) { return session.Use([&] { return std::string(ed::FormatNodeState(state)); }); };
+
+    // 0.9's per-node callbacks gave the first two; the z position is new.
+    ed::NodeState node, group, raised;
+    node.Id   = 1; node.Position   = ImVec2(100.0f, 100.0f);
+    group.Id  = 3; group.Position  = ImVec2(100.0f, 400.0f); group.GroupSize = ImVec2(300.0f, 200.0f);
+    raised.Id = 2; raised.Position = ImVec2(400.0f, 100.0f); raised.ZPosition = 2.0f;
+    const auto nodeText   = format(node);
+    const auto groupText  = format(group);
+    const auto raisedText = format(raised);
+    test::Check(nodeText == R"({"location":{"x":100,"y":100}})", "a node: %s", nodeText.c_str());
+    test::Check(groupText == R"({"group_size":{"x":300,"y":200},"location":{"x":100,"y":400}})", "a group: %s", groupText.c_str());
+    test::Check(raisedText == R"({"location":{"x":400,"y":100},"z":2})", "a node with a z position: %s", raisedText.c_str());
+
+    // Laid out by hand, zero-terminated, and without a z position, which then is 0.
+    ed::NodeState parsed;
+    parsed.ZPosition = 5.0f;
+    const char* written = "{ \"location\": { \"x\": 10.5, \"y\": -20 },\n  \"group_size\": { \"x\": 300, \"y\": 200 } }";
+    const bool read = session.Use([&] { return ed::ParseNodeState(written, 0, &parsed); });
+    test::Check(read && parsed.Position.x == 10.5f && parsed.Position.y == -20.0f && parsed.GroupSize.x == 300.0f && parsed.GroupSize.y == 200.0f && parsed.ZPosition == 0.0f,
+        "text written elsewhere reads: (%g, %g), %g x %g, z %g", parsed.Position.x, parsed.Position.y, parsed.GroupSize.x, parsed.GroupSize.y, parsed.ZPosition);
+
+    // Only 'size' bytes are read.
+    const std::string buffer = nodeText + "and more";
+    const bool prefix = session.Use([&] { return ed::ParseNodeState(buffer.c_str(), nodeText.size(), &parsed); });
+    test::Check(prefix && parsed.Position.x == 100.0f && parsed.Position.y == 100.0f, "text inside a longer buffer reads");
+}
+
+TEST_CASE(NodeStateTextMalformed, "state.node_state_text_that_doesnt_parse_changes_nothing", "BPN-9", test::TestFlags_None)
+{
+    test::Session session(UnnamedConfig());
+    const char* const texts[] =
+    {
+        "",
+        "not json",
+        "[1, 2]",
+        "{}",
+        R"({"location":5})",
+        R"({"location":{"x":1}})",
+        R"({"location":{"x":"1","y":2}})",
+        R"({"location":{"x":1e300,"y":2}})",
+        R"({"location":{"x":1,"y":2},"group_size":{"x":true,"y":2}})",
+        R"({"location":{"x":1,"y":2},"z":"up"})",
+        R"({"location":{"x":1,"y":2},"z":-1e39})",
+        R"({"location":{"x":1,"y":2})",
+    };
+
+    for (const char* text : texts)
+    {
+        ed::NodeState state;
+        state.Id        = 7;
+        state.Position  = ImVec2(3.0f, 4.0f);
+        state.GroupSize = ImVec2(5.0f, 6.0f);
+        state.ZPosition = 7.0f;
+        const bool read = session.Use([&] { return ed::ParseNodeState(text, std::strlen(text), &state); });
+        test::Check(!read && state.Id == ed::NodeId(7) && state.Position.x == 3.0f && state.Position.y == 4.0f && state.GroupSize.x == 5.0f && state.GroupSize.y == 6.0f
+            && state.ZPosition == 7.0f, "'%s' is refused, and changes nothing", text);
+    }
 }
