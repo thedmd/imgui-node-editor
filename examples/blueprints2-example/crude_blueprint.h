@@ -74,6 +74,9 @@ struct PinValue
 
     PinType GetType() const { return static_cast<PinType>(m_Value.index()); }
 
+    bool operator==(const PinValue& other) const { return m_Value == other.m_Value; }
+    bool operator!=(const PinValue& other) const { return m_Value != other.m_Value; }
+
     template <typename T>
     T& As()
     {

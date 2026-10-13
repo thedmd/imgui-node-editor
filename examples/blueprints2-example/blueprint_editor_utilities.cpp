@@ -132,17 +132,20 @@ bool blueprint_editor_utilities::EditPinValue(Pin& pin)
     return true;
 }
 
-void blueprint_editor_utilities::DrawPinValueWithEditor(Pin& pin)
+bool blueprint_editor_utilities::DrawPinValueWithEditor(Pin& pin)
 {
     auto storage = ImGui::GetStateStorage();
     auto activePinId = storage->GetInt(ImGui::GetID("PinValueEditor_ActivePinId"), false);
 
+    bool changed = false;
     if (static_cast<uint32_t>(activePinId) == pin.m_Id)
     {
+        const auto value = pin.GetValue();
         if (EditPinValue(pin))
         {
             ax::NodeEditor::EnableShortcuts(true);
             activePinId = 0;
+            changed = pin.GetValue() != value;
         }
     }
     else
@@ -152,7 +155,7 @@ void blueprint_editor_utilities::DrawPinValueWithEditor(Pin& pin)
         if (!DrawPinValue(pin.GetValue()))
         {
             bg.Discard();
-            return;
+            return false;
         }
 
         // Draw invisible button over pin value which triggers an editor if clicked
@@ -172,6 +175,8 @@ void blueprint_editor_utilities::DrawPinValueWithEditor(Pin& pin)
     }
 
     storage->SetInt(ImGui::GetID("PinValueEditor_ActivePinId"), activePinId);
+
+    return changed;
 }
 
 

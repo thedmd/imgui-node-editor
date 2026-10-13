@@ -662,7 +662,11 @@ private:
                 if (!blueprint.HasPinAnyLink(*pin))
                 {
                     ImGui::SameLine();
-                    DrawPinValueWithEditor(*pin);
+                    if (DrawPinValueWithEditor(*pin))
+                    {
+                        auto transaction = m_Document->BeginUndoTransaction("Edit Value");
+                        transaction->AddAction("%" PRI_pin " value changed", FMT_pin(pin));
+                    }
                 }
 
                 ed::EndPin();
@@ -789,7 +793,10 @@ private:
                     auto transaction = document.BeginUndoTransaction("Create Link");
 
                     if (startPin->LinkTo(*endPin))
+                    {
                         LOGV("[HandleCreateAction] %" PRI_pin " linked with %" PRI_pin, FMT_pin(startPin), FMT_pin(endPin));
+                        transaction->AddAction("%" PRI_pin " linked with %" PRI_pin, FMT_pin(startPin), FMT_pin(endPin));
+                    }
                     else
                         transaction->Discard();
                 }
