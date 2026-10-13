@@ -1447,7 +1447,7 @@ struct EditorContext
     int BreakLinks(NodeId nodeId);
     int BreakLinks(PinId pinId);
 
-    void FindLinksForNode(NodeId nodeId, vector<Link*>& result, bool add = false);
+    void FindLinksBetweenNodes(const vector<ObjectWrapper<Node>>& nodes, vector<Link*>& result); // live links, 'nodes' sorted by ID
     void FindLinksForDeletedPins(vector<Link*>& result); // live or not
 
     bool PinHadAnyLinks(PinId pinId);

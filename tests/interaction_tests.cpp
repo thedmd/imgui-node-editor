@@ -846,6 +846,51 @@ TEST_CASE(ActionContextLists, "interaction.action_context_lists_match_its_size",
     test::Check(group.Size == 4 && group.Nodes == 3 && group.Links == 1, "group 3 selected: size %d, %d nodes, %d links", group.Size, group.Nodes, group.Links);
 }
 
+TEST_CASE(CopyContextLinks, "interaction.copy_context_takes_links_between_its_nodes", "PERF-5", test::TestFlags_None)
+{
+    // Nodes 1, 2 and 3 in a row, link 100 from node 1 to node 2, and link 101 from
+    // node 2 to node 3.
+    std::vector<uintptr_t> copiedLinks;
+    test::Storage storage;
+    test::Session session(&storage);
+    session.DefaultContent = [&](int frame)
+    {
+        for (uintptr_t id = 1; id <= 3; ++id)
+        {
+            if (frame == 0)
+                ed::SetNodePosition(id, ImVec2(id * 200.0f, 100.0f));
+            ed::BeginNode(id);
+            ed::BeginPin(id * 10 + 1, ed::PinKind::Input);
+            ImGui::TextUnformatted("In");
+            ed::EndPin();
+            ed::BeginPin(id * 10 + 2, ed::PinKind::Output);
+            ImGui::TextUnformatted("Out");
+            ed::EndPin();
+            ed::EndNode();
+        }
+        ed::Link(100, 12, 21);
+        ed::Link(101, 22, 31);
+
+        if (ed::BeginShortcut())
+        {
+            if (ed::AcceptCopy())
+            {
+                ed::LinkId links[4];
+                const int count = ed::GetActionContextLinks(links, 4);
+                for (int i = 0; i < count; ++i)
+                    copiedLinks.push_back(links[i].Get());
+            }
+            ed::EndShortcut();
+        }
+    };
+    session.Run(3);
+    session.Click(ImVec2(900.0f, 600.0f));
+    session.Use([] { ed::SelectNode(1); ed::SelectNode(2, true); });
+    session.PressKey(ImGuiKey_C, true);
+
+    test::Check(copiedLinks.size() == 1 && copiedLinks[0] == 100, "nodes 1 and 2 selected: the copy takes link 100 only, of %d links", (int)copiedLinks.size());
+}
+
 TEST_CASE(ContextMenuClickOnNothing, "interaction.context_menu_click_on_nothing_blocks_nothing", "INT-15", test::TestFlags_None)
 {
     test::Storage storage;
