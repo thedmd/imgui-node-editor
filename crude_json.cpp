@@ -389,6 +389,32 @@ void value::dump(dump_context_t& context, int level) const
     }
 }
 
+static void append_utf8(string& result, unsigned long code_point)
+{
+    if (code_point < 0x80)
+    {
+        result.push_back(static_cast<char>(code_point));
+    }
+    else if (code_point < 0x800)
+    {
+        result.push_back(static_cast<char>(0xC0 | (code_point >> 6)));
+        result.push_back(static_cast<char>(0x80 | (code_point & 0x3F)));
+    }
+    else if (code_point < 0x10000)
+    {
+        result.push_back(static_cast<char>(0xE0 | (code_point >> 12)));
+        result.push_back(static_cast<char>(0x80 | ((code_point >> 6) & 0x3F)));
+        result.push_back(static_cast<char>(0x80 | (code_point & 0x3F)));
+    }
+    else
+    {
+        result.push_back(static_cast<char>(0xF0 | (code_point >> 18)));
+        result.push_back(static_cast<char>(0x80 | ((code_point >> 12) & 0x3F)));
+        result.push_back(static_cast<char>(0x80 | ((code_point >> 6) & 0x3F)));
+        result.push_back(static_cast<char>(0x80 | (code_point & 0x3F)));
+    }
+}
+
 struct value::parser
 {
     parser(const char* begin, const char* end)
@@ -559,60 +585,65 @@ private:
             return false;
     }
 
+    // Bytes other than escapes are taken as they are, so UTF-8 text stays UTF-8.
     bool accept_characters(string& result)
     {
-        int c;
-        while (accept_character(c))
+        while (!eof() && !expect('\"'))
         {
-            CRUDE_ASSERT(c < 128); // #todo: convert characters > 127 to UTF-8
-            result.push_back(static_cast<char>(c));
+            if (accept('\\'))
+            {
+                if (!accept_escape(result))
+                    return false;
+            }
+            else
+            {
+                result.push_back(static_cast<char>(peek()));
+                advance();
+            }
         }
 
         return true;
     }
 
-    bool accept_character(int& c)
+    bool accept_escape(string& result)
     {
-        auto s = state();
+        if (accept('\"')) { result.push_back('\"'); return true; }
+        if (accept('\\')) { result.push_back('\\'); return true; }
+        if (accept('/'))  { result.push_back('/');  return true; }
+        if (accept('b'))  { result.push_back('\b'); return true; }
+        if (accept('f'))  { result.push_back('\f'); return true; }
+        if (accept('n'))  { result.push_back('\n'); return true; }
+        if (accept('r'))  { result.push_back('\r'); return true; }
+        if (accept('t'))  { result.push_back('\t'); return true; }
 
-        if (accept('\\'))
-        {
-            return accept_escape(c);
-        }
-        else if (expect('\"'))
+        unsigned long code_point = 0;
+        if (!accept('u') || !accept_code_unit(code_point))
             return false;
 
-        // #todo: Handle UTF-8 sequences.
-        return s((c = peek()) >= 0) && advance();
-    }
-
-    bool accept_escape(int& c)
-    {
-        if (accept('\"')) { c = '\"'; return true; }
-        if (accept('\\')) { c = '\\'; return true; }
-        if (accept('/'))  { c = '/';  return true; }
-        if (accept('b'))  { c = '\b'; return true; }
-        if (accept('f'))  { c = '\f'; return true; }
-        if (accept('n'))  { c = '\n'; return true; }
-        if (accept('r'))  { c = '\r'; return true; }
-        if (accept('t'))  { c = '\t'; return true; }
-
-        auto s = state();
-
-        string hex;
-        hex.reserve(4);
-        if (s(accept('u') && accept_hex(hex) && accept_hex(hex) && accept_hex(hex) && accept_hex(hex)))
+        // A UTF-16 surrogate pair escapes a code point above 0xFFFF.
+        if (code_point >= 0xDC00 && code_point <= 0xDFFF)
+            return false;
+        if (code_point >= 0xD800 && code_point <= 0xDBFF)
         {
-            char* end = nullptr;
-            auto v = std::strtol(hex.c_str(), &end, 16);
-            if (end != hex.c_str() + hex.size())
+            unsigned long low = 0;
+            if (!accept('\\') || !accept('u') || !accept_code_unit(low) || low < 0xDC00 || low > 0xDFFF)
                 return false;
-
-            c = static_cast<int>(v);
-            return true;
+            code_point = 0x10000 + ((code_point - 0xD800) << 10) + (low - 0xDC00);
         }
 
-        return false;
+        append_utf8(result, code_point);
+        return true;
+    }
+
+    bool accept_code_unit(unsigned long& result)
+    {
+        string hex;
+        hex.reserve(4);
+        if (!(accept_hex(hex) && accept_hex(hex) && accept_hex(hex) && accept_hex(hex)))
+            return false;
+
+        result = std::strtoul(hex.c_str(), nullptr, 16);
+        return true;
     }
 
     bool accept_hex(string& result)
@@ -837,7 +868,7 @@ private:
     int peek() const
     {
         if (!eof())
-            return *m_Cursor;
+            return static_cast<unsigned char>(*m_Cursor);
         else
             return -1;
     }
