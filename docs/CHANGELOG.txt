@@ -640,6 +640,10 @@ v0.10.0 (WIP):
 
     CHANGE: Editor: Let ImCubicBezierSubdivide() and ImCubicBezierFixedStep() take temporary and const callables
 
+    CHANGE: crude_json: Take the namespace from CRUDE_JSON_NAMESPACE, crude_json by default
+        A program with another copy of crude_json can build the editor's in a namespace of its own, so both link.
+        The header relies on #pragma once alone, so that another copy's header doesn't hide it.
+
 v0.9.3 (2023-10-14):
 
     CHANGE: Canvas: Use ImDrawCallback_ImCanvas macro as draw callback sentinel (#256), thanks @nspitko

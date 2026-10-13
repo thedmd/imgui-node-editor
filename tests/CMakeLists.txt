@@ -83,6 +83,7 @@ set(_TestSources
     api_tests.cpp
     canvas_tests.cpp
     canvas_widget_tests.cpp
+    crude_json_renamed.cpp
     crude_json_tests.cpp
     deletion_tests.cpp
     draw_order_tests.cpp

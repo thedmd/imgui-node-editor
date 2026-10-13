@@ -47,7 +47,7 @@ namespace Detail {
 
 //------------------------------------------------------------------------------
 namespace ed = ax::NodeEditor::Detail;
-namespace json = crude_json;
+namespace json = CRUDE_JSON_NAMESPACE;
 
 
 //------------------------------------------------------------------------------
