@@ -1806,7 +1806,7 @@ void ed::EditorContext::End()
             {
                 movedNode->m_Bounds.Translate(offset);
                 movedNode->m_GroupBounds.Translate(offset);
-                MakeDirty(SaveReasonFlags::Position | SaveReasonFlags::User, movedNode);
+                MakeDirty(SaveReasonFlags::Position | SaveReasonFlags::User);
             }
         }
     }
@@ -1904,7 +1904,7 @@ bool ed::EditorContext::PlaceNode(Node* node, const ImVec2& position)
         return false;
 
     node->m_Bounds = bounds;
-    MakeDirty(NodeEditor::SaveReasonFlags::Position, node);
+    MakeDirty(NodeEditor::SaveReasonFlags::Position);
     return true;
 }
 
@@ -1918,7 +1918,7 @@ bool ed::EditorContext::ResizeGroup(Node* node, const ImVec2& size)
         return false;
 
     node->m_GroupBounds = groupBounds;
-    MakeDirty(NodeEditor::SaveReasonFlags::Size, node);
+    MakeDirty(NodeEditor::SaveReasonFlags::Size);
     return true;
 }
 
@@ -1928,7 +1928,7 @@ bool ed::EditorContext::ChangeZPosition(Node* node, float z)
         return false;
 
     node->m_ZPosition = z;
-    MakeDirty(NodeEditor::SaveReasonFlags::Position, node);
+    MakeDirty(NodeEditor::SaveReasonFlags::Position);
     return true;
 }
 
@@ -2326,7 +2326,7 @@ void ed::EditorContext::UpdateNodeState(Node* node)
     if (!settings || settings->m_WasUsed)
         return;
 
-    MakeDirty(SaveReasonFlags::AddNode, node);
+    MakeDirty(SaveReasonFlags::AddNode);
     settings->m_WasUsed = true;
 
     ApplyNodeSettings(node, *settings);
@@ -2337,7 +2337,7 @@ void ed::EditorContext::RemoveSettings(Object* object)
     if (auto node = object->AsNode())
     {
         m_Settings.RemoveNode(node->m_ID);
-        MakeDirty(SaveReasonFlags::RemoveNode, node);
+        MakeDirty(SaveReasonFlags::RemoveNode);
     }
 }
 
@@ -3075,11 +3075,6 @@ void ed::EditorContext::MakeDirty(SaveReasonFlags reason)
     m_Settings.MakeDirty(reason);
 }
 
-void ed::EditorContext::MakeDirty(SaveReasonFlags reason, Node* node)
-{
-    m_Settings.MakeDirty(reason, node);
-}
-
 ed::Link* ed::EditorContext::FindLinkAt(const ImVec2& p)
 {
     const auto extraThickness = c_LinkSelectThickness * GetView().InvScale();
@@ -3557,18 +3552,6 @@ static bool ParseVector(const ed::json::value& data, ImVec2& result)
     return true;
 }
 
-void ed::NodeSettings::ClearDirty()
-{
-    m_IsDirty     = false;
-    m_DirtyReason = SaveReasonFlags::None;
-}
-
-void ed::NodeSettings::MakeDirty(SaveReasonFlags reason)
-{
-    m_IsDirty     = true;
-    m_DirtyReason = m_DirtyReason | reason;
-}
-
 ed::json::value ed::NodeSettings::Serialize()
 {
     json::value result;
@@ -3666,36 +3649,16 @@ void ed::Settings::EraseNode(NodeId id)
         m_Nodes.erase(it);
 }
 
-void ed::Settings::ClearDirty(Node* node)
+void ed::Settings::ClearDirty()
 {
-    if (node)
-    {
-        auto settings = FindNode(node->m_ID);
-        IM_ASSERT(settings);
-        settings->ClearDirty();
-    }
-    else
-    {
-        m_IsDirty     = false;
-        m_DirtyReason = SaveReasonFlags::None;
-
-        for (auto& knownNode : m_Nodes)
-            knownNode.ClearDirty();
-    }
+    m_IsDirty     = false;
+    m_DirtyReason = SaveReasonFlags::None;
 }
 
-void ed::Settings::MakeDirty(SaveReasonFlags reason, Node* node)
+void ed::Settings::MakeDirty(SaveReasonFlags reason)
 {
     m_IsDirty     = true;
     m_DirtyReason = m_DirtyReason | reason;
-
-    if (node)
-    {
-        auto settings = FindNode(node->m_ID);
-        IM_ASSERT(settings);
-
-        settings->MakeDirty(reason);
-    }
 }
 
 std::string ed::Settings::Serialize(SettingsContentFlags content)
@@ -4860,10 +4823,10 @@ void ed::SizeAction::Flush()
     const bool resized = m_SizedNode->m_Bounds.GetSize() != m_StartBounds.GetSize() || m_SizedNode->m_GroupBounds.GetSize() != m_StartGroupBounds.GetSize();
 
     if (moved)
-        Editor->MakeDirty(SaveReasonFlags::Position | SaveReasonFlags::User, m_SizedNode);
+        Editor->MakeDirty(SaveReasonFlags::Position | SaveReasonFlags::User);
 
     if (resized)
-        Editor->MakeDirty(SaveReasonFlags::Size | SaveReasonFlags::User, m_SizedNode);
+        Editor->MakeDirty(SaveReasonFlags::Size | SaveReasonFlags::User);
 
     if (moved || resized)
     {
@@ -5102,7 +5065,7 @@ void ed::DragAction::Flush()
             continue;
 
         auto node = object->AsNode();
-        Editor->MakeDirty(SaveReasonFlags::Position | SaveReasonFlags::User, node);
+        Editor->MakeDirty(SaveReasonFlags::Position | SaveReasonFlags::User);
         if (!node)
             continue;
 
@@ -6596,7 +6559,7 @@ void ed::NodeBuilder::End()
     if (measured && m_CurrentNode->m_Bounds.GetSize() != m_NodeRect.GetSize())
     {
         m_CurrentNode->m_Bounds.Max = m_CurrentNode->m_Bounds.Min + m_NodeRect.GetSize();
-        Editor->MakeDirty(SaveReasonFlags::Size, m_CurrentNode);
+        Editor->MakeDirty(SaveReasonFlags::Size);
     }
 
     if (m_IsGroup)
@@ -6622,7 +6585,7 @@ void ed::NodeBuilder::End()
             m_CurrentNode->m_Bounds.Translate(offset);
             if (m_IsGroup)
                 m_CurrentNode->m_GroupBounds.Translate(offset);
-            Editor->MakeDirty(SaveReasonFlags::Position, m_CurrentNode);
+            Editor->MakeDirty(SaveReasonFlags::Position);
         }
     }
 
