@@ -1,0 +1,825 @@
+//------------------------------------------------------------------------------
+// Mouse and keyboard interaction.
+//------------------------------------------------------------------------------
+# include "harness.h"
+# include <cmath>
+# include <cstring>
+# include <vector>
+
+TEST_CASE(ShortcutsWhileTyping, "interaction.shortcuts_ignored_while_typing", "INT-2", test::TestFlags_KnownFailure)
+{
+    test::Storage storage;
+    test::Session session(&storage);
+    session.HostContext.Clipboard = "abc";
+
+    char   text[64]      = "";
+    bool   textActive    = false;
+    ImVec2 textOnScreen;
+    int    actions       = 0;
+    session.DefaultContent = [&](int frame)
+    {
+        if (frame == 0)
+            ed::SetNodePosition(1, ImVec2(100.0f, 100.0f));
+        if (frame == 1)
+            ed::SelectNode(1);
+        ed::BeginNode(1);
+        ImGui::Text("Node");
+        ImGui::SetNextItemWidth(150.0f);
+        ImGui::InputText("##text", text, sizeof(text));
+        textActive   = ImGui::IsItemActive();
+        textOnScreen = ed::CanvasToScreen((ImGui::GetItemRectMin() + ImGui::GetItemRectMax()) * 0.5f);
+        ed::EndNode();
+
+        if (ed::BeginShortcut())
+        {
+            if (textActive && (ed::AcceptCut() || ed::AcceptCopy() || ed::AcceptPaste() || ed::AcceptDuplicate() || ed::AcceptCreateNode()))
+                ++actions;
+        }
+        ed::EndShortcut();
+    };
+
+    session.Run(3);
+    session.Click(textOnScreen);
+    const bool selected = session.Use([] { return ed::IsNodeSelected(1); });
+    test::Check(textActive && selected, "text field inside the selected node is active: %d, node selected: %d", textActive, selected);
+
+    session.PressKey(ImGuiKey_V, true);
+    ImGui::GetIO().AddInputCharacter(' ');
+    session.PressKey(ImGuiKey_Space);
+    session.PressKey(ImGuiKey_D, true);
+    test::Check(strcmp(text, "abc ") == 0, "text field received the paste and the space: \"%s\"", text);
+
+    session.PressKey(ImGuiKey_C, true);
+    session.PressKey(ImGuiKey_X, true);
+    test::Check(session.HostContext.Clipboard == "abc " && text[0] == 0, "text field copied and cut its text: \"%s\", left \"%s\"", session.HostContext.Clipboard.c_str(), text);
+
+    test::Check(actions == 0, "Ctrl+X/C/V/D and Space typed into the text field reach no editor shortcut: %d did", actions);
+}
+
+TEST_CASE(GroupResizeFromPressPosition, "interaction.group_resize_uses_press_position", "INT-3", test::TestFlags_None)
+{
+    test::Storage storage;
+    test::Session session(&storage);
+
+    ImVec2 position, size, screenMin, screenMax;
+    session.DefaultContent = [&](int frame)
+    {
+        if (frame == 0)
+            ed::SetNodePosition(1, ImVec2(100.0f, 100.0f));
+        ed::BeginNode(1);
+        ImGui::Text("Group");
+        ed::Group(ImVec2(200.0f, 150.0f));
+        ed::EndNode();
+        position  = ed::GetNodePosition(1);
+        size      = ed::GetNodeSize(1);
+        screenMin = ed::CanvasToScreen(position);
+        screenMax = ed::CanvasToScreen(position + size);
+    };
+
+    session.Run(3);
+    const ImVec2 positionBefore = position;
+    const float  widthBefore    = size.x;
+
+    // Press 2 px inside the right edge, then move fast: the first frame past the
+    // drag threshold already lies outside the edge band.
+    const ImVec2 press(screenMax.x - 2.0f, (screenMin.y + screenMax.y) * 0.5f);
+    test::MouseMove(press);
+    session.Run(2);
+    test::MouseButton(0, true);
+    session.Run(1);
+    for (float dx : { 12.0f, 20.0f, 30.0f, 40.0f })
+    {
+        test::MouseMove(press + ImVec2(dx, 0.0f));
+        session.Run(1);
+    }
+    test::MouseButton(0, false);
+    session.Run(3);
+
+    test::Check(size.x >= widthBefore + 30.0f, "group widened by the drag: %g -> %g", widthBefore, size.x);
+    test::Check(position.x == positionBefore.x && position.y == positionBefore.y, "group not moved: (%g, %g) -> (%g, %g)", positionBefore.x, positionBefore.y, position.x, position.y);
+}
+
+namespace {
+
+struct ResizeResult
+{
+    ImVec2 PositionBefore, PositionAfter;
+    float  WidthBefore = 0.0f, WidthAfter = 0.0f;
+};
+
+// Presses 'button' 2 px inside the right edge of a 200 x 150 group, moves it by 'dx'
+// in the first dragging frame, and releases it. Alt keeps the edge off the grid.
+ResizeResult ResizeRightEdge(const ed::Config& config, int button, float dx)
+{
+    test::Session session(config);
+    ImVec2 position, size, screenMin, screenMax;
+    session.DefaultContent = [&](int frame)
+    {
+        if (frame == 0)
+            ed::SetNodePosition(1, ImVec2(100.0f, 100.0f));
+        ed::BeginNode(1);
+        ImGui::Text("Group");
+        ed::Group(ImVec2(200.0f, 150.0f));
+        ed::EndNode();
+        position  = ed::GetNodePosition(1);
+        size      = ed::GetNodeSize(1);
+        screenMin = ed::CanvasToScreen(position);
+        screenMax = ed::CanvasToScreen(position + size);
+    };
+    session.Run(3);
+
+    ResizeResult result;
+    result.PositionBefore = position;
+    result.WidthBefore    = size.x;
+
+    const ImVec2 press(screenMax.x - 2.0f, (screenMin.y + screenMax.y) * 0.5f);
+    ImGui::GetIO().AddKeyEvent(ImGuiMod_Alt, true);
+    test::MouseMove(press);
+    session.Run(2);
+    test::MouseButton(button, true);
+    session.Run(1);
+    test::MouseMove(press + ImVec2(dx, 0.0f));
+    session.Run(3);
+    test::MouseButton(button, false);
+    session.Run(2);
+    ImGui::GetIO().AddKeyEvent(ImGuiMod_Alt, false);
+    session.Run(1);
+
+    result.PositionAfter = position;
+    result.WidthAfter    = size.x;
+    return result;
+}
+
+void CheckResized(const ResizeResult& result, float dx, const char* what)
+{
+    test::Check(result.WidthAfter == result.WidthBefore + dx && result.PositionAfter.x == result.PositionBefore.x && result.PositionAfter.y == result.PositionBefore.y,
+        "%s by %g px resizes: width %g -> %g, position (%g, %g) -> (%g, %g)", what, dx, result.WidthBefore, result.WidthAfter,
+        result.PositionBefore.x, result.PositionBefore.y, result.PositionAfter.x, result.PositionAfter.y);
+}
+
+} // namespace
+
+TEST_CASE(GroupResizeFastFirstMove, "interaction.group_resize_after_fast_first_move", "INT-3", test::TestFlags_None)
+{
+    for (float dx : { 3.0f, 14.0f, -18.0f })
+    {
+        test::Storage storage;
+        CheckResized(ResizeRightEdge(test::MakeConfig(&storage), 0, dx), dx, "a first move from the right edge");
+    }
+}
+
+TEST_CASE(GroupResizeDragButton, "interaction.group_resize_follows_drag_button", "INT-4", test::TestFlags_None)
+{
+    test::Storage storage;
+    auto config = test::MakeConfig(&storage);
+    config.DragButtonIndex        = 1;
+    config.NavigateButtonIndex    = 2;
+    config.ContextMenuButtonIndex = 2;
+    CheckResized(ResizeRightEdge(config, 1, 40.0f), 40.0f, "a right-button drag of the right edge");
+}
+
+namespace {
+
+ed::Config ZoomConfig(bool smooth, std::initializer_list<float> levels = {})
+{
+    ed::Config config;
+    config.SettingsFile     = nullptr;
+    config.EnableSmoothZoom = smooth;
+    config.SmoothZoomPower  = 1.3f; // the default on all but Apple platforms, where it is 1.1
+    for (auto level : levels)
+        config.CustomZoomLevels.push_back(level);
+    return config;
+}
+
+const char* ZoomMode(bool smooth)
+{
+    return smooth ? "smooth" : "stepped";
+}
+
+void SmallNode(int)
+{
+    ed::BeginNode(1);
+    ImGui::TextUnformatted("Node");
+    ed::EndNode();
+}
+
+// The editor's zoom, 1 at 100%.
+float Zoom(test::Session& session)
+{
+    return session.Use([] { return test::CurrentZoom(); });
+}
+
+// One wheel event of 'delta' over the editor, and time to settle.
+void Wheel(test::Session& session, float delta)
+{
+    test::MouseWheel(delta);
+    session.Run(30);
+}
+
+} // namespace
+
+TEST_CASE(FractionalWheelZooms, "interaction.fractional_wheel_zooms", "INT-8", test::TestFlags_KnownFailure)
+{
+    // Precision touchpads and macOS trackpads send fractional wheel deltas.
+    for (bool smooth : { false, true })
+    {
+        test::Session session(ZoomConfig(smooth));
+        session.DefaultContent = SmallNode;
+        test::MouseMove(ImVec2(500.0f, 300.0f));
+        session.Run(10);
+        const float before = Zoom(session);
+        for (int i = 0; i < 20; ++i)
+        {
+            test::MouseWheel(0.25f);
+            session.Run(1);
+        }
+        session.Run(40);
+        const float after = Zoom(session);
+
+        test::Check(after > before * 1.05f, "%s: 20 wheel deltas of +0.25 zoom in: %g -> %g", ZoomMode(smooth), before, after);
+    }
+}
+
+namespace {
+
+// Node 1 at (100, 100), with the shortcuts the editor accepts counted.
+struct ShortcutScene
+{
+    int    Copies     = 0;
+    int    Duplicates = 0;
+    ImVec2 NodeOnScreen;
+
+    void Submit(int frame)
+    {
+        if (frame == 0)
+            ed::SetNodePosition(1, ImVec2(100.0f, 100.0f));
+        ed::BeginNode(1);
+        ImGui::Text("Node");
+        ed::EndNode();
+        NodeOnScreen = ed::CanvasToScreen(ed::GetNodePosition(1) + ed::GetNodeSize(1) * 0.5f);
+
+        if (ed::BeginShortcut())
+        {
+            if (ed::AcceptCopy())
+                ++Copies;
+            if (ed::AcceptDuplicate())
+                ++Duplicates;
+        }
+        ed::EndShortcut();
+    }
+};
+
+// Where the canvas origin is on screen, and the zoom.
+ImVec4 View(test::Session& session)
+{
+    return session.Use([]
+    {
+        const auto origin = ed::CanvasToScreen(ImVec2(0.0f, 0.0f));
+        return ImVec4(origin.x, origin.y, test::CurrentZoom(), 0.0f);
+    });
+}
+
+bool SameView(const ImVec4& lhs, const ImVec4& rhs)
+{
+    return lhs.x == rhs.x && lhs.y == rhs.y && lhs.z == rhs.z;
+}
+
+} // namespace
+
+TEST_CASE(DragAnchorSurvivesZoom, "interaction.dragged_node_stays_under_mouse_when_zooming", "INT-5", test::TestFlags_None)
+{
+    test::Storage storage;
+    test::Session session(&storage);
+    ShortcutScene scene;
+    session.DefaultContent = [&](int frame) { scene.Submit(frame); };
+    session.Run(3);
+
+    // Where on the node the mouse holds it, in canvas units.
+    auto grabOffset = [&]
+    {
+        return session.Use([] { return ed::ScreenToCanvas(ImGui::GetIO().MousePos) - ed::GetNodePosition(1); });
+    };
+
+    // Alt keeps the node off the grid.
+    const ImVec2 press = scene.NodeOnScreen;
+    ImGui::GetIO().AddKeyEvent(ImGuiMod_Alt, true);
+    test::MouseMove(press);
+    session.Run(2);
+    test::MouseButton(0, true);
+    session.Run(1);
+    for (int i = 1; i <= 10; ++i)
+    {
+        test::MouseMove(press + ImVec2(30.0f * i, 0.0f));
+        session.Run(1);
+    }
+    session.Run(2);
+    const auto before = grabOffset();
+
+    test::MouseWheel(1.0f);
+    session.Run(30);
+    const auto after = grabOffset();
+    const float zoom = session.Use([] { return test::CurrentZoom(); });
+
+    test::MouseButton(0, false);
+    session.Run(2);
+    ImGui::GetIO().AddKeyEvent(ImGuiMod_Alt, false);
+    session.Run(1);
+
+    // Node positions are whole canvas units, which at zoom 1.3 the mouse isn't on.
+    test::Check(zoom > 1.0f, "zoomed in during the drag: zoom %g", zoom);
+    test::Check(ImFabs(after.x - before.x) < 1.0f && ImFabs(after.y - before.y) < 1.0f, "the node stays where the mouse holds it: offset (%g, %g) -> (%g, %g)", before.x, before.y, after.x, after.y);
+}
+
+namespace {
+
+// Node 1, and the canvas point under 'Mouse' in each frame's view, measured
+// between ed::Begin() and ed::End(), where the editor reads the mouse.
+struct ViewProbe
+{
+    ShortcutScene Scene;
+    ImVec2        Mouse = ImVec2(500.0f, 300.0f);
+    ImVec2        UnderMouse;
+
+    void Submit(int frame)
+    {
+        Scene.Submit(frame);
+        UnderMouse = ed::ScreenToCanvas(Mouse);
+    }
+};
+
+float Distance(const ImVec2& a, const ImVec2& b)
+{
+    return ImSqrt(ImLengthSqr(a - b));
+}
+
+} // namespace
+
+TEST_CASE(PanStopsZoomAnimation, "interaction.pan_after_wheel_doesnt_drift", "INT-6", test::TestFlags_None)
+{
+    test::Storage storage;
+    test::Session session(&storage);
+    ViewProbe probe;
+    session.DefaultContent = [&](int frame) { probe.Submit(frame); };
+    test::MouseMove(probe.Mouse);
+    session.Run(5);
+
+    // A right-drag starts while the zoom animation of a wheel notch is playing.
+    test::MouseWheel(1.0f);
+    session.Run(1);
+    test::MouseButton(1, true);
+    session.Run(1);
+    probe.Mouse = probe.Mouse + ImVec2(40.0f, 0.0f);
+    test::MouseMove(probe.Mouse);
+    session.Run(2);
+
+    // The mouse holds still: so does the view.
+    const auto held = probe.UnderMouse;
+    float drift = 0.0f;
+    for (int i = 0; i < 15; ++i)
+    {
+        session.Run(1);
+        drift = ImMax(drift, Distance(probe.UnderMouse, held));
+    }
+    test::MouseButton(1, false);
+    session.Run(2);
+
+    test::Check(drift < 0.5f, "the point under a still mouse doesn't move once the pan started: %g canvas units", drift);
+}
+
+TEST_CASE(ZoomAnchorDuringAnimation, "interaction.second_wheel_notch_zooms_at_the_mouse", "INT-12", test::TestFlags_None)
+{
+    // Smooth zoom's 1.3 steps keep the rounding of the view origin to whole
+    // pixels below the tolerance.
+    test::Storage storage;
+    auto config = test::MakeConfig(&storage);
+    config.EnableSmoothZoom = true;
+    config.SmoothZoomPower  = 1.3f;
+    test::Session session(config);
+    session.Settings = &storage;
+    ViewProbe probe;
+    session.DefaultContent = [&](int frame) { probe.Submit(frame); };
+    probe.Mouse = ImVec2(400.0f, 300.0f);
+    test::MouseMove(probe.Mouse);
+    session.Run(5);
+
+    test::MouseWheel(1.0f);
+    session.Run(2);
+    probe.Mouse = ImVec2(600.0f, 350.0f);
+    test::MouseMove(probe.Mouse);
+    session.Run(1);
+
+    // ImGui handles a wheel event queued after a mouse move one frame later, so
+    // this notch comes 3 frames after the first one, with the animation running.
+    test::MouseWheel(1.0f);
+    session.Run(1);
+    const auto anchor = probe.UnderMouse;
+    session.Run(30);
+
+    const float error = Distance(probe.UnderMouse, anchor);
+    test::Check(error < 0.5f, "the second notch zooms around the point under the mouse: off by %g canvas units", error);
+}
+
+namespace {
+
+// Node 2 holds pin 'pinId' in front of 'pinContent'; node 1, submitted after it and
+// drawn on top, is dragged by its title. Reports whether node 1 moved and a link was offered.
+struct DragOverPinResult
+{
+    bool Moved   = false;
+    bool Offered = false;
+};
+
+DragOverPinResult DragNodeAbovePin(uintptr_t pinId, bool emptyPin)
+{
+    test::Storage storage;
+    test::Session session(&storage);
+    ImVec2 titleOnScreen;
+    bool   offered = false;
+    session.DefaultContent = [&](int frame)
+    {
+        if (frame == 0)
+        {
+            ed::SetNodePosition(2, ImVec2(400.0f, 100.0f));
+            ed::SetNodePosition(1, ImVec2(100.0f, 100.0f));
+        }
+        ed::BeginNode(2);
+        ImGui::TextUnformatted("Node 2");
+        ed::BeginPin(pinId, ed::PinKind::Input);
+        if (!emptyPin)
+            ImGui::TextUnformatted("In");
+        ed::EndPin();
+        ed::EndNode();
+
+        ed::BeginNode(1);
+        ImGui::TextUnformatted("Node 1");
+        titleOnScreen = ed::CanvasToScreen((ImGui::GetItemRectMin() + ImGui::GetItemRectMax()) * 0.5f);
+        ed::EndNode();
+
+        if (ed::BeginCreate())
+        {
+            ed::PinId start, end;
+            if (ed::QueryNewLink(&start, &end) || ed::QueryNewNode(&start))
+                offered = true;
+        }
+        ed::EndCreate();
+    };
+    session.Run(3);
+
+    const auto before = session.Use([] { return ed::GetNodePosition(1); });
+    session.Drag(titleOnScreen, titleOnScreen + ImVec2(64.0f, 32.0f));
+    const auto after = session.Use([] { return ed::GetNodePosition(1); });
+
+    DragOverPinResult result;
+    result.Moved   = after.x != before.x || after.y != before.y;
+    result.Offered = offered;
+    return result;
+}
+
+} // namespace
+
+TEST_CASE(NodeAndPinWithSameId, "interaction.node_and_pin_with_same_id", "CORE-3", test::TestFlags_None)
+{
+    const auto result = DragNodeAbovePin(1, false);
+    test::Check(result.Moved && !result.Offered, "dragging node 1 above pin 1 of node 2 moves the node (%d), without a link from the pin (%d)", result.Moved, result.Offered);
+}
+
+TEST_CASE(EmptyPinDoesntClick, "interaction.empty_pin_isnt_clicked", "CORE-4", test::TestFlags_None)
+{
+    const auto result = DragNodeAbovePin(10, true);
+    test::Check(result.Moved && !result.Offered, "dragging a node above an empty pin moves the node (%d), without a link from the pin (%d)", result.Moved, result.Offered);
+}
+
+TEST_CASE(EmptyNodeDoesntClick, "interaction.empty_node_isnt_clicked", "CORE-4", test::TestFlags_None)
+{
+    test::Storage storage;
+    test::Session session(&storage);
+    session.DefaultContent = [&](int frame)
+    {
+        if (frame == 0)
+            ed::SetNodePosition(3, ImVec2(100.0f, 100.0f));
+        ed::PushStyleVar(ed::StyleVar_NodePadding, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
+        ed::BeginNode(3);
+        ed::EndNode();
+        ed::PopStyleVar();
+    };
+    test::MouseMove(ImVec2(900.0f, 600.0f));
+    session.Run(10);
+
+    const bool selected = session.Use([] { return ed::IsNodeSelected(3); });
+    test::Check(!selected, "without any click, an empty node isn't selected");
+}
+
+TEST_CASE(BackgroundDoubleClickButtons, "interaction.background_double_click_reports_button_index", "CORE-6", test::TestFlags_None)
+{
+    test::Storage storage;
+    auto config = test::MakeConfig(&storage);
+    config.SelectButtonIndex   = 1;
+    config.NavigateButtonIndex = 2;
+    test::Session session(config);
+    session.DefaultContent = SmallNode;
+    test::MouseMove(ImVec2(900.0f, 600.0f));
+    session.Run(3);
+
+    int reported[3] = { -2, -2, -2 };
+    for (int button = 0; button < 3; ++button)
+    {
+        for (int click = 0; click < 2; ++click)
+        {
+            test::MouseButton(button, true);
+            session.Run(1);
+            if (click == 1)
+                reported[button] = session.Use([] { return ed::IsBackgroundDoubleClicked() ? (int)ed::GetBackgroundDoubleClickButtonIndex() : -1; });
+            test::MouseButton(button, false);
+            session.Run(1);
+        }
+        session.Run(30);
+    }
+
+    test::Check(reported[0] == 0 && reported[1] == 1 && reported[2] == 2, "left, right and middle double-clicks report %d, %d and %d", reported[0], reported[1], reported[2]);
+}
+
+TEST_CASE(ActionContextLists, "interaction.action_context_lists_match_its_size", "INT-10", test::TestFlags_None)
+{
+    // Group 3 holds node 1, linked to node 2 by link 100.
+    struct Context { int Size = -1, Nodes = -1, Links = -1; };
+    Context copied;
+    ImVec2  nodeOnScreen;
+    test::Storage storage;
+    test::Session session(&storage);
+    session.DefaultContent = [&](int frame)
+    {
+        if (frame == 0)
+        {
+            ed::SetNodePosition(3, ImVec2(50.0f, 50.0f));
+            ed::SetNodePosition(1, ImVec2(100.0f, 120.0f));
+            ed::SetNodePosition(2, ImVec2(300.0f, 120.0f));
+        }
+        ed::BeginNode(3);
+        ImGui::TextUnformatted("Group");
+        ed::Group(ImVec2(450.0f, 200.0f));
+        ed::EndNode();
+
+        ed::BeginNode(1);
+        ImGui::TextUnformatted("Node 1");
+        ed::BeginPin(11, ed::PinKind::Output);
+        ImGui::TextUnformatted("Out");
+        ed::EndPin();
+        ed::EndNode();
+        nodeOnScreen = ed::CanvasToScreen(ed::GetNodePosition(1) + ImVec2(10.0f, 8.0f));
+
+        ed::BeginNode(2);
+        ImGui::TextUnformatted("Node 2");
+        ed::BeginPin(21, ed::PinKind::Input);
+        ImGui::TextUnformatted("In");
+        ed::EndPin();
+        ed::EndNode();
+
+        ed::Link(100, 11, 21);
+
+        if (ed::BeginShortcut())
+        {
+            if (ed::AcceptCopy())
+                copied = { ed::GetActionContextSize(), ed::GetActionContextNodes(nullptr, 0), ed::GetActionContextLinks(nullptr, 0) };
+        }
+        ed::EndShortcut();
+    };
+    session.Run(3);
+    session.Click(ImVec2(900.0f, 600.0f));
+
+    auto copy = [&]
+    {
+        copied = Context();
+        session.PressKey(ImGuiKey_C, true);
+        return copied;
+    };
+
+    test::MouseMove(nodeOnScreen);
+    session.Run(2);
+    const auto hovered = copy();
+    session.Use([] { ed::SelectNode(1); ed::SelectNode(2, true); });
+    const auto selected = copy();
+    session.Use([] { ed::SelectNode(3); });
+    const auto group = copy();
+
+    test::Check(hovered.Size == 1 && hovered.Nodes == 1 && hovered.Links == 0, "nothing selected, node 1 hovered: size %d, %d nodes, %d links", hovered.Size, hovered.Nodes, hovered.Links);
+    test::Check(selected.Size == 3 && selected.Nodes == 2 && selected.Links == 1, "nodes 1 and 2 selected: size %d, %d nodes, %d links", selected.Size, selected.Nodes, selected.Links);
+    test::Check(group.Size == 4 && group.Nodes == 3 && group.Links == 1, "group 3 selected: size %d, %d nodes, %d links", group.Size, group.Nodes, group.Links);
+}
+
+TEST_CASE(ContextMenuClickOnNothing, "interaction.context_menu_click_on_nothing_blocks_nothing", "INT-15", test::TestFlags_None)
+{
+    test::Storage storage;
+    test::Session session(&storage);
+    session.HostContext.Context->IO.ConfigInputTrickleEventQueue = false; // a release and a key press in one frame
+    ShortcutScene scene;
+    session.DefaultContent = [&](int frame) { scene.Submit(frame); };
+    session.Run(3);
+    session.Click(scene.NodeOnScreen);
+
+    // Right-click outside the host window, which keeps its focus, and press Ctrl+C
+    // in the frame of the release.
+    test::MouseMove(ImVec2(1200.0f, 700.0f));
+    session.Run(2);
+    test::MouseButton(1, true);
+    session.Run(2);
+    test::Ctrl(true);
+    session.Run(2);
+    test::MouseButton(1, false);
+    test::Key(ImGuiKey_C, true);
+    session.Run(1);
+    test::Key(ImGuiKey_C, false);
+    test::Ctrl(false);
+    session.Run(2);
+
+    test::Check(scene.Copies == 1, "Ctrl+C in the frame a right-click on nothing ends copies: %d copies", scene.Copies);
+}
+
+TEST_CASE(FrontNodeWidgetsTakeHover, "interaction.widgets_of_a_front_node_take_the_click", "PR-337", test::TestFlags_None)
+{
+    // Node 2, drawn above node 1, covers part of node 1's button with its own.
+    test::Storage storage;
+    test::Session session(&storage);
+    bool   pressed[2] = {};
+    ImVec2 overlap;
+    session.DefaultContent = [&](int frame)
+    {
+        for (int i = 0; i < 2; ++i)
+        {
+            const auto id = ed::NodeId(i + 1);
+            if (frame == 0)
+                ed::SetNodePosition(id, ImVec2(100.0f + 50.0f * i, 100.0f + 20.0f * i));
+            ed::BeginNode(id);
+            if (ImGui::Button(i == 0 ? "Back" : "Front", ImVec2(120.0f, 40.0f)))
+                pressed[i] = true;
+            ed::EndNode();
+        }
+        overlap = ed::CanvasToScreen(ImVec2(190.0f, 138.0f));
+    };
+    session.Run(3);
+    session.Click(overlap);
+
+    test::Check(pressed[1] && !pressed[0], "a click where node 2 covers node 1 presses node 2's button: back %d, front %d", pressed[0], pressed[1]);
+}
+
+TEST_CASE(PopupOverFrontNode, "interaction.popup_of_a_back_node_over_a_front_node_takes_the_click", "PR-337", test::TestFlags_None)
+{
+    // Node 1 opens a popup that lies over node 2, which is drawn above node 1.
+    test::Storage storage;
+    test::Session session(&storage);
+    bool   pressed = false;
+    ImVec2 overNode2;
+    session.DefaultContent = [&](int frame)
+    {
+        for (int i = 0; i < 2; ++i)
+        {
+            const auto id = ed::NodeId(i + 1);
+            if (frame == 0)
+                ed::SetNodePosition(id, ImVec2(100.0f + 300.0f * i, 100.0f));
+            ed::BeginNode(id);
+            ImGui::Button(i == 0 ? "Back" : "Front", ImVec2(120.0f, 40.0f));
+            if (i == 0)
+            {
+                ed::Suspend();
+                if (frame == 3)
+                    ImGui::OpenPopup("Menu");
+                ImGui::SetNextWindowPos(overNode2);
+                if (ImGui::BeginPopup("Menu"))
+                {
+                    if (ImGui::Button("Item", ImVec2(100.0f, 30.0f)))
+                        pressed = true;
+                    ImGui::EndPopup();
+                }
+                ed::Resume();
+            }
+            ed::EndNode();
+        }
+        overNode2 = ed::CanvasToScreen(ImVec2(410.0f, 105.0f));
+    };
+    session.Run(6);
+    session.Click(overNode2 + ImVec2(50.0f, 20.0f));
+
+    test::Check(pressed, "the popup's button over node 2 takes the click");
+}
+
+TEST_CASE(PanFromAnotherWindow, "interaction.drag_from_another_window_doesnt_pan", "PR-238", test::TestFlags_None)
+{
+    test::Storage storage;
+    test::Session session(&storage);
+    session.HostSize = ImVec2(700.0f, 640.0f);
+    session.DefaultContent = SmallNode;
+    session.AfterHost = [&]
+    {
+        ImGui::SetNextWindowPos(ImVec2(800.0f, 40.0f));
+        ImGui::SetNextWindowSize(ImVec2(400.0f, 400.0f));
+        ImGui::Begin("Other", nullptr, session.HostFlags);
+        ImGui::End();
+    };
+    auto origin = [&] { return session.Use([] { return ed::CanvasToScreen(ImVec2(0.0f, 0.0f)); }); };
+    session.Run(3);
+    session.Click(ImVec2(400.0f, 300.0f));
+
+    // A right-drag from the other window into the editor.
+    const auto before = origin();
+    test::MouseMove(ImVec2(900.0f, 200.0f));
+    session.Run(2);
+    test::MouseButton(1, true);
+    session.Run(2);
+    for (int i = 1; i <= 10; ++i)
+    {
+        test::MouseMove(ImVec2(900.0f - 50.0f * i, 200.0f + 10.0f * i));
+        session.Run(1);
+    }
+    const auto afterOutside = origin();
+    test::MouseButton(1, false);
+    session.Run(3);
+
+    // A right-drag from the editor, with a fast first move.
+    test::MouseMove(ImVec2(300.0f, 300.0f));
+    session.Run(2);
+    test::MouseButton(1, true);
+    session.Run(1);
+    test::MouseMove(ImVec2(360.0f, 330.0f));
+    session.Run(3);
+    const auto afterInside = origin();
+    test::MouseButton(1, false);
+    session.Run(3);
+    session.AfterHost = nullptr;
+
+    test::Check(afterOutside.x == before.x && afterOutside.y == before.y, "a right-drag from another window doesn't pan the editor: origin (%g, %g) -> (%g, %g)", before.x, before.y, afterOutside.x, afterOutside.y);
+    test::Check(afterInside.x == afterOutside.x + 60.0f && afterInside.y == afterOutside.y + 30.0f, "a right-drag from the editor pans it from its first move: origin (%g, %g) -> (%g, %g)", afterOutside.x, afterOutside.y, afterInside.x, afterInside.y);
+}
+
+namespace {
+
+// Drags node 1 by 'offset' from (0, 0), with (0, 0) shown in the middle of the editor.
+// With 'pivots', the node has an input pin pivot at each of those distances below its
+// top. Returns where the grid put the node.
+ImVec2 DragNodeOnGrid(ImVec2 offset, std::vector<float> pivots = {})
+{
+    test::Storage storage;
+    storage.Global = R"({"view":{"scroll":{"x":-400,"y":-300},"zoom":1}})";
+    test::Session session(&storage);
+    ImVec2 titleOnScreen;
+    session.DefaultContent = [&](int frame)
+    {
+        if (frame == 0)
+            ed::SetNodePosition(1, ImVec2(0.0f, 0.0f));
+        ed::BeginNode(1);
+        ImGui::TextUnformatted("Node");
+        titleOnScreen = ed::CanvasToScreen((ImGui::GetItemRectMin() + ImGui::GetItemRectMax()) * 0.5f);
+        const auto top = ed::GetNodePosition(1);
+        for (size_t i = 0; i < pivots.size(); ++i)
+        {
+            ed::BeginPin(11 + i, ed::PinKind::Input);
+            ImGui::TextUnformatted("In");
+            ed::PinPivotRect(top + ImVec2(0.0f, pivots[i]), top + ImVec2(0.0f, pivots[i]));
+            ed::EndPin();
+        }
+        ed::EndNode();
+    };
+    session.Run(3);
+    const auto press = titleOnScreen;
+    session.Drag(press, press + offset);
+    return session.Use([] { return ed::GetNodePosition(1); });
+}
+
+} // namespace
+
+TEST_CASE(GroupHeaderPossibleActions, "interaction.group_header_offers_drag_and_keeps_its_menu", "CORE-18", test::TestFlags_None)
+{
+    // Over a group's header, resizing (Arrow, for the header), dragging (ResizeAll) and,
+    // on a right press, the node's context menu are all possible in one frame.
+    test::Storage storage;
+    test::Session session(&storage);
+    ImVec2     header;
+    bool       menu = false;
+    ed::NodeId menuNode;
+    session.DefaultContent = [&](int frame)
+    {
+        if (frame == 0)
+            ed::SetNodePosition(1, ImVec2(100.0f, 100.0f));
+        ed::BeginNode(1);
+        ImGui::TextUnformatted("Group");
+        ed::Group(ImVec2(300.0f, 200.0f));
+        ed::EndNode();
+        header = ed::CanvasToScreen(ed::GetNodePosition(1) + ImVec2(40.0f, 12.0f));
+
+        ed::NodeId node;
+        if (ed::ShowNodeContextMenu(&node))
+        {
+            menu     = true;
+            menuNode = node;
+        }
+    };
+    session.Run(3);
+    test::MouseMove(header);
+    session.Run(2);
+    const auto cursor = ImGui::GetMouseCursor();
+    test::MouseButton(1, true);
+    session.Run(2);
+    test::MouseButton(1, false);
+    session.Run(2);
+
+    test::Check(cursor == ImGuiMouseCursor_ResizeAll, "the cursor offers dragging the group: %d", static_cast<int>(cursor));
+    test::Check(menu && menuNode == ed::NodeId(1), "and a right-click opens the group's context menu");
+}
