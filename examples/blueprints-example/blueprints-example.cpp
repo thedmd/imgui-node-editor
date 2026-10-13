@@ -518,6 +518,8 @@ struct Example:
 
         config.SaveNodeSettings = [](ed::NodeId nodeId, const char* data, size_t size, ed::SaveReasonFlags reason, void* userPointer) -> bool
         {
+            IM_UNUSED(reason);
+
             auto self = static_cast<Example*>(userPointer);
 
             auto node = self->FindNode(nodeId);
@@ -899,6 +901,8 @@ struct Example:
 
     void OnFrame(float deltaTime) override
     {
+        IM_UNUSED(deltaTime);
+
         UpdateTouch();
 
         auto& io = ImGui::GetIO();
@@ -1283,7 +1287,7 @@ struct Example:
                 ImGui::PopStyleColor();
                 ImGui::Spring(1);
                 ImGui::EndVertical();
-                auto contentRect = ImGui_GetItemRect();
+                //auto contentRect = ImGui_GetItemRect();
 
                 ImGui::Spring(1, padding);
                 ImGui::EndHorizontal();

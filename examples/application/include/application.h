@@ -34,7 +34,7 @@ struct Application
 
     virtual void OnStart() {}
     virtual void OnStop() {}
-    virtual void OnFrame(float deltaTime) {}
+    virtual void OnFrame(float deltaTime) { IM_UNUSED(deltaTime); }
 
     virtual ImGuiWindowFlags GetWindowFlags() const;
 

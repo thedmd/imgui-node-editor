@@ -57,6 +57,8 @@ struct Example:
 
     void OnFrame(float deltaTime) override
     {
+        IM_UNUSED(deltaTime);
+
         static bool firstframe = true; // Used to position the nodes on startup
         auto& io = ImGui::GetIO();
 
