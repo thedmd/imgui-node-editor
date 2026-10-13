@@ -1707,7 +1707,7 @@ private:
     ImRect              m_ReportedView;         // where the last settled navigation left the view
 
     ImDrawList*         m_DrawList;
-    int                 m_ExternalChannel;
+    int                 m_CanvasChannel;        // the channel of the editor's splitter the canvas keeps its commands in
     ImDrawListSplitter  m_Splitter;
 };
 
