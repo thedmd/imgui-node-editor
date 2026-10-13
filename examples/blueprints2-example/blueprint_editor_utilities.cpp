@@ -114,7 +114,6 @@ bool blueprint_editor_utilities::EditPinValue(Pin& pin)
                     if (data->EventFlag == ImGuiInputTextFlags_CallbackResize)
                     {
                         auto& stringValue = *static_cast<string*>(data->UserData);
-                        ImVector<char>* my_str = (ImVector<char>*)data->UserData;
                         IM_ASSERT(stringValue.data() == data->Buf);
                         stringValue.resize(data->BufSize); // NB: On resizing calls, generally data->BufSize == data->BufTextLen + 1
                         data->Buf = (char*)stringValue.data();
@@ -138,7 +137,7 @@ void blueprint_editor_utilities::DrawPinValueWithEditor(Pin& pin)
     auto storage = ImGui::GetStateStorage();
     auto activePinId = storage->GetInt(ImGui::GetID("PinValueEditor_ActivePinId"), false);
 
-    if (activePinId == pin.m_Id)
+    if (static_cast<uint32_t>(activePinId) == pin.m_Id)
     {
         if (EditPinValue(pin))
         {
@@ -353,7 +352,6 @@ void blueprint_editor_utilities::DebugOverlay::DrawInputPin(const Pin& pin)
 
     // Put cursor on the left side of the Pin
     auto itemRectMin = ImGui::GetItemRectMin();
-    auto itemRectMax = ImGui::GetItemRectMax();
     ImGui::SetCursorScreenPos(ImVec2(itemRectMin.x, itemRectMin.y)
         - ImVec2(1.75f * ImGui::GetStyle().ItemSpacing.x, 0.0f));
 
@@ -427,12 +425,14 @@ void blueprint_editor_utilities::DebugOverlay::DrawOutputPin(const Pin& pin)
 
 void blueprint_editor_utilities::DebugOverlay::OnEvaluatePin(const Context& context, const Pin& pin)
 {
+    IM_UNUSED(context);
+
     auto nodeEditor = ax::NodeEditor::GetCurrentEditor();
     if (!nodeEditor)
         return;
 
     //if (pin.m_Link)
-        ax::NodeEditor::Flow(pin.m_Id);
+    ax::NodeEditor::Flow(pin.m_Id);
 }
 
 
@@ -733,6 +733,8 @@ void blueprint_editor_utilities::PinContextMenu::Open(Pin* pin /*= nullptr*/)
 
 void blueprint_editor_utilities::PinContextMenu::Show(Blueprint& blueprint)
 {
+    IM_UNUSED(blueprint);
+
     if (!ImGui::IsPopupOpen("##pin-context-menu"))
         return;
 

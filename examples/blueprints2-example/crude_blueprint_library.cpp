@@ -9,7 +9,7 @@ extern "C" __declspec(dllimport) void __stdcall OutputDebugStringA(const char* s
 
 crude_blueprint::PrintFunction crude_blueprint::PrintNode::s_PrintFunction = nullptr;
 
-crude_blueprint::FlowPin crude_blueprint::PrintNode::Execute(Context& context, FlowPin& entryPoint)
+crude_blueprint::FlowPin crude_blueprint::PrintNode::Execute(Context& context, FlowPin& /*entryPoint*/)
 {
     auto value = context.GetPinValue<string>(m_String);
 

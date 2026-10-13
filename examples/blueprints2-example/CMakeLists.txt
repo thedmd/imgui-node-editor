@@ -25,7 +25,8 @@ add_example_executable(blueprints2-example
     misc/nonstd.natvis
 )
 
-target_include_directories(blueprints2-example PRIVATE
+# Vendored headers, built with their own warnings.
+target_include_directories(blueprints2-example SYSTEM PRIVATE
     external/nonstd/include
     external/tinyfiledialogs/include
 )

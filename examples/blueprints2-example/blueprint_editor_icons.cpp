@@ -5,7 +5,6 @@
 void blueprint_editor_utilities::DrawIcon(ImDrawList* drawList, const ImVec2& a, const ImVec2& b, IconType type, bool filled, ImU32 color, ImU32 innerColor)
 {
           auto rect           = ImRect(a, b);
-          auto rect_x         = rect.Min.x;
           auto rect_y         = rect.Min.y;
           auto rect_w         = rect.Max.x - rect.Min.x;
           auto rect_h         = rect.Max.y - rect.Min.y;
@@ -49,7 +48,6 @@ void blueprint_editor_utilities::DrawIcon(ImDrawList* drawList, const ImVec2& a,
         const auto right  = canvas_x + canvas_w - canvas_w * 0.5f * 0.3f;
         const auto top    = canvas_y + canvas_h            * 0.5f * 0.2f;
         const auto bottom = canvas_y + canvas_h - canvas_h * 0.5f * 0.2f;
-        const auto center_x = (left + right) * 0.5f;
         const auto center_y = (top + bottom) * 0.5f;
         //const auto angle = AX_PI * 0.5f * 0.5f * 0.5f;
 
@@ -107,7 +105,6 @@ void blueprint_editor_utilities::DrawIcon(ImDrawList* drawList, const ImVec2& a,
 
         rect.Min.x    += rect_offset;
         rect.Max.x    += rect_offset;
-        rect_x        += rect_offset;
         rect_center_x += rect_offset * 0.5f;
         rect_center.x += rect_offset * 0.5f;
 
