@@ -80,6 +80,7 @@ set(_TestSources
     deletion_tests.cpp
     draw_order_tests.cpp
     flow_tests.cpp
+    forget_tests.cpp
     geometry_tests.cpp
     group_tests.cpp
     interaction_tests.cpp

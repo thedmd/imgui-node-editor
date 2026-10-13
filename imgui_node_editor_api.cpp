@@ -587,6 +587,11 @@ bool ax::NodeEditor::DeleteLink(LinkId linkId)
         return false;
 }
 
+bool ax::NodeEditor::ForgetNode(NodeId nodeId)
+{
+    return CurrentEditor()->ForgetNode(nodeId);
+}
+
 bool ax::NodeEditor::HasAnyLinks(NodeId nodeId)
 {
     return CurrentEditor()->HasAnyLinks(nodeId);
