@@ -532,6 +532,9 @@ v0.10.0 (WIP):
     BUGFIX: Examples: Forget node touches once they fade in the blueprints example
         Every node ever saved kept an entry, deleted nodes too.
 
+    BUGFIX: Examples: Initialize the header color of the blueprints example's node builder
+        End() read it for a first node without a header.
+
 v0.9.2 (2023-09-01):
 
     NEW: Editor: Add offset of hover/select to style (thanks @MultiPain)

@@ -22,6 +22,7 @@ util::BlueprintNodeBuilder::BlueprintNodeBuilder(ImTextureID texture, int textur
     HeaderTextureHeight(textureHeight),
     CurrentNodeId(0),
     CurrentStage(Stage::Invalid),
+    HeaderColor(IM_COL32_WHITE),
     HasHeader(false)
 {
 }
