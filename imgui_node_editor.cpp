@@ -3103,13 +3103,8 @@ ed::Control ed::EditorContext::BuildControl(bool allowOffscreen)
     if (!allowOffscreen && !m_IsHovered)
         return Control();
 
-# if IMGUI_VERSION_NUM >= 18836
     if (m_IsHoveredWithoutOverlapp)
         ImGui::SetItemKeyOwner(ImGuiKey_MouseWheelY);
-# else
-    if (m_IsHoveredWithoutOverlapp)
-        ImGui::SetItemUsingMouseWheel();
-# endif
 
     return Control(hotObject, activeObject, clickedObject, clickedButtonIndex, doubleClickedObject,
         isBackgroundHot, isBackgroundActive, backgroundClickButonIndex, backgroundDoubleClickButtonIndex);
