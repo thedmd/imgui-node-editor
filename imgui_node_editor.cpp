@@ -1322,28 +1322,17 @@ void ed::EditorContext::Begin(const char* id, const ImVec2& size)
     };
 
     if (hasDeleted(m_Nodes) || hasDeleted(m_Pins) || hasDeleted(m_Links))
-        ForgetDeletedObjects();
+        FreeDeletedObjects();
 
-    static auto resetAndCollect = [](auto& objects)
+    static auto reset = [](auto& objects)
     {
-        objects.erase(std::remove_if(objects.begin(), objects.end(), [](auto objectWrapper)
-        {
-            if (objectWrapper->m_DeleteOnNewFrame)
-            {
-                delete objectWrapper.m_Object;
-                return true;
-            }
-            else
-            {
-                objectWrapper->Reset();
-                return false;
-            }
-        }), objects.end());
+        for (auto& objectWrapper : objects)
+            objectWrapper->Reset();
     };
 
-    resetAndCollect(m_Nodes);
-    resetAndCollect(m_Pins);
-    resetAndCollect(m_Links);
+    reset(m_Nodes);
+    reset(m_Pins);
+    reset(m_Links);
 
     m_DrawList = ImGui::GetWindowDrawList();
 
@@ -2274,6 +2263,31 @@ void ed::EditorContext::ForgetDeletedObjects()
         if (IsDeleted(link->m_EndPin))
             link->m_EndPin = nullptr;
     }
+}
+
+void ed::EditorContext::FreeDeletedObjects()
+{
+    ForgetDeletedObjects();
+
+    for (auto& node : m_Nodes)
+        if (node->m_DeleteOnNewFrame)
+            m_Settings.EraseNode(node->m_ID);
+
+    static auto freeDeleted = [](auto& objects)
+    {
+        objects.erase(std::remove_if(objects.begin(), objects.end(), [](auto objectWrapper)
+        {
+            if (!objectWrapper->m_DeleteOnNewFrame)
+                return false;
+
+            delete objectWrapper.m_Object;
+            return true;
+        }), objects.end());
+    };
+
+    freeDeleted(m_Nodes);
+    freeDeleted(m_Pins);
+    freeDeleted(m_Links);
 }
 
 void ed::EditorContext::Suspend(SuspendFlags flags)
@@ -3227,6 +3241,11 @@ void ed::Settings::RemoveNode(NodeId id)
         return;
 
     *node = NodeSettings(id);
+}
+
+void ed::Settings::EraseNode(NodeId id)
+{
+    m_Nodes.erase(std::remove_if(m_Nodes.begin(), m_Nodes.end(), [id](const NodeSettings& settings) { return settings.m_ID == id; }), m_Nodes.end());
 }
 
 void ed::Settings::ClearDirty(Node* node)

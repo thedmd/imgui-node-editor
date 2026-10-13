@@ -572,7 +572,8 @@ struct Settings
 
     NodeSettings* AddNode(NodeId id);
     NodeSettings* FindNode(NodeId id);
-    void RemoveNode(NodeId id);
+    void RemoveNode(NodeId id); // empties the entry: every node object has one until it's freed
+    void EraseNode(NodeId id);
 
     void ClearDirty(Node* node = nullptr);
     void MakeDirty(SaveReasonFlags reason, Node* node = nullptr);
@@ -1574,6 +1575,7 @@ private:
     void SaveSettings();
 
     void ForgetDeletedObjects();
+    void FreeDeletedObjects();
 
     Control BuildControl(bool allowOffscreen);
 

@@ -478,6 +478,9 @@ v0.10.0 (WIP):
     BUGFIX: crude_json: Save through a temporary file
         save() truncated the file before writing it and ignored fclose() errors, so a save that failed midway lost the file.
 
+    BUGFIX: Editor: Drop the settings entry of a deleted node
+        Deleting a node only emptied its entry, so the entries piled up with every node ID ever deleted.
+
 v0.9.2 (2023-09-01):
 
     NEW: Editor: Add offset of hover/select to style (thanks @MultiPain)
