@@ -1247,9 +1247,12 @@ void ed::EditorContext::Begin(const char* id, const ImVec2& size)
 
     if (!m_IsInitialized && !m_IsFrozen)
     {
-        // Cycle canvas, so it has a chance to initialize its size before the view is restored
+        // Cycle canvas, so it has a chance to initialize its size before the view is
+        // restored. The canvas below takes the same place.
+        const auto cursor = ImGui::GetCursorScreenPos();
         if (m_Canvas.Begin(id, canvasSize))
             m_Canvas.End();
+        ImGui::SetCursorScreenPos(cursor);
 
         RestoreView();
         m_IsInitialized = true;

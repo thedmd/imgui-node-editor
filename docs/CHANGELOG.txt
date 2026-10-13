@@ -248,6 +248,9 @@ v0.9.4 (WIP):
     BUGFIX: Canvas: Put the view origin on whole pixels
         After zooming in and back out, content at zoom 1.0 rendered between pixels and looked blurry.
 
+    BUGFIX: Editor: Lay the editor out in its place on the first frame
+        It sat one canvas lower and pushed the content after it down for that frame.
+
 v0.9.3 (2023-10-14):
 
     CHANGE: Canvas: Use ImDrawCallback_ImCanvas macro as draw callback sentinel (#256), thanks @nspitko
