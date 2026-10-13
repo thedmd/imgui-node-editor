@@ -5941,6 +5941,8 @@ void ed::NodeBuilder::Begin(NodeId nodeId)
 {
     IM_ASSERT(nullptr == m_CurrentNode);
 
+    ImGui::PushID(nodeId.AsPointer());
+
     m_CurrentNode = Editor->GetNode(nodeId);
 
     Editor->UpdateNodeState(m_CurrentNode);
@@ -6075,6 +6077,8 @@ void ed::NodeBuilder::End()
     }
 
     m_CurrentNode = nullptr;
+
+    ImGui::PopID();
 }
 
 void ed::NodeBuilder::BeginPin(PinId pinId, PinKind kind)
