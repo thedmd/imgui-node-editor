@@ -225,7 +225,7 @@ struct ObjectWrapper
 
     bool operator<(const ObjectWrapper& rhs) const
     {
-        return m_ID.AsPointer() < rhs.m_ID.AsPointer();
+        return m_ID.Get() < rhs.m_ID.Get();
     }
 };
 
