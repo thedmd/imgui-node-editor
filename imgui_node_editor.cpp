@@ -5351,7 +5351,7 @@ ed::EditorAction::AcceptResult ed::DeleteItemsAction::Accept(const Control& cont
             return True;
         }
     }
-    else if (control.ClickedLink && io.KeyAlt)
+    else if (control.ClickedLink && io.KeyAlt && Editor->AreShortcutsEnabled())
     {
         m_CandidateObjects.clear();
         m_CandidateObjects.push_back(control.ClickedLink);
