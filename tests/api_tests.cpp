@@ -611,3 +611,36 @@ TEST_CASE(SelectionChangeInFrame, "api.selection_change_is_seen_between_begin_an
     test::Check(selected, "the click selects node 1");
     test::Check(changedFrames == 1, "the change is seen on one frame between Begin() and End(): %d", changedFrames);
 }
+
+TEST_CASE(LinkQueryPhase, "api.link_queries_see_links_submitted_so_far", "CORE-13", test::TestFlags_None)
+{
+    // Link 100 connects pins 11 and 21, and is submitted after the nodes.
+    test::Storage storage;
+    test::Session session(&storage);
+    bool inPin = true, hadInPin = false, afterLinks = false;
+    session.DefaultContent = [&](int frame)
+    {
+        for (int n = 1; n <= 2; ++n)
+        {
+            if (frame == 0)
+                ed::SetNodePosition(n, ImVec2(n * 200.0f, 100.0f));
+            ed::BeginNode(n);
+            ed::BeginPin(n * 10 + 1, n == 1 ? ed::PinKind::Output : ed::PinKind::Input);
+            if (n == 1 && frame == 2)
+            {
+                inPin    = ed::HasAnyLinks(ed::PinId(11));
+                hadInPin = ed::PinHadAnyLinks(ed::PinId(11));
+            }
+            ImGui::TextUnformatted("Pin");
+            ed::EndPin();
+            ed::EndNode();
+        }
+        ed::Link(100, 11, 21);
+        if (frame == 2)
+            afterLinks = ed::HasAnyLinks(ed::PinId(11));
+    };
+    session.Run(3);
+
+    test::Check(!inPin && hadInPin, "inside the pin, before the frame's links, HasAnyLinks() is false and PinHadAnyLinks() true");
+    test::Check(afterLinks, "after the frame's links, HasAnyLinks() is true");
+}
