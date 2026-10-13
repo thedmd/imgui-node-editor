@@ -29,28 +29,28 @@ struct ImLine
 
 //------------------------------------------------------------------------------
 # if IMGUI_VERSION_NUM < 19002
-inline bool operator==(const ImVec2& lhs, const ImVec2& rhs);
-inline bool operator!=(const ImVec2& lhs, const ImVec2& rhs);
+static inline bool operator==(const ImVec2& lhs, const ImVec2& rhs);
+static inline bool operator!=(const ImVec2& lhs, const ImVec2& rhs);
 # endif
 # if IMGUI_VERSION_NUM < 18955
-inline ImVec2 operator-(const ImVec2& lhs);
+static inline ImVec2 operator-(const ImVec2& lhs);
 # endif
 
 
 //------------------------------------------------------------------------------
-inline float  ImLength(float v);
-inline float  ImLength(const ImVec2& v);
-inline float  ImLengthSqr(float v);
-inline ImVec2 ImNormalized(const ImVec2& v);
+static inline float  ImLength(float v);
+static inline float  ImLength(const ImVec2& v);
+static inline float  ImLengthSqr(float v);
+static inline ImVec2 ImNormalized(const ImVec2& v);
 
 
 //------------------------------------------------------------------------------
-inline bool   ImRect_IsEmpty(const ImRect& rect);
-inline ImVec2 ImRect_ClosestPoint(const ImRect& rect, const ImVec2& p, bool snap_to_edge);
-inline ImVec2 ImRect_ClosestPoint(const ImRect& rect, const ImVec2& p, bool snap_to_edge, float radius);
-inline ImVec2 ImRect_ClosestPoint(const ImRect& rect, const ImRect& b);
-inline ImLine ImRect_ClosestLine(const ImRect& rect_a, const ImRect& rect_b);
-inline ImLine ImRect_ClosestLine(const ImRect& rect_a, const ImRect& rect_b, float radius_a, float radius_b);
+static inline bool   ImRect_IsEmpty(const ImRect& rect);
+static inline ImVec2 ImRect_ClosestPoint(const ImRect& rect, const ImVec2& p, bool snap_to_edge);
+static inline ImVec2 ImRect_ClosestPoint(const ImRect& rect, const ImVec2& p, bool snap_to_edge, float radius);
+static inline ImVec2 ImRect_ClosestPoint(const ImRect& rect, const ImRect& b);
+static inline ImLine ImRect_ClosestLine(const ImRect& rect_a, const ImRect& rect_b);
+static inline ImLine ImRect_ClosestLine(const ImRect& rect_a, const ImRect& rect_b, float radius_a, float radius_b);
 
 
 
@@ -58,7 +58,7 @@ inline ImLine ImRect_ClosestLine(const ImRect& rect_a, const ImRect& rect_b, flo
 namespace ImEasing {
 
 template <typename V, typename T>
-inline V EaseOutQuad(V b, V c, T t)
+static inline V EaseOutQuad(V b, V c, T t)
 {
     return b - c * (t * (t - 2));
 }
