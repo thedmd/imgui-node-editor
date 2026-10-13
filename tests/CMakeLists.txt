@@ -93,6 +93,25 @@ set(_TestSources
     view_tests.cpp
 )
 
+enable_testing()
+
+# The compatibility test runs with every Dear ImGui the editor supports; the suite's
+# input needs Dear ImGui 1.89.
+add_executable(node_editor_compatibility
+    compatibility.cpp
+    test_config.h
+)
+target_link_libraries(node_editor_compatibility PRIVATE imgui_node_editor_for_tests)
+add_test(NAME compatibility COMMAND node_editor_compatibility)
+set_tests_properties(compatibility PROPERTIES TIMEOUT 120)
+
+file(STRINGS ${IMGUI_DIR}/imgui.h _ImGuiVersionLine REGEX "^#define IMGUI_VERSION_NUM ")
+string(REGEX MATCH "[0-9]+" _ImGuiVersion "${_ImGuiVersionLine}")
+if (_ImGuiVersion LESS 18900)
+    message(STATUS "Dear ImGui ${_ImGuiVersion} is older than 1.89: only the compatibility test is built")
+    return()
+endif()
+
 add_executable(node_editor_tests
     harness.cpp
     harness.h
@@ -107,7 +126,6 @@ endif()
 
 # One CTest test per TEST_CASE. Tests of open findings are expected to fail, and
 # tests that detect memory errors run only in sanitized builds.
-enable_testing()
 foreach (_Source ${_TestSources})
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${_Source})
     file(STRINGS ${_Source} _Lines REGEX "^TEST_CASE\\(")

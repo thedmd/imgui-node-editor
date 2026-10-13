@@ -6,7 +6,8 @@ Usage:
 A revision is anything 'git archive' accepts in the clone: a release tag, a
 docking tag such as v1.92.9b-docking, or a commit. A '-strict' suffix builds
 with IMGUI_DISABLE_OBSOLETE_FUNCTIONS and IMGUI_DISABLE_OBSOLETE_KEYIO.
-Without revisions, every release from v1.89 on is walked, newest first.
+Without revisions, every release from v1.80 on is walked, newest first.
+Before v1.89 only the compatibility test builds.
 
 The clone is only read: sources are extracted with 'git archive'. CMake and a
 compiler must be on PATH; on Windows run from a Visual Studio developer prompt.
@@ -36,7 +37,7 @@ def run(command, cwd=None):
     return result.returncode, result.stdout + result.stderr
 
 
-def release_tags(repo, oldest=(89, 0)):
+def release_tags(repo, oldest=(80, 0)):
     code, output = run(["git", "tag", "--list", "v1.*"], repo)
     if code != 0:
         sys.exit(output)

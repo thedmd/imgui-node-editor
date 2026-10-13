@@ -92,9 +92,9 @@ cmake -S tests -B build-tests
 cmake --build build-tests --config Debug
 ctest --test-dir build-tests -C Debug
 ```
-`-DIMGUI_DIR=<path>` tests against another copy of Dear ImGui, 1.89 or newer. `-DIMGUI_NODE_EDITOR_TESTS_SANITIZE=ON` builds with AddressSanitizer and adds the tests that detect memory errors. Tests of open issues are expected to fail until the issue is fixed.
+`-DIMGUI_DIR=<path>` tests against another copy of Dear ImGui. The suite needs 1.89 or newer; with an older one only a compatibility test is built, which drives the editor with any Dear ImGui from 1.80. `-DIMGUI_NODE_EDITOR_TESTS_SANITIZE=ON` builds with AddressSanitizer and adds the tests that detect memory errors. Tests of open issues are expected to fail until the issue is fixed.
 
-`python tests/imgui_walk.py --imgui-repo <clone of Dear ImGui> --work <directory>` runs the suite against every Dear ImGui release from 1.89 on, and accepts `-strict` and docking variants of revisions.
+`python tests/imgui_walk.py --imgui-repo <clone of Dear ImGui> --work <directory>` runs the tests against every Dear ImGui release from 1.80 on, and accepts `-strict` and docking variants of revisions.
 
 ### Quick Start
 
