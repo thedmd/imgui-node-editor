@@ -258,3 +258,42 @@ TEST_CASE(NonFinitePositions, "api.non_finite_positions_are_ignored", "CORE-17",
     test::Check(after.x == before.x && after.y == before.y, "node 1 stays at (%g, %g): at (%g, %g)", before.x, before.y, after.x, after.y);
     test::Check(other.x == FLT_MAX && other.y == FLT_MAX, "node 2 isn't created: GetNodePosition() reports (%g, %g)", other.x, other.y);
 }
+
+TEST_CASE(NodeIdScope, "api.widgets_in_nodes_have_node_scoped_ids", "API-12", test::TestFlags_None)
+{
+    // Nodes 1 and 2 each have a button labeled "X"; the mouse is over node 1's.
+    test::Storage storage;
+    test::Session session(&storage);
+    ImGuiID inside = 0, outside = 0;
+    ImVec2 button;
+    session.DefaultContent = [&](int frame)
+    {
+        for (int id : { 1, 2 })
+        {
+            if (frame == 0)
+                ed::SetNodePosition(id, ImVec2(id * 200.0f, 100.0f));
+            ed::BeginNode(id);
+            ImGui::Button("X");
+            if (id == 1)
+            {
+                inside = ImGui::GetID("X");
+                button = ImGui::GetItemRectMin() + ImGui::GetItemRectSize() * 0.5f;
+            }
+            ed::EndNode();
+        }
+        outside = ImGui::GetID("X");
+    };
+    session.Run(2);
+    test::MouseMove(session.Use([&] { return ed::CanvasToScreen(button); }));
+    session.Run(3);
+
+    test::Check(inside != outside, "GetID() inside a node differs from outside: 0x%08X and 0x%08X", inside, outside);
+# if IMGUI_VERSION_NUM >= 19120
+#     if IMGUI_VERSION_NUM >= 19210
+    const auto conflict = GImGui->DebugDrawIdConflictsId;
+#     else
+    const auto conflict = GImGui->DebugDrawIdConflicts;
+#     endif
+    test::Check(conflict == 0, "the buttons don't share an ID: conflict on 0x%08X", conflict);
+# endif
+}
