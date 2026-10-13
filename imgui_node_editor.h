@@ -429,6 +429,7 @@ IMGUI_NODE_EDITOR_API int  GetActionContextNodes(NodeId* nodes, int size);
 IMGUI_NODE_EDITOR_API int  GetActionContextLinks(LinkId* links, int size);
 IMGUI_NODE_EDITOR_API void EndShortcut();
 
+// Zoom factor of the view: 2 at 200%, as in Config::CustomZoomLevels.
 IMGUI_NODE_EDITOR_API float GetCurrentZoom();
 
 IMGUI_NODE_EDITOR_API NodeId GetHoveredNode();

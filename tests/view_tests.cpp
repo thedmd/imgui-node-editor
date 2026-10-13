@@ -47,6 +47,6 @@ TEST_CASE(GridAtTinyZoom, "view.grid_at_tiny_zoom_is_bounded", "CORE-10", test::
     session.Settings = &storage;
     for (int i = 0; i < 3; ++i)
         session.Frame(content);
-    const float zoom = 1.0f / session.Use([] { return ed::GetCurrentZoom(); });
+    const float zoom = session.Use([] { return ed::GetCurrentZoom(); });
     test::Check(zoom < 1e-5f, "view zoomed out to %g", zoom);
 }

@@ -297,3 +297,15 @@ TEST_CASE(NodeIdScope, "api.widgets_in_nodes_have_node_scoped_ids", "API-12", te
     test::Check(conflict == 0, "the buttons don't share an ID: conflict on 0x%08X", conflict);
 # endif
 }
+
+TEST_CASE(CurrentZoom, "api.current_zoom_is_the_zoom_factor", "API-13", test::TestFlags_None)
+{
+    // The view saved at 200%.
+    test::Storage storage;
+    storage.Global = R"({"view":{"scroll":{"x":0,"y":0},"zoom":2}})";
+    test::Session session(&storage);
+    session.Run(2);
+
+    const float zoom = session.Use([] { return ed::GetCurrentZoom(); });
+    test::Check(zoom == 2.0f, "GetCurrentZoom() reads 2 at 200%%: %g", zoom);
+}
