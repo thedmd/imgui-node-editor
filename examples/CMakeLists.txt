@@ -59,11 +59,11 @@ macro(add_example_executable name)
     if (WIN32)
         set(_Example_Type WIN32)
 
-        set(ApplicationIcon ${IMGUI_NODE_EDITOR_ROOT_DIR}/examples/Application/Support/Icon.ico)
+        set(ApplicationIcon ${IMGUI_NODE_EDITOR_ROOT_DIR}/examples/application/support/Icon.ico)
         file(TO_NATIVE_PATH "${ApplicationIcon}" ApplicationIcon)
         string(REPLACE "\\" "\\\\" ApplicationIcon "${ApplicationIcon}")
         configure_file(
-            ${IMGUI_NODE_EDITOR_ROOT_DIR}/examples/Application/Support/Resource.rc.in
+            ${IMGUI_NODE_EDITOR_ROOT_DIR}/examples/application/support/Resource.rc.in
             ${CMAKE_CURRENT_BINARY_DIR}/Resource.rc
         )
         source_group(TREE "${IMGUI_NODE_EDITOR_ROOT_DIR}/examples" FILES ${_Example_CommonResources})
