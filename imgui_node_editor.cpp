@@ -181,10 +181,11 @@ static ImVec2 ClampToCanvas(const ImVec2& position, const ImVec2& size)
 //------------------------------------------------------------------------------
 static void ApplyNodeSettings(ed::Node* node, const ed::NodeSettings& settings)
 {
-    node->m_Bounds.Min      = settings.m_Location;
+    const auto location = ClampToCanvas(settings.m_Location, ImMax(settings.m_Size, settings.m_GroupSize));
+    node->m_Bounds.Min      = location;
     node->m_Bounds.Max      = node->m_Bounds.Min + settings.m_Size;
     ImRect_Floor(node->m_Bounds);
-    node->m_GroupBounds.Min = settings.m_Location;
+    node->m_GroupBounds.Min = location;
     node->m_GroupBounds.Max = node->m_GroupBounds.Min + settings.m_GroupSize;
     ImRect_Floor(node->m_GroupBounds);
 }

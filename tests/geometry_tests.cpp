@@ -250,3 +250,28 @@ TEST_CASE(GrowthAtBorder, "geometry.node_growing_at_the_border_moves_inside", "C
     test::Check(size2.x > 100.0f && position2.x == extent - size2.x && position2.y == extent - size2.y,
         "the node placed at FLT_MAX ends at the border: at (%g, %g), %g by %g", position2.x, position2.y, size2.x, size2.y);
 }
+
+TEST_CASE(LoadBeyondBorder, "geometry.node_loaded_beyond_the_border_stops_there", "CNV-8", test::TestFlags_None)
+{
+    // State saved before the canvas had a border puts node 1 at (-1e6, 1e6).
+    const float extent = 250000.0f;
+    test::Storage storage;
+    test::Session session(&storage);
+    session.DefaultContent = [](int)
+    {
+        ed::BeginNode(1);
+        ImGui::Dummy(ImVec2(100.0f, 40.0f));
+        ed::EndNode();
+    };
+    session.Run(2);
+
+    const auto size     = session.Use([] { return ed::GetNodeSize(1); });
+    const auto position = session.Use([]
+    {
+        const char* state = R"({"nodes":{"node:1":{"location":{"x":-1000000,"y":1000000}}}})";
+        ed::LoadSettingsFromMemory(state);
+        return ed::GetNodePosition(1);
+    });
+    test::Check(position.x == -extent && position.y == extent - size.y,
+        "the loaded node is placed at the border: at (%g, %g), %g by %g", position.x, position.y, size.x, size.y);
+}
