@@ -502,6 +502,9 @@ v0.10.0 (WIP):
     CHANGE: Editor: Grow the draw channels geometrically
         Every node reallocated the channel array on a frame that needed more channels than before.
 
+    CHANGE: Editor: Collect the links of a copy or duplicate in one pass
+        Each node in the context scanned all links, so Ctrl+C with 6,000 nodes selected took 113 ms.
+
 v0.9.2 (2023-09-01):
 
     NEW: Editor: Add offset of hover/select to style (thanks @MultiPain)

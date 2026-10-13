@@ -2191,17 +2191,16 @@ int ed::EditorContext::BreakLinks(PinId pinId)
     return result;
 }
 
-void ed::EditorContext::FindLinksForNode(NodeId nodeId, vector<Link*>& result, bool add)
+void ed::EditorContext::FindLinksBetweenNodes(const vector<ObjectWrapper<Node>>& nodes, vector<Link*>& result)
 {
-    if (!add)
-        result.clear();
+    auto contains = [&nodes](const Node* node)
+    {
+        return std::binary_search(nodes.begin(), nodes.end(), ObjectWrapper<Node>{node->m_ID, nullptr});
+    };
 
     for (auto link : m_Links)
     {
-        if (!link->m_IsLive)
-            continue;
-
-        if (link->m_StartPin->m_Node->m_ID == nodeId || link->m_EndPin->m_Node->m_ID == nodeId)
+        if (link->m_IsLive && contains(link->m_StartPin->m_Node) && contains(link->m_EndPin->m_Node))
             result.push_back(link);
     }
 }
@@ -5233,35 +5232,15 @@ ed::EditorAction::AcceptResult ed::ShortcutAction::Accept(const Control& control
             if (!hasAnyLinks && m_Context.size() > 1) // one node cannot make connection to anything
             {
                 // Collect nodes in sorted vector viable for binary search
-                std::vector<ObjectWrapper<Node>> nodes;
+                vector<ObjectWrapper<Node>> nodes;
 
                 nodes.reserve(m_Context.size());
                 std::for_each(m_Context.begin(), m_Context.end(), [&nodes](Object* object) { if (auto node = object->AsNode()) nodes.push_back({node->m_ID, node}); });
 
                 std::sort(nodes.begin(), nodes.end());
 
-                auto isNodeInContext = [&nodes](NodeId nodeId)
-                {
-                    return std::binary_search(nodes.begin(), nodes.end(), ObjectWrapper<Node>{nodeId, nullptr});
-                };
-
-                // Collect links connected to nodes and drop those reaching out of context
-                std::vector<Link*> links;
-
-                for (auto node : nodes)
-                    Editor->FindLinksForNode(node.m_ID, links, true);
-
-                // Remove duplicates
-                std::sort(links.begin(), links.end());
-                links.erase(std::unique(links.begin(), links.end()), links.end());
-
-                // Drop out of context links
-                links.erase(std::remove_if(links.begin(), links.end(), [&isNodeInContext](Link* link)
-                {
-                    return !isNodeInContext(link->m_StartPin->m_Node->m_ID) || !isNodeInContext(link->m_EndPin->m_Node->m_ID);
-                }), links.end());
-
-                // Append links and remove duplicates
+                vector<Link*> links;
+                Editor->FindLinksBetweenNodes(nodes, links);
                 m_Context.insert(m_Context.end(), links.begin(), links.end());
             }
         }
