@@ -1275,9 +1275,9 @@ struct Example:
                         outputsRect.Min.y += padding;
                         outputsRect.Max.y += padding;
 
-                        const auto topRoundCornersFlags = ImDrawFlags_RoundTop;
+                        const auto allRoundCornersFlags = ImDrawFlags_RoundAll;
 
-                        ed::PushStyleVar(ed::StyleVar_PinCorners, topRoundCornersFlags);
+                        ed::PushStyleVar(ed::StyleVar_PinCorners, allRoundCornersFlags);
                         ed::BeginPin(pin.ID, ed::PinKind::Output);
                         ed::PinPivotRect(outputsRect.GetCenter(), outputsRect.GetCenter());
                         ed::PinRect(outputsRect.GetTL(), outputsRect.GetBR());
