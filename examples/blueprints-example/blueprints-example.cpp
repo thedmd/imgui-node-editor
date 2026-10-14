@@ -1213,7 +1213,6 @@ struct Example:
                     ImGui::Spring(1, 0);
 
                     ImRect inputsRect;
-                    int inputAlpha = 200;
                     for (auto& pin : node.Inputs)
                     {
                         ImGui::Dummy(ImVec2(padding, padding));
@@ -1234,10 +1233,11 @@ struct Example:
                         //ed::PopStyleVar(3);
                         ed::PopStyleVar(1);
 
-                        pinShapes.push_back({ inputsRect, inputAlpha });
-
+                        int inputAlpha = 200;
                         if (newLinkPin && !CanCreateLink(newLinkPin, &pin) && &pin != newLinkPin)
                             inputAlpha = (int)(255 * ImGui::GetStyle().Alpha * (48.0f / 255.0f));
+
+                        pinShapes.push_back({ inputsRect, inputAlpha });
                     }
 
                     //ImGui::Spring(1, 0);
@@ -1266,7 +1266,6 @@ struct Example:
                     ImGui::Spring(1, 0);
 
                     ImRect outputsRect;
-                    int outputAlpha = 200;
                     for (auto& pin : node.Outputs)
                     {
                         ImGui::Dummy(ImVec2(padding, padding));
@@ -1284,10 +1283,11 @@ struct Example:
                         ed::EndPin();
                         ed::PopStyleVar();
 
-                        pinShapes.push_back({ outputsRect, outputAlpha });
-
+                        int outputAlpha = 200;
                         if (newLinkPin && !CanCreateLink(newLinkPin, &pin) && &pin != newLinkPin)
                             outputAlpha = (int)(255 * ImGui::GetStyle().Alpha * (48.0f / 255.0f));
+
+                        pinShapes.push_back({ outputsRect, outputAlpha });
                     }
 
                     ImGui::EndHorizontal();
