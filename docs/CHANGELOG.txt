@@ -422,6 +422,9 @@ v0.9.4 (WIP):
     BUGFIX: Canvas: Ignore Suspend() and Resume() outside Begin() and End(), with an assert
         They left local space with stale state, restoring the mouse from an earlier frame.
 
+    BUGFIX: Examples: Show the pins of Houdini nodes in the blueprints example
+        Since Stack Layout v2.1, a layout clips what is drawn in it to its bounds, and the pins were drawn in layouts they stick out of.
+
 v0.9.3 (2023-10-14):
 
     CHANGE: Canvas: Use ImDrawCallback_ImCanvas macro as draw callback sentinel (#256), thanks @nspitko

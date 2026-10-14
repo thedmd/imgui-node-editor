@@ -1237,6 +1237,9 @@ struct Example:
                 ed::PushStyleVar(ed::StyleVar_PinRadius, 6.0f);
                 ed::BeginNode(node.ID);
 
+                struct PinShape { ImRect Rect; int Alpha; };
+                std::vector<PinShape> pinShapes;
+
                 ImGui::BeginVertical(node.ID.AsPointer());
                 if (!node.Inputs.empty())
                 {
@@ -1265,11 +1268,7 @@ struct Example:
                         //ed::PopStyleVar(3);
                         ed::PopStyleVar(1);
 
-                        auto drawList = ImGui::GetWindowDrawList();
-                        drawList->AddRectFilled(inputsRect.GetTL(), inputsRect.GetBR(),
-                            IM_COL32((int)(255 * pinBackground.x), (int)(255 * pinBackground.y), (int)(255 * pinBackground.z), inputAlpha), 4.0f, allRoundCornersFlags);
-                        drawList->AddRect(inputsRect.GetTL(), inputsRect.GetBR(),
-                            IM_COL32((int)(255 * pinBackground.x), (int)(255 * pinBackground.y), (int)(255 * pinBackground.z), inputAlpha), 4.0f, 1.0f, allRoundCornersFlags);
+                        pinShapes.push_back({ inputsRect, inputAlpha });
 
                         if (newLinkPin && !CanCreateLink(newLinkPin, &pin) && &pin != newLinkPin)
                             inputAlpha = (int)(255 * ImGui::GetStyle().Alpha * (48.0f / 255.0f));
@@ -1310,7 +1309,6 @@ struct Example:
                         outputsRect.Min.y += padding;
                         outputsRect.Max.y += padding;
 
-                        const auto allRoundCornersFlags = ImDrawFlags_RoundAll;
                         const auto topRoundCornersFlags = ImDrawFlags_RoundTop;
 
                         ed::PushStyleVar(ed::StyleVar_PinCorners, topRoundCornersFlags);
@@ -1320,13 +1318,7 @@ struct Example:
                         ed::EndPin();
                         ed::PopStyleVar();
 
-
-                        auto drawList = ImGui::GetWindowDrawList();
-                        drawList->AddRectFilled(outputsRect.GetTL(), outputsRect.GetBR(),
-                            IM_COL32((int)(255 * pinBackground.x), (int)(255 * pinBackground.y), (int)(255 * pinBackground.z), outputAlpha), 4.0f, allRoundCornersFlags);
-                        drawList->AddRect(outputsRect.GetTL(), outputsRect.GetBR(),
-                            IM_COL32((int)(255 * pinBackground.x), (int)(255 * pinBackground.y), (int)(255 * pinBackground.z), outputAlpha), 4.0f, 1.0f, allRoundCornersFlags);
-
+                        pinShapes.push_back({ outputsRect, outputAlpha });
 
                         if (newLinkPin && !CanCreateLink(newLinkPin, &pin) && &pin != newLinkPin)
                             outputAlpha = (int)(255 * ImGui::GetStyle().Alpha * (48.0f / 255.0f));
@@ -1336,6 +1328,14 @@ struct Example:
                 }
 
                 ImGui::EndVertical();
+
+                auto drawList = ImGui::GetWindowDrawList();
+                for (auto& pinShape : pinShapes)
+                {
+                    const auto pinColor = IM_COL32((int)(255 * pinBackground.x), (int)(255 * pinBackground.y), (int)(255 * pinBackground.z), pinShape.Alpha);
+                    drawList->AddRectFilled(pinShape.Rect.GetTL(), pinShape.Rect.GetBR(), pinColor, 4.0f, ImDrawFlags_RoundAll);
+                    drawList->AddRect(pinShape.Rect.GetTL(), pinShape.Rect.GetBR(), pinColor, 4.0f, 1.0f, ImDrawFlags_RoundAll);
+                }
 
                 ed::EndNode();
                 ed::PopStyleVar(7);
