@@ -428,6 +428,9 @@ v0.9.4 (WIP):
     BUGFIX: Examples: Shape the highlight of Houdini output pins like the pins in the blueprints example
         It was rounded at the top only, and its square corners showed around the round pin.
 
+    BUGFIX: Examples: Dim the Houdini pins that can't take a new link in the blueprints example
+        Each pin took the dimming meant for the pin before it.
+
 v0.9.3 (2023-10-14):
 
     CHANGE: Canvas: Use ImDrawCallback_ImCanvas macro as draw callback sentinel (#256), thanks @nspitko
