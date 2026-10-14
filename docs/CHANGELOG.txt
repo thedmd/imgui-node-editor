@@ -425,6 +425,9 @@ v0.9.4 (WIP):
     BUGFIX: Examples: Show the pins of Houdini nodes in the blueprints example
         Since Stack Layout v2.1, a layout clips what is drawn in it to its bounds, and the pins were drawn in layouts they stick out of.
 
+    BUGFIX: Examples: Shape the highlight of Houdini output pins like the pins in the blueprints example
+        It was rounded at the top only, and its square corners showed around the round pin.
+
 v0.9.3 (2023-10-14):
 
     CHANGE: Canvas: Use ImDrawCallback_ImCanvas macro as draw callback sentinel (#256), thanks @nspitko
