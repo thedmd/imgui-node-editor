@@ -156,6 +156,14 @@ static const auto  c_AllRoundCornersFlags = 0xF0; // ImDrawFlags_RoundCornersAll
 static const auto  c_AllRoundCornersFlags = 15;
 #endif
 
+// ImGui 1.89 introduced the input ownership (SetKeyOwner(), GetKeyOwner(), the lock flags): the editor's background
+// takes the navigate button with it, for a pan that starts on a widget of a node.
+#if IMGUI_VERSION_NUM >= 19070
+static const auto  c_NoKeyOwner = ImGuiKeyOwner_NoOwner;
+#elif IMGUI_VERSION_NUM >= 18900
+static const auto  c_NoKeyOwner = ImGuiKeyOwner_None; // ImGuiKeyOwner_NoOwner since ImGui 1.90.7
+#endif
+
 
 //------------------------------------------------------------------------------
 # if defined(_DEBUG) && defined(_WIN32)
@@ -1223,6 +1231,20 @@ void ed::EditorContext::Begin(const char* id, const ImVec2& size)
     m_EditorActiveId = ImGui::GetID(id);
     ImGui::PushID(id);
 
+# if IMGUI_VERSION_NUM >= 18900
+    // The release that ends a pan is no click for the items under the mouse, which moved with the view: a context menu
+    // would open there. Locked before the items are submitted.
+    {
+        const auto& io             = ImGui::GetIO();
+        const auto  navigateButton = m_Config.NavigateButtonIndex;
+        const auto  isPanning      = m_NavigateAction.m_IsActive;
+        const auto  isReleased     = io.MouseReleased[navigateButton];
+        const auto  wasDragged     = io.MouseDragMaxDistanceSqr[navigateButton] >= io.MouseDragThreshold * io.MouseDragThreshold;
+        if (isPanning && isReleased && wasDragged)
+            ImGui::SetKeyOwner(ImGui::MouseButtonToKey(navigateButton), m_BackgroundId, ImGuiInputFlags_LockThisFrame);
+    }
+# endif
+
     m_BeginColorStackSize = m_Style.GetColorStackSize();
     m_BeginVarStackSize   = m_Style.GetVarStackSize();
 
@@ -2271,6 +2293,15 @@ bool ed::EditorContext::IsHoveredWithoutOverlapp() const
     return m_IsHoveredWithoutOverlapp;
 }
 
+bool ed::EditorContext::OwnsNavigateButton() const
+{
+# if IMGUI_VERSION_NUM >= 18900
+    return ImGui::GetKeyOwner(ImGui::MouseButtonToKey(m_Config.NavigateButtonIndex)) == m_BackgroundId;
+# else
+    return false;
+# endif
+}
+
 bool ed::EditorContext::CanAcceptUserInput() const
 {
     return m_IsFocused && m_IsHovered;
@@ -2801,6 +2832,27 @@ ed::Control ed::EditorContext::BuildControl(bool allowOffscreen)
     auto backgroundClickButonIndex        = emitInteractiveAreaEx(ObjectId(), editorRect, backgroundExtraFlags);
     auto backgroundDoubleClickButtonIndex = isMouseDoubleClickOverBackground();
     auto isBackgroundActive               = ImGui::IsItemActive();
+
+# if IMGUI_VERSION_NUM >= 18900
+    m_BackgroundId = ImGui::GetItemID();
+    // A press of the navigate button inside the editor that no item takes (on a widget of a node which does not use
+    // this button, for example) may start a pan: once the mouse drags, the background takes the button until its
+    // release. A click leaves the button to the items (the context menu of a widget, or of its node). A widget which
+    // uses the button owns it, and keeps it.
+    const auto navigateButton = m_Config.NavigateButtonIndex;
+    const auto navigateKey    = ImGui::MouseButtonToKey(navigateButton);
+    const auto isUnowned      = ImGui::GetKeyOwner(navigateKey) == c_NoKeyOwner;
+    if (ImGui::IsMouseClicked(navigateButton))
+    {
+        const auto isOverEditor = ImGui::IsItemHovered(ImGuiHoveredFlags_RectOnly) && ImGui::IsWindowHovered();
+        m_IsNavigatePressInside = isUnowned && isOverEditor;
+    }
+    else if (!ImGui::GetIO().MouseDown[navigateButton])
+        m_IsNavigatePressInside = false;
+    const auto isDragged = ImGui::IsMouseDragPastThreshold(navigateButton);
+    if (m_IsNavigatePressInside && isDragged && isUnowned)
+        ImGui::SetKeyOwner(navigateKey, m_BackgroundId, ImGuiInputFlags_LockUntilRelease);
+# endif
     auto isBackgroundHot                  = !hotObject;
     auto isDragging                       = ImGui::IsMouseDragging(0, 1) || ImGui::IsMouseDragging(1, 1) || ImGui::IsMouseDragging(2, 1);
 
@@ -3634,7 +3686,8 @@ ed::EditorAction::AcceptResult ed::NavigateAction::Accept(const Control& control
         return False;
 
     // A drag that enters the editor from another window was pressed on nothing of the editor's.
-    const auto isPressedOnEditor = control.BackgroundActive || control.ActiveObject != nullptr;
+    // A press on a widget of a node which does not use the navigate button is taken by the background (see BuildControl()).
+    const auto isPressedOnEditor = control.BackgroundActive || control.ActiveObject != nullptr || Editor->OwnsNavigateButton();
     if (Editor->CanAcceptUserInput() && isPressedOnEditor && ImGui::IsMouseDragging(Editor->GetConfig().NavigateButtonIndex, 0.0f))
     {
         m_Animation.Stop();

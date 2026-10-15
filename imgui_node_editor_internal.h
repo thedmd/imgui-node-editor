@@ -1417,6 +1417,7 @@ struct EditorContext
     bool IsFocused();
     bool IsHovered() const;
     bool IsHoveredWithoutOverlapp() const;
+    bool OwnsNavigateButton() const; // the press of the navigate button was taken by the editor's background
     bool CanAcceptUserInput() const;
 
     // True for a frame whose host window skips items. Item rectangles are stale
@@ -1546,6 +1547,10 @@ private:
     bool                m_IsFocused;
     bool                m_IsHovered;
     bool                m_IsHoveredWithoutOverlapp;
+# if IMGUI_VERSION_NUM >= 18900
+    ImGuiID             m_BackgroundId = 0; // the item that covers the editor: it takes the navigate button for a pan
+    bool                m_IsNavigatePressInside = false; // the navigate button was pressed inside the editor, on no item that owns it
+# endif
 
     bool                m_ShortcutsEnabled;
 
