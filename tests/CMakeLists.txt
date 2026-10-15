@@ -86,6 +86,7 @@ set(_TestSources
     lifetime_tests.cpp
     link_tests.cpp
     math_tests.cpp
+    popup_callback_tests.cpp
     protocol_tests.cpp
     settings_tests.cpp
     smoke_tests.cpp
