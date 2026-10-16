@@ -1310,7 +1310,13 @@ void ed::EditorContext::Begin(const char* id, const ImVec2& size)
     auto previousSize        = m_Canvas.Rect().GetSize();
     auto previousVisibleRect = m_Canvas.ViewRect();
     if (!m_IsFrozen)
+    {
+        m_Canvas.SetWindowSuspendHandlers(
+            [](void* editor) { static_cast<EditorContext*>(editor)->Suspend(); },
+            [](void* editor) { static_cast<EditorContext*>(editor)->Resume(); },
+            this);
         m_Canvas.Begin(id, canvasSize);
+    }
     m_IsCanvasVisible = !m_IsFrozen && m_Canvas.IsVisible();
 
     //ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0, 0, 0, 0));

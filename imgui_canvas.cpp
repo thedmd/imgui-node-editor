@@ -174,6 +174,115 @@ bool ImGuiEx::Canvas::Begin(ImGuiID id, const ImVec2& size)
 
     m_InBeginEnd = true;
 
+    // Popups, combos, color pickers and tooltips begun from inside the canvas work without Suspend() / Resume() when Dear ImGui
+    // provides ImGuiContext::BeginWindowCallback / EndWindowCallback (IMGUI_HAS_BEGIN_END_WINDOW_CALLBACKS). The callbacks convert
+    // the position of the window to screen space and suspend the canvas while it is open.
+    // Without them, user code must wrap such windows in Suspend() / Resume().
+    // (idea of @lukaasm, https://github.com/thedmd/imgui-node-editor/issues/242#issuecomment-1681806764)
+# if defined(IMGUI_HAS_BEGIN_END_WINDOW_CALLBACKS)
+    {
+        ImGuiContext& g = *ImGui::GetCurrentContext();
+        m_PreviousBeginWindowCallback = g.BeginWindowCallback;
+        m_PreviousEndWindowCallback = g.EndWindowCallback;
+        m_PreviousBeginEndWindowCallbackUserData = g.BeginEndWindowCallbackUserData;
+        g.BeginEndWindowCallbackUserData = this;
+
+        g.BeginWindowCallback = []( ImGuiContext * context, void * userData )
+        {
+            //ImGui::SetNextWindowViewport( ImGui::GetCurrentWindow()->Viewport->ID );
+
+            auto canvas = reinterpret_cast< Canvas * >( userData );
+
+            // A child window is about to begin inside the canvas: this cannot work (BeginChildEx() sets the child flags right before calling Begin())
+            if ( canvas->m_BeginWindowDepth == 0 && canvas->m_SuspendCounter == 0 && ( context->NextWindowData.HasFlags & ImGuiNextWindowDataFlags_HasChildFlags ) != 0 )
+            {
+                fprintf(stderr, "%s", R"(
+Sorry, child windows are incompatible with the canvas of imgui-node-editor, and cannot be used while it is active.
+    Incompatible widgets are:
+        ImGui::BeginChild() and ImGui::EndChild()
+        ImGui::BeginListBox() and ImGui::EndListBox()
+        ImGui::InputTextMultiline()
+    Please examine the call stack to find the culprit.
+)");
+                context->NextWindowData.ClearFlags(); // IM_ASSERT may be defined to throw: do not leave the child settings to the next window
+                IM_ASSERT(false && "ImGui::BeginChild() should not be called inside the canvas of imgui-node-editor");
+            }
+
+            canvas->m_BeginWindowDepth += 1;
+            if (canvas->m_BeginWindowDepth > 1)
+                return;
+
+            if ( canvas->m_SuspendCounter == 0 )
+            {
+                // Combo popup: BeginComboPopup() chose its position by testing where the popup fits, with a position in canvas space
+                // and a size in pixels: the result is wrong when the canvas is zoomed (at zoom 2, a combo located low in the window
+                // opens its popup above itself, with a gap). Anchor the popup below the combo instead.
+                // (the combo is the last item, and the id of its popup derives from the id of the combo: see ImGui::BeginCombo())
+                if ( ( context->NextWindowData.HasFlags & ImGuiNextWindowDataFlags_HasPos ) != 0 && context->OpenPopupStack.Size > 0
+                    && context->OpenPopupStack.back().PopupId == ImHashStr( "##ComboPopup", 0, context->LastItemData.ID ) )
+                    context->NextWindowData.PosVal = context->LastItemData.Rect.GetBL();
+
+                if ( ( context->NextWindowData.HasFlags & ImGuiNextWindowDataFlags_HasPos ) != 0 )
+                {
+                    auto pos = canvas->FromLocal( context->NextWindowData.PosVal );
+                    ImGui::SetNextWindowPos( pos, context->NextWindowData.PosCond, context->NextWindowData.PosPivotVal );
+                }
+
+                if ( context->BeginPopupStack.size() )
+                {
+                    auto & popup = context->BeginPopupStack.back();
+                    popup.OpenPopupPos = canvas->FromLocal( popup.OpenPopupPos );
+                    popup.OpenMousePos = canvas->FromLocal( popup.OpenMousePos );
+                }
+
+                if ( context->OpenPopupStack.size() )
+                {
+                    auto & popup = context->OpenPopupStack.back();
+                    popup.OpenPopupPos = canvas->FromLocal( popup.OpenPopupPos );
+                    popup.OpenMousePos = canvas->FromLocal( popup.OpenMousePos );
+                }
+
+            }
+            canvas->m_BeginWindowCursorBackup = ImGui::GetCursorScreenPos();
+            if ( canvas->m_WindowSuspendHandler )
+            {
+                canvas->m_WindowSuspendHandler( canvas->m_WindowSuspendHandlersUserData );
+            }
+            else
+            {
+                // Suspend() must run on the draw channel that was current in Begin()
+                const int lastChannel = canvas->m_DrawList->_Splitter._Current;
+                canvas->m_DrawList->ChannelsSetCurrent(canvas->m_ExpectedChannel);
+                canvas->Suspend();
+                canvas->m_DrawList->ChannelsSetCurrent(lastChannel);
+            }
+        };
+
+        g.EndWindowCallback = []( ImGuiContext * /*context*/, void * userData )
+        {
+            auto canvas = reinterpret_cast< Canvas * >( userData );
+
+            canvas->m_BeginWindowDepth -= 1;
+            if (canvas->m_BeginWindowDepth > 0)
+                return;
+
+            if ( canvas->m_WindowResumeHandler )
+            {
+                canvas->m_WindowResumeHandler( canvas->m_WindowSuspendHandlersUserData );
+            }
+            else
+            {
+                const int lastChannel = canvas->m_DrawList->_Splitter._Current;
+                canvas->m_DrawList->ChannelsSetCurrent(canvas->m_ExpectedChannel);
+                canvas->Resume();
+                canvas->m_DrawList->ChannelsSetCurrent(lastChannel);
+            }
+            ImGui::SetCursorScreenPos( canvas->m_BeginWindowCursorBackup );
+            ImGui::GetCurrentWindow()->DC.IsSetPos = false;
+        };
+    }
+# endif // IMGUI_HAS_BEGIN_END_WINDOW_CALLBACKS
+
     return true;
 }
 
@@ -219,6 +328,22 @@ void ImGuiEx::Canvas::End()
     //m_DrawList->AddRect(m_WidgetPosition - ImVec2(1.0f, 1.0f), m_WidgetPosition + m_WidgetSize + ImVec2(1.0f, 1.0f), IM_COL32(196, 0, 0, 255));
 
     m_InBeginEnd = false;
+
+# if defined(IMGUI_HAS_BEGIN_END_WINDOW_CALLBACKS)
+    {
+        ImGuiContext& g = *ImGui::GetCurrentContext();
+        g.BeginWindowCallback = m_PreviousBeginWindowCallback;
+        g.EndWindowCallback = m_PreviousEndWindowCallback;
+        g.BeginEndWindowCallbackUserData = m_PreviousBeginEndWindowCallbackUserData;
+    }
+# endif
+}
+
+void ImGuiEx::Canvas::SetWindowSuspendHandlers(void (*suspend)(void* userData), void (*resume)(void* userData), void* userData)
+{
+    m_WindowSuspendHandler          = suspend;
+    m_WindowResumeHandler           = resume;
+    m_WindowSuspendHandlersUserData = userData;
 }
 
 void ImGuiEx::Canvas::SetView(const ImVec2& origin, float scale)

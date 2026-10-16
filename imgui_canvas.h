@@ -175,6 +175,10 @@ struct Canvas
     IMGUIEX_CANVAS_API void Suspend();
     IMGUIEX_CANVAS_API void Resume();
 
+    // Functions called instead of Suspend() / Resume() when a window begins / ends inside the canvas
+    // (with ImGuiContext::BeginWindowCallback / EndWindowCallback). For a host that suspends itself around the canvas.
+    IMGUIEX_CANVAS_API void SetWindowSuspendHandlers(void (*suspend)(void* userData), void (*resume)(void* userData), void* userData);
+
     // Transforms point from canvas plane to ImGui.
     IMGUIEX_CANVAS_API ImVec2 FromLocal(const ImVec2& point) const;
     IMGUIEX_CANVAS_API ImVec2 FromLocal(const ImVec2& point, const CanvasView& view) const;
@@ -313,6 +317,18 @@ private:
     ImVec2 m_ViewportWorkOffsetMaxBackup;
 # endif
 # endif
+
+    // Dear ImGui's callbacks that suspend the canvas when a window is begun from inside it (see Begin())
+# if defined(IMGUI_HAS_BEGIN_END_WINDOW_CALLBACKS)
+    ImGuiBeginEndWindowCallback m_PreviousBeginWindowCallback = nullptr; // Restored by End(): a canvas may be inside a popup of another one
+    ImGuiBeginEndWindowCallback m_PreviousEndWindowCallback = nullptr;
+    void* m_PreviousBeginEndWindowCallbackUserData = nullptr;
+    ImVec2 m_BeginWindowCursorBackup;
+    int m_BeginWindowDepth = 0;
+# endif
+    void (*m_WindowSuspendHandler)(void* userData) = nullptr;
+    void (*m_WindowResumeHandler)(void* userData) = nullptr;
+    void* m_WindowSuspendHandlersUserData = nullptr;
 };
 
 } // namespace ImGuiEx
