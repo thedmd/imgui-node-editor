@@ -33,6 +33,18 @@ struct Random
     }
 };
 
+// A point's coordinate on an axis (0: x, 1: y). Not (&point.x)[axis]: writing y
+// through a pointer to x is undefined behavior, which optimizers act on.
+float& Coordinate(ImVec2& point, int axis)
+{
+    return axis == 0 ? point.x : point.y;
+}
+
+float Coordinate(const ImVec2& point, int axis)
+{
+    return axis == 0 ? point.x : point.y;
+}
+
 struct Point2
 {
     double x, y;
@@ -226,14 +238,14 @@ TEST_CASE(LineIntersectionSweep, "math.line_intersection_finds_every_crossing", 
         {
             const int axis = i % 3 == 1 ? 0 : 1;
             const float start = random.Range(0, 100), step = random.Range(20, 100);
-            float* coordinates[] = { &curve.P0.x, &curve.P1.x, &curve.P2.x, &curve.P3.x };
+            ImVec2* points[] = { &curve.P0, &curve.P1, &curve.P2, &curve.P3 };
             for (int k = 0; k < 4; ++k)
-                coordinates[k][axis] = start + step * k;
+                Coordinate(*points[k], axis) = start + step * k;
             const float across = random.Range(start, start + 3 * step);
-            (&a0.x)[axis] = across;
-            (&a1.x)[axis] = across;
-            (&a0.x)[1 - axis] = -100.0f;
-            (&a1.x)[1 - axis] = 500.0f;
+            Coordinate(a0, axis) = across;
+            Coordinate(a1, axis) = across;
+            Coordinate(a0, 1 - axis) = -100.0f;
+            Coordinate(a1, 1 - axis) = 500.0f;
         }
 
         const auto result = ImCubicBezierLineIntersect(curve, ImLine{ a0, a1 });
@@ -271,9 +283,9 @@ TEST_CASE(BoundsSweep, "math.bounds_contain_the_curve", "MATH-3", test::TestFlag
         const int axis = i % 2;
         const auto start = wholePoint();
         auto end = wholePoint();
-        (&end.x)[axis] = (&start.x)[axis];
+        Coordinate(end, axis) = Coordinate(start, axis);
         ImVec2 direction(0, 0);
-        (&direction.x)[axis] = random.Next() < 0.5 ? -1.0f : 1.0f;
+        Coordinate(direction, axis) = random.Next() < 0.5 ? -1.0f : 1.0f;
         const auto strength = std::floor(random.Range(10, 200));
         if (ReachesOutsideBounds(ImCubicBezierPoints{ start, start + direction * strength, end + direction * strength, end }))
             ++alignedOutside;
