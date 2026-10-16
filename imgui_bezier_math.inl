@@ -238,7 +238,7 @@ inline ImRect ImCubicBezierBoundingRect(const ImVec2& p0, const ImVec2& p1, cons
     auto tl = ImMin(p0, p3);
     auto rb = ImMax(p0, p3);
 
-# define IM_VEC2_INDEX(v, i) *(&v.x + i)
+# define IM_VEC2_INDEX(v, i) (*((i) == 0 ? &(v).x : &(v).y))
 
     for (int i = 0; i < 2; ++i)
     {
