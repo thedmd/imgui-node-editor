@@ -841,6 +841,19 @@ private:
                 ed::PopStyleColor();
         }
 
+        // While a run goes on, a flow link it took in its last steps is thicker, the more so the more
+        // recently. A run that ended keeps its context, for its values, not its trace.
+        std::unordered_map<Id, uint64_t> taken;
+        if (auto context = m_Debugger.IsActive() ? m_Debugger.GetContext() : nullptr)
+            for (auto& entry : context->Trace())
+                taken[entry.m_Link] = entry.m_Step;
+        auto takenWidth = [this, &taken](Id link)
+        {
+            const float c_Steps = 16.0f;
+            auto it = taken.find(link);
+            return it == taken.end() ? 0.0f : 3.0f * ImMax(0.0f, 1.0f - static_cast<float>(m_Debugger.StepCount() - it->second) / c_Steps);
+        };
+
         // Commit all links to editor. A disabled link shows, grey, until its problem is resolved;
         // one whose pin is gone has nothing to show between.
         for (auto& link : graph.Links())
@@ -849,7 +862,7 @@ private:
             if (!from || !graph.FindPin(link.m_To))
                 continue;
             if (link.m_Active)
-                ed::Link(link.m_Id, link.m_From, link.m_To, PinColor(*from), from->m_Flow ? 2.5f : 1.5f);
+                ed::Link(link.m_Id, link.m_From, link.m_To, PinColor(*from), (from->m_Flow ? 2.5f : 1.5f) + takenWidth(link.m_Id));
             else
                 ed::Link(link.m_Id, link.m_From, link.m_To, ImVec4(0.5f, 0.5f, 0.5f, 0.4f), 1.0f);
         }
