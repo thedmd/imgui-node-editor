@@ -921,3 +921,68 @@ TEST_CASE(EventParameterNames, "library.a_custom_events_parameters_take_the_name
     auto gone = f.m_Graph.RemoveGroupPin(event, "param", 0).IsOk();
     test::Check(gone && names() == "Times" && f.m_Graph.FindNode(event)->m_Config.m_Names.size() == 1, "and goes with it: %s", names().c_str());
 }
+
+TEST_CASE(TypeSwitches, "library.switch_on_type_takes_the_case_of_its_values_type", nullptr, test::TestFlags_None)
+{
+    // Start -> Switch on Type of a Constant, its cases Int32 and Float each printing its value, and
+    // Otherwise printing "other".
+    struct Case { Value m_Value; const char* m_Printed; };
+    const Case cases[] = { { Value::Int32(7), "7" }, { Value::Float(2.5f), "2.5" }, { Value::String("x"), "other" } };
+    for (auto& [value, printed] : cases)
+    {
+        Fixture f;
+        NodeConfig config;
+        config.m_Groups["case"] = 2;
+        config.m_Types["C0"]    = &Int32Type();
+        config.m_Types["C1"]    = &FloatType();
+        auto start = f.Add("Start"), choose = f.Add("SwitchOnType", config), ints = f.Add("Print"), reals = f.Add("Print"), other = f.Printer("other");
+        f.Link(start, "then", choose, "enter");
+        f.Link(f.Constant(value), "value", choose, "value");
+        f.Link(choose, "is.0", ints, "enter");
+        f.Link(choose, "as.0", ints, "text", LinkMode::Cast);
+        f.Link(choose, "is.1", reals, "enter");
+        f.Link(choose, "as.1", reals, "text", LinkMode::Cast);
+        f.Link(choose, "otherwise", other, "enter");
+        auto end  = FiberState::Ready;
+        auto text = f.Run(&end);
+        test::Check(text == printed && end == FiberState::Done, "%s takes its case: %s", value.GetType()->m_Name.c_str(), text.c_str());
+
+        auto node = f.m_Graph.FindNode(choose);
+        test::Check(node->FindPin("is.0")->m_Name == "Int32" && node->FindPin("as.1")->m_Name == "Float", "and the cases are named by their types");
+    }
+
+    Fixture f;
+    auto undecided = f.Add("SwitchOnType");
+    test::Check(f.m_Graph.FindNode(undecided)->FindPin("is.0")->m_Name == "?", "a case of no type yet is a ?");
+}
+
+TEST_CASE(TypeViews, "library.as_type_and_expect_type_give_a_value_as_a_type", nullptr, test::TestFlags_None)
+{
+    // Start prints As Type's Result and Is, and then Expect Type's Result, each of a Constant, as an
+    // Int32.
+    auto run = [](Value value)
+    {
+        Fixture f;
+        auto start = f.Add("Start"), result = f.Add("Print"), is = f.Add("Print"), expected = f.Add("Print");
+        auto as = f.Add("AsType", Chosen("R", Int32Type())), expect = f.Add("ExpectType", Chosen("R", Int32Type()));
+        auto constant = f.Constant(value);
+        f.Link(constant, "value", as, "value");
+        f.Link(constant, "value", expect, "value");
+        f.Link(start, "then", result, "enter");
+        f.Link(result, "then", is, "enter");
+        f.Link(is, "then", expected, "enter");
+        f.Link(as, "result", result, "text", LinkMode::Cast);
+        auto isText = f.Add("ToString");
+        f.Link(as, "is", isText, "value");
+        f.Link(isText, "text", is, "text");
+        f.Link(expect, "result", expected, "text", LinkMode::Cast);
+        auto end = FiberState::Ready;
+        std::span<const Diagnostic> diagnostics;
+        auto text = f.Run(&end, &diagnostics);
+        return text + (end == FiberState::Failed && !diagnostics.empty() ? " error: " + std::string(diagnostics.back().m_Error.Message()) : std::string());
+    };
+    auto same  = run(Value::Int32(5));
+    auto other = run(Value::Float(2.5f));
+    test::Check(same == "5 true 5", "a value of the type is itself, and Is: %s", same.c_str());
+    test::Check(other == "0 false error: Value is of Float, not Int32", "of another, As Type gives the type's default, and Expect Type stops the fiber: %s", other.c_str());
+}

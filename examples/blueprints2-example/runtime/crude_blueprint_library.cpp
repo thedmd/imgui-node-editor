@@ -567,6 +567,57 @@ struct SelectNode final : NodeType
     }
 };
 
+// The value as the type of Result, which links or the user decide, and whether it was of it; when
+// it wasn't, Result is the type's default. Value and Result take any types, a generic body's type
+// parameters too, whose types the call decides.
+struct AsTypeNode final : NodeType
+{
+    AsTypeNode(): NodeType("crude.AsType", "As Type", "Values") {}
+
+    void Declare(NodeDeclaration& declaration, const NodeConfig&, const Bindings&) const override
+    {
+        declaration.Input("value", "Value", declaration.Variable("V"));
+        declaration.Output("result", "Result", declaration.Variable("R"));
+        declaration.Output("is", "Is", BoolType());
+    }
+
+    Result<void> Evaluate(EvalContext& context) const override
+    {
+        auto value = context.Get("value");
+        if (!value)
+            return value.GetError();
+        auto type = context.TypeOf("result");
+        auto is   = value.GetValue().GetType() == type;
+        context.Set("result", is ? value.GetValue() : type->m_Head->Default(*type));
+        context.Set("is", Value::Bool(is));
+        return {};
+    }
+};
+
+// The value as the type of Result, as As Type gives it; a value of another type is an error.
+struct ExpectTypeNode final : NodeType
+{
+    ExpectTypeNode(): NodeType("crude.ExpectType", "Expect Type", "Values") {}
+
+    void Declare(NodeDeclaration& declaration, const NodeConfig&, const Bindings&) const override
+    {
+        declaration.Input("value", "Value", declaration.Variable("V"));
+        declaration.Output("result", "Result", declaration.Variable("R"));
+    }
+
+    Result<void> Evaluate(EvalContext& context) const override
+    {
+        auto value = context.Get("value");
+        if (!value)
+            return value.GetError();
+        auto type = context.TypeOf("result");
+        if (value.GetValue().GetType() != type)
+            return Error(BlueprintError::WrongType, "Value is of " + value.GetValue().GetType()->m_Name + ", not " + type->m_Name);
+        context.Set("result", value.GetValue());
+        return {};
+    }
+};
+
 // As the cast to String writes a value.
 struct ToStringNode final : NodeType
 {
@@ -1110,6 +1161,46 @@ struct SwitchOnIntNode final : NodeType
     }
 };
 
+// The first case whose type the value is of, with the value as that type, or Otherwise. A case's
+// type is its value's, which links or the user decide, and its pins are named by it. The value
+// takes any type, a generic body's type parameters too, whose types the call decides.
+struct SwitchOnTypeNode final : NodeType
+{
+    SwitchOnTypeNode(): NodeType("crude.SwitchOnType", "Switch on Type", "Flow") {}
+
+    void Declare(NodeDeclaration& declaration, const NodeConfig&, const Bindings& bindings) const override
+    {
+        declaration.FlowInput("enter");
+        declaration.Input("value", "Value", declaration.Variable("V"));
+        auto count = declaration.Group("case", 1, 16, { "is", "as" });
+        for (int i = 0; i < count; ++i)
+        {
+            auto variable = "C" + std::to_string(i);
+            auto type     = bindings.Get(variable);
+            auto name     = type ? type->m_Name : std::string("?");
+            declaration.FlowOutput("is." + std::to_string(i), name);
+            declaration.Output("as." + std::to_string(i), name, declaration.Variable(variable));
+        }
+        declaration.FlowOutput("otherwise", "Otherwise");
+    }
+
+    Result<Exit> Execute(ExecContext& context, std::string_view) const override
+    {
+        auto value = context.Get("value");
+        if (!value)
+            return value.GetError();
+        for (int i = 0; context.HasPin("as." + std::to_string(i)); ++i)
+        {
+            auto as = "as." + std::to_string(i);
+            if (value.GetValue().GetType() != context.TypeOf(as))
+                continue;
+            context.Set(as, value.GetValue());
+            return Exit::To("is." + std::to_string(i));
+        }
+        return Exit::To("otherwise");
+    }
+};
+
 // Of an array it reads again before each round, so its items may change while it runs.
 struct ForEachNode final : NodeType
 {
@@ -1465,6 +1556,8 @@ crude_blueprint::Result<void> crude_blueprint::RegisterLibrary(Registry& registr
         std::make_unique<NotNode>(),
         std::make_unique<XorNode>(),
         std::make_unique<SelectNode>(),
+        std::make_unique<AsTypeNode>(),
+        std::make_unique<ExpectTypeNode>(),
         std::make_unique<ToStringNode>(),
         std::make_unique<LengthNode>(),
         std::make_unique<MakeArrayNode>(),
@@ -1484,6 +1577,7 @@ crude_blueprint::Result<void> crude_blueprint::RegisterLibrary(Registry& registr
         std::make_unique<ForLoopNode>(),
         std::make_unique<SequenceNode>(),
         std::make_unique<SwitchOnIntNode>(),
+        std::make_unique<SwitchOnTypeNode>(),
         std::make_unique<ForEachNode>(),
         std::make_unique<ForEachEntryNode>(),
         std::make_unique<WhileLoopNode>(),

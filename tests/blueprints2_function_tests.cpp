@@ -864,3 +864,74 @@ TEST_CASE(RenamedTypeParameters, "function.a_renamed_type_parameter_keeps_the_ty
     test::Check(!none && none.GetError().Is(BlueprintError::OutOfRange) && !missing && missing.GetError().Is(BlueprintError::NotFound) && same, "as are a parameter there isn't and an event graph; its own name changes nothing");
     test::Check(f.m_Graph.FindNode(call)->m_Config.m_Types.contains("Item") && f.m_Blueprint.FindFunction(body.GetId())->m_Signature.m_Parameters[0].m_Name == "Item", "a refused rename leaves the parameter and its calls as they were");
 }
+
+TEST_CASE(TypeBranches, "function.a_generic_body_tells_its_parameters_types_apart_and_gives_one_back", nullptr, test::TestFlags_None)
+{
+    // Double<T: Int32 | Float>(x: T) -> y: T: Switch on Type of x, and for Int32 and for Float,
+    // x + x given back as T through Expect Type. Start prints Double(21) and Double(1.25). IsInt<T>
+    // is pure: As Type's Is for Int32.
+    Fixture f;
+    Signature twice;
+    twice.m_Parameters = { { "T", { &Int32ValueType(), &FloatValueType() } } };
+    twice.m_Inputs     = { { "x", "X", T() } };
+    twice.m_Outputs    = { { "y", "Y", T() } };
+    auto& body = f.Function("Double", twice);
+    NodeConfig cases;
+    cases.m_Groups["case"] = 2;
+    cases.m_Types["C0"]    = &Int32Type();
+    cases.m_Types["C1"]    = &FloatType();
+    auto entry = f.In(body, "entry:Double"), choose = f.In(body, "crude.SwitchOnType", cases);
+    f.Wire(body, entry, "then", choose, "enter");
+    f.Wire(body, entry, "x", choose, "value");
+    auto expect = Id(0);
+    for (int i = 0; i < 2; ++i)
+    {
+        auto index = std::to_string(i);
+        auto add = f.In(body, "crude.Add"), ret = f.In(body, "return:Double");
+        expect = f.In(body, "crude.ExpectType");
+        f.Wire(body, choose, "is." + index, ret, "enter");
+        f.Wire(body, choose, "as." + index, add, "in.0");
+        f.Wire(body, choose, "as." + index, add, "in.1");
+        f.Wire(body, add, "result", expect, "value");
+        f.Wire(body, expect, "result", ret, "y");
+    }
+    test::Check(!body.IsBroken() && f.TypeIn(body, choose, "value") == "Double.T" && f.TypeIn(body, choose, "as.1") == "Float" && f.TypeIn(body, expect, "result") == "Double.T", "the body is checked once: the cases are concrete, and Expect Type gives T back: %s", f.TypeIn(body, expect, "result").c_str());
+
+    Signature isInt;
+    isInt.m_Parameters = { { "T", {} } };
+    isInt.m_Inputs     = { { "x", "X", T() } };
+    isInt.m_Outputs    = { { "b", "B", BoolType() } };
+    isInt.m_Pure       = true;
+    auto& probe = f.Function("IsInt", isInt);
+    auto  from  = f.In(probe, "entry:IsInt"), as = f.In(probe, "crude.AsType", Chosen("R", Int32Type())), to = f.In(probe, "return:IsInt");
+    f.Wire(probe, from, "x", as, "value");
+    f.Wire(probe, as, "is", to, "b");
+
+    auto constant = [&f](Value value)
+    {
+        NodeConfig config = Chosen("T", *value.GetType());
+        config.m_Data["value"] = std::move(value);
+        return f.Add("Constant", std::move(config));
+    };
+    auto start = f.Add("Start"), first = f.Call("Double"), second = f.Call("Double"), print = f.Add("Print"), again = f.Add("Print"), checks = f.Add("Print");
+    auto intCheck = f.Call("IsInt"), realCheck = f.Call("IsInt"), both = f.Add("Equal");
+    f.Link(start, "then", first, "enter");
+    f.Link(first, "then", print, "enter");
+    f.Link(print, "then", second, "enter");
+    f.Link(second, "then", again, "enter");
+    f.Link(again, "then", checks, "enter");
+    f.Link(constant(Value::Int32(21)), "value", first, "x");
+    f.Link(constant(Value::Float(1.25f)), "value", second, "x");
+    f.Link(first, "y", print, "text", LinkMode::Cast);
+    f.Link(second, "y", again, "text", LinkMode::Cast);
+    f.Link(constant(Value::Int32(3)), "value", intCheck, "x");
+    f.Link(constant(Value::Float(3.0f)), "value", realCheck, "x");
+    f.Link(intCheck, "b", both, "a");
+    f.Link(realCheck, "b", both, "b");
+    auto text = f.Add("ToString");
+    f.Link(both, "result", text, "value");
+    f.Link(text, "text", checks, "text");
+    auto end     = FiberState::Ready;
+    auto printed = f.Run(&end);
+    test::Check(printed == "42 2.5 false" && end == FiberState::Done, "each call takes its type's case, and IsInt tells Int32 from Float: %s", printed.c_str());
+}
