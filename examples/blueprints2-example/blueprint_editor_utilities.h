@@ -5,6 +5,7 @@
 #include "blueprint_editor_icons.h"
 #include <chrono>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -42,7 +43,11 @@ const VariableDeclaration* PinVariable(const Graph& graph, const Pin& pin);
 // The node's group a key is of, and the key's index there.
 const GroupDeclaration* FindGroup(const Node& node, std::string_view key, int* index = nullptr);
 
+// As the log and tooltips name it: "Add#7.in.0 (Int32)".
+std::string DescribePin(const Graph& graph, const Pin& pin);
+
 // Edits of one undo step each. One the graph refuses is logged, and makes no step.
+void CreateLink(Document& document, Id from, Id to, LinkMode mode = LinkMode::Plain);
 void AddGroupPin(Document& document, Id node, std::string group);
 void RemoveGroupPin(Document& document, Id node, std::string group, int index);
 
@@ -167,7 +172,7 @@ struct ItemBuilder
         ax::NodeEditor::PinId m_StartPinId = ax::NodeEditor::PinId::Invalid;
         ax::NodeEditor::PinId m_EndPinId = ax::NodeEditor::PinId::Invalid;
 
-        bool Accept();
+        bool Accept(ImVec4 color = ImVec4(0.34f, 1.0f, 0.34f, 1.0f));
         void Reject();
     };
 
@@ -261,6 +266,21 @@ struct LinkContextMenu
 
 private:
     Id m_Link = 0;
+};
+
+// For a link dropped on a pin it fits only through a cast, or forced: why it doesn't fit as it is,
+// and the ways it does.
+struct LinkDropMenu
+{
+    void Open(Id from, Id to, std::string reason, bool cast, std::optional<int> forced);
+    void Show(Document& document);
+
+private:
+    Id                 m_From = 0;
+    Id                 m_To   = 0;
+    std::string        m_Reason;
+    bool               m_Cast = false;
+    std::optional<int> m_Forced; // the links forcing it disables
 };
 
 } // namespace blueprint_editor_utilities {

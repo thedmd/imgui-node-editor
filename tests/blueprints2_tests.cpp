@@ -583,6 +583,32 @@ TEST_CASE(KeptValues, "blueprints2.an_undecided_pin_shows_the_value_it_keeps", n
     test::Check(value && KeptValue(graph, *value) == Value::Int32(7), "an undecided Constant keeps its value too");
 }
 
+TEST_CASE(LinkEdits, "blueprints2.links_are_made_in_undo_steps", nullptr, test::TestFlags_None)
+{
+    // The example's Constant, of Int32, into the String that Done's Print takes.
+    test::Session session(UnnamedConfig());
+    OverlayLog    log;
+    Example       example(session);
+    auto& document = example.m_Document;
+    auto& graph    = document.GetGraph();
+    auto  from     = example.Pin(example.Node("crude.Constant"), "value");
+    auto  to       = example.Pin(example.Node("crude.Print", 1), "text");
+    auto  cast     = [&]() -> const Link*
+    {
+        for (auto& link : graph.Links())
+            if (link.m_From == from && link.m_To == to)
+                return &link;
+        return nullptr;
+    };
+
+    session.Use([&] { blueprint_editor_utilities::CreateLink(document, from, to); });
+    test::Check(!cast() && document.m_Undo.empty(), "as it is, it doesn't fit, and makes no undo step");
+
+    session.Use([&] { blueprint_editor_utilities::CreateLink(document, from, to, LinkMode::Cast); });
+    test::Check(cast() && cast()->m_Cast == "Int32->String" && document.m_Undo.size() == 1 && document.m_Undo[0].m_Name.ends_with(", cast"),
+        "through a cast, it's made in one step: %s", document.m_Undo.empty() ? "-" : document.m_Undo[0].m_Name.c_str());
+}
+
 TEST_CASE(NewDocuments, "blueprints2.a_new_document_has_an_empty_graph", nullptr, test::TestFlags_None)
 {
     Document document(ExampleRegistry(), std::make_shared<TypeTable>());

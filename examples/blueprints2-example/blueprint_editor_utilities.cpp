@@ -148,6 +148,36 @@ const blueprint_editor_utilities::GroupDeclaration* blueprint_editor_utilities::
     return nullptr;
 }
 
+std::string blueprint_editor_utilities::DescribePin(const Graph& graph, const Pin& pin)
+{
+    return graph.NodeOf(pin.m_Id)->Name() + "." + pin.m_Key + " (" + (pin.m_Flow ? std::string("flow") : graph.TypeText(pin.m_Id)) + ")";
+}
+
+void blueprint_editor_utilities::CreateLink(Document& document, Id from, Id to, LinkMode mode)
+{
+    auto& graph = document.GetGraph();
+    auto  start = graph.FindPin(from);
+    auto  end   = graph.FindPin(to);
+    if (!start || !end)
+        return;
+
+    auto name = DescribePin(graph, *start) + " -> " + DescribePin(graph, *end);
+    if (mode == LinkMode::Cast)
+        name += ", cast";
+    else if (mode == LinkMode::Force)
+        name += ", forced";
+    auto transaction = document.BeginUndoTransaction("Create Link");
+    if (auto made = graph.Connect(from, to, mode); !made)
+    {
+        auto message = made.GetError().Message();
+        LOGW("%.*s", static_cast<int>(message.size()), message.data());
+        transaction->Discard();
+        return;
+    }
+    LOGV("[CreateLink] %s", name.c_str());
+    transaction->AddAction("%s", name.c_str());
+}
+
 void blueprint_editor_utilities::AddGroupPin(Document& document, Id node, std::string group)
 {
     auto& graph = document.GetGraph();
@@ -714,9 +744,9 @@ blueprint_editor_utilities::ItemBuilder::LinkBuilder* blueprint_editor_utilities
         return nullptr;
 }
 
-bool blueprint_editor_utilities::ItemBuilder::LinkBuilder::Accept()
+bool blueprint_editor_utilities::ItemBuilder::LinkBuilder::Accept(ImVec4 color)
 {
-    return ax::NodeEditor::AcceptNewItem(ImVec4(0.34f, 1.0f, 0.34f, 1.0f), 3.0f);
+    return ax::NodeEditor::AcceptNewItem(color, 3.0f);
 }
 
 void blueprint_editor_utilities::ItemBuilder::LinkBuilder::Reject()
@@ -1022,4 +1052,56 @@ void blueprint_editor_utilities::LinkContextMenu::Show(Document& document)
 
         ImGui::EndPopup();
     }
+}
+
+
+
+
+void blueprint_editor_utilities::LinkDropMenu::Open(Id from, Id to, std::string reason, bool cast, std::optional<int> forced)
+{
+    m_From   = from;
+    m_To     = to;
+    m_Reason = std::move(reason);
+    m_Cast   = cast;
+    m_Forced = forced;
+    ImGui::OpenPopup("##link-drop-menu");
+}
+
+void blueprint_editor_utilities::LinkDropMenu::Show(Document& document)
+{
+    if (!ImGui::IsPopupOpen("##link-drop-menu"))
+        return;
+
+    if (!ImGui::BeginPopup("##link-drop-menu"))
+        return;
+
+    auto& graph = document.GetGraph();
+    auto  from  = graph.FindPin(m_From);
+    auto  to    = graph.FindPin(m_To);
+
+    // The choice is made once the menu is drawn.
+    std::optional<LinkMode> mode;
+    if (from && to)
+    {
+        ImGui::TextDisabled("%s", m_Reason.c_str());
+        ImGui::Separator();
+        if (m_Cast && from->m_DecidedType && to->m_DecidedType)
+        {
+            auto label = "Cast: " + from->m_DecidedType->m_Name + " -> " + to->m_DecidedType->m_Name;
+            if (ImGui::MenuItem(label.c_str()))
+                mode = LinkMode::Cast;
+        }
+        if (m_Forced)
+        {
+            auto label = *m_Forced == 0 ? std::string("Force") : "Force (disables " + std::to_string(*m_Forced) + (*m_Forced == 1 ? " link)" : " links)");
+            if (ImGui::MenuItem(label.c_str()))
+                mode = LinkMode::Force;
+        }
+    }
+    ImGui::MenuItem("Cancel");
+
+    if (mode)
+        CreateLink(document, m_From, m_To, *mode);
+
+    ImGui::EndPopup();
 }

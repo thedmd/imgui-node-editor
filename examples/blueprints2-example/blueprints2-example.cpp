@@ -889,37 +889,50 @@ private:
 
             const auto from = startPin->m_Id, to = endPin->m_Id;
             if (!m_LinkQuery || m_LinkQuery->m_From != from || m_LinkQuery->m_To != to || m_LinkQuery->m_Revision != document.m_Revision)
+            {
                 m_LinkQuery = LinkQuery{ from, to, document.m_Revision, graph.CanConnect(from, to) };
+                if (!m_LinkQuery->m_Fits)
+                {
+                    m_LinkQuery->m_Cast = graph.CanConnect(from, to, LinkMode::Cast).IsOk();
+                    if (auto forced = graph.ForceDisables(from, to))
+                        m_LinkQuery->m_Forced = static_cast<int>(forced.GetValue().size());
+                }
+            }
+            auto& query = *m_LinkQuery;
 
-            auto describe = [&graph](const Pin& pin) { return graph.NodeOf(pin.m_Id)->Name() + "." + pin.m_Key + " (" + (pin.m_Flow ? std::string("flow") : graph.TypeText(pin.m_Id)) + ")"; };
-            if (m_LinkQuery->m_Fits)
+            const auto ends = "From: " + DescribePin(graph, *startPin) + "\nTo: " + DescribePin(graph, *endPin);
+            if (query.m_Fits)
             {
                 ed::Suspend();
-                ImGui::BeginTooltip();
-                ImGui::TextUnformatted("Valid Link");
-                ImGui::Separator();
-                ImGui::Text("From: %s", describe(*startPin).c_str());
-                ImGui::Text("To: %s", describe(*endPin).c_str());
-                ImGui::EndTooltip();
+                ImGui::SetTooltip("Valid Link\n%s", ends.c_str());
                 ed::Resume();
 
                 if (linkBuilder->Accept())
+                    CreateLink(document, from, to);
+            }
+            else if (query.m_Cast || query.m_Forced)
+            {
+                const auto reason = Text(query.m_Fits.GetError().Message());
+                ed::Suspend();
+                ImGui::SetTooltip("Link With %s\n%s\n%s", query.m_Cast ? (query.m_Forced ? "Cast, or Forced" : "Cast") : "Force", reason.c_str(), ends.c_str());
+                ed::Resume();
+
+                if (linkBuilder->Accept(ImVec4(1.0f, 0.6f, 0.2f, 1.0f)))
                 {
-                    auto transaction = document.BeginUndoTransaction("Create Link");
-                    auto name = describe(*startPin) + " -> " + describe(*endPin);
-                    if (graph.Connect(from, to))
-                    {
-                        LOGV("[HandleCreateAction] %s", name.c_str());
-                        transaction->AddAction("%s", name.c_str());
-                    }
+                    if (query.m_Cast && !query.m_Forced)
+                        CreateLink(document, from, to, LinkMode::Cast);
                     else
-                        transaction->Discard();
+                    {
+                        ed::Suspend();
+                        m_LinkDropMenu.Open(from, to, reason, query.m_Cast, query.m_Forced);
+                        ed::Resume();
+                    }
                 }
             }
             else
             {
                 ed::Suspend();
-                ImGui::SetTooltip("Invalid Link: %s", Text(m_LinkQuery->m_Fits.GetError().Message()).c_str());
+                ImGui::SetTooltip("Invalid Link: %s", Text(query.m_Fits.GetError().Message()).c_str());
                 ed::Resume();
 
                 linkBuilder->Reject();
@@ -1088,6 +1101,7 @@ private:
         m_NodeContextMenu.Show(document);
         m_PinContextMenu.Show(document);
         m_LinkContextMenu.Show(document);
+        m_LinkDropMenu.Show(document);
 
         ed::Resume();
     }
@@ -1444,10 +1458,12 @@ private:
 
     struct LinkQuery
     {
-        Id           m_From     = 0;
-        Id           m_To       = 0;
-        uint64_t     m_Revision = 0;
-        Result<void> m_Fits;
+        Id                 m_From     = 0;
+        Id                 m_To       = 0;
+        uint64_t           m_Revision = 0;
+        Result<void>       m_Fits;
+        bool               m_Cast   = false;
+        std::optional<int> m_Forced = {}; // the links forcing it disables
     };
 
     crude_logger::OverlayLogger m_OverlayLogger;
@@ -1462,8 +1478,9 @@ private:
     NodeContextMenu  m_NodeContextMenu;
     PinContextMenu   m_PinContextMenu;
     LinkContextMenu  m_LinkContextMenu;
+    LinkDropMenu     m_LinkDropMenu;
 
-    Action m_File_New        = { "New",          [this] { File_New();    } };
+    Action m_File_New       = { "New",          [this] { File_New();    } };
     Action m_File_Open       = { "Open...",      [this] { File_Open();   } };
     Action m_File_SaveAs     = { "Save As...",   [this] { File_SaveAs(); } };
     Action m_File_Save       = { "Save",         [this] { File_Save();   } };
