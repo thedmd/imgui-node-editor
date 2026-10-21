@@ -170,6 +170,7 @@ if (IMGUI_NODE_EDITOR_TESTS_BLUEPRINTS2)
         blueprints2_graph_tests.cpp
     )
     add_executable(blueprints2_tests
+        blueprints2_fixture.h
         harness.cpp
         harness.h
         main.cpp
