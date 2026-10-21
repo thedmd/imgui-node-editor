@@ -718,6 +718,7 @@ Result<void> RegisterBuiltins(Registry& registry);
 class Blueprint;
 class TypeResolution;
 struct FileLoader;
+struct CompileResult;
 
 enum class LinkMode : uint8_t
 {
@@ -946,6 +947,7 @@ private:
     friend struct FileLoader;
     friend crude_json::value Save(const Blueprint& blueprint);
     friend Result<void>      Load(Blueprint& blueprint, const crude_json::value& file);
+    friend CompileResult     Compile(const Blueprint& blueprint);
 
     Result<void> CheckFunction(std::string_view name, const Signature& signature) const;
     Result<void> CheckSignature(const Signature& signature) const;
@@ -1006,21 +1008,43 @@ struct ProgramPin
 
 struct ProgramNode
 {
-    Id                      m_Id    = 0;
-    Id                      m_Graph = 0;
-    const NodeType*         m_Type  = nullptr;
-    NodeConfig              m_Config;
-    std::string             m_Name;          // as messages name it: "Add#7"
-    bool                    m_Pure  = false; // without flow pins
-    std::vector<ProgramPin> m_Pins;
-    std::vector<SplitPin>   m_Splits;
+    Id                       m_Id       = 0;
+    Id                       m_Graph    = 0;
+    const NodeType*          m_Type     = nullptr;
+    NodeConfig               m_Config;
+    std::string              m_Name;              // as messages name it: "Add#7"
+    bool                     m_Pure     = false;  // computed when read: without flow pins, and no function's entry
+    std::vector<ProgramPin>  m_Pins;
+    std::vector<SplitPin>    m_Splits;
+    int                      m_Function = -1;     // the function it's in, by index; -1 in an event graph
+    int                      m_Callee   = -1;     // a call's function, by index
+    bool                     m_Return   = false;  // a function's return
+    std::vector<const Type*> m_Arguments;         // a call's types for its function's parameters, which may be its own function's
+};
+
+// A function as a program runs it. Every call has its own of its slots.
+struct ProgramFunction
+{
+    Id                                m_Graph     = 0;
+    std::string                       m_Name;
+    int                               m_Entry     = -1; // its entry node, by index
+    int                               m_Return    = -1; // a pure one's return node, by index; without one, its outputs are their defaults
+    int                               m_FirstNode = 0;
+    int                               m_NodeCount = 0;
+    int                               m_FirstSlot = 0;
+    int                               m_SlotCount = 0;
+    std::vector<const ParameterType*> m_Parameters;
+    std::vector<std::string>          m_Inputs;         // its signature's keys
+    std::vector<std::string>          m_Outputs;
+    bool                              m_Pure      = false;
 };
 
 // A blueprint as it was compiled. Contexts share it, so edits never reach a run in progress.
 class Program
 {
 public:
-    std::span<const ProgramNode> Nodes() const { return m_Nodes; }
+    std::span<const ProgramNode>     Nodes() const     { return m_Nodes; }
+    std::span<const ProgramFunction> Functions() const { return m_Functions; }
 
     int FindNode(Id node) const; // its index, or -1
     int FindEvent(std::string_view name) const;
@@ -1030,10 +1054,13 @@ private:
     friend class NodeContext;
     friend CompileResult Compile(const Blueprint& blueprint);
 
-    std::vector<ProgramNode>                    m_Nodes;
-    std::vector<std::pair<int, int>>            m_Slots; // each slot's node and pin, by index
-    std::map<std::string, int, std::less<>>     m_Events;
-    std::unordered_map<Id, std::pair<int, int>> m_Pins;  // each pin's node and pin, by index
+    std::vector<ProgramNode>                     m_Nodes;     // a graph's together, of event graphs and of functions
+    std::vector<std::pair<int, int>>             m_Slots;     // each slot's node and pin, by index
+    std::map<std::string, int, std::less<>>      m_Events;
+    std::unordered_map<Id, std::pair<int, int>>  m_Pins;      // each pin's node and pin, by index
+    std::vector<ProgramFunction>                 m_Functions;
+    std::shared_ptr<TypeTable>                   m_Types;     // for a call's types, of the parameters it was given
+    std::vector<std::shared_ptr<const NodeType>> m_Owned;     // the blueprint's node types its nodes are of
 };
 
 struct CompileResult
@@ -1068,6 +1095,7 @@ struct FiberInfo
     Id         m_Ran          = 0;     // the node its last step ran
     Id         m_Link         = 0;     // the flow link its last step took; 0 for none, as into a loop's node again
     bool       m_AtBreakpoint = false; // Run() stopped it before its next node, which has a breakpoint
+    std::vector<Id> m_Calls;           // the call nodes it's in, the outermost first
 };
 
 // Why Run() returned.
@@ -1091,6 +1119,20 @@ struct Watch
 {
     Value                   m_Value;
     std::optional<uint64_t> m_Step; // the step that stored or computed it, 0 before any; none for a constant, or a default nothing wrote
+};
+
+// A fiber's place in a call of a function: the function's slots, which every call has its own of,
+// the types its parameters have at the call, and the loops in it. A fiber's first frame is the
+// event graphs', whose slots the context keeps.
+struct CallFrame
+{
+    int                                  m_Function = -1; // by index; -1 for the event graphs'
+    int                                  m_Call     = -1; // the call node, in the frame below
+    std::vector<Value>                   m_Slots;
+    std::vector<std::optional<uint64_t>> m_SlotSteps;
+    std::vector<uint64_t>                m_Computed;      // per node of the function: the generation of a pure node's outputs
+    std::vector<const Type*>             m_Types;         // the function's parameters at the call
+    std::vector<std::pair<int, int>>     m_Loops;         // nodes to enter again once their branch ends, and where
 };
 
 // What a run tells its host.
@@ -1122,10 +1164,11 @@ public:
     T& State();
 
 protected:
-    NodeContext(Context& context, int node): m_Context(context), m_Node(node) {}
+    NodeContext(Context& context, int node, CallFrame& frame): m_Context(context), m_Node(node), m_Frame(frame) {}
 
-    Context& m_Context;
-    int      m_Node;
+    Context&   m_Context;
+    int        m_Node;
+    CallFrame& m_Frame;
 
 private:
     std::any& StateSlot();
@@ -1135,13 +1178,13 @@ private:
 class EvalContext final : public NodeContext
 {
 public:
-    EvalContext(Context& context, int node): NodeContext(context, node) {}
+    EvalContext(Context& context, int node, CallFrame& frame): NodeContext(context, node, frame) {}
 };
 
 class ExecContext final : public NodeContext
 {
 public:
-    ExecContext(Context& context, int node, bool again): NodeContext(context, node), m_Again(again) {}
+    ExecContext(Context& context, int node, CallFrame& frame, bool again): NodeContext(context, node, frame), m_Again(again) {}
 
     // Entered again after the branch of its Exit::Loop.
     bool IsAgain() const { return m_Again; }
@@ -1189,17 +1232,32 @@ private:
 
     struct Fiber
     {
-        FiberInfo                        m_Info;
-        int                              m_Node  = -1;
-        int                              m_Entry = -1;
-        bool                             m_Again = false;
-        std::vector<std::pair<int, int>> m_Loops; // nodes to enter again once their branch ends, and where
+        FiberInfo              m_Info;
+        int                    m_Node  = -1;
+        int                    m_Entry = -1;
+        bool                   m_Again = false;
+        std::vector<CallFrame> m_Frames; // the event graphs' first
     };
 
-    Result<Value> Read(int node, int pin);
-    Result<Value> ReadSlot(int slot);
-    Result<void>  EvaluateNode(int node);
-    void          Write(int node, int pin, Value value);
+    struct Slot
+    {
+        Value&                   m_Value;
+        std::optional<uint64_t>& m_Step;
+    };
+
+    CallFrame     Frame(int function, int call, std::vector<const Type*> types) const;
+    Slot          SlotOf(CallFrame& frame, int slot);
+    uint64_t&     ComputedOf(CallFrame& frame, int node);
+    const Type*   Resolve(const CallFrame& frame, const Type* type) const;
+    Result<Value> Read(CallFrame& frame, int node, int pin);
+    Result<Value> ReadSlot(CallFrame& frame, int slot);
+    Result<void>  EvaluateNode(CallFrame& frame, int node);
+    Result<void>  EvaluateCall(CallFrame& frame, int node);
+    void          Write(CallFrame& frame, int node, int pin, Value value);
+    Result<void>  Call(Fiber& fiber, int node);
+    Result<void>  Return(Fiber& fiber, int node);
+    void          GoOnAfter(Fiber& fiber, int call);
+    void          Take(Fiber& fiber, const ProgramPin& output);
     void          Settle(Fiber& fiber);
     FiberState    Fail(Fiber& fiber, Error error, int node);
     Fiber*        FindFiber(FiberId fiber);
@@ -1210,6 +1268,7 @@ private:
     std::vector<uint64_t>                m_Computed;    // per node: the generation of a pure node's outputs
     std::vector<std::any>                m_States;      // per node
     std::vector<bool>                    m_Breakpoints; // per node
+    CallFrame                            m_Events;      // the event graphs', for reading values outside fibers
     std::vector<Fiber>                   m_Fibers;
     std::vector<Diagnostic>              m_Diagnostics;
     std::vector<TraceEntry>              m_Trace;

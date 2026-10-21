@@ -1349,9 +1349,22 @@ struct FunctionNodeType final : NodeType
         }
     }
 
+    // A call and a return are the context's to run.
+    Result<Exit> Execute(ExecContext& context, std::string_view entry) const override
+    {
+        if (m_Role == Role::Entry)
+            return Exit::To("then");
+        return NodeType::Execute(context, entry);
+    }
+
     const std::shared_ptr<const Function> m_Function;
     const Role                            m_Role;
 };
+
+bool HasParameter(const Type* type)
+{
+    return type && (IsA<ParameterType>(type->m_Head) || std::any_of(type->m_Args.begin(), type->m_Args.end(), HasParameter));
+}
 
 // A node's term in the graph: its variables numbered from the node's first.
 TypeTerm Offset(const TypeTerm& term, int base)
@@ -2393,19 +2406,46 @@ crude_blueprint::CompileResult crude_blueprint::Compile(const Blueprint& bluepri
     CompileResult result;
     auto program = std::make_shared<Program>();
     auto failed  = false;
+    program->m_Types = blueprint.m_Types;
     auto error   = [&result, &failed](Error what, Id graph, Id node, Id pin)
     {
         result.m_Diagnostics.push_back({ std::move(what), Severity::Error, graph, node, pin, 0 });
         failed = true;
     };
 
-    std::unordered_map<Id, int> records; // each node's, by its ID
+    std::unordered_map<Id, int> records;   // each node's, by its ID
+    std::unordered_map<Id, int> functions; // each function's, by its graph's ID
+    for (auto& graph : blueprint.Graphs())
+    {
+        auto function = blueprint.FindFunction(graph->GetId());
+        if (!function)
+            continue;
+        functions[graph->GetId()] = static_cast<int>(program->m_Functions.size());
+        auto& compiled = program->m_Functions.emplace_back();
+        compiled.m_Graph      = graph->GetId();
+        compiled.m_Name       = function->m_Name;
+        compiled.m_Parameters = function->m_Parameters;
+        compiled.m_Pure       = function->m_Signature.m_Pure;
+        for (auto& input : function->m_Signature.m_Inputs)
+            compiled.m_Inputs.push_back(input.m_Key);
+        for (auto& output : function->m_Signature.m_Outputs)
+            compiled.m_Outputs.push_back(output.m_Key);
+    }
+
     for (auto& graph : blueprint.Graphs())
     {
         for (auto& diagnostic : graph->Diagnostics())
         {
             result.m_Diagnostics.push_back(diagnostic);
             failed = failed || diagnostic.m_Severity == Severity::Error;
+        }
+
+        auto       found    = functions.find(graph->GetId());
+        const auto function = found != functions.end() ? found->second : -1;
+        if (function >= 0)
+        {
+            program->m_Functions[function].m_FirstNode = static_cast<int>(program->m_Nodes.size());
+            program->m_Functions[function].m_FirstSlot = static_cast<int>(program->m_Slots.size());
         }
 
         for (auto& node : graph->Nodes())
@@ -2441,6 +2481,52 @@ crude_blueprint::CompileResult crude_blueprint::Compile(const Blueprint& bluepri
             auto event = node.m_Type->EventName(node.m_Config);
             if (!event.empty() && !program->m_Events.emplace(event, index).second)
                 error(Error(BlueprintError::Duplicate, node.Name() + " starts " + event + ", as another node does"), graph->GetId(), node.m_Id, 0);
+
+            record.m_Function = function;
+            auto role = Cast<FunctionNodeType>(node.m_Type);
+            if (!role)
+                continue;
+            if (auto own = blueprint.m_Scope.find(role->m_Name); own != blueprint.m_Scope.end())
+                program->m_Owned.push_back(own->second);
+            const auto target = functions.at(role->m_Function->m_Graph);
+            auto&      callee = program->m_Functions[target];
+            if (role->m_Role == FunctionNodeType::Role::Call)
+            {
+                record.m_Callee = target;
+                for (auto& parameter : role->m_Function->m_Signature.m_Parameters)
+                    record.m_Arguments.push_back(node.m_Bindings.Get(parameter.m_Name));
+                continue;
+            }
+            if (target != function)
+                error(Error(BlueprintError::Unsupported, node.Name() + " belongs in " + callee.m_Name + "'s graph"), graph->GetId(), node.m_Id, 0);
+            else if (role->m_Role == FunctionNodeType::Role::Entry)
+            {
+                record.m_Pure = false;
+                if (callee.m_Entry >= 0)
+                    error(Error(BlueprintError::Duplicate, callee.m_Name + " has two entries"), graph->GetId(), node.m_Id, 0);
+                callee.m_Entry = index;
+            }
+            else
+            {
+                record.m_Return = true;
+                if (callee.m_Pure && callee.m_Return >= 0)
+                    error(Error(BlueprintError::Duplicate, "pure " + callee.m_Name + " has two returns, of which a call can't read both"), graph->GetId(), node.m_Id, 0);
+                callee.m_Return = index;
+            }
+        }
+
+        if (function >= 0)
+        {
+            auto& compiled = program->m_Functions[function];
+            compiled.m_NodeCount = static_cast<int>(program->m_Nodes.size()) - compiled.m_FirstNode;
+            compiled.m_SlotCount = static_cast<int>(program->m_Slots.size()) - compiled.m_FirstSlot;
+            if (compiled.m_Entry < 0)
+                error(Error(BlueprintError::NotFound, compiled.m_Name + " has no entry"), graph->GetId(), 0, 0);
+            if (!compiled.m_Pure)
+                compiled.m_Return = -1;
+            for (auto& node : graph->Nodes())
+                if (compiled.m_Pure && std::any_of(node.m_Pins.begin(), node.m_Pins.end(), [](const Pin& pin) { return pin.m_Flow; }))
+                    error(Error(BlueprintError::Unsupported, "pure " + compiled.m_Name + " holds " + node.Name() + ", which has flow pins"), graph->GetId(), node.m_Id, 0);
         }
     }
 
@@ -2482,7 +2568,7 @@ crude_blueprint::CompileResult crude_blueprint::Compile(const Blueprint& bluepri
                     compiled.m_Constant = typed->second;
                 else if (pin.m_Default.IsValid() && pin.m_Default.GetType() == pin.m_DecidedType)
                     compiled.m_Constant = pin.m_Default;
-                else
+                else if (!HasParameter(pin.m_DecidedType))
                     compiled.m_Constant = pin.m_DecidedType->m_Head->Default(*pin.m_DecidedType);
             }
         }
@@ -2564,7 +2650,7 @@ crude_blueprint::Result<crude_blueprint::Value> crude_blueprint::NodeContext::Ge
         return Value::Struct(*split->m_Type, std::move(fields));
     }
     CRUDE_BP_ASSERT(!node.m_Pins[pin].m_Flow && node.m_Pins[pin].m_Direction == Direction::Input && "no data input of that key");
-    return m_Context.Read(m_Node, pin);
+    return m_Context.Read(m_Frame, m_Node, pin);
 }
 
 crude_blueprint::Result<std::vector<crude_blueprint::Value>> crude_blueprint::NodeContext::Inputs(std::string_view prefix)
@@ -2601,11 +2687,13 @@ void crude_blueprint::NodeContext::Set(std::string_view output, Value value)
     CRUDE_BP_ASSERT(node.m_Pins[pin].m_Slot >= 0 && "no data output of that key");
     if (node.m_Pins[pin].m_Slot < 0)
         return;
-    auto type = node.m_Pins[pin].m_Type;
-    CRUDE_BP_ASSERT(value.GetType() == type && "a value of another type than the output's");
+    auto type = m_Context.Resolve(m_Frame, node.m_Pins[pin].m_Type);
+    CRUDE_BP_ASSERT(type && value.GetType() == type && "a value of another type than the output's");
+    if (!type)
+        return;
     if (value.GetType() != type)
         value = type->m_Head->Default(*type);
-    m_Context.Write(m_Node, pin, std::move(value));
+    m_Context.Write(m_Frame, m_Node, pin, std::move(value));
 }
 
 const crude_blueprint::Type* crude_blueprint::NodeContext::TypeOf(std::string_view pin) const
@@ -2613,7 +2701,7 @@ const crude_blueprint::Type* crude_blueprint::NodeContext::TypeOf(std::string_vi
     auto& node  = m_Context.m_Program->m_Nodes[m_Node];
     auto  found = FindPinByKey(node, pin);
     if (found >= 0)
-        return node.m_Pins[found].m_Type;
+        return m_Context.Resolve(m_Frame, node.m_Pins[found].m_Type);
     for (auto& split : node.m_Splits)
         if (split.m_Key == pin)
             return split.m_Type;
@@ -2667,6 +2755,7 @@ crude_blueprint::Result<crude_blueprint::FiberId> crude_blueprint::Context::Star
     fiber.m_Info.m_Id   = m_NextFiber++;
     fiber.m_Info.m_Node = m_Program->m_Nodes[node].m_Id;
     fiber.m_Node        = node;
+    fiber.m_Frames.push_back(Frame(-1, -1, {}));
     return fiber.m_Info.m_Id;
 }
 
@@ -2688,15 +2777,24 @@ crude_blueprint::Result<crude_blueprint::FiberState> crude_blueprint::Context::S
     auto&       node  = m_Program->m_Nodes[index];
     fiber->m_Info.m_Ran          = node.m_Id;
     fiber->m_Info.m_AtBreakpoint = false;
-    ExecContext context(*this, index, fiber->m_Again);
+    fiber->m_Info.m_Link         = 0;
+    if (node.m_Callee >= 0 || node.m_Return)
+    {
+        if (auto moved = node.m_Callee >= 0 ? Call(*fiber, index) : Return(*fiber, index); !moved)
+            return Fail(*fiber, moved.GetError(), index);
+        Settle(*fiber);
+        return fiber->m_Info.m_State;
+    }
+
+    auto&       frame = fiber->m_Frames.back();
+    ExecContext context(*this, index, frame, fiber->m_Again);
     auto        exit  = Contained([&] { return node.m_Type->Execute(context, entry >= 0 ? std::string_view(node.m_Pins[entry].m_Key) : std::string_view()); });
     if (!exit)
         return Fail(*fiber, exit.GetError(), index);
 
-    fiber->m_Node        = -1;
-    fiber->m_Entry       = -1;
-    fiber->m_Again       = false;
-    fiber->m_Info.m_Link = 0;
+    fiber->m_Node  = -1;
+    fiber->m_Entry = -1;
+    fiber->m_Again = false;
     auto& taken = exit.GetValue();
     if (taken.m_Kind != Exit::Kind::None)
     {
@@ -2704,16 +2802,8 @@ crude_blueprint::Result<crude_blueprint::FiberState> crude_blueprint::Context::S
         if (pin < 0 || !node.m_Pins[pin].m_Flow || node.m_Pins[pin].m_Direction != Direction::Output)
             return Fail(*fiber, Error(BlueprintError::NotFound, node.m_Name + " has no flow output " + taken.m_Pin), index);
         if (taken.m_Kind == Exit::Kind::Loop)
-            fiber->m_Loops.emplace_back(index, entry);
-        fiber->m_Node        = node.m_Pins[pin].m_Target;
-        fiber->m_Entry       = node.m_Pins[pin].m_TargetPin;
-        fiber->m_Info.m_Link = node.m_Pins[pin].m_Link;
-        if (fiber->m_Info.m_Link)
-        {
-            if (m_Trace.size() == c_TraceLength)
-                m_Trace.erase(m_Trace.begin());
-            m_Trace.push_back({ id, fiber->m_Info.m_Link, m_Step });
-        }
+            frame.m_Loops.emplace_back(index, entry);
+        Take(*fiber, node.m_Pins[pin]);
     }
     Settle(*fiber);
     return fiber->m_Info.m_State;
@@ -2778,15 +2868,22 @@ crude_blueprint::Result<void> crude_blueprint::Context::Patch(std::shared_ptr<co
     };
     auto sameNode = [&samePin, &sameSplit](const ProgramNode& a, const ProgramNode& b)
     {
-        return std::tie(a.m_Id, a.m_Graph, a.m_Type, a.m_Name, a.m_Pure) == std::tie(b.m_Id, b.m_Graph, b.m_Type, b.m_Name, b.m_Pure)
+        return std::tie(a.m_Id, a.m_Graph, a.m_Type, a.m_Name, a.m_Pure, a.m_Function, a.m_Callee, a.m_Return, a.m_Arguments)
+                == std::tie(b.m_Id, b.m_Graph, b.m_Type, b.m_Name, b.m_Pure, b.m_Function, b.m_Callee, b.m_Return, b.m_Arguments)
             && std::tie(a.m_Config.m_Groups, a.m_Config.m_Types, a.m_Config.m_Split) == std::tie(b.m_Config.m_Groups, b.m_Config.m_Types, b.m_Config.m_Split)
             && std::equal(a.m_Pins.begin(), a.m_Pins.end(), b.m_Pins.begin(), b.m_Pins.end(), samePin)
             && std::equal(a.m_Splits.begin(), a.m_Splits.end(), b.m_Splits.begin(), b.m_Splits.end(), sameSplit);
     };
+    auto sameFunction = [](const ProgramFunction& a, const ProgramFunction& b)
+    {
+        return std::tie(a.m_Graph, a.m_Name, a.m_Entry, a.m_Return, a.m_FirstNode, a.m_NodeCount, a.m_FirstSlot, a.m_SlotCount, a.m_Parameters, a.m_Pure, a.m_Inputs, a.m_Outputs)
+            == std::tie(b.m_Graph, b.m_Name, b.m_Entry, b.m_Return, b.m_FirstNode, b.m_NodeCount, b.m_FirstSlot, b.m_SlotCount, b.m_Parameters, b.m_Pure, b.m_Inputs, b.m_Outputs);
+    };
     auto& before = *m_Program;
     auto& after  = *program;
     if (before.m_Slots != after.m_Slots || before.m_Events != after.m_Events || before.m_Pins != after.m_Pins
-        || !std::equal(before.m_Nodes.begin(), before.m_Nodes.end(), after.m_Nodes.begin(), after.m_Nodes.end(), sameNode))
+        || !std::equal(before.m_Nodes.begin(), before.m_Nodes.end(), after.m_Nodes.begin(), after.m_Nodes.end(), sameNode)
+        || !std::equal(before.m_Functions.begin(), before.m_Functions.end(), after.m_Functions.begin(), after.m_Functions.end(), sameFunction))
         return Error(BlueprintError::Unsupported, "the program differs in more than its values");
 
     m_Program = std::move(program);
@@ -2798,10 +2895,15 @@ std::vector<crude_blueprint::FiberInfo> crude_blueprint::Context::Fibers() const
 {
     std::vector<FiberInfo> fibers;
     for (auto& fiber : m_Fibers)
-        fibers.push_back(fiber.m_Info);
+    {
+        auto& info = fibers.emplace_back(fiber.m_Info);
+        for (size_t i = 1; i < fiber.m_Frames.size(); ++i)
+            info.m_Calls.push_back(m_Program->m_Nodes[fiber.m_Frames[i].m_Call].m_Id);
+    }
     return fibers;
 }
 
+// A function's pin reads the innermost call of it that a fiber is in.
 crude_blueprint::Result<crude_blueprint::Watch> crude_blueprint::Context::Evaluate(Id pin)
 {
     auto it = m_Program->m_Pins.find(pin);
@@ -2812,21 +2914,97 @@ crude_blueprint::Result<crude_blueprint::Watch> crude_blueprint::Context::Evalua
     if (compiled.m_Flow)
         return Error(BlueprintError::WrongType, "a flow pin has no value");
 
+    auto function = m_Program->m_Nodes[node].m_Function;
+    auto frame    = function < 0 ? &m_Events : nullptr;
+    for (auto& fiber : m_Fibers)
+        for (auto in = fiber.m_Frames.rbegin(); in != fiber.m_Frames.rend() && !frame; ++in)
+            if (in->m_Function == function)
+                frame = &*in;
+    if (!frame)
+        return Error(BlueprintError::Unsupported, "no call of " + m_Program->m_Functions[function].m_Name + " runs now");
+
     m_ErrorNode = -1;
     m_ErrorLink = 0;
     auto slot  = compiled.m_Direction == Direction::Input ? compiled.m_Source : compiled.m_Slot;
-    auto value = compiled.m_Direction == Direction::Input ? Read(node, index) : ReadSlot(slot);
+    auto value = compiled.m_Direction == Direction::Input ? Read(*frame, node, index) : ReadSlot(*frame, slot);
     if (!value)
         return value.GetError();
-    return Watch{ std::move(value).GetValue(), slot >= 0 ? m_SlotSteps[slot] : std::nullopt };
+    return Watch{ std::move(value).GetValue(), slot >= 0 ? SlotOf(*frame, slot).m_Step : std::nullopt };
 }
 
-crude_blueprint::Result<crude_blueprint::Value> crude_blueprint::Context::Read(int node, int pin)
+crude_blueprint::CallFrame crude_blueprint::Context::Frame(int function, int call, std::vector<const Type*> types) const
+{
+    CallFrame frame;
+    frame.m_Function = function;
+    frame.m_Call     = call;
+    frame.m_Types    = std::move(types);
+    if (function >= 0)
+    {
+        auto& compiled = m_Program->m_Functions[function];
+        frame.m_Slots.resize(compiled.m_SlotCount);
+        frame.m_SlotSteps.resize(compiled.m_SlotCount);
+        frame.m_Computed.resize(compiled.m_NodeCount, 0);
+    }
+    return frame;
+}
+
+// The slots of event graphs are the context's; a function's, the frame of its call's.
+crude_blueprint::Context::Slot crude_blueprint::Context::SlotOf(CallFrame& frame, int slot)
+{
+    auto function = m_Program->m_Nodes[m_Program->m_Slots[slot].first].m_Function;
+    if (function < 0)
+        return { m_Slots[slot], m_SlotSteps[slot] };
+    CRUDE_BP_ASSERT(frame.m_Function == function);
+    auto at = slot - m_Program->m_Functions[function].m_FirstSlot;
+    return { frame.m_Slots[at], frame.m_SlotSteps[at] };
+}
+
+uint64_t& crude_blueprint::Context::ComputedOf(CallFrame& frame, int node)
+{
+    auto function = m_Program->m_Nodes[node].m_Function;
+    if (function < 0)
+        return m_Computed[node];
+    CRUDE_BP_ASSERT(frame.m_Function == function);
+    return frame.m_Computed[node - m_Program->m_Functions[function].m_FirstNode];
+}
+
+// Null for a parameter the call didn't decide.
+const crude_blueprint::Type* crude_blueprint::Context::Resolve(const CallFrame& frame, const Type* type) const
+{
+    if (!type || frame.m_Function < 0)
+        return type;
+    if (auto parameter = Cast<ParameterType>(type->m_Head))
+    {
+        auto& parameters = m_Program->m_Functions[frame.m_Function].m_Parameters;
+        auto  at         = static_cast<size_t>(std::find(parameters.begin(), parameters.end(), parameter) - parameters.begin());
+        return at < frame.m_Types.size() ? frame.m_Types[at] : nullptr;
+    }
+    if (type->m_Args.empty())
+        return type;
+    std::vector<const Type*> args;
+    for (auto arg : type->m_Args)
+    {
+        auto resolved = Resolve(frame, arg);
+        if (!resolved)
+            return nullptr;
+        args.push_back(resolved);
+    }
+    return args == type->m_Args ? type : m_Program->m_Types->Get(*type->m_Head, args);
+}
+
+crude_blueprint::Result<crude_blueprint::Value> crude_blueprint::Context::Read(CallFrame& frame, int node, int pin)
 {
     auto& compiled = m_Program->m_Nodes[node].m_Pins[pin];
     if (compiled.m_Source < 0)
-        return compiled.m_Constant;
-    auto value = ReadSlot(compiled.m_Source);
+    {
+        if (compiled.m_Constant.IsValid())
+            return compiled.m_Constant;
+        auto type = Resolve(frame, compiled.m_Type);
+        if (!type)
+            return Error(BlueprintError::Undecided, m_Program->m_Nodes[node].m_Name + "." + compiled.m_Key + "'s type isn't decided at this call");
+        return type->m_Head->Default(*type);
+    }
+    auto value = ReadSlot(frame, compiled.m_Source);
     if (!value || !compiled.m_Cast)
         return value;
     auto cast = compiled.m_Cast->m_Function(value.GetValue());
@@ -2839,24 +3017,25 @@ crude_blueprint::Result<crude_blueprint::Value> crude_blueprint::Context::Read(i
 }
 
 // An output that nothing wrote reads as its type's default.
-crude_blueprint::Result<crude_blueprint::Value> crude_blueprint::Context::ReadSlot(int slot)
+crude_blueprint::Result<crude_blueprint::Value> crude_blueprint::Context::ReadSlot(CallFrame& frame, int slot)
 {
     auto [node, pin] = m_Program->m_Slots[slot];
-    if (m_Program->m_Nodes[node].m_Pure && m_Computed[node] != m_Generation)
-        if (auto computed = EvaluateNode(node); !computed)
+    if (m_Program->m_Nodes[node].m_Pure && ComputedOf(frame, node) != m_Generation)
+        if (auto computed = EvaluateNode(frame, node); !computed)
             return computed.GetError();
-    if (!m_Slots[slot].IsValid())
-    {
-        auto type = m_Program->m_Nodes[node].m_Pins[pin].m_Type;
-        return type->m_Head->Default(*type);
-    }
-    return m_Slots[slot];
+    auto stored = SlotOf(frame, slot);
+    if (stored.m_Value.IsValid())
+        return stored.m_Value;
+    auto type = Resolve(frame, m_Program->m_Nodes[node].m_Pins[pin].m_Type);
+    if (!type)
+        return Error(BlueprintError::Undecided, m_Program->m_Nodes[node].m_Name + "." + m_Program->m_Nodes[node].m_Pins[pin].m_Key + "'s type isn't decided at this call");
+    return type->m_Head->Default(*type);
 }
 
 // Pure nodes compute in the inputs that read them, so each nests in the call stack. 128 levels take
 // about 600 KB where a level is largest, in MSVC's debug builds with AddressSanitizer, of a main
 // thread's 1 MB.
-crude_blueprint::Result<void> crude_blueprint::Context::EvaluateNode(int node)
+crude_blueprint::Result<void> crude_blueprint::Context::EvaluateNode(CallFrame& frame, int node)
 {
     const int c_MaxDepth = 128;
     auto&     record     = m_Program->m_Nodes[node];
@@ -2867,8 +3046,8 @@ crude_blueprint::Result<void> crude_blueprint::Context::EvaluateNode(int node)
         return Error(BlueprintError::TooDeep, record.m_Name + " is computed in inputs nested deeper than " + std::to_string(c_MaxDepth) + " pure nodes");
     }
     ++m_Depth;
-    EvalContext context(*this, node);
-    auto        result = Contained([&] { return record.m_Type->Evaluate(context); });
+    EvalContext context(*this, node, frame);
+    auto        result = record.m_Callee >= 0 ? EvaluateCall(frame, node) : Contained([&] { return record.m_Type->Evaluate(context); });
     --m_Depth;
     if (!result)
     {
@@ -2876,33 +3055,160 @@ crude_blueprint::Result<void> crude_blueprint::Context::EvaluateNode(int node)
             m_ErrorNode = node;
         return result;
     }
-    m_Computed[node] = m_Generation;
+    ComputedOf(frame, node) = m_Generation;
     return {};
 }
 
-void crude_blueprint::Context::Write(int node, int pin, Value value)
+// A pure function's call runs its body in a frame of its own, which goes once the outputs are read.
+crude_blueprint::Result<void> crude_blueprint::Context::EvaluateCall(CallFrame& frame, int node)
 {
-    auto slot = m_Program->m_Nodes[node].m_Pins[pin].m_Slot;
-    m_Slots[slot]     = std::move(value);
-    m_SlotSteps[slot] = m_Step;
-    if (!m_Program->m_Nodes[node].m_Pure)
+    auto& call     = m_Program->m_Nodes[node];
+    auto& function = m_Program->m_Functions[call.m_Callee];
+    std::vector<const Type*> types;
+    for (auto argument : call.m_Arguments)
+        types.push_back(Resolve(frame, argument));
+    auto callee = Frame(call.m_Callee, -1, std::move(types));
+
+    EvalContext caller(*this, node, frame), entry(*this, function.m_Entry, callee);
+    for (auto& key : function.m_Inputs)
+    {
+        auto value = caller.Get(key);
+        if (!value)
+            return value.GetError();
+        entry.Set(key, std::move(value).GetValue());
+    }
+    for (auto& key : function.m_Outputs)
+    {
+        auto value = function.m_Return >= 0 ? EvalContext(*this, function.m_Return, callee).Get(key) : Result<Value>(Value());
+        if (!value)
+            return value.GetError();
+        if (!value.GetValue().IsValid())
+        {
+            auto type = caller.TypeOf(key);
+            value = type->m_Head->Default(*type);
+        }
+        caller.Set(key, std::move(value).GetValue());
+    }
+    return {};
+}
+
+// An entry's outputs are its call's inputs, which nothing computed from them is older than.
+void crude_blueprint::Context::Write(CallFrame& frame, int node, int pin, Value value)
+{
+    auto& record = m_Program->m_Nodes[node];
+    auto  stored = SlotOf(frame, record.m_Pins[pin].m_Slot);
+    stored.m_Value = std::move(value);
+    stored.m_Step  = m_Step;
+    if (!record.m_Pure && !(record.m_Function >= 0 && m_Program->m_Functions[record.m_Function].m_Entry == node))
         ++m_Generation;
 }
 
-// A fiber whose branch ended enters its innermost loop again, or is done.
+// The call's inputs become its function's entry's outputs, in a frame of the call's own.
+crude_blueprint::Result<void> crude_blueprint::Context::Call(Fiber& fiber, int node)
+{
+    const size_t c_MaxCalls = 256;
+    auto& call     = m_Program->m_Nodes[node];
+    auto& function = m_Program->m_Functions[call.m_Callee];
+    if (fiber.m_Frames.size() > c_MaxCalls)
+        return Error(BlueprintError::TooDeep, call.m_Name + " calls " + function.m_Name + " inside more than " + std::to_string(c_MaxCalls) + " calls");
+
+    auto& frame = fiber.m_Frames.back();
+    std::vector<const Type*> types;
+    for (auto argument : call.m_Arguments)
+        types.push_back(Resolve(frame, argument));
+    auto callee = Frame(call.m_Callee, node, std::move(types));
+
+    EvalContext caller(*this, node, frame), entry(*this, function.m_Entry, callee);
+    for (auto& key : function.m_Inputs)
+    {
+        auto value = caller.Get(key);
+        if (!value)
+            return value.GetError();
+        entry.Set(key, std::move(value).GetValue());
+    }
+    fiber.m_Frames.push_back(std::move(callee));
+    fiber.m_Node  = function.m_Entry;
+    fiber.m_Entry = -1;
+    fiber.m_Again = false;
+    return {};
+}
+
+// The return's inputs become its call's outputs, and the fiber goes on after the call.
+crude_blueprint::Result<void> crude_blueprint::Context::Return(Fiber& fiber, int node)
+{
+    auto& frame    = fiber.m_Frames.back();
+    auto& function = m_Program->m_Functions[frame.m_Function];
+    std::vector<Value> results;
+    EvalContext returned(*this, node, frame);
+    for (auto& key : function.m_Outputs)
+    {
+        auto value = returned.Get(key);
+        if (!value)
+            return value.GetError();
+        results.push_back(std::move(value).GetValue());
+    }
+    auto call = frame.m_Call;
+    fiber.m_Frames.pop_back();
+    EvalContext caller(*this, call, fiber.m_Frames.back());
+    for (size_t i = 0; i < results.size(); ++i)
+        caller.Set(function.m_Outputs[i], std::move(results[i]));
+    GoOnAfter(fiber, call);
+    return {};
+}
+
+void crude_blueprint::Context::GoOnAfter(Fiber& fiber, int call)
+{
+    auto& node = m_Program->m_Nodes[call];
+    fiber.m_Node  = -1;
+    fiber.m_Entry = -1;
+    fiber.m_Again = false;
+    if (auto then = FindPinByKey(node, "then"); then >= 0)
+        Take(fiber, node.m_Pins[then]);
+}
+
+void crude_blueprint::Context::Take(Fiber& fiber, const ProgramPin& output)
+{
+    fiber.m_Node         = output.m_Target;
+    fiber.m_Entry        = output.m_TargetPin;
+    fiber.m_Info.m_Link  = output.m_Link;
+    if (output.m_Link)
+    {
+        if (m_Trace.size() == c_TraceLength)
+            m_Trace.erase(m_Trace.begin());
+        m_Trace.push_back({ fiber.m_Info.m_Id, output.m_Link, m_Step });
+    }
+}
+
+// A fiber whose branch ended enters its frame's innermost loop again. Without one, a function
+// returns its outputs' defaults, and the event graphs' branch is done.
 void crude_blueprint::Context::Settle(Fiber& fiber)
 {
-    if (fiber.m_Node < 0)
+    while (fiber.m_Node < 0)
     {
-        if (fiber.m_Loops.empty())
+        auto& frame = fiber.m_Frames.back();
+        if (!frame.m_Loops.empty())
+        {
+            std::tie(fiber.m_Node, fiber.m_Entry) = frame.m_Loops.back();
+            frame.m_Loops.pop_back();
+            fiber.m_Again = true;
+            break;
+        }
+        if (fiber.m_Frames.size() == 1)
         {
             fiber.m_Info.m_State = FiberState::Done;
             fiber.m_Info.m_Node  = 0;
             return;
         }
-        std::tie(fiber.m_Node, fiber.m_Entry) = fiber.m_Loops.back();
-        fiber.m_Loops.pop_back();
-        fiber.m_Again = true;
+        auto& function = m_Program->m_Functions[frame.m_Function];
+        auto  call     = frame.m_Call;
+        fiber.m_Frames.pop_back();
+        EvalContext caller(*this, call, fiber.m_Frames.back());
+        for (auto& key : function.m_Outputs)
+        {
+            auto type = caller.TypeOf(key);
+            caller.Set(key, type->m_Head->Default(*type));
+        }
+        GoOnAfter(fiber, call);
     }
     fiber.m_Info.m_Node = m_Program->m_Nodes[fiber.m_Node].m_Id;
 }

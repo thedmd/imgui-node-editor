@@ -4,6 +4,7 @@
 //------------------------------------------------------------------------------
 # include "blueprints2_fixture.h"
 # include "crude_blueprint_library.h"
+# include <chrono>
 # include <memory>
 # include <string>
 # include <vector>
@@ -12,12 +13,19 @@ using namespace blueprints2_tests;
 
 namespace {
 
+// Counts the times it's computed, in its state.
+TestNodeType s_Tick("Tick", [](NodeDeclaration& d, const NodeConfig&, const Bindings&) { d.Output("tick", "Tick", Int32Type()); }, {}, [](EvalContext& context) -> Result<void>
+{
+    context.Set("tick", Value::Int32(++context.State<int32_t>()));
+    return {};
+});
+
 std::shared_ptr<const Registry> FunctionRegistry()
 {
     static const std::shared_ptr<const Registry> registry = []
     {
         auto made = std::make_shared<Registry>();
-        if (!RegisterBuiltins(*made) || !RegisterLibrary(*made))
+        if (!RegisterBuiltins(*made) || !RegisterLibrary(*made) || !made->AddNodeType(s_Tick))
             test::Check(false, "the library is registered");
         return made;
     }();
@@ -28,6 +36,16 @@ TypeTerm T(int index = 0)
 {
     return TypeVariable{ index };
 }
+
+struct Logs final : ContextMonitor
+{
+    void OnLog(const Context&, Id, std::string_view text) override
+    {
+        m_Text += (m_Text.empty() ? "" : " ") + std::string(text);
+    }
+
+    std::string m_Text;
+};
 
 // Lerp<T: Int32 | Float>(a: T, b: T, t: Float) -> value: T
 Signature Lerp()
@@ -70,9 +88,43 @@ struct Fixture : BlueprintFixture
         return pin ? pin->m_Id : 0;
     }
 
-    static Result<Id> Join(Graph& graph, Id from, std::string_view output, Id to, std::string_view input)
+    static Result<Id> Join(Graph& graph, Id from, std::string_view output, Id to, std::string_view input, LinkMode mode = LinkMode::Plain)
     {
-        return graph.Connect(PinOf(graph, from, output), PinOf(graph, to, input));
+        return graph.Connect(PinOf(graph, from, output), PinOf(graph, to, input), mode);
+    }
+
+    // One that isn't made fails the test.
+    static void Wire(Graph& graph, Id from, std::string_view output, Id to, std::string_view input, LinkMode mode = LinkMode::Plain)
+    {
+        if (auto link = Join(graph, from, output, to, input, mode); !link)
+            test::Check(false, "%d.%s -> %d.%s is made: %s", static_cast<int>(from), std::string(output).c_str(), static_cast<int>(to), std::string(input).c_str(), std::string(link.GetError().Message()).c_str());
+    }
+
+    static void Assign(Graph& graph, Id node, std::string_view input, Value value)
+    {
+        if (auto set = graph.SetValue(PinOf(graph, node, input), std::move(value)); !set)
+            test::Check(false, "%d.%s takes the value: %s", static_cast<int>(node), std::string(input).c_str(), std::string(set.GetError().Message()).c_str());
+    }
+
+    // Runs Start's fiber to its end, and gives what it printed.
+    std::string Run(FiberState* end = nullptr, std::string* problem = nullptr)
+    {
+        auto compiled = Compile(m_Blueprint);
+        if (!compiled.m_Program)
+        {
+            test::Check(false, "the blueprint compiles: %s", compiled.m_Diagnostics.empty() ? "" : std::string(compiled.m_Diagnostics[0].m_Error.Message()).c_str());
+            return {};
+        }
+        Context context(compiled.m_Program);
+        Logs    logs;
+        context.SetMonitor(&logs);
+        [[maybe_unused]] auto fiber = context.Start("Start");
+        context.Run(std::chrono::seconds(5));
+        if (end)
+            *end = context.Fibers().empty() ? FiberState::Failed : context.Fibers()[0].m_State;
+        if (problem && !context.Diagnostics().empty())
+            *problem = std::string(context.Diagnostics()[0].m_Error.Message());
+        return logs.m_Text;
     }
 
     static std::string TypeIn(const Graph& graph, Id node, std::string_view key)
@@ -232,4 +284,265 @@ TEST_CASE(SignatureChanges, "function.call_nodes_follow_their_functions_signatur
     test::Check(set && IsActive(f.m_Graph, link) && !f.m_Graph.IsBroken(), "it's active again once the pin comes back");
     auto missing = f.m_Blueprint.SetSignature(f.m_Graph.GetId(), Lerp());
     test::Check(!missing && missing.GetError().Is(BlueprintError::NotFound), "an event graph has no signature: %s", Message(missing).c_str());
+}
+
+TEST_CASE(CallsRun, "function.a_call_runs_its_function_and_goes_on_with_its_outputs", nullptr, test::TestFlags_None)
+{
+    // Twice(x: Int32) -> y: Int32 prints x, and returns x + x. Start calls it with 21, then prints y.
+    Fixture f;
+    Signature twice;
+    twice.m_Inputs  = { { "x", "X", Int32Type() } };
+    twice.m_Outputs = { { "y", "Y", Int32Type() } };
+    auto& body  = f.Function("Twice", twice);
+    auto  entry = f.In(body, "entry:Twice"), shown = f.In(body, "crude.Print"), add = f.In(body, "crude.Add"), ret = f.In(body, "return:Twice");
+    f.Wire(body, entry, "then", shown, "enter");
+    f.Wire(body, shown, "then", ret, "enter");
+    f.Wire(body, entry, "x", shown, "text", LinkMode::Cast);
+    f.Wire(body, entry, "x", add, "in.0");
+    f.Wire(body, entry, "x", add, "in.1");
+    f.Wire(body, add, "result", ret, "y");
+
+    auto start = f.Add("Start"), call = f.Call("Twice"), print = f.Add("Print");
+    f.Link(start, "then", call, "enter");
+    f.Link(call, "then", print, "enter");
+    f.Link(call, "y", print, "text", LinkMode::Cast);
+    f.Assign(f.m_Graph, call, "x", Value::Int32(21));
+    auto end = FiberState::Ready;
+    auto printed = f.Run(&end);
+    test::Check(printed == "21 42" && end == FiberState::Done, "the body prints 21, and Start prints its 42: %s", printed.c_str());
+}
+
+TEST_CASE(ImplicitReturns, "function.a_function_that_ends_without_a_return_gives_its_outputs_defaults", nullptr, test::TestFlags_None)
+{
+    // Maybe(given: Bool) -> y: Int32 returns 5 when given, and else ends. A loop calls it twice.
+    Fixture f;
+    Signature maybe;
+    maybe.m_Inputs  = { { "given", "Given", BoolType() } };
+    maybe.m_Outputs = { { "y", "Y", Int32Type() } };
+    auto& body   = f.Function("Maybe", maybe);
+    auto  entry  = f.In(body, "entry:Maybe"), branch = f.In(body, "crude.Branch"), ret = f.In(body, "return:Maybe");
+    f.Wire(body, entry, "then", branch, "enter");
+    f.Wire(body, entry, "given", branch, "condition");
+    f.Wire(body, branch, "true", ret, "enter");
+    f.Assign(body, ret, "y", Value::Int32(5));
+
+    auto start = f.Add("Start"), loop = f.Add("ForLoop"), first = f.Add("Equal"), call = f.Call("Maybe"), print = f.Add("Print");
+    f.Link(start, "then", loop, "enter");
+    f.Link(loop, "body", call, "enter");
+    f.Link(loop, "index", first, "a");
+    f.Link(first, "result", call, "given");
+    f.Link(call, "then", print, "enter");
+    f.Link(call, "y", print, "text", LinkMode::Cast);
+    f.Assign(f.m_Graph, loop, "last", Value::Int32(1));
+    f.Assign(f.m_Graph, first, "b", Value::Int32(0));
+    auto end     = FiberState::Ready;
+    auto printed = f.Run(&end);
+    test::Check(printed == "5 0" && end == FiberState::Done, "the first call returns 5, and the second, ending, the default: %s", printed.c_str());
+}
+
+TEST_CASE(GenericCallsRun, "function.each_call_runs_with_its_own_types_and_slots", nullptr, test::TestFlags_None)
+{
+    // Sum<T: Int32 | Float>(a: T, b: T) -> value: T, called with Int32s and then with Floats.
+    Fixture f;
+    Signature sum;
+    sum.m_Parameters = { { "T", { &Int32ValueType(), &FloatValueType() } } };
+    sum.m_Inputs     = { { "a", "A", T() }, { "b", "B", T() } };
+    sum.m_Outputs    = { { "value", "Value", T() } };
+    auto& body  = f.Function("Sum", sum);
+    auto  entry = f.In(body, "entry:Sum"), add = f.In(body, "crude.Add"), ret = f.In(body, "return:Sum");
+    f.Wire(body, entry, "then", ret, "enter");
+    f.Wire(body, entry, "a", add, "in.0");
+    f.Wire(body, entry, "b", add, "in.1");
+    f.Wire(body, add, "result", ret, "value");
+
+    NodeConfig one = Chosen("T", Int32Type()), half = Chosen("T", FloatType());
+    one.m_Data["value"]  = Value::Int32(1);
+    half.m_Data["value"] = Value::Float(1.5f);
+    auto start = f.Add("Start"), ints = f.Call("Sum"), floats = f.Call("Sum"), first = f.Add("Print"), second = f.Add("Print");
+    auto ones  = f.Add("Constant", one), halves = f.Add("Constant", half), text = f.Add("ToString"), text2 = f.Add("ToString");
+    f.Link(start, "then", ints, "enter");
+    f.Link(ints, "then", first, "enter");
+    f.Link(first, "then", floats, "enter");
+    f.Link(floats, "then", second, "enter");
+    f.Link(ones, "value", ints, "a");
+    f.Link(halves, "value", floats, "a");
+    f.Assign(f.m_Graph, ints, "b", Value::Int32(2));
+    f.Assign(f.m_Graph, floats, "b", Value::Float(2.25f));
+    f.Link(ints, "value", text, "value");
+    f.Link(floats, "value", text2, "value");
+    f.Link(text, "text", first, "text");
+    f.Link(text2, "text", second, "text");
+    auto printed = f.Run();
+    test::Check(printed == "3 3.75", "one call adds Int32s, the other Floats, through one body: %s", printed.c_str());
+}
+
+TEST_CASE(PureCallsRun, "function.a_pure_call_runs_its_body_when_its_outputs_are_read", nullptr, test::TestFlags_None)
+{
+    // Double(x: Int32) -> y: Int32 is pure: x + x.
+    Fixture f;
+    Signature twice;
+    twice.m_Inputs  = { { "x", "X", Int32Type() } };
+    twice.m_Outputs = { { "y", "Y", Int32Type() } };
+    twice.m_Pure    = true;
+    auto& body  = f.Function("Double", twice);
+    auto  entry = f.In(body, "entry:Double"), add = f.In(body, "crude.Add"), ret = f.In(body, "return:Double");
+    f.Wire(body, entry, "x", add, "in.0");
+    f.Wire(body, entry, "x", add, "in.1");
+    f.Wire(body, add, "result", ret, "y");
+
+    auto start = f.Add("Start"), call = f.Call("Double"), print = f.Add("Print");
+    f.Link(start, "then", print, "enter");
+    f.Link(call, "y", print, "text", LinkMode::Cast);
+    f.Assign(f.m_Graph, call, "x", Value::Int32(5));
+    auto printed = f.Run();
+    test::Check(printed == "10", "Print reads 5 doubled: %s", printed.c_str());
+}
+
+TEST_CASE(PureCallsOncePerStep, "function.a_pure_call_leaves_what_its_step_computed_as_it_was", nullptr, test::TestFlags_None)
+{
+    // Echo(x: Int32) -> y: Int32 is pure. An Add sums Echo's y of a Tick, and the same Tick.
+    Fixture f;
+    Signature echo;
+    echo.m_Inputs  = { { "x", "X", Int32Type() } };
+    echo.m_Outputs = { { "y", "Y", Int32Type() } };
+    echo.m_Pure    = true;
+    auto& body  = f.Function("Echo", echo);
+    auto  entry = f.In(body, "entry:Echo"), ret = f.In(body, "return:Echo");
+    f.Wire(body, entry, "x", ret, "y");
+
+    auto start = f.Add("Start"), tick = f.In(f.m_Graph, "test.Tick"), call = f.Call("Echo"), add = f.Add("Add"), print = f.Add("Print");
+    f.Link(start, "then", print, "enter");
+    f.Link(tick, "tick", call, "x");
+    f.Link(call, "y", add, "in.0");
+    f.Link(tick, "tick", add, "in.1");
+    f.Link(add, "result", print, "text", LinkMode::Cast);
+    auto printed = f.Run();
+    test::Check(printed == "2", "the Tick is computed once in the step, through the call and beside it: %s", printed.c_str());
+}
+
+TEST_CASE(Recursion, "function.recursion_runs_down_to_its_base_and_too_deep_fails_its_fiber", nullptr, test::TestFlags_None)
+{
+    // Down(n: Int32), while n > 0, prints n, calls itself with n - 1, and prints n again, which each
+    // call keeps in its own slots.
+    Fixture f;
+    Signature down;
+    down.m_Inputs = { { "n", "N", Int32Type() } };
+    auto& body    = f.Function("Down", down);
+    auto  entry   = f.In(body, "entry:Down"), branch = f.In(body, "crude.Branch"), greater = f.In(body, "crude.Greater");
+    auto  print   = f.In(body, "crude.Print"), less = f.In(body, "crude.Subtract"), again = f.In(body, "call:Down"), after = f.In(body, "crude.Print");
+    f.Wire(body, entry, "then", branch, "enter");
+    f.Wire(body, entry, "n", greater, "a");
+    f.Wire(body, greater, "result", branch, "condition");
+    f.Wire(body, branch, "true", print, "enter");
+    f.Wire(body, entry, "n", print, "text", LinkMode::Cast);
+    f.Wire(body, print, "then", again, "enter");
+    f.Wire(body, again, "then", after, "enter");
+    f.Wire(body, entry, "n", after, "text", LinkMode::Cast);
+    f.Wire(body, entry, "n", less, "a");
+    f.Wire(body, less, "result", again, "n");
+    f.Assign(body, greater, "b", Value::Int32(0));
+    f.Assign(body, less, "b", Value::Int32(1));
+
+    auto start = f.Add("Start"), call = f.Call("Down");
+    auto into  = f.Link(start, "then", call, "enter");
+    f.Assign(f.m_Graph, call, "n", Value::Int32(3));
+    auto end     = FiberState::Ready;
+    auto printed = f.Run(&end);
+    test::Check(printed == "3 2 1 1 2 3" && end == FiberState::Done, "it counts down to its base, and each call back up from its own n: %s", printed.c_str());
+
+    // Without a base, it fails once it's 256 calls deep.
+    f.Unlink(into);
+    auto& forever = f.Function("Forever", {});
+    auto  in      = f.In(forever, "entry:Forever"), self = f.In(forever, "call:Forever");
+    f.Wire(forever, in, "then", self, "enter");
+    auto endless = f.Call("Forever");
+    f.Link(start, "then", endless, "enter");
+    std::string problem;
+    f.Run(&end, &problem);
+    test::Check(end == FiberState::Failed && problem.find("more than 256 calls") != std::string::npos, "a call too deep fails its fiber: %s", problem.c_str());
+}
+
+TEST_CASE(PureRecursion, "function.a_pure_call_too_deep_fails_its_fiber", nullptr, test::TestFlags_None)
+{
+    // Endless(x: Int32) -> y: Int32 is pure, and its y is its own call's.
+    Fixture f;
+    Signature endless;
+    endless.m_Inputs  = { { "x", "X", Int32Type() } };
+    endless.m_Outputs = { { "y", "Y", Int32Type() } };
+    endless.m_Pure    = true;
+    auto& body  = f.Function("Endless", endless);
+    auto  entry = f.In(body, "entry:Endless"), self = f.In(body, "call:Endless"), ret = f.In(body, "return:Endless");
+    f.Wire(body, entry, "x", self, "x");
+    f.Wire(body, self, "y", ret, "y");
+
+    auto start = f.Add("Start"), call = f.Call("Endless"), print = f.Add("Print");
+    f.Link(start, "then", print, "enter");
+    f.Link(call, "y", print, "text", LinkMode::Cast);
+    auto end = FiberState::Ready;
+    std::string problem;
+    f.Run(&end, &problem);
+    test::Check(end == FiberState::Failed && problem.find("deeper than 128") != std::string::npos, "its fiber fails, as too deep: %s", problem.c_str());
+}
+
+TEST_CASE(DebuggingCalls, "function.the_debugger_reads_a_call_in_progress", nullptr, test::TestFlags_None)
+{
+    // Echo(x: Int32) -> y: Int32 returns x; Start calls it with 7.
+    Fixture f;
+    Signature echo;
+    echo.m_Inputs  = { { "x", "X", Int32Type() } };
+    echo.m_Outputs = { { "y", "Y", Int32Type() } };
+    auto& body  = f.Function("Echo", echo);
+    auto  entry = f.In(body, "entry:Echo"), ret = f.In(body, "return:Echo");
+    f.Wire(body, entry, "then", ret, "enter");
+    f.Wire(body, entry, "x", ret, "y");
+    auto start = f.Add("Start"), call = f.Call("Echo");
+    f.Link(start, "then", call, "enter");
+    f.Assign(f.m_Graph, call, "x", Value::Int32(7));
+    auto compiled = Compile(f.m_Blueprint);
+    if (!compiled.m_Program)
+        return test::Check(false, "the blueprint compiles");
+
+    Context context(compiled.m_Program);
+    auto fiber   = context.Start("Start").ValueOr(0);
+    auto outside = context.Evaluate(f.PinOf(body, entry, "x"));
+    test::Check(!outside && outside.GetError().Is(BlueprintError::Unsupported), "before the call, its pins have no values: %s", Message(outside).c_str());
+
+    auto stepped = context.Step(fiber).IsOk() && context.Step(fiber).IsOk();
+    auto inside  = context.Evaluate(f.PinOf(body, entry, "x"));
+    auto info    = context.Fibers()[0];
+    test::Check(stepped && inside && inside.GetValue().m_Value == Value::Int32(7) && info.m_Node == entry && info.m_Calls == std::vector<Id>{ call }, "in the call, its entry gives 7, and the fiber says which call it's in");
+
+    stepped = context.Step(fiber).IsOk() && context.Step(fiber).IsOk();
+    auto returned = context.Evaluate(f.Pin(call, "y"));
+    test::Check(stepped && returned && returned.GetValue().m_Value == Value::Int32(7) && context.Fibers()[0].m_Calls.empty() && context.Fibers()[0].m_State == FiberState::Done, "and once it returned, the call's y is 7");
+}
+
+TEST_CASE(CompilingFunctions, "function.compiling_checks_entries_returns_and_pure_bodies", nullptr, test::TestFlags_None)
+{
+    auto compiled = [](Fixture& f) { auto result = Compile(f.m_Blueprint); return result.m_Program ? std::string() : std::string(result.m_Diagnostics.back().m_Error.Message()); };
+
+    Fixture none;
+    none.Function("Lerp", Lerp());
+    test::Check(compiled(none).find("Lerp has no entry") != std::string::npos, "a function needs an entry: %s", compiled(none).c_str());
+
+    Fixture elsewhere;
+    auto& lerp = elsewhere.Function("Lerp", Lerp());
+    elsewhere.In(lerp, "entry:Lerp");
+    elsewhere.In(elsewhere.m_Graph, "return:Lerp");
+    test::Check(compiled(elsewhere).find("belongs in Lerp's graph") != std::string::npos, "its return belongs in its graph: %s", compiled(elsewhere).c_str());
+
+    Fixture flow;
+    auto pure = Lerp();
+    pure.m_Pure = true;
+    auto& body = flow.Function("Lerp", pure);
+    flow.In(body, "entry:Lerp");
+    flow.In(body, "crude.Print");
+    test::Check(compiled(flow).find("which has flow pins") != std::string::npos, "a pure body holds no node with flow pins: %s", compiled(flow).c_str());
+
+    Fixture twice;
+    auto& both = twice.Function("Lerp", pure);
+    twice.In(both, "entry:Lerp");
+    twice.In(both, "return:Lerp");
+    twice.In(both, "return:Lerp");
+    test::Check(compiled(twice).find("two returns") != std::string::npos, "and a pure one has one return at most: %s", compiled(twice).c_str());
 }
