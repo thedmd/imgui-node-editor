@@ -12,7 +12,6 @@ void blueprint_editor_utilities::DrawIcon(ImDrawList* drawList, const ImVec2& a,
           auto rect_center_y  = (rect.Min.y + rect.Max.y) * 0.5f;
           auto rect_center    = ImVec2(rect_center_x, rect_center_y);
     const auto outline_scale  = ImMin(rect_w, rect_h) / 24.0f;
-    const auto extra_segments = static_cast<int>(2 * outline_scale); // for full circle
 
     if (type == IconType::Flow || type == IconType::FlowDown)
     {
@@ -92,7 +91,7 @@ void blueprint_editor_utilities::DrawIcon(ImDrawList* drawList, const ImVec2& a,
             if (innerColor & 0xFF000000)
                 drawList->AddConvexPolyFilled(drawList->_Path.Data, drawList->_Path.Size, innerColor);
 
-            drawList->PathStroke(color, 2.0f * outline_scale, ImDrawFlags_Closed);
+            drawList->PathStroke(color, 2.0f * outline_scale, ImDrawFlags_Closed | ImDrawFlags_StrokeInside);
         }
         else
             drawList->PathFillConvex(color);
@@ -111,39 +110,32 @@ void blueprint_editor_utilities::DrawIcon(ImDrawList* drawList, const ImVec2& a,
         if (type == IconType::Circle)
         {
             const auto c = rect_center;
+            const auto r = 0.5f * rect_w / 2.0f;
 
             if (!filled)
             {
-                const auto r = 0.5f * rect_w / 2.0f - 0.5f;
-
                 if (innerColor & 0xFF000000)
-                    drawList->AddCircleFilled(c, r, innerColor, 12 + extra_segments);
-                drawList->AddCircle(c, r, color, 12 + extra_segments, 2.0f * outline_scale);
+                    drawList->AddCircleFilled(c, r, innerColor);
+                drawList->AddCircle(c, r, color, 0, 2.0f * outline_scale);
             }
             else
-                drawList->AddCircleFilled(c, 0.5f * rect_w / 2.0f, color, 12 + extra_segments);
+                drawList->AddCircleFilled(c, r, color);
         }
 
         if (type == IconType::Square)
         {
-            if (filled)
-            {
-                const auto r  = 0.5f * rect_w / 2.0f;
-                const auto p0 = rect_center - ImVec2(r, r);
-                const auto p1 = rect_center + ImVec2(r, r);
+            const auto r  = 0.5f * rect_w / 2.0f;
+            const auto p0 = rect_center - ImVec2(r, r);
+            const auto p1 = rect_center + ImVec2(r, r);
 
-                drawList->AddRectFilled(p0, p1, color, 0, ImDrawFlags_RoundAll);
-            }
+            if (filled)
+                drawList->AddRectFilled(p0, p1, color);
             else
             {
-                const auto r = 0.5f * rect_w / 2.0f - 0.5f;
-                const auto p0 = rect_center - ImVec2(r, r);
-                const auto p1 = rect_center + ImVec2(r, r);
-
                 if (innerColor & 0xFF000000)
-                    drawList->AddRectFilled(p0, p1, innerColor, 0, ImDrawFlags_RoundAll);
+                    drawList->AddRectFilled(p0, p1, innerColor);
 
-                drawList->AddRect(p0, p1, color, 0, 2.0f * outline_scale, ImDrawFlags_RoundAll);
+                drawList->AddRect(p0, p1, color, 0, 2.0f * outline_scale);
             }
         }
 
@@ -179,55 +171,39 @@ void blueprint_editor_utilities::DrawIcon(ImDrawList* drawList, const ImVec2& a,
 
         if (type == IconType::RoundSquare)
         {
-            if (filled)
-            {
-                const auto r  = 0.5f * rect_w / 2.0f;
-                const auto cr = r * 0.5f;
-                const auto p0 = rect_center - ImVec2(r, r);
-                const auto p1 = rect_center + ImVec2(r, r);
+            const auto r  = 0.5f * rect_w / 2.0f;
+            const auto cr = r * 0.5f;
+            const auto p0 = rect_center - ImVec2(r, r);
+            const auto p1 = rect_center + ImVec2(r, r);
 
-                drawList->AddRectFilled(p0, p1, color, cr, ImDrawFlags_RoundAll);
-            }
+            if (filled)
+                drawList->AddRectFilled(p0, p1, color, cr);
             else
             {
-                const auto r = 0.5f * rect_w / 2.0f - 0.5f;
-                const auto cr = r * 0.5f;
-                const auto p0 = rect_center - ImVec2(r, r);
-                const auto p1 = rect_center + ImVec2(r, r);
-
                 if (innerColor & 0xFF000000)
-                    drawList->AddRectFilled(p0, p1, innerColor, cr, ImDrawFlags_RoundAll);
+                    drawList->AddRectFilled(p0, p1, innerColor, cr);
 
-                drawList->AddRect(p0, p1, color, cr, 2.0f * outline_scale, ImDrawFlags_RoundAll);
+                drawList->AddRect(p0, p1, color, cr, 2.0f * outline_scale);
             }
         }
         else if (type == IconType::Diamond)
         {
-            if (filled)
-            {
-                const auto r = 0.607f * rect_w / 2.0f;
-                const auto c = rect_center;
+            const auto r = 0.607f * rect_w / 2.0f;
+            const auto c = rect_center;
 
-                drawList->PathLineTo(c + ImVec2( 0, -r));
-                drawList->PathLineTo(c + ImVec2( r,  0));
-                drawList->PathLineTo(c + ImVec2( 0,  r));
-                drawList->PathLineTo(c + ImVec2(-r,  0));
+            drawList->PathLineTo(c + ImVec2( 0, -r));
+            drawList->PathLineTo(c + ImVec2( r,  0));
+            drawList->PathLineTo(c + ImVec2( 0,  r));
+            drawList->PathLineTo(c + ImVec2(-r,  0));
+
+            if (filled)
                 drawList->PathFillConvex(color);
-            }
             else
             {
-                const auto r = 0.607f * rect_w / 2.0f - 0.5f;
-                const auto c = rect_center;
-
-                drawList->PathLineTo(c + ImVec2( 0, -r));
-                drawList->PathLineTo(c + ImVec2( r,  0));
-                drawList->PathLineTo(c + ImVec2( 0,  r));
-                drawList->PathLineTo(c + ImVec2(-r,  0));
-
                 if (innerColor & 0xFF000000)
                     drawList->AddConvexPolyFilled(drawList->_Path.Data, drawList->_Path.Size, innerColor);
 
-                drawList->PathStroke(color, 2.0f * outline_scale, ImDrawFlags_Closed);
+                drawList->PathStroke(color, 2.0f * outline_scale, ImDrawFlags_Closed | ImDrawFlags_StrokeInside);
             }
         }
         else
