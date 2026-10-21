@@ -146,15 +146,16 @@ private:
     float m_Alpha = 1.0f;
 };
 
-// A run of a document's blueprint: a context of its compiled program, and the fiber its Start
-// began. Prints go to the log. A step the document takes goes on in the run when it changed only
+// A run of a document's blueprint: a context of its compiled program, and the fiber its Start or
+// Call began. Prints go to the log, and so do a call's results. A step the document takes goes on in the run when it changed only
 // values, and stops it otherwise. Breakpoints stay for the runs that follow. The run's clock moves
 // on only while it runs.
 struct Debugger
 {
-    // A blueprint with an error doesn't start: its diagnostics are logged. The event's parameters
-    // get their types' defaults.
+    // A blueprint with an error doesn't start: its diagnostics are logged. The event's parameters,
+    // or the function's inputs, get their types' defaults; a generic function doesn't run.
     bool Start(const Document& document, bool running, std::string_view event = "Start");
+    bool Call(const Document& document, bool running, std::string_view function);
     void Continue(); // a paused run runs on
     void Step();     // a fiber that waits for its time skips the wait
     void Stop();
@@ -195,6 +196,7 @@ private:
         void OnLog(const Context& context, Id node, std::string_view text) override;
     };
 
+    bool                     Begin(const Document& document, bool running, std::string_view name, bool call);
     std::optional<FiberInfo> Fiber() const;
     void                     Report(); // how the fiber ended, once
 
@@ -338,9 +340,9 @@ private:
     std::vector<NewNodeFit> m_Entries;    // by category and title; those that need a cast last, by title
 };
 
-// For a node, or for the selection when the node is in it. A function's entry has its function's
-// type parameters, and whether it's pure. An event's node runs the event, and a Custom Event's
-// renames it.
+// For a node, or for the selection when the node is in it. A function's entry runs its function,
+// and has its type parameters, and whether it's pure. An event's node runs the event, and a Custom
+// Event's renames it.
 struct NodeContextMenu
 {
     void Open(Id node = 0);

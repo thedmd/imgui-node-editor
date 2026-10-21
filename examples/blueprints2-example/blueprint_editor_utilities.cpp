@@ -761,6 +761,16 @@ void blueprint_editor_utilities::Debugger::Monitor::OnLog(const Context& context
 
 bool blueprint_editor_utilities::Debugger::Start(const Document& document, bool running, std::string_view event)
 {
+    return Begin(document, running, event, false);
+}
+
+bool blueprint_editor_utilities::Debugger::Call(const Document& document, bool running, std::string_view function)
+{
+    return Begin(document, running, function, true);
+}
+
+bool blueprint_editor_utilities::Debugger::Begin(const Document& document, bool running, std::string_view name, bool call)
+{
     m_Context.reset();
     m_Running  = false;
     m_Reported = false;
@@ -784,12 +794,26 @@ bool blueprint_editor_utilities::Debugger::Start(const Document& document, bool 
     m_Context->SetMonitor(&m_Monitor);
     for (auto node : m_Breakpoints)
         m_Context->SetBreakpoint(node, true);
+    auto& program = *compiled.m_Program;
+    auto  node    = call ? -1 : program.FindEvent(name);
+    for (auto& function : program.Functions())
+    {
+        if (!call || function.m_Name != name)
+            continue;
+        if (!function.m_Parameters.empty())
+        {
+            LOGE("Execution: %s is generic, and runs only as its calls give it types", function.m_Name.c_str());
+            m_Context.reset();
+            return false;
+        }
+        node = function.m_Entry;
+    }
     std::vector<Value> arguments;
-    if (auto node = compiled.m_Program->FindEvent(event); node >= 0)
-        for (auto& pin : compiled.m_Program->Nodes()[static_cast<size_t>(node)].m_Pins)
+    if (node >= 0)
+        for (auto& pin : program.Nodes()[static_cast<size_t>(node)].m_Pins)
             if (!pin.m_Flow && pin.m_Direction == Direction::Output)
                 arguments.push_back(pin.m_Type->m_Head->Default(*pin.m_Type));
-    auto fiber = m_Context->Start(event, arguments);
+    auto fiber = call ? m_Context->Call(name, arguments) : m_Context->Start(name, arguments);
     if (!fiber)
     {
         auto message = fiber.GetError().Message();
@@ -798,10 +822,10 @@ bool blueprint_editor_utilities::Debugger::Start(const Document& document, bool 
         return false;
     }
 
-    if (event == "Start")
+    if (!call && name == "Start")
         LOGI("Execution: %s", running ? "Run" : "Start");
     else
-        LOGI("Execution: %s %.*s", running ? "Run" : "Start", static_cast<int>(event.size()), event.data());
+        LOGI("Execution: %s %.*s", call ? "Call" : running ? "Run" : "Start", static_cast<int>(name.size()), name.data());
     m_Fiber    = fiber.GetValue();
     m_Revision = document.m_Revision;
     m_Running  = running;
@@ -985,7 +1009,12 @@ void blueprint_editor_utilities::Debugger::Report()
         return;
     m_Reported = true;
     if (fiber->m_State == FiberState::Done)
-        LOGI("Execution: Done (%llu steps)", static_cast<unsigned long long>(m_Context->StepCount()));
+    {
+        std::string results;
+        for (auto& result : fiber->m_Results)
+            results += (results.empty() ? ", giving " : ", ") + result.GetType()->m_Head->Format(result);
+        LOGI("Execution: Done (%llu steps)%s", static_cast<unsigned long long>(m_Context->StepCount()), results.c_str());
+    }
     else if (fiber->m_State == FiberState::Failed)
     {
         auto diagnostics = m_Context->Diagnostics();
@@ -1434,6 +1463,8 @@ void blueprint_editor_utilities::NodeContextMenu::Show(Document& document, Debug
             const auto  graph    = signature.m_Function->m_Graph;
             const auto& declared = signature.m_Function->m_Signature;
             ImGui::Separator();
+            if (ImGui::MenuItem("Run Function", nullptr, false, !declared.m_Pure && declared.m_Parameters.empty()))
+                debugger.Call(document, true, signature.m_Function->m_Name);
             if (ImGui::MenuItem("Pure", nullptr, declared.m_Pure))
                 change = [&document, graph, pure = declared.m_Pure] { ChangeSignature(document, graph, pure ? "Make Impure" : "Make Pure", [](Signature& changed) { changed.m_Pure = !changed.m_Pure; }); };
             if (ImGui::BeginMenu("Type Parameters"))

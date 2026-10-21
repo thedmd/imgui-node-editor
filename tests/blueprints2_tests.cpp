@@ -1098,3 +1098,38 @@ TEST_CASE(CustomEventRuns, "blueprints2.a_custom_event_runs_with_its_parameters_
     test::Check(document.GetGraph().FindNode(event)->m_Type->EventName(document.GetGraph().FindNode(event)->m_Config) == "Spawn" && document.m_Undo.size() == 2, "renamed, the event is one undo step, and its own name makes none");
     test::Check(debugger.Start(document, false, "Spawn") && !debugger.Start(document, false, "Event"), "and runs by its new name only");
 }
+
+TEST_CASE(FunctionRuns, "blueprints2.a_function_runs_from_its_entry_and_gives_its_results", nullptr, test::TestFlags_None)
+{
+    // Echo(x: Int32) -> y: Int32 returns x; Lerp is generic.
+    test::Session session(UnnamedConfig());
+    OverlayLog    log;
+    Example       example(session);
+    auto& document = example.m_Document;
+    session.Use([&]
+    {
+        Signature echo;
+        echo.m_Inputs  = { { "x", "X", Int32Type() } };
+        echo.m_Outputs = { { "y", "Y", Int32Type() } };
+        Signature lerp;
+        lerp.m_Parameters = { { "T", {} } };
+        lerp.m_Inputs     = { { "a", "A", TypeVariable{ 0 } } };
+        auto transaction = document.BeginUndoTransaction("Add Functions");
+        auto added = document.GetBlueprint().AddFunction("Echo", echo), generic = document.GetBlueprint().AddFunction("Lerp", lerp);
+        if (!added || !generic)
+            return;
+        auto& body  = *added.GetValue();
+        auto  entry = body.AddNode("entry:Echo"), ret = body.AddNode("return:Echo"), other = generic.GetValue()->AddNode("entry:Lerp");
+        auto  pin   = [&body](Id node, const char* key) { return body.FindNode(node)->FindPin(key)->m_Id; };
+        if (entry && ret && other && body.Connect(pin(entry.GetValue(), "then"), pin(ret.GetValue(), "enter")) && body.Connect(pin(entry.GetValue(), "x"), pin(ret.GetValue(), "y")))
+            transaction->AddAction("Echo and Lerp added");
+    });
+
+    Debugger debugger;
+    auto called = debugger.Call(document, true, "Echo");
+    for (int i = 0; i < 10 && debugger.IsRunning(); ++i)
+        debugger.Update(document);
+    auto fibers = called ? debugger.GetContext()->Fibers() : std::vector<FiberInfo>();
+    test::Check(called && !debugger.IsActive() && fibers.size() == 1 && fibers[0].m_State == FiberState::Done && fibers[0].m_Results == std::vector<Value>{ Value::Int32(0) }, "called with its input's default, Echo gives it back");
+    test::Check(!debugger.Call(document, true, "Lerp") && !debugger.GetContext(), "a generic function doesn't run");
+}
