@@ -5,154 +5,173 @@
 # include <imgui_internal.h>
 # include "imgui_extras.h"
 # include <algorithm>
-# include <time.h>
+# include <cmath>
+# include <optional>
+# include <utility>
 
-blueprint_editor_utilities::IconType blueprint_editor_utilities::PinTypeToIconType(PinType pinType)
+blueprint_editor_utilities::IconType blueprint_editor_utilities::PinIcon(const Pin& pin)
 {
-    switch (pinType)
-    {
-        case PinType::Void:     return IconType::Circle;
-        case PinType::Any:      return IconType::Diamond;
-        case PinType::Flow:     return IconType::Flow;
-        case PinType::Bool:     return IconType::Circle;
-        case PinType::Int32:    return IconType::Circle;
-        case PinType::Float:    return IconType::Circle;
-        case PinType::String:   return IconType::Circle;
-    }
-
+    if (pin.m_Flow)
+        return IconType::Flow;
+    if (!pin.m_DecidedType)
+        return IconType::Diamond;
+    auto head = pin.m_DecidedType->m_Head;
+    if (IsA<StructType>(head))
+        return IconType::RoundSquare;
+    if (head == &ArrayValueType())
+        return IconType::Grid;
+    if (head == &MapValueType())
+        return IconType::Square;
     return IconType::Circle;
 }
 
-ImVec4 blueprint_editor_utilities::PinTypeToColor(PinType pinType)
+// Arrays take their items' colors, and maps their values'. Other types without a color of their
+// own take one from their name, so each keeps it.
+ImVec4 blueprint_editor_utilities::TypeColor(const Type* type)
 {
-    switch (pinType)
-    {
-        case PinType::Void:     return ImVec4(1.0f, 1.0f, 1.0f, 1.0f);
-        case PinType::Any:      return ImVec4(1.0f, 1.0f, 1.0f, 1.0f);
-        case PinType::Flow:     return ImVec4(1.0f, 1.0f, 1.0f, 1.0f);
-        case PinType::Bool:     return ImVec4(220 / 255.0f,  48 / 255.0f,  48 / 255.0f, 1.0f);
-        case PinType::Int32:    return ImVec4( 68 / 255.0f, 201 / 255.0f, 156 / 255.0f, 1.0f);
-        case PinType::Float:    return ImVec4(147 / 255.0f, 226 / 255.0f,  74 / 255.0f, 1.0f);
-        case PinType::String:   return ImVec4(124 / 255.0f,  21 / 255.0f, 153 / 255.0f, 1.0f);
-    }
+    if (!type)
+        return ImVec4(1.0f, 1.0f, 1.0f, 1.0f);
+    auto head = type->m_Head;
+    if (head == &ArrayValueType())
+        return TypeColor(type->m_Args[0]);
+    if (head == &MapValueType())
+        return TypeColor(type->m_Args[1]);
+    if (head == &BoolValueType())
+        return ImVec4(220 / 255.0f,  48 / 255.0f,  48 / 255.0f, 1.0f);
+    if (head == &Int32ValueType())
+        return ImVec4( 68 / 255.0f, 201 / 255.0f, 156 / 255.0f, 1.0f);
+    if (head == &FloatValueType())
+        return ImVec4(147 / 255.0f, 226 / 255.0f,  74 / 255.0f, 1.0f);
+    if (head == &StringValueType())
+        return ImVec4(124 / 255.0f,  21 / 255.0f, 153 / 255.0f, 1.0f);
 
-    return ImVec4(1.0f, 1.0f, 1.0f, 1.0f);
+    uint32_t hash = 2166136261u;
+    for (auto c : head->m_Name)
+        hash = (hash ^ static_cast<uint8_t>(c)) * 16777619u;
+    float r, g, b;
+    ImGui::ColorConvertHSVtoRGB(static_cast<float>(hash % 360) / 360.0f, 0.6f, 0.9f, r, g, b);
+    return ImVec4(r, g, b, 1.0f);
 }
 
-bool blueprint_editor_utilities::DrawPinValue(const PinValue& value)
+blueprint_editor_utilities::Value blueprint_editor_utilities::InputValue(const Graph& graph, const Pin& pin)
 {
-    switch (value.GetType())
-    {
-        case PinType::Void:
-            return false;
-        case PinType::Any:
-            return false;
-        case PinType::Flow:
-            return false;
-        case PinType::Bool:
-            if (value.As<bool>())
-                ImGui::TextUnformatted("true");
-            else
-                ImGui::TextUnformatted("false");
-            return true;
-        case PinType::Int32:
-            ImGui::Text("%d", value.As<int32_t>());
-            return true;
-        case PinType::Float:
-            ImGui::Text("%g", value.As<float>());
-            return true;
-        case PinType::String:
-            ImGui::Text("%s", value.As<string>().c_str());
-            return true;
-    }
-
-    return false;
+    auto type = pin.m_DecidedType;
+    if (!type)
+        return {};
+    if (auto typed = graph.FindValue(pin.m_Id); typed && typed->GetType() == type)
+        return *typed;
+    if (pin.m_Default.IsValid() && pin.m_Default.GetType() == type)
+        return pin.m_Default;
+    return type->m_Head->Default(*type);
 }
 
-bool blueprint_editor_utilities::EditPinValue(Pin& pin)
+bool blueprint_editor_utilities::IsConstant(const Node& node)
 {
-    ImEx::ScopedItemWidth scopedItemWidth{120};
+    return node.m_Type->m_Name == "crude.Constant";
+}
 
-    auto pinValue = pin.GetValue();
+blueprint_editor_utilities::Value blueprint_editor_utilities::ConstantValue(const Node& node, const Pin& pin)
+{
+    auto type = pin.m_DecidedType;
+    if (!type)
+        return {};
+    auto value = node.m_Config.m_Data.find("value");
+    if (value != node.m_Config.m_Data.end() && value->second.GetType() == type)
+        return value->second;
+    return type->m_Head->Default(*type);
+}
 
-    switch (pinValue.GetType())
+bool blueprint_editor_utilities::DrawValue(const Value& value)
+{
+    auto type = value.GetType();
+    if (!type)
+        return false;
+    if (type == &BoolType())
+        ImGui::TextUnformatted(value.AsBool() ? "true" : "false");
+    else if (type == &Int32Type())
+        ImGui::Text("%d", value.AsInt32());
+    else if (type == &FloatType())
+        ImGui::Text("%g", value.AsFloat());
+    else
     {
-        case PinType::Void:
-            return true;
-        case PinType::Any:
-            return true;
-        case PinType::Flow:
-            return true;
-        case PinType::Bool:
-            pin.SetValue(!pinValue.As<bool>());
-            return true;
-        case PinType::Int32:
-            {
-                auto value = pinValue.As<int32_t>();
-                if (ImGui::InputInt("##editor", &value, 1, 100, ImGuiInputTextFlags_EnterReturnsTrue))
-                {
-                    pin.SetValue(value);
-                    return true;
-                }
-            }
-            return false;
-        case PinType::Float:
-            {
-                auto value = pinValue.As<float>();
-                if (ImGui::InputFloat("##editor", &value, 1, 100, "%.3f", ImGuiInputTextFlags_EnterReturnsTrue))
-                {
-                    pin.SetValue(value);
-                    return true;
-                }
-            }
-            return false;
-        case PinType::String:
-            {
-                auto value = pinValue.As<string>();
-                if (ImGui::InputText("##editor", (char*)value.data(), value.size() + 1, ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_CallbackResize, [](ImGuiInputTextCallbackData* data) -> int
-                {
-                    if (data->EventFlag == ImGuiInputTextFlags_CallbackResize)
-                    {
-                        auto& stringValue = *static_cast<string*>(data->UserData);
-                        IM_ASSERT(stringValue.data() == data->Buf);
-                        stringValue.resize(data->BufSize); // NB: On resizing calls, generally data->BufSize == data->BufTextLen + 1
-                        data->Buf = (char*)stringValue.data();
-                    }
-                    return 0;
-                }, &value))
-                {
-                    value.resize(strlen(value.c_str()));
-                    pin.SetValue(value);
-                    return true;
-                }
-            }
-            return false;
+        auto text = type == &StringType() ? std::string(value.AsString()) : type->m_Head->Format(value);
+        ImGui::TextUnformatted(text.data(), text.data() + text.size());
     }
-
     return true;
 }
 
-bool blueprint_editor_utilities::DrawPinValueWithEditor(Pin& pin)
+// Files can't hold NaN or an infinity, so a Float editor takes only finite numbers.
+bool blueprint_editor_utilities::EditValue(Value& value)
+{
+    ImEx::ScopedItemWidth scopedItemWidth{120};
+
+    auto type = value.GetType();
+    if (type == &BoolType())
+    {
+        value = Value::Bool(!value.AsBool());
+        return true;
+    }
+    if (type == &Int32Type())
+    {
+        auto number = value.AsInt32();
+        if (!ImGui::InputInt("##editor", &number, 1, 100, ImGuiInputTextFlags_EnterReturnsTrue))
+            return false;
+        value = Value::Int32(number);
+        return true;
+    }
+    if (type == &FloatType())
+    {
+        auto number = value.AsFloat();
+        if (!ImGui::InputFloat("##editor", &number, 1, 100, "%.3f", ImGuiInputTextFlags_EnterReturnsTrue) || !std::isfinite(number))
+            return false;
+        value = Value::Float(number);
+        return true;
+    }
+    if (type == &StringType())
+    {
+        auto text = std::string(value.AsString());
+        auto resize = [](ImGuiInputTextCallbackData* data) -> int
+        {
+            if (data->EventFlag == ImGuiInputTextFlags_CallbackResize)
+            {
+                auto& buffer = *static_cast<std::string*>(data->UserData);
+                IM_ASSERT(buffer.data() == data->Buf);
+                buffer.resize(static_cast<size_t>(data->BufSize)); // NB: On resizing calls, generally data->BufSize == data->BufTextLen + 1
+                data->Buf = buffer.data();
+            }
+            return 0;
+        };
+        if (!ImGui::InputText("##editor", text.data(), text.size() + 1, ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_CallbackResize, resize, &text))
+            return false;
+        text.resize(strlen(text.c_str()));
+        value = Value::String(std::move(text));
+        return true;
+    }
+
+    // Values of other types have no editor yet.
+    return true;
+}
+
+bool blueprint_editor_utilities::DrawValueWithEditor(Id id, Value& value)
 {
     auto storage = ImGui::GetStateStorage();
-    auto activePinId = storage->GetInt(ImGui::GetID("PinValueEditor_ActivePinId"), false);
+    auto activeId = static_cast<Id>(storage->GetInt(ImGui::GetID("PinValueEditor_ActivePinId"), 0));
 
     bool changed = false;
-    if (static_cast<uint32_t>(activePinId) == pin.m_Id)
+    if (activeId == id)
     {
-        const auto value = pin.GetValue();
-        if (EditPinValue(pin))
+        const auto before = value;
+        if (EditValue(value))
         {
-            ax::NodeEditor::EnableShortcuts(true);
-            activePinId = 0;
-            changed = pin.GetValue() != value;
+            activeId = 0;
+            changed  = !(value == before);
         }
     }
     else
     {
         // Draw pin value
         PinValueBackgroundRenderer bg;
-        if (!DrawPinValue(pin.GetValue()))
+        if (!DrawValue(value))
         {
             bg.Discard();
             return false;
@@ -168,56 +187,35 @@ bool blueprint_editor_utilities::DrawPinValueWithEditor(Pin& pin)
         ImGui::SetCursorScreenPos(itemMin);
 
         if (ImGui::InvisibleButton("###pin_value_editor", itemSize))
-        {
-            activePinId = pin.m_Id;
-            ax::NodeEditor::EnableShortcuts(false);
-        }
+            activeId = id;
     }
 
-    storage->SetInt(ImGui::GetID("PinValueEditor_ActivePinId"), activePinId);
+    storage->SetInt(ImGui::GetID("PinValueEditor_ActivePinId"), static_cast<int>(activeId));
 
     return changed;
 }
 
 
 
-const blueprint_editor_utilities::vector<blueprint_editor_utilities::Node*> blueprint_editor_utilities::GetSelectedNodes(Blueprint& blueprint)
+std::vector<blueprint_editor_utilities::Id> blueprint_editor_utilities::GetSelectedNodes()
 {
-    auto selectedObjects = ax::NodeEditor::GetSelectedNodes(nullptr, 0);
+    std::vector<ax::NodeEditor::NodeId> nodeIds(static_cast<size_t>(ax::NodeEditor::GetSelectedNodes(nullptr, 0)));
+    nodeIds.resize(static_cast<size_t>(ax::NodeEditor::GetSelectedNodes(nodeIds.data(), static_cast<int>(nodeIds.size()))));
 
-    vector<ax::NodeEditor::NodeId> nodeIds;
-    nodeIds.resize(selectedObjects);
-    nodeIds.resize(ax::NodeEditor::GetSelectedNodes(nodeIds.data(), selectedObjects));
-
-    vector<Node*> result;
-    result.reserve(nodeIds.size());
+    std::vector<Id> result;
     for (auto nodeId : nodeIds)
-    {
-        auto node = blueprint.FindNode(static_cast<uint32_t>(nodeId.Get()));
-        IM_ASSERT(node != nullptr);
-        result.push_back(node);
-    }
-
+        result.push_back(static_cast<Id>(nodeId.Get()));
     return result;
 }
 
-const blueprint_editor_utilities::vector<blueprint_editor_utilities::Pin*> blueprint_editor_utilities::GetSelectedLinks(Blueprint& blueprint)
+std::vector<blueprint_editor_utilities::Id> blueprint_editor_utilities::GetSelectedLinks()
 {
-    auto selectedObjects = ax::NodeEditor::GetSelectedLinks(nullptr, 0);
+    std::vector<ax::NodeEditor::LinkId> linkIds(static_cast<size_t>(ax::NodeEditor::GetSelectedLinks(nullptr, 0)));
+    linkIds.resize(static_cast<size_t>(ax::NodeEditor::GetSelectedLinks(linkIds.data(), static_cast<int>(linkIds.size()))));
 
-    vector<ax::NodeEditor::LinkId> linkIds;
-    linkIds.resize(selectedObjects);
-    linkIds.resize(ax::NodeEditor::GetSelectedLinks(linkIds.data(), selectedObjects));
-
-    vector<Pin*> result;
-    result.reserve(linkIds.size());
+    std::vector<Id> result;
     for (auto linkId : linkIds)
-    {
-        auto node = blueprint.FindPin(static_cast<uint32_t>(linkId.Get()));
-        IM_ASSERT(node != nullptr);
-        result.push_back(node);
-    }
-
+        result.push_back(static_cast<Id>(linkId.Get()));
     return result;
 }
 
@@ -272,18 +270,141 @@ void blueprint_editor_utilities::PinValueBackgroundRenderer::Discard()
         m_Splitter.Merge(m_DrawList);
 }
 
-blueprint_editor_utilities::DebugOverlay::DebugOverlay(Blueprint& blueprint)
-    : m_Blueprint(&blueprint)
+
+
+void blueprint_editor_utilities::Debugger::Monitor::OnLog(const Context& context, Id node, std::string_view text)
 {
+    auto index = context.GetProgram().FindNode(node);
+    auto name  = index >= 0 ? context.GetProgram().Nodes()[static_cast<size_t>(index)].m_Name : std::string("?");
+    LOGI("[Print] %s: \"%.*s\"", name.c_str(), static_cast<int>(text.size()), text.data());
+}
+
+bool blueprint_editor_utilities::Debugger::Start(const Document& document, bool running)
+{
+    m_Context.reset();
+    m_Running = false;
+    m_Current = 0;
+
+    auto compiled = Compile(document.GetBlueprint());
+    for (auto& diagnostic : compiled.m_Diagnostics)
+    {
+        auto message = diagnostic.m_Error.Message();
+        if (diagnostic.m_Severity == Severity::Error)
+            LOGE("%.*s", static_cast<int>(message.size()), message.data());
+        else
+            LOGW("%.*s", static_cast<int>(message.size()), message.data());
+    }
+    if (!compiled.m_Program)
+    {
+        LOGE("Execution: the blueprint has errors, and doesn't run");
+        return false;
+    }
+
+    m_Context = std::make_unique<Context>(compiled.m_Program);
+    m_Context->SetMonitor(&m_Monitor);
+    auto fiber = m_Context->Start("Start");
+    if (!fiber)
+    {
+        auto message = fiber.GetError().Message();
+        LOGE("Execution: %.*s", static_cast<int>(message.size()), message.data());
+        m_Context.reset();
+        return false;
+    }
+
+    LOGI("Execution: %s", running ? "Run" : "Start");
+    m_Fiber    = fiber.GetValue();
+    m_Revision = document.m_Revision;
+    m_Running  = running;
+    return true;
+}
+
+void blueprint_editor_utilities::Debugger::Step()
+{
+    if (!IsActive())
+        return;
+    m_Current = NextNode();
+    auto stepped = m_Context->Step(m_Fiber);
+    if (!stepped)
+        return;
+    if (stepped.GetValue() == FiberState::Done)
+        LOGI("Execution: Done (%llu steps)", static_cast<unsigned long long>(m_Context->StepCount()));
+    else if (stepped.GetValue() == FiberState::Failed)
+    {
+        auto diagnostics = m_Context->Diagnostics();
+        auto message = diagnostics.empty() ? std::string_view() : diagnostics.back().m_Error.Message();
+        LOGE("Execution: Failed at step %llu: %.*s", static_cast<unsigned long long>(m_Context->StepCount()), static_cast<int>(message.size()), message.data());
+    }
+}
+
+void blueprint_editor_utilities::Debugger::Stop()
+{
+    if (IsActive())
+        LOGI("Execution: Stop");
+    m_Context.reset();
+    m_Running = false;
+    m_Current = 0;
+}
+
+void blueprint_editor_utilities::Debugger::Update(const Document& document)
+{
+    if (m_Context && document.m_Revision != m_Revision)
+    {
+        if (IsActive())
+            LOGI("Execution: an edit stopped it");
+        m_Context.reset();
+        m_Running = false;
+        m_Current = 0;
+        return;
+    }
+    if (!IsRunning())
+        return;
+
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(5);
+    while (IsActive() && std::chrono::steady_clock::now() < deadline)
+        Step();
+}
+
+bool blueprint_editor_utilities::Debugger::IsActive() const
+{
+    if (!m_Context)
+        return false;
+    for (auto& fiber : m_Context->Fibers())
+        if (fiber.m_Id == m_Fiber)
+            return fiber.m_State == FiberState::Ready;
+    return false;
+}
+
+blueprint_editor_utilities::Id blueprint_editor_utilities::Debugger::NextNode() const
+{
+    if (m_Context)
+        for (auto& fiber : m_Context->Fibers())
+            if (fiber.m_Id == m_Fiber)
+                return fiber.m_Node;
+    return 0;
+}
+
+blueprint_editor_utilities::Id blueprint_editor_utilities::Debugger::TakenLink() const
+{
+    if (m_Context)
+        for (auto& fiber : m_Context->Fibers())
+            if (fiber.m_Id == m_Fiber)
+                return fiber.m_Link;
+    return 0;
+}
+
+blueprint_editor_utilities::DebugOverlay::DebugOverlay(Debugger& debugger)
+{
+    if (!debugger.IsActive())
+        return;
+    m_Context = debugger.GetContext();
+    m_Current = debugger.CurrentNode();
+    m_Next    = debugger.NextNode();
+    m_Link    = debugger.TakenLink();
 }
 
 void blueprint_editor_utilities::DebugOverlay::Begin()
 {
-    m_CurrentNode = m_Blueprint->CurrentNode();
-    m_NextNode = m_Blueprint->NextNode();
-    m_CurrentFlowPin = m_Blueprint->CurrentFlowPin();
-
-    if (nullptr == m_CurrentNode)
+    if (!m_Context)
         return;
 
     // Use splitter to draw pin values on top of nodes
@@ -293,28 +414,27 @@ void blueprint_editor_utilities::DebugOverlay::Begin()
 
 void blueprint_editor_utilities::DebugOverlay::End()
 {
-    if (nullptr == m_CurrentNode)
+    if (!m_Context)
         return;
 
     m_Splitter.Merge(m_DrawList);
 
-    // The branch execution takes next. Its link has the ID of the pin that holds it, and
-    // fades out once a step leaves it behind.
-    if (m_CurrentFlowPin.m_Link)
+    // The link the step took fades out once a step leaves it behind.
+    if (m_Link)
     {
         ax::NodeEditor::PushStyleVar(ax::NodeEditor::StyleVar_FlowDuration, 0.5f);
-        ax::NodeEditor::Flow(m_CurrentFlowPin.m_Id);
+        ax::NodeEditor::Flow(m_Link);
         ax::NodeEditor::PopStyleVar();
     }
 }
 
-void blueprint_editor_utilities::DebugOverlay::DrawNode(const Node& node)
+void blueprint_editor_utilities::DebugOverlay::DrawNode(Id node)
 {
-    if (nullptr == m_CurrentNode)
+    if (!m_Context)
         return;
 
-    auto isCurrentNode = (m_CurrentNode->m_Id == node.m_Id);
-    auto isNextNode = m_NextNode ? (m_NextNode->m_Id == node.m_Id) : false;
+    auto isCurrentNode = m_Current == node;
+    auto isNextNode    = m_Next == node;
     if (!isCurrentNode && !isNextNode)
         return;
 
@@ -324,12 +444,9 @@ void blueprint_editor_utilities::DebugOverlay::DrawNode(const Node& node)
     // Save current layout to avoid conflicts with node measurements
     ImEx::ScopedSuspendLayout suspendLayout;
 
-    // Put cursor on the left side of the Pin
     auto itemRectMin = ImGui::GetItemRectMin();
     auto itemRectMax = ImGui::GetItemRectMax();
 
-    // itemRectMin -= ImVec2(4.0f, 4.0f);
-    // itemRectMax += ImVec2(4.0f, 4.0f);
     auto pivot = ImVec2((itemRectMin.x + itemRectMax.x) * 0.5f, itemRectMin.y);
     auto markerMin = pivot - ImVec2(40.0f, 35.0f);
     auto markerMax = pivot + ImVec2(40.0f, 0.0f);
@@ -342,14 +459,12 @@ void blueprint_editor_utilities::DebugOverlay::DrawNode(const Node& node)
     m_Splitter.SetCurrentChannel(m_DrawList, 0);
 }
 
-void blueprint_editor_utilities::DebugOverlay::DrawInputPin(const Pin& pin)
+void blueprint_editor_utilities::DebugOverlay::DrawInputPin(const Pin& pin, bool linked)
 {
-    auto flowPinValue = m_Blueprint->GetContext().GetPinValue(m_CurrentFlowPin);
-    auto flowPin = flowPinValue.GetType() == PinType::Flow ? flowPinValue.As<FlowPin*>() : nullptr;
-
-    const auto isCurrentFlowPin = flowPin && flowPin->m_Id == pin.m_Id;
-
-    if (nullptr == m_CurrentNode || (!pin.m_Link && !isCurrentFlowPin))
+    if (!m_Context || !linked || pin.m_Flow)
+        return;
+    auto watch = m_Context->Evaluate(pin.m_Id);
+    if (!watch)
         return;
 
     // Draw to layer over nodes
@@ -367,21 +482,13 @@ void blueprint_editor_utilities::DebugOverlay::DrawInputPin(const Pin& pin)
     // will be aligned to the right side of the pin.
     auto vertexStartIdx = m_DrawList->_CmdHeader.VtxOffset + m_DrawList->_VtxCurrentIdx;
 
-    auto isCurrentNode = (m_CurrentNode == pin.m_Node);
+    auto isCurrentNode = m_Current == pin.m_Node;
     auto color = ImGui::GetStyleColorVec4(isCurrentNode ? ImGuiCol_PlotHistogram : ImGuiCol_NavCursor);
 
     // Actual drawing
     PinValueBackgroundRenderer bg(color, 0.5f);
-    if (!DrawPinValue(m_Blueprint->GetContext().GetPinValue(pin)))
-    {
-        if (isCurrentFlowPin)
-        {
-            auto iconSize = ImVec2(ImGui::GetFontSize(), ImGui::GetFontSize());
-            Icon(iconSize, IconType::Flow, true, color);
-        }
-        else
-            bg.Discard();
-    }
+    if (!DrawValue(watch.GetValue().m_Value))
+        bg.Discard();
     bg.Commit();
 
     // Move generated mesh to the left
@@ -396,7 +503,10 @@ void blueprint_editor_utilities::DebugOverlay::DrawInputPin(const Pin& pin)
 
 void blueprint_editor_utilities::DebugOverlay::DrawOutputPin(const Pin& pin)
 {
-    if (nullptr == m_CurrentNode)
+    if (!m_Context || pin.m_Flow)
+        return;
+    auto watch = m_Context->Evaluate(pin.m_Id);
+    if (!watch)
         return;
 
     // Draw to layer over nodes
@@ -410,21 +520,13 @@ void blueprint_editor_utilities::DebugOverlay::DrawOutputPin(const Pin& pin)
     ImGui::SetCursorScreenPos(ImVec2(itemRectMax.x, itemRectMin.y)
         + ImVec2(1.75f * ImGui::GetStyle().ItemSpacing.x, 0.0f));
 
-    auto isCurrentNode = m_CurrentNode == pin.m_Node;
+    auto isCurrentNode = m_Current == pin.m_Node;
     auto color = ImGui::GetStyleColorVec4(isCurrentNode ? ImGuiCol_PlotHistogram : ImGuiCol_NavCursor);
 
     // Actual drawing
     PinValueBackgroundRenderer bg(color, 0.5f);
-    if (!DrawPinValue(m_Blueprint->GetContext().GetPinValue(pin)))
-    {
-        if (m_CurrentFlowPin.m_Id == pin.m_Id)
-        {
-            auto iconSize = ImVec2(ImGui::GetFontSize(), ImGui::GetFontSize());
-            Icon(iconSize, IconType::Flow, true, color);
-        }
-        else
-            bg.Discard();
-    }
+    if (!DrawValue(watch.GetValue().m_Value))
+        bg.Discard();
     bg.Commit();
 
     // Switch back to normal layer
@@ -546,13 +648,12 @@ void blueprint_editor_utilities::ItemDeleter::NodeDeleter::Reject()
 
 
 
-void blueprint_editor_utilities::CreateNodeDialog::Open(Pin* fromPin)
+void blueprint_editor_utilities::CreateNodeDialog::Open(Id fromPin)
 {
-    auto storage = ImGui::GetStateStorage();
-    storage->SetVoidPtr(ImGui::GetID("##create_node_pin"), fromPin);
+    m_FromPin = fromPin;
     ImGui::OpenPopup("##create_node");
 
-    m_SortedNodes.clear();
+    m_SortedTypes.clear();
 }
 
 void blueprint_editor_utilities::CreateNodeDialog::Show(Document& document)
@@ -560,158 +661,103 @@ void blueprint_editor_utilities::CreateNodeDialog::Show(Document& document)
     if (!ImGui::IsPopupOpen("##create_node"))
         return;
 
-    auto storage = ImGui::GetStateStorage();
-    auto fromPin = reinterpret_cast<Pin*>(storage->GetVoidPtr(ImGui::GetID("##create_node_pin")));
-
     if (!ImGui::BeginPopup("##create_node"))
         return;
 
     auto popupPosition = ImGui::GetMousePosOnOpeningCurrentPopup();
 
-    if (m_SortedNodes.empty())
+    if (m_SortedTypes.empty())
     {
-        auto nodeRegistry = document.GetBlueprint().GetNodeRegistry();
-
-        auto types = nodeRegistry->GetTypes();
-
-        m_SortedNodes.assign(types.begin(), types.end());
-        std::sort(m_SortedNodes.begin(), m_SortedNodes.end(), [](const auto& lhs, const auto& rhs)
-        {
-            return std::lexicographical_compare(
-                lhs->m_DisplayName.begin(), lhs->m_DisplayName.end(),
-                rhs->m_DisplayName.begin(), rhs->m_DisplayName.end());
-        });
+        m_SortedTypes = document.GetBlueprint().GetRegistry().NodeTypes();
+        std::sort(m_SortedTypes.begin(), m_SortedTypes.end(), [](const NodeType* lhs, const NodeType* rhs) { return lhs->m_Title < rhs->m_Title; });
     }
 
-    for (auto nodeTypeInfo : m_SortedNodes)
+    auto& graph = document.GetGraph();
+    for (auto type : m_SortedTypes)
     {
-        bool selected = false;
-        if (ImGui::Selectable(nodeTypeInfo->m_DisplayName.to_string().c_str(), &selected))
+        if (!ImGui::Selectable(type->m_Title.c_str()))
         {
-            auto transaction = document.BeginUndoTransaction("CreateNodeDialog");
-
-            auto& blueprint = document.GetBlueprint();
-
-            auto node = blueprint.CreateNode(nodeTypeInfo->m_Id);
-
-            LOGV("[CreateNodeDailog] %" PRI_node " created", FMT_node(node));
-
-            auto nodePosition = ax::NodeEditor::ScreenToCanvas(popupPosition);
-
-            ax::NodeEditor::SetNodePosition(node->m_Id, nodePosition);
-
-            ax::NodeEditor::SelectNode(node->m_Id);
-
-            m_CreatedNode = node;
-            m_CreatedLinks.clear();
-
-            if (fromPin)
-            {
-                auto newLinks = CreateLinkToFirstMatchingPin(*node, *fromPin);
-
-                for (auto startPin : newLinks)
-                    LOGV("[CreateNodeDailog] %" PRI_pin "  linked with %" PRI_pin, FMT_pin(startPin), FMT_pin(startPin->GetLink()));
-            }
-
-            transaction->AddAction("%" PRI_node " created", FMT_node(node));
+            if (ImGui::IsItemHovered() && !type->m_Category.empty())
+                ImGui::SetTooltip("%s", type->m_Category.c_str());
+            continue;
         }
+
+        auto transaction = document.BeginUndoTransaction("Create Node");
+        auto node = graph.AddNode(type->m_Name);
+        if (!node)
+        {
+            auto message = node.GetError().Message();
+            LOGE("[CreateNodeDialog] %.*s", static_cast<int>(message.size()), message.data());
+            transaction->Discard();
+            continue;
+        }
+
+        ax::NodeEditor::SetNodePosition(node.GetValue(), ax::NodeEditor::ScreenToCanvas(popupPosition));
+        ax::NodeEditor::SelectNode(node.GetValue());
+        m_CreatedNode = node.GetValue();
+
+        auto name = graph.FindNode(m_CreatedNode)->Name();
+        if (auto from = m_FromPin ? graph.FindPin(m_FromPin) : nullptr)
+        {
+            const auto fromId = from->m_Id;
+            const auto output = from->m_Direction == Direction::Output;
+            std::vector<std::pair<Id, std::string>> candidates;
+            for (auto& pin : graph.FindNode(m_CreatedNode)->m_Pins)
+                if ((pin.m_Direction == Direction::Output) != output && pin.m_Flow == from->m_Flow)
+                    candidates.emplace_back(pin.m_Id, pin.m_Key);
+            for (auto& [pin, key] : candidates)
+            {
+                if (graph.Connect(output ? fromId : pin, output ? pin : fromId))
+                {
+                    LOGV("[CreateNodeDialog] %s linked through its %s", name.c_str(), key.c_str());
+                    break;
+                }
+            }
+        }
+
+        LOGV("[CreateNodeDialog] %s created", name.c_str());
+        transaction->AddAction("%s created", name.c_str());
     }
 
     ImGui::EndPopup();
 }
 
-blueprint_editor_utilities::vector<blueprint_editor_utilities::Pin*> blueprint_editor_utilities::CreateNodeDialog::CreateLinkToFirstMatchingPin(Node& node, Pin& fromPin)
+
+
+
+void blueprint_editor_utilities::NodeContextMenu::Open(Id node)
 {
-    for (auto nodePin : node.GetInputPins())
-    {
-        if (nodePin->LinkTo(fromPin))
-            return { nodePin };
-
-        if (fromPin.LinkTo(*nodePin))
-            return { &fromPin };
-    }
-
-    for (auto nodePin : node.GetOutputPins())
-    {
-        if (nodePin->LinkTo(fromPin))
-            return { nodePin };
-
-        if (fromPin.LinkTo(*nodePin))
-            return { &fromPin };
-    }
-
-    return {};
-}
-
-
-
-
-void blueprint_editor_utilities::NodeContextMenu::Open(Node* node /*= nullptr*/)
-{
-    ImGui::GetStateStorage()->SetVoidPtr(ImGui::GetID("##node-context-menu-node"), node);
+    m_Node = node;
     ImGui::OpenPopup("##node-context-menu");
 }
 
-void blueprint_editor_utilities::NodeContextMenu::Show(Blueprint& blueprint)
+void blueprint_editor_utilities::NodeContextMenu::Show(Document& document)
 {
     if (!ImGui::IsPopupOpen("##node-context-menu"))
         return;
 
-    auto storage = ImGui::GetStateStorage();
-    auto node = reinterpret_cast<Node*>(storage->GetVoidPtr(ImGui::GetID("##node-context-menu-node")));
+    auto node = document.GetGraph().FindNode(m_Node);
 
     if (ImGui::BeginPopup("##node-context-menu"))
     {
-        if (ImGui::MenuItem("Cut", nullptr, nullptr, false))
+        if (ImGui::MenuItem("Break Links", nullptr, nullptr, node != nullptr && ax::NodeEditor::HasAnyLinks(ax::NodeEditor::NodeId(m_Node))))
         {
-            // #FIXME: Not implemented
-        }
-
-        if (ImGui::MenuItem("Copy", nullptr, nullptr, false))
-        {
-            // #FIXME: Not implemented
-        }
-
-        if (ImGui::MenuItem("Paste", nullptr, nullptr, false))
-        {
-            // #FIXME: Not implemented
-        }
-
-        if (ImGui::MenuItem("Duplicate", nullptr, nullptr, false))
-        {
-            // #FIXME: Not implemented
+            if (!ax::NodeEditor::IsNodeSelected(m_Node))
+                ax::NodeEditor::BreakLinks(ax::NodeEditor::NodeId(m_Node));
+            else
+                for (auto selected : GetSelectedNodes())
+                    ax::NodeEditor::BreakLinks(ax::NodeEditor::NodeId(selected));
         }
 
         ImGui::Separator();
 
-        if (ImGui::MenuItem("Break Links", nullptr, nullptr, node != nullptr && ax::NodeEditor::HasAnyLinks(ax::NodeEditor::NodeId(node->m_Id))))
+        if (ImGui::MenuItem("Delete", nullptr, nullptr, node != nullptr))
         {
-            if (node && !ax::NodeEditor::IsNodeSelected(node->m_Id))
-            {
-                ax::NodeEditor::BreakLinks(ax::NodeEditor::NodeId(node->m_Id));
-            }
+            if (!ax::NodeEditor::IsNodeSelected(m_Node))
+                ax::NodeEditor::DeleteNode(m_Node);
             else
-            {
-                auto selectedNodes = GetSelectedNodes(blueprint);
-                for (auto selectedNode : selectedNodes)
-                    ax::NodeEditor::BreakLinks(ax::NodeEditor::NodeId(selectedNode->m_Id));
-            }
-        }
-
-        ImGui::Separator();
-
-        if (ImGui::MenuItem("Delete"))
-        {
-            if (node && !ax::NodeEditor::IsNodeSelected(node->m_Id))
-            {
-                ax::NodeEditor::DeleteNode(node->m_Id);
-            }
-            else
-            {
-                auto selectedNodes = GetSelectedNodes(blueprint);
-                for (auto selectedNode : selectedNodes)
-                    ax::NodeEditor::DeleteNode(selectedNode->m_Id);
-            }
+                for (auto selected : GetSelectedNodes())
+                    ax::NodeEditor::DeleteNode(selected);
         }
 
         ImGui::EndPopup();
@@ -721,27 +767,69 @@ void blueprint_editor_utilities::NodeContextMenu::Show(Blueprint& blueprint)
 
 
 
-void blueprint_editor_utilities::PinContextMenu::Open(Pin* pin /*= nullptr*/)
+void blueprint_editor_utilities::PinContextMenu::Open(Id pin)
 {
-    ImGui::GetStateStorage()->SetVoidPtr(ImGui::GetID("##pin-context-menu-pin"), pin);
+    m_Pin = pin;
     ImGui::OpenPopup("##pin-context-menu");
 }
 
-void blueprint_editor_utilities::PinContextMenu::Show(Blueprint& blueprint)
+void blueprint_editor_utilities::PinContextMenu::Show(Document& document)
 {
-    IM_UNUSED(blueprint);
-
     if (!ImGui::IsPopupOpen("##pin-context-menu"))
         return;
 
-    auto storage = ImGui::GetStateStorage();
-    auto pin = reinterpret_cast<Pin*>(storage->GetVoidPtr(ImGui::GetID("##pin-context-menu-pin")));
+    auto& graph = document.GetGraph();
+    auto  pin   = graph.FindPin(m_Pin);
+    auto  node  = graph.NodeOf(m_Pin);
 
     if (ImGui::BeginPopup("##pin-context-menu"))
     {
-        if (ImGui::MenuItem("Break Links", nullptr, nullptr, pin != nullptr && ax::NodeEditor::HasAnyLinks(ax::NodeEditor::PinId(pin->m_Id))))
+        if (ImGui::MenuItem("Break Links", nullptr, nullptr, pin != nullptr && ax::NodeEditor::HasAnyLinks(ax::NodeEditor::PinId(m_Pin))))
+            ax::NodeEditor::BreakLinks(ax::NodeEditor::PinId(m_Pin));
+
+        // Only a pin whose type is a variable itself offers it, not one in a constructed type such
+        // as Array<T>. The choice is set once the menu is drawn.
+        auto variable = pin && !pin->m_Flow && !pin->m_Type.m_Head && pin->m_Type.m_Variable >= 0 ? &node->m_Variables[static_cast<size_t>(pin->m_Type.m_Variable)] : nullptr;
+        std::optional<const Type*> choice; // null: reset
+        if (variable)
         {
-            ax::NodeEditor::BreakLinks(ax::NodeEditor::PinId(pin->m_Id));
+            auto chosen = node->m_Config.m_Types.find(variable->m_Name);
+            ImGui::Separator();
+            if (ImGui::BeginMenu("Type"))
+            {
+                for (auto head : document.GetBlueprint().GetRegistry().ValueTypes())
+                {
+                    auto allowed = variable->m_Allowed.empty() || std::find(variable->m_Allowed.begin(), variable->m_Allowed.end(), head) != variable->m_Allowed.end();
+                    if (head->m_Arity > 0 || !allowed)
+                        continue;
+                    auto isChosen = chosen != node->m_Config.m_Types.end() && chosen->second == &head->AsType();
+                    if (ImGui::MenuItem(head->m_Name.c_str(), nullptr, isChosen))
+                        choice = &head->AsType();
+                }
+                ImGui::EndMenu();
+            }
+            if (ImGui::MenuItem("Reset Type", nullptr, nullptr, chosen != node->m_Config.m_Types.end()))
+                choice = nullptr;
+        }
+
+        if (choice)
+        {
+            auto config = node->m_Config;
+            if (*choice)
+                config.m_Types[variable->m_Name] = *choice;
+            else
+                config.m_Types.erase(variable->m_Name);
+            const auto what = *choice ? "Choose Type" : "Reset Type";
+            const auto id   = node->m_Id;
+            auto transaction = document.BeginUndoTransaction(what);
+            if (auto set = graph.SetConfig(id, std::move(config)); !set)
+            {
+                auto message = set.GetError().Message();
+                LOGW("[PinContextMenu] %.*s", static_cast<int>(message.size()), message.data());
+                transaction->Discard();
+            }
+            else
+                transaction->AddAction("%s: %s", graph.FindNode(id)->Name().c_str(), what);
         }
 
         ImGui::EndPopup();
@@ -751,34 +839,35 @@ void blueprint_editor_utilities::PinContextMenu::Show(Blueprint& blueprint)
 
 
 
-void blueprint_editor_utilities::LinkContextMenu::Open(Pin* pin /*= nullptr*/)
+void blueprint_editor_utilities::LinkContextMenu::Open(Id link)
 {
-    ImGui::GetStateStorage()->SetVoidPtr(ImGui::GetID("##link-context-menu-pin"), pin);
+    m_Link = link;
     ImGui::OpenPopup("##link-context-menu");
 }
 
-void blueprint_editor_utilities::LinkContextMenu::Show(Blueprint& blueprint)
+void blueprint_editor_utilities::LinkContextMenu::Show(Document& document)
 {
     if (!ImGui::IsPopupOpen("##link-context-menu"))
         return;
 
-    auto storage = ImGui::GetStateStorage();
-    auto pin = reinterpret_cast<Pin*>(storage->GetVoidPtr(ImGui::GetID("##link-context-menu-pin")));
+    auto link = document.GetGraph().FindLink(m_Link);
 
     if (ImGui::BeginPopup("##link-context-menu"))
     {
+        if (link && !link->m_Active)
+        {
+            auto reason = link->m_Reason.Message();
+            ImGui::TextDisabled("Disabled: %.*s", static_cast<int>(reason.size()), reason.data());
+            ImGui::Separator();
+        }
+
         if (ImGui::MenuItem("Break"))
         {
-            if (pin && !ax::NodeEditor::IsLinkSelected(pin->m_Id))
-            {
-                ax::NodeEditor::DeleteLink(pin->m_Id);
-            }
+            if (!ax::NodeEditor::IsLinkSelected(m_Link))
+                ax::NodeEditor::DeleteLink(m_Link);
             else
-            {
-                auto selectedLinks = GetSelectedLinks(blueprint);
-                for (auto selectedLink : selectedLinks)
-                    ax::NodeEditor::DeleteLink(selectedLink->m_Id);
-            }
+                for (auto selected : GetSelectedLinks())
+                    ax::NodeEditor::DeleteLink(selected);
         }
 
         ImGui::EndPopup();

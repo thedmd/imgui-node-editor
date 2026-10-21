@@ -1,5 +1,5 @@
 //------------------------------------------------------------------------------
-// blueprints2-example's blueprint model and documents, without its window.
+// blueprints2-example's documents, debugger and overlay, without its window.
 //------------------------------------------------------------------------------
 # include "harness.h"
 # include "blueprint_editor_document.h"
@@ -9,10 +9,9 @@
 # include "crude_logger.h"
 # include "imgui_extras.h"
 # include <crude_json.h>
-# include <cmath>
-# include <cstdint>
 # include <cstdio>
 # include <functional>
+# include <memory>
 # include <string>
 # include <utility>
 # include <vector>
@@ -20,46 +19,32 @@
 using namespace crude_blueprint;
 using blueprint_editor::Document;
 using blueprint_editor_utilities::DebugOverlay;
+using blueprint_editor_utilities::Debugger;
 
 namespace {
 
-std::vector<std::string> s_Printed;
-
-// What Print nodes print, while it lives.
-struct PrintCapture
+// As the example has it.
+std::shared_ptr<const Registry> ExampleRegistry()
 {
-    PrintCapture()
+    static const std::shared_ptr<const Registry> registry = []
     {
-        s_Printed.clear();
-        PrintNode::s_PrintFunction = [](const PrintNode&, string_view message) { s_Printed.push_back(message.to_string()); };
-    }
-
-    ~PrintCapture()
-    {
-        PrintNode::s_PrintFunction = nullptr;
-    }
-};
-
-std::string Printed()
-{
-    std::string printed;
-    for (auto& message : s_Printed)
-        printed += message + "|";
-    return printed;
+        auto made = std::make_shared<Registry>();
+        if (!RegisterBuiltins(*made) || !RegisterLibrary(*made))
+            test::Check(false, "the example's registry is made");
+        return made;
+    }();
+    return registry;
 }
 
-// A node type that counts its nodes.
-struct CountedNode final : Node
+struct Prints final : ContextMonitor
 {
-    CRUDE_BP_NODE(CountedNode, "Counted")
+    void OnLog(const Context&, Id, std::string_view text) override
+    {
+        m_Text += (m_Text.empty() ? "" : " ") + std::string(text);
+    }
 
-    CountedNode(Blueprint& blueprint): Node(blueprint) { ++s_Alive; }
-    ~CountedNode() override { --s_Alive; }
-
-    static int s_Alive;
+    std::string m_Text;
 };
-
-int CountedNode::s_Alive = 0;
 
 ed::Config UnnamedConfig()
 {
@@ -85,269 +70,190 @@ struct TestFile
     std::string Path;
 };
 
-// The example's document: Start runs Do N five times, and Flip Flop alternates
-// between printing "FlipFlop slot A!" and the counter plus 3.
-struct ExampleBlueprint
+// A document of the example's blueprint, laid out in the session's editor: Start runs For Loop
+// from 0 to 4, whose body prints each index plus 10, then Print says "Done".
+struct Example
 {
-    explicit ExampleBlueprint(Blueprint& blueprint): m_Blueprint(blueprint)
+    explicit Example(test::Session& session)
     {
-        Link();
+        session.Use([&] { blueprint_editor::CreateExampleBlueprint(m_Document); });
     }
 
-    Blueprint&      m_Blueprint;
-    PrintNode*      m_PrintB     = m_Blueprint.CreateNode<PrintNode>();
-    EntryPointNode* m_Entry      = m_Blueprint.CreateNode<EntryPointNode>();
-    PrintNode*      m_PrintA     = m_Blueprint.CreateNode<PrintNode>();
-    FlipFlopNode*   m_FlipFlop   = m_Blueprint.CreateNode<FlipFlopNode>();
-    ToStringNode*   m_ToString   = m_Blueprint.CreateNode<ToStringNode>();
-    DoNNode*        m_DoN        = m_Blueprint.CreateNode<DoNNode>();
-    AddNode*        m_Add        = m_Blueprint.CreateNode<AddNode>();
-
-    void Link()
+    // The nth node of a type, in the order the example makes them.
+    Id Node(const char* type, int nth = 0) const
     {
-        m_Entry->m_Exit.LinkTo(m_DoN->m_Enter);
-        m_DoN->m_N.SetValue(5);
-        m_DoN->m_Exit.LinkTo(m_FlipFlop->m_Enter);
-        m_ToString->m_Value.LinkTo(m_Add->m_Result);
-        m_Add->m_A.LinkTo(m_DoN->m_Counter);
-        m_Add->m_B.SetValue(3);
-        m_ToString->m_Exit.LinkTo(m_PrintB->m_Enter);
-        m_PrintA->m_String.SetValue("FlipFlop slot A!");
-        m_PrintB->m_String.SetValue("FlipFlop slot B!");
-        m_PrintB->m_String.LinkTo(m_ToString->m_String);
-        m_FlipFlop->m_A.LinkTo(m_PrintA->m_Enter);
-        m_FlipFlop->m_B.LinkTo(m_ToString->m_Enter);
+        for (auto& node : m_Document.GetGraph().Nodes())
+            if (node.m_Type->m_Name == type && nth-- == 0)
+                return node.m_Id;
+        test::Check(false, "the example has a %s", type);
+        return 0;
     }
 
-    PrintCapture    m_Capture;
+    Id Pin(Id node, std::string_view key) const
+    {
+        auto found = m_Document.GetGraph().FindNode(node);
+        auto pin   = found ? found->FindPin(key) : nullptr;
+        if (!pin)
+            test::Check(false, "node %d has a pin %s", static_cast<int>(node), std::string(key).c_str());
+        return pin ? pin->m_Id : 0;
+    }
+
+    Document m_Document{ ExampleRegistry(), std::make_shared<TypeTable>() };
 };
 
-// Start runs For Loop from the first to the last index, and its body prints the index.
-struct ForLoopBlueprint
+std::string Message(const Result<void>& result)
 {
-    ForLoopBlueprint(int32_t firstIndex, int32_t lastIndex)
-    {
-        m_Entry->m_Exit.LinkTo(m_ForLoop->m_Enter);
-        m_ForLoop->m_FirstIndex.SetValue(firstIndex);
-        m_ForLoop->m_LastIndex.SetValue(lastIndex);
-        m_ForLoop->m_LoopBody.LinkTo(m_ToString->m_Enter);
-        m_ToString->m_Value.LinkTo(m_ForLoop->m_Index);
-        m_ToString->m_Exit.LinkTo(m_Print->m_Enter);
-        m_Print->m_String.LinkTo(m_ToString->m_String);
-    }
-
-    // Steps until execution ends, or for 100 steps.
-    StepResult Run()
-    {
-        m_Blueprint.Start(*m_Entry);
-        for (int steps = 0; steps < 100 && m_Blueprint.LastStepResult() == StepResult::Success; ++steps)
-            m_Blueprint.Step();
-        return m_Blueprint.LastStepResult();
-    }
-
-    Blueprint       m_Blueprint;
-    EntryPointNode* m_Entry    = m_Blueprint.CreateNode<EntryPointNode>();
-    ForLoopNode*    m_ForLoop  = m_Blueprint.CreateNode<ForLoopNode>();
-    ToStringNode*   m_ToString = m_Blueprint.CreateNode<ToStringNode>();
-    PrintNode*      m_Print    = m_Blueprint.CreateNode<PrintNode>();
-    PrintCapture    m_Capture;
-};
-
-// The entry of node 'id' in a saved blueprint.
-crude_json::value& NodeEntry(crude_json::value& blueprint, uint32_t id)
-{
-    for (auto& node : blueprint["nodes"].get<crude_json::array>())
-        if (node["id"].get<crude_json::number>() == id)
-            return node;
-
-    test::Fail("no node %u in the saved blueprint", id);
-    static crude_json::value none;
-    return none;
-}
-
-// The entry of pin 'id' in a saved blueprint.
-crude_json::value& PinEntry(crude_json::value& blueprint, uint32_t id)
-{
-    for (auto& node : blueprint["nodes"].get<crude_json::array>())
-        for (auto key : { "input_pins", "output_pins" })
-            if (node.contains(key))
-                for (auto& pin : node[key].get<crude_json::array>())
-                    if (pin["id"].get<crude_json::number>() == id)
-                        return pin;
-
-    test::Fail("no pin %u in the saved blueprint", id);
-    static crude_json::value none;
-    return none;
+    return result ? std::string() : std::string(result.GetError().Message());
 }
 
 } // namespace
 
-TEST_CASE(Blueprints2Runs, "blueprints2.example_blueprint_runs", nullptr, test::TestFlags_None)
+TEST_CASE(ExampleRuns, "blueprints2.the_example_blueprint_runs", nullptr, test::TestFlags_None)
 {
-    Blueprint        blueprint;
-    ExampleBlueprint example(blueprint);
-    const auto result = example.m_Blueprint.Execute(*example.m_Entry);
+    test::Session session(UnnamedConfig());
+    Example       example(session);
+    auto compiled = Compile(example.m_Document.GetBlueprint());
+    if (!compiled.m_Program)
+        return test::Check(false, "the example compiles");
 
-    const auto printed = Printed();
-    test::Check(result == StepResult::Done, "the example runs to its end: %s", StepResultToString(result));
-    test::Check(printed == "FlipFlop slot A!|5|FlipFlop slot A!|7|FlipFlop slot A!|", "and prints: %s", printed.c_str());
-}
-TEST_CASE(DeleteStopsExecution, "blueprints2.deleting_a_node_stops_execution", "EXB-1", test::TestFlags_None)
-{
-    // Execution paused after Do N's first step, with Flip Flop to run next; the user deletes Flip Flop.
-    Blueprint        blueprint;
-    ExampleBlueprint example(blueprint);
-    blueprint.Start(*example.m_Entry);
-    blueprint.Step();
-    const bool paused = blueprint.CurrentNode() == example.m_DoN && blueprint.NextNode() == example.m_FlipFlop;
-
-    blueprint.DeleteNode(example.m_FlipFlop);
-    const bool stopped = blueprint.CurrentNode() == nullptr && blueprint.NextNode() == nullptr && blueprint.LastStepResult() == StepResult::Done;
-    const auto step    = blueprint.Step();
-
-    test::Check(paused, "execution paused in Do N, before Flip Flop");
-    test::Check(stopped, "deleting Flip Flop stops it: the toolbar finds no current or next node");
-    test::Check(step == StepResult::Done, "and a step does nothing: %s", StepResultToString(step));
+    Context context(compiled.m_Program);
+    Prints  prints;
+    context.SetMonitor(&prints);
+    auto fiber = context.Start("Start");
+    auto state = FiberState::Ready;
+    for (int i = 0; i < 100 && state == FiberState::Ready; ++i)
+        state = context.Step(fiber.ValueOr(0)).ValueOr(FiberState::Failed);
+    test::Check(state == FiberState::Done && prints.m_Text == "10 11 12 13 14 Done", "it prints each index plus 10, then Done: %s", prints.m_Text.c_str());
 }
 
-TEST_CASE(PinCopyOutlivesNode, "blueprints2.a_pin_copy_outlives_its_node", "EXB-1", test::TestFlags_NeedsSanitizer)
+TEST_CASE(EditsStopRuns, "blueprints2.an_edit_stops_a_run_and_a_move_doesnt", nullptr, test::TestFlags_None)
 {
-    // The debug overlay keeps a copy of the current flow pin for the frame, in which the user may delete its node.
-    Blueprint        blueprint;
-    ExampleBlueprint example(blueprint);
+    test::Session session(UnnamedConfig());
+    OverlayLog    log;
+    Example       example(session);
+    auto& document = example.m_Document;
+    auto  loop     = example.Node("crude.ForLoop");
+
+    Debugger debugger;
+    auto started = debugger.Start(document, false);
+    debugger.Step();
+    debugger.Step();
+    test::Check(started && debugger.IsActive() && debugger.CurrentNode() == loop && !debugger.IsRunning(), "a run starts paused, and steps");
+
+    // An undo step of the layout, which leaves the blueprint as it was.
+    session.Use([&]
     {
-        FlowPin copy = example.m_DoN->m_Exit;
-        example.m_Blueprint.DeleteNode(example.m_DoN);
-    }
-    test::Check(example.m_Blueprint.FindNode(example.m_Add->m_Id) == example.m_Add, "the copy went away without touching the deleted node");
-}
-TEST_CASE(DataLoopRefused, "blueprints2.a_link_that_makes_a_data_loop_is_refused", "EXB-3", test::TestFlags_None)
-{
-    // Add 2 takes Add 1's result; Add 1 taking Add 2's result would evaluate forever.
-    Blueprint blueprint;
-    auto add1 = blueprint.CreateNode<AddNode>();
-    auto add2 = blueprint.CreateNode<AddNode>();
-    auto add3 = blueprint.CreateNode<AddNode>();
-    const bool first  = add2->m_A.LinkTo(add1->m_Result);
-    const bool chain  = add3->m_A.LinkTo(add2->m_Result);
-    const auto query  = add1->m_A.CanLinkTo(add3->m_Result);
-    const bool closed = add1->m_A.LinkTo(add3->m_Result);
-    const bool other  = add1->m_B.LinkTo(add2->m_Result);
+        auto transaction = document.BeginUndoTransaction("Move");
+        ed::SetNodePosition(loop, ImVec2(300.0f, 300.0f));
+        transaction->AddAction("Move For Loop");
+    });
+    debugger.Update(document);
+    test::Check(debugger.IsActive() && document.m_Undo.size() == 1, "moving a node leaves the run");
 
-    test::Check(first && chain, "Add 1 feeds Add 2, which feeds Add 3");
-    test::Check(!query && query.Reason().find("loop") != std::string::npos, "Add 3 feeding Add 1 is refused: %s", query.Reason().data());
-    test::Check(!closed && !other && add1->m_A.m_Link == nullptr && add1->m_B.m_Link == nullptr, "and no loop is linked");
-}
-
-TEST_CASE(DeepEvaluation, "blueprints2.a_data_loop_or_long_chain_evaluates_without_overflow", "EXB-3", test::TestFlags_None)
-{
-    // A loop from a file, which no link check saw, and a chain as long as a file may make it.
-    Blueprint blueprint;
-    auto add1 = blueprint.CreateNode<AddNode>();
-    auto add2 = blueprint.CreateNode<AddNode>();
-    add2->m_A.LinkTo(add1->m_Result);
-    add1->m_A.m_Link = &add2->m_Result;
-    const auto loop = blueprint.GetContext().GetPinValue(add1->m_Result);
-
-    std::vector<AddNode*> chain(1, blueprint.CreateNode<AddNode>());
-    for (int i = 1; i < 20000; ++i)
+    session.Use([&]
     {
-        chain.push_back(blueprint.CreateNode<AddNode>());
-        chain.back()->m_A.m_Link = &chain[chain.size() - 2]->m_Result;
-    }
-    const auto deep = blueprint.GetContext().GetPinValue(chain.back()->m_Result);
+        auto transaction = document.BeginUndoTransaction("Edit Value");
+        if (document.GetGraph().SetValue(example.Pin(loop, "last"), Value::Int32(2)))
+            transaction->AddAction("For Loop's last index changed");
+    });
+    debugger.Update(document);
+    test::Check(!debugger.IsActive(), "changing a value stops it");
 
-    // Evaluation afterwards goes on as usual.
-    auto constant = blueprint.CreateNode<ConstInt32Node>();
-    constant->m_Int32.SetValue(7);
-    const auto value = blueprint.GetContext().GetPinValue(constant->m_Int32);
+    debugger.Start(document, false);
+    session.Use([&] { document.Undo(); });
+    debugger.Update(document);
+    test::Check(!debugger.IsActive(), "and so does undoing it");
 
-    test::Check(loop.GetType() == PinType::Any && deep.GetType() == PinType::Any, "both evaluate to no value");
-    test::Check(value.GetType() == PinType::Int32 && value.As<int32_t>() == 7, "a pin evaluated after them has its value");
+    NodeConfig untyped;
+    if (!document.GetGraph().AddNode("crude.Constant", untyped))
+        test::Check(false, "a Constant is added");
+    test::Check(!debugger.Start(document, false) && !debugger.IsActive(), "a blueprint with an error doesn't start: a Constant of no type");
 }
 
 TEST_CASE(DebugOverlayLayout, "blueprints2.debug_overlay_leaves_the_layout_alone", nullptr, test::TestFlags_None)
 {
-    // While execution runs, the overlay draws values beside pins: after an output pin, before an
+    // While a run is paused, the overlay draws values beside pins: after an output pin, before an
     // input pin. Each pin's cell in the node's layout is a group that ends after the overlay, and
-    // has to end with the pin, as Flip Flop's A does with no value to show.
-    test::Session    session(UnnamedConfig());
-    Blueprint        blueprint;
-    ExampleBlueprint example(blueprint);
-    example.m_ToString->m_String.SetValue("a value much wider than its pin");
-    blueprint.Start(*example.m_Entry);
+    // has to end with the pin.
+    test::Session session(UnnamedConfig());
+    OverlayLog    log;
+    Example       example(session);
+    auto& graph = example.m_Document.GetGraph();
+    auto  loop  = example.Node("crude.ForLoop"), done = example.Node("crude.Print", 1);
+
+    // A value much wider than its pin, linked into Done's Print.
+    NodeConfig wide;
+    wide.m_Types["T"]     = &StringType();
+    wide.m_Data["value"] = Value::String("a value much wider than its pin");
+    auto constant = graph.AddNode("crude.Constant", wide);
+    if (!constant || !graph.Connect(example.Pin(constant.GetValue(), "value"), example.Pin(done, "text")))
+        return test::Check(false, "the wide value is linked");
+
+    Debugger debugger;
+    debugger.Start(example.m_Document, false);
+    debugger.Step();
+    debugger.Step();
 
     struct Cell
     {
         float PinEnd  = 0.0f;
         float CellEnd = 0.0f;
     };
-    Cell flipFlopA, startExit, flipFlopIsA, printString;
+    Cell index, body, text;
 
     session.Frame([&](int)
     {
-        DebugOverlay overlay(blueprint);
-        auto cell = [&overlay](Pin& pin, ed::PinKind kind, Cell& result)
+        DebugOverlay overlay(debugger);
+        auto cell = [&overlay, &graph](Id id, ed::PinKind kind, Cell& result)
         {
+            auto& pin = *graph.FindPin(id);
             ImGui::BeginGroup();
-            ed::BeginPin(pin.m_Id, kind);
+            ed::BeginPin(id, kind);
             ImGui::TextUnformatted("Pin");
             ed::EndPin();
             result.PinEnd = ImGui::GetItemRectMax().x;
             if (kind == ed::PinKind::Output)
                 overlay.DrawOutputPin(pin);
             else
-                overlay.DrawInputPin(pin);
+                overlay.DrawInputPin(pin, true);
             ImGui::EndGroup();
             result.CellEnd = ImGui::GetItemRectMax().x;
         };
 
         overlay.Begin();
-        ed::BeginNode(example.m_FlipFlop->m_Id);
-        cell(example.m_FlipFlop->m_A, ed::PinKind::Output, flipFlopA);
-        cell(example.m_FlipFlop->m_IsA, ed::PinKind::Output, flipFlopIsA);
+        ed::BeginNode(loop);
+        cell(example.Pin(loop, "index"), ed::PinKind::Output, index);
+        cell(example.Pin(loop, "body"), ed::PinKind::Output, body);
         ed::EndNode();
-        ed::BeginNode(example.m_Entry->m_Id);
-        cell(example.m_Entry->m_Exit, ed::PinKind::Output, startExit);
-        ed::EndNode();
-        ed::BeginNode(example.m_PrintB->m_Id);
-        cell(example.m_PrintB->m_String, ed::PinKind::Input, printString);
+        ed::BeginNode(done);
+        cell(example.Pin(done, "text"), ed::PinKind::Input, text);
         ed::EndNode();
         overlay.End();
     });
 
     test::Check(test::AssertCount() == 0, "the groups end without an IM_ASSERT: %d", test::AssertCount());
-    test::Check(flipFlopA.CellEnd == flipFlopA.PinEnd, "Flip Flop's A ends its cell: at %g, the pin at %g", flipFlopA.CellEnd, flipFlopA.PinEnd);
-    test::Check(startExit.CellEnd == startExit.PinEnd, "so does Start's Exit, with the current flow marker after it: at %g, the pin at %g", startExit.CellEnd, startExit.PinEnd);
-    test::Check(flipFlopIsA.CellEnd == flipFlopIsA.PinEnd, "Flip Flop's Is A, with false after it: at %g, the pin at %g", flipFlopIsA.CellEnd, flipFlopIsA.PinEnd);
-    test::Check(printString.CellEnd == printString.PinEnd, "and Print's String, with a value wider than it before it: at %g, the pin at %g", printString.CellEnd, printString.PinEnd);
+    test::Check(index.CellEnd == index.PinEnd, "For Loop's Index ends its cell, with 0 after it: at %g, the pin at %g", index.CellEnd, index.PinEnd);
+    test::Check(body.CellEnd == body.PinEnd, "so does its Loop Body, with no value: at %g, the pin at %g", body.CellEnd, body.PinEnd);
+    test::Check(text.CellEnd == text.PinEnd, "and Done's Text, with a value wider than it before it: at %g, the pin at %g", text.CellEnd, text.PinEnd);
 }
 
-TEST_CASE(DebugOverlayFlow, "blueprints2.debug_overlay_flows_only_the_next_branch", nullptr, test::TestFlags_None)
+TEST_CASE(DebugOverlayFlow, "blueprints2.debug_overlay_flows_only_the_link_the_step_took", nullptr, test::TestFlags_None)
 {
-    // Execution paused in Flip Flop, with Print A to run next through Flip Flop's A. Every node
-    // shows its pins with the overlay's values beside them, as in the example, in two rows that
-    // leave the link from Flip Flop's A to Print A alone between those two pins.
-    test::Session    session(UnnamedConfig());
-    Blueprint        blueprint;
-    ExampleBlueprint example(blueprint);
-    blueprint.Start(*example.m_Entry);
-    blueprint.Step();
-    blueprint.Step();
+    // A run paused after For Loop, which took its Loop Body to Print. Every node shows its pins in
+    // two rows, with the overlay's values beside them.
+    test::Session session(UnnamedConfig());
+    OverlayLog    log;
+    Example       example(session);
+    auto& graph = example.m_Document.GetGraph();
+    auto  loop  = example.Node("crude.ForLoop"), print = example.Node("crude.Print");
 
-    const std::pair<const Node*, ImVec2> layout[] =
-    {
-        { example.m_Entry,    ImVec2(  0.0f,   0.0f) },
-        { example.m_DoN,      ImVec2(200.0f,   0.0f) },
-        { example.m_FlipFlop, ImVec2(420.0f,   0.0f) },
-        { example.m_PrintA,   ImVec2(700.0f,   0.0f) },
-        { example.m_Add,      ImVec2(200.0f, 260.0f) },
-        { example.m_ToString, ImVec2(420.0f, 260.0f) },
-        { example.m_PrintB,   ImVec2(700.0f, 260.0f) },
-    };
+    Debugger debugger;
+    debugger.Start(example.m_Document, false);
+    debugger.Step();
+    debugger.Step();
 
     const ImU32 flowColor = IM_COL32(255, 0, 255, 255);
-    ImVec2 flipFlopA, printAEnter;
+    ImVec2 body, enter;
     session.DefaultContent = [&](int frame)
     {
         if (frame == 0)
@@ -355,44 +261,42 @@ TEST_CASE(DebugOverlayFlow, "blueprints2.debug_overlay_flows_only_the_next_branc
             auto& style = ed::GetStyle();
             style.Colors[ed::StyleColor_Flow]       = ImColor(flowColor);
             style.Colors[ed::StyleColor_FlowMarker] = ImColor(flowColor);
-            for (auto& entry : layout)
-                ed::SetNodePosition(entry.first->m_Id, entry.second);
         }
 
-        DebugOverlay overlay(blueprint);
+        DebugOverlay overlay(debugger);
         overlay.Begin();
-        for (auto node : blueprint.GetNodes())
+        for (auto& node : graph.Nodes())
         {
-            ed::BeginNode(node->m_Id);
-            const auto name = node->GetName();
-            ImGui::TextUnformatted(name.data(), name.data() + name.size());
-            for (auto kind : { ed::PinKind::Input, ed::PinKind::Output })
+            ed::BeginNode(node.m_Id);
+            ImGui::TextUnformatted(node.m_Type->m_Title.c_str());
+            for (auto direction : { Direction::Input, Direction::Output })
             {
-                if (kind == ed::PinKind::Output)
+                if (direction == Direction::Output)
                     ImGui::SameLine(0.0f, 40.0f);
                 ImGui::BeginGroup();
-                for (auto pin : kind == ed::PinKind::Input ? node->GetInputPins() : node->GetOutputPins())
+                for (auto& pin : node.m_Pins)
                 {
-                    ed::BeginPin(pin->m_Id, kind);
-                    ImGui::TextUnformatted(kind == ed::PinKind::Input ? "> in" : "out >");
+                    if (pin.m_Direction != direction)
+                        continue;
+                    ed::BeginPin(pin.m_Id, direction == Direction::Input ? ed::PinKind::Input : ed::PinKind::Output);
+                    ImGui::TextUnformatted(direction == Direction::Input ? "> in" : "out >");
                     ed::EndPin();
                     const auto center = ed::CanvasToScreen((ImGui::GetItemRectMin() + ImGui::GetItemRectMax()) * 0.5f);
-                    if (pin == &example.m_FlipFlop->m_A)
-                        flipFlopA = center;
-                    if (pin == &example.m_PrintA->m_Enter)
-                        printAEnter = center;
-                    if (kind == ed::PinKind::Input)
-                        overlay.DrawInputPin(*pin);
+                    if (pin.m_Id == example.Pin(loop, "body"))
+                        body = center;
+                    if (pin.m_Id == example.Pin(print, "enter"))
+                        enter = center;
+                    if (direction == Direction::Input)
+                        overlay.DrawInputPin(pin, true);
                     else
-                        overlay.DrawOutputPin(*pin);
+                        overlay.DrawOutputPin(pin);
                 }
                 ImGui::EndGroup();
             }
             ed::EndNode();
         }
-        for (auto pin : blueprint.GetPins())
-            if (pin->m_Link)
-                ed::Link(pin->m_Id, pin->m_Id, pin->m_Link->m_Id);
+        for (auto& link : graph.Links())
+            ed::Link(link.m_Id, link.m_From, link.m_To);
         overlay.End();
     };
 
@@ -401,21 +305,21 @@ TEST_CASE(DebugOverlayFlow, "blueprints2.debug_overlay_flows_only_the_next_branc
     {
         // Flow is drawn over the whole link: its vertices may stray from the line between the
         // pins by the link's thickness.
-        const ImRect nextBranch(ImMin(flipFlopA, printAEnter) - ImVec2(8.0f, 8.0f), ImMax(flipFlopA, printAEnter) + ImVec2(8.0f, 8.0f));
+        const ImRect taken(ImMin(body, enter) - ImVec2(8.0f, 8.0f), ImMax(body, enter) + ImVec2(8.0f, 8.0f));
         const auto geometry = test::Capture(session.DrawList);
         inside = outside = 0;
         for (size_t i = 0; i < geometry.Colors.size(); ++i)
             if ((geometry.Colors[i] & ~IM_COL32_A_MASK) == (flowColor & ~IM_COL32_A_MASK))
-                ++(nextBranch.Contains(geometry.Positions[i]) ? inside : outside);
+                ++(taken.Contains(geometry.Positions[i]) ? inside : outside);
     };
     session.Run(3);
 
-    test::Check(blueprint.CurrentNode() == example.m_FlipFlop && blueprint.NextNode() == example.m_PrintA, "execution paused in Flip Flop, with Print A next");
-    test::Check(inside > 0, "the link from Flip Flop's A to Print A flows: %d flow vertices", inside);
+    test::Check(debugger.CurrentNode() == loop && debugger.NextNode() == print, "the run paused after For Loop, with Print next");
+    test::Check(inside > 0, "the link from Loop Body to Print flows: %d flow vertices", inside);
     test::Check(outside == 0, "and no other link does: %d flow vertices elsewhere", outside);
 
-    // The next step runs Print A and returns to Do N, through no link. Frames take 1/60 s.
-    blueprint.Step();
+    // The next step runs Print, and its branch ends, through no link. Frames take 1/60 s.
+    debugger.Step();
     session.Run(15);
     const int fading = inside + outside;
     session.Run(21);
@@ -426,38 +330,39 @@ TEST_CASE(DebugOverlayFlow, "blueprints2.debug_overlay_flows_only_the_next_branc
 
 TEST_CASE(SaveLiveState, "blueprints2.save_writes_the_blueprint_as_it_is", "EXB-5", test::TestFlags_None)
 {
-    // Do N's count changes, as an edit in place did, after the last undo step.
-    test::Session    session(UnnamedConfig());
-    Document         document;
-    ExampleBlueprint example(document.m_Blueprint);
-    session.Use([&] { document.m_DocumentState = document.BuildDocumentState(); });
-    example.m_DoN->m_N.SetValue(7);
+    // For Loop's last index changes, as an edit in place did, after the last undo step.
+    test::Session session(UnnamedConfig());
+    Example       example(session);
+    auto loop = example.Node("crude.ForLoop");
+    auto last = example.Pin(loop, "last");
+    auto set  = example.m_Document.GetGraph().SetValue(last, Value::Int32(7));
 
     TestFile file("blueprints2_save.bp");
-    const bool saved  = session.Use([&] { return document.Save(file.Path); });
-    Document reloaded;
+    const bool saved = session.Use([&] { return example.m_Document.Save(file.Path); });
+    Document reloaded(ExampleRegistry(), std::make_shared<TypeTable>());
     const bool loaded = reloaded.Load(file.Path);
-    auto doN = loaded ? reloaded.m_Blueprint.FindNode(example.m_DoN->m_Id) : nullptr;
-    const auto count = doN ? static_cast<DoNNode*>(doN)->m_N.GetValue() : PinValue();
+    auto value = loaded ? reloaded.GetGraph().FindValue(last) : nullptr;
 
-    test::Check(saved && loaded && doN, "the document saves and loads");
-    test::Check(count.GetType() == PinType::Int32 && count.As<int32_t>() == 7, "with the count Do N had when saved");
+    test::Check(set && saved && loaded, "the document saves and loads");
+    test::Check(value && *value == Value::Int32(7), "with the last index For Loop had when saved");
 }
+
 TEST_CASE(StepsMarkModified, "blueprints2.undo_steps_mark_the_document_modified", "EXB-5", test::TestFlags_None)
 {
-    test::Session    session(UnnamedConfig());
-    OverlayLog       log;
-    Document         document;
-    ExampleBlueprint example(document.m_Blueprint);
+    test::Session session(UnnamedConfig());
+    OverlayLog    log;
+    Example       example(session);
+    auto& document = example.m_Document;
+    auto  last     = example.Pin(example.Node("crude.ForLoop"), "last");
     bool fresh = true, edited = false, undone = false, redone = false;
+    Value afterUndo, afterRedo;
     session.Use([&]
     {
-        document.m_DocumentState = document.BuildDocumentState();
         fresh = document.m_IsModified;
         {
             auto transaction = document.BeginUndoTransaction("Edit Value");
-            example.m_DoN->m_N.SetValue(7);
-            transaction->AddAction("N changed");
+            if (document.GetGraph().SetValue(last, Value::Int32(7)))
+                transaction->AddAction("last index changed");
         }
         edited = document.m_IsModified;
 
@@ -465,204 +370,73 @@ TEST_CASE(StepsMarkModified, "blueprints2.undo_steps_mark_the_document_modified"
         document.m_IsModified = false;
         document.Undo();
         undone = document.m_IsModified;
+        if (auto value = document.GetGraph().FindValue(last))
+            afterUndo = *value;
 
         document.m_IsModified = false;
         document.Redo();
         redone = document.m_IsModified;
+        if (auto value = document.GetGraph().FindValue(last))
+            afterRedo = *value;
     });
 
     test::Check(!fresh, "a new document has no changes");
     test::Check(edited, "an undo step marks it modified");
     test::Check(undone && redone, "and so do undo and redo: %d, %d", undone, redone);
+    test::Check(afterUndo == Value::Int32(4) && afterRedo == Value::Int32(7), "undo brings back the value before the edit, and redo the edit");
 }
 
-TEST_CASE(ForLoopCounts, "blueprints2.for_loop_runs_its_body_once_per_index", "EXB-7", test::TestFlags_None)
+TEST_CASE(MalformedDocuments, "blueprints2.malformed_documents_are_refused", "EXB-8", test::TestFlags_None)
 {
-    ForLoopBlueprint loop(0, 2);
-    const auto result  = loop.Run();
-    const auto printed = Printed();
-
-    test::Check(result == StepResult::Done, "a loop from 0 to 2 ends: %s", StepResultToString(result));
-    test::Check(printed == "0|1|2|", "and its body sees each index once: %.60s", printed.c_str());
-}
-
-TEST_CASE(ForLoopLargestIndex, "blueprints2.for_loop_ends_at_the_largest_index", "EXB-7", test::TestFlags_None)
-{
-    ForLoopBlueprint loop(INT32_MAX - 1, INT32_MAX);
-    const auto result  = loop.Run();
-    const auto printed = Printed();
-
-    test::Check(result == StepResult::Done, "a loop up to INT32_MAX ends: %s", StepResultToString(result));
-    test::Check(printed == "2147483646|2147483647|", "after its last two indices: %.60s", printed.c_str());
-}
-
-TEST_CASE(MalformedBlueprints, "blueprints2.malformed_blueprints_are_refused", "EXB-8", test::TestFlags_None)
-{
-    // The example's blueprint, with constants of the value types and typed nodes of no links,
-    // saved and changed as a file may be.
-    Blueprint        source;
-    ExampleBlueprint example(source);
-    auto text  = source.CreateNode<ConstStringNode>();
-    auto count = source.CreateNode<ConstInt32Node>();
-    auto scale = source.CreateNode<ConstFloatNode>();
-    auto sum   = source.CreateNode<AddNode>();
-    auto label = source.CreateNode<ToStringNode>();
-    sum->SetType(PinType::Int32);
-    label->SetType(PinType::Bool);
-    crude_json::value saved;
-    source.Save(saved);
+    test::Session session(UnnamedConfig());
+    OverlayLog    log;
+    Example       example(session);
+    const auto saved = session.Use([&] { return example.m_Document.Serialize(); });
 
     using Change = std::function<void(crude_json::value&)>;
     const std::pair<const char*, Change> changes[] =
     {
-        { "an Any pin of type Void",               [&](crude_json::value& v) { PinEntry(v, example.m_Add->m_A.m_Id)["type"] = -1; } },
-        { "an Any pin of type 42",                 [&](crude_json::value& v) { PinEntry(v, example.m_Add->m_A.m_Id)["type"] = 42; } },
-        { "an Any pin of type Flow",               [&](crude_json::value& v) { PinEntry(v, example.m_Add->m_A.m_Id)["type"] = 1; } },
-        { "an Add of another type than its pins",  [&](crude_json::value& v) { NodeEntry(v, example.m_Add->m_Id)["type"] = "Float"; } },
-        { "a To String of another type than its value", [&](crude_json::value& v) { NodeEntry(v, example.m_ToString->m_Id)["type"] = "String"; } },
-        { "an unlinked Add of another type than its pins", [&](crude_json::value& v) { NodeEntry(v, sum->m_Id)["type"] = "Float"; } },
-        { "an Add of Bool values",                 [&](crude_json::value& v)
-        {
-            NodeEntry(v, sum->m_Id)["type"] = "Bool";
-            for (auto pin : { &sum->m_A, &sum->m_B, &sum->m_Result })
-            {
-                auto& entry = PinEntry(v, pin->m_Id);
-                entry["type"] = static_cast<int>(PinType::Bool);
-                entry["inner"]["value"] = false;
-            }
-        } },
-        { "an unlinked To String of another type than its value", [&](crude_json::value& v) { NodeEntry(v, label->m_Id)["type"] = "Int32"; } },
-        { "a String pin linked to a Flow pin",     [&](crude_json::value& v) { PinEntry(v, example.m_PrintA->m_String.m_Id)["link"] = example.m_Entry->m_Exit.m_Id; } },
-        { "a Flow pin linked to a String pin",     [&](crude_json::value& v) { PinEntry(v, example.m_DoN->m_Exit.m_Id)["link"] = text->m_String.m_Id; } },
-        { "an Int32 Add linked to a String",       [&](crude_json::value& v) { PinEntry(v, example.m_Add->m_B.m_Id)["link"] = text->m_String.m_Id; } },
-        { "a link to no pin",                      [&](crude_json::value& v) { PinEntry(v, example.m_PrintA->m_String.m_Id)["link"] = 99999; } },
-        { "a node ID of -1",                       [&](crude_json::value& v) { NodeEntry(v, example.m_Add->m_Id)["id"] = -1; } },
-        { "a node ID of 2^32",                     [&](crude_json::value& v) { NodeEntry(v, example.m_Add->m_Id)["id"] = 4294967296.0; } },
-        { "a pin ID of 1.5",                       [&](crude_json::value& v) { PinEntry(v, example.m_Add->m_B.m_Id)["id"] = 1.5; } },
-        { "a pin ID of 0",                         [&](crude_json::value& v) { PinEntry(v, example.m_Add->m_B.m_Id)["id"] = 0; } },
-        { "two pins of one ID",                    [&](crude_json::value& v) { PinEntry(v, example.m_Add->m_B.m_Id)["id"] = example.m_Add->m_A.m_Id; } },
-        { "an Int32 value of 1e10",                [&](crude_json::value& v) { PinEntry(v, count->m_Int32.m_Id)["value"] = 1e10; } },
-        { "an Int32 value of 2.5",                 [&](crude_json::value& v) { PinEntry(v, count->m_Int32.m_Id)["value"] = 2.5; } },
-        { "a Float value of 1e39",                 [&](crude_json::value& v) { PinEntry(v, scale->m_Float.m_Id)["value"] = 1e39; } },
+        { "an array",                       [](crude_json::value& v) { v = crude_json::array{}; } },
+        { "no document",                    [](crude_json::value& v) { v.erase("document"); } },
+        { "a node state of key x",          [](crude_json::value& v) { v["document"]["nodes"]["x"] = crude_json::object{}; } },
+        { "a selection of no ID",           [](crude_json::value& v) { v["document"]["selection"]["nodes"].push_back(-1); } },
+        { "a blueprint of an older format", [](crude_json::value& v) { v["document"]["blueprint"]["version"] = 1; } },
+        { "a blueprint of no graph",        [](crude_json::value& v) { v["document"]["blueprint"]["graphs"] = crude_json::array{}; } },
+        { "a blueprint of a duplicate ID",  [](crude_json::value& v) { v["document"]["blueprint"]["graphs"][0]["nodes"][1]["id"] = v["document"]["blueprint"]["graphs"][0]["nodes"][0]["id"]; } },
     };
 
-    Blueprint control;
-    test::Check(control.Load(saved) && control.GetNodes().size() == source.GetNodes().size(), "the saved blueprint loads");
+    Document control(ExampleRegistry(), std::make_shared<TypeTable>());
+    test::Check(control.Deserialize(saved) && control.GetGraph().Nodes().size() == example.m_Document.GetGraph().Nodes().size(), "the saved document loads");
 
     for (auto& change : changes)
     {
         auto changed = saved;
         change.second(changed);
 
-        Blueprint target;
-        auto kept = target.CreateNode<PrintNode>();
-        const bool loaded = target.Load(changed);
-        test::Check(!loaded && target.GetNodes().size() == 1 && target.GetNodes()[0] == kept, "%s is refused, and the blueprint kept", change.first);
+        Document target(ExampleRegistry(), std::make_shared<TypeTable>());
+        auto kept = target.GetGraph().AddNode("crude.Start");
+        const bool loaded = target.Deserialize(changed);
+        test::Check(!loaded && kept && target.GetGraph().Nodes().size() == 1 && target.GetGraph().FindNode(kept.GetValue()), "%s is refused, and the document kept", change.first);
     }
-}
-
-TEST_CASE(LoadedIdsStayUnique, "blueprints2.new_nodes_take_ids_no_loaded_one_has", "EXB-8", test::TestFlags_None)
-{
-    // A file whose generator state is below its IDs.
-    Blueprint        source;
-    ExampleBlueprint example(source);
-    crude_json::value saved;
-    source.Save(saved);
-    saved["state"]["generator_state"] = 1;
-
-    Blueprint loaded;
-    const bool ok = loaded.Load(saved);
-    auto print = loaded.CreateNode<PrintNode>();
-
-    int reused = 0;
-    for (auto id : { print->m_Id, print->m_Enter.m_Id, print->m_Exit.m_Id, print->m_String.m_Id })
-    {
-        for (auto node : loaded.GetNodes())
-            reused += node != print && node->m_Id == id;
-        for (auto pin : loaded.GetPins())
-            reused += pin->m_Node != print && pin->m_Id == id;
-    }
-
-    test::Check(ok, "the blueprint loads");
-    test::Check(reused == 0, "a node made after it takes IDs no loaded node or pin has: %d reused", reused);
-}
-
-TEST_CASE(WrongTypeFailsStep, "blueprints2.a_value_of_another_type_fails_the_step", "EXB-8", test::TestFlags_None)
-{
-    // Do N counts to the end of a chain of links too long to evaluate, which gives no value, not an Int32.
-    Blueprint blueprint;
-    auto entry = blueprint.CreateNode<EntryPointNode>();
-    auto doN   = blueprint.CreateNode<DoNNode>();
-    entry->m_Exit.LinkTo(doN->m_Enter);
-
-    std::vector<AddNode*> chain(1, blueprint.CreateNode<AddNode>());
-    for (int i = 1; i < 300; ++i)
-    {
-        chain.push_back(blueprint.CreateNode<AddNode>());
-        chain.back()->m_A.m_Link = &chain[chain.size() - 2]->m_Result;
-    }
-    doN->m_N.m_Link = &chain.back()->m_Result;
-
-    const auto result = blueprint.Execute(*entry);
-
-    test::Check(result == StepResult::Error, "the step that reads it fails: %s", StepResultToString(result));
-    test::Check(blueprint.CurrentNode() == doN, "in Do N");
-}
-
-TEST_CASE(FloatPinsStayFinite, "blueprints2.float_pins_take_only_finite_values", "EXB-9", test::TestFlags_None)
-{
-    // As the value editor sets what the user typed: "nan", "inf" or "1e39".
-    Blueprint blueprint;
-    auto scale = blueprint.CreateNode<ConstFloatNode>();
-    scale->m_Float.SetValue(2.5f);
-
-    int taken = 0;
-    for (auto value : { std::nanf(""), INFINITY, -INFINITY })
-        taken += scale->m_Float.SetValue(value);
-
-    test::Check(taken == 0 && scale->m_Float.m_Value == 2.5f, "a NaN or infinity doesn't replace 2.5: %d taken, %g", taken, scale->m_Float.m_Value);
-    test::Check(scale->m_Float.SetValue(-1e30f) && scale->m_Float.m_Value == -1e30f, "a finite value does");
-}
-
-TEST_CASE(SaveKeepsLoadableFile, "blueprints2.a_document_that_wouldnt_load_isnt_saved", "EXB-9", test::TestFlags_None)
-{
-    // A Float pin set around SetValue(), as code may, to a NaN, which documents have no number for.
-    test::Session    session(UnnamedConfig());
-    Document         document;
-    ExampleBlueprint example(document.m_Blueprint);
-    auto scale = document.m_Blueprint.CreateNode<ConstFloatNode>();
-
-    TestFile file("blueprints2_unloadable.bp");
-    const bool first = session.Use([&] { return document.Save(file.Path); });
-    scale->m_Float.m_Value = std::nanf("");
-    const bool second = session.Use([&] { return document.Save(file.Path); });
-
-    Document reloaded;
-    const bool loaded = reloaded.Load(file.Path);
-    auto reloadedScale = loaded ? static_cast<ConstFloatNode*>(reloaded.m_Blueprint.FindNode(scale->m_Id)) : nullptr;
-
-    test::Check(first, "the document saves");
-    test::Check(!second, "with a NaN in a Float pin, it doesn't");
-    test::Check(reloadedScale && reloadedScale->m_Float.m_Value == 0.0f, "and the file it saved before still loads");
 }
 
 TEST_CASE(Utf8Documents, "blueprints2.utf8_text_and_paths_round_trip", "EXB-9", test::TestFlags_None)
 {
-    // Polish text in a Print pin and in the file name, in UTF-8, as the file dialogs give paths.
+    // Polish text in a Print's text and in the file name, in UTF-8, as the file dialogs give paths.
     const char* text = "za\xC5\xBC\xC3\xB3\xC5\x82\xC4\x87";
     const char* path = "blueprints2_za\xC5\xBC\xC3\xB3\xC5\x82\xC4\x87.bp";
-    test::Session    session(UnnamedConfig());
-    Document         document;
-    ExampleBlueprint example(document.m_Blueprint);
-    example.m_PrintA->m_String.SetValue(text);
+    test::Session session(UnnamedConfig());
+    Example       example(session);
+    auto done = example.Pin(example.Node("crude.Print", 1), "text");
+    auto set  = example.m_Document.GetGraph().SetValue(done, Value::String(text));
 
-    const bool saved = session.Use([&] { return document.Save(path); });
-    Document reloaded;
+    const bool saved = session.Use([&] { return example.m_Document.Save(path); });
+    Document reloaded(ExampleRegistry(), std::make_shared<TypeTable>());
     const bool loaded = reloaded.Load(path);
-    auto print = loaded ? static_cast<PrintNode*>(reloaded.m_Blueprint.FindNode(example.m_PrintA->m_Id)) : nullptr;
+    auto value = loaded ? reloaded.GetGraph().FindValue(done) : nullptr;
 
-    test::Check(saved && loaded, "a document saves under a UTF-8 path and loads back");
-    test::Check(print && print->m_String.m_Value == text, "with the UTF-8 text of its pin");
+    test::Check(set && saved && loaded, "a document saves under a UTF-8 path and loads back: %s", Message(set).c_str());
+    test::Check(value && *value == Value::String(text), "with the UTF-8 text of its pin");
 
 # ifdef _WIN32
     test::Check(_wremove(L"blueprints2_za\u017C\u00F3\u0142\u0107.bp") == 0, "the file has the name the path spells");
@@ -694,83 +468,24 @@ TEST_CASE(RecentFilesIni, "blueprints2.recent_files_take_only_indices_in_order",
     test::Check(entries == "a.bp|b2.bp|", "only entries at an index of the list, or the next one, are read: %s", entries.c_str());
 }
 
-TEST_CASE(RegisteredNameKept, "blueprints2.a_registered_node_type_keeps_its_name", "CBP-1", test::TestFlags_NeedsSanitizer)
+TEST_CASE(LogSymbolAtEnd, "blueprints2.the_log_shows_messages_that_end_with_a_symbol", nullptr, test::TestFlags_None)
 {
-    // A name built for the call, as an application building names does; too long for a string's own buffer.
-    auto registry = std::make_shared<NodeRegistry>();
-    const std::string name = std::string("ExampleNodeType") + "WithALongName";
-    registry->RegisterNodeType(name, ConstInt32Node::GetStaticTypeInfo().m_Factory);
+    // The log colors a message by ranges of it; a debug build checks the iterators they're made with.
+    test::Session session(UnnamedConfig());
+    OverlayLog    log;
+    LOGI("Execution: Done (13 steps)");
+    LOGI("[Print] Print#11: \"10\"");
+    session.AfterEditor = [&] { log.m_Logger.Draw(ImGui::GetItemRectMin(), ImGui::GetItemRectMax()); };
+    session.Frame();
 
-    Blueprint blueprint(registry);
-    const bool created = blueprint.CreateNode(string_view(name)) != nullptr;
-    registry->UnregisterNodeType(name);
-    const bool unregistered = blueprint.CreateNode(string_view(name)) == nullptr;
-
-    test::Check(created, "a node of the type is created by its name");
-    test::Check(unregistered, "and the type is unregistered by it");
+    const ImU32 stringColor = IM_COL32(255, 174, 133, 255);
+    test::Check(test::AssertCount() == 0, "both messages show: %d IM_ASSERTs", test::AssertCount());
+    test::Check(test::FirstIndexOf(test::Capture(session.DrawList), stringColor) >= 0, "with the quotes around \"10\" in the color of strings");
 }
 
-TEST_CASE(DeleteBreaksLinks, "blueprints2.deleting_a_node_breaks_its_links", "CBP-5", test::TestFlags_None)
+TEST_CASE(NewDocuments, "blueprints2.a_new_document_has_an_empty_graph", nullptr, test::TestFlags_None)
 {
-    // Nodes deleted through the API, as a cut or a delete command does, with links on both sides.
-    Blueprint blueprint;
-    auto constant = blueprint.CreateNode<ConstInt32Node>();
-    auto toString = blueprint.CreateNode<ToStringNode>();
-    auto print    = blueprint.CreateNode<PrintNode>();
-    toString->m_Value.LinkTo(constant->m_Int32);
-    print->m_String.LinkTo(toString->m_String);
-    const bool typed = toString->m_Value.GetValueType() == PinType::Int32;
-
-    blueprint.DeleteNode(constant);
-    const bool valueUnlinked = !toString->m_Value.IsLinked() && toString->m_Value.GetValueType() == PinType::Any;
-    blueprint.DeleteNode(toString);
-    const bool stringUnlinked = !print->m_String.IsLinked();
-
-    crude_json::value saved;
-    blueprint.Save(saved);
-
-    test::Check(typed, "To String took Int32 from the constant");
-    test::Check(valueUnlinked, "deleting the constant unlinks To String, which takes any type again");
-    test::Check(stringUnlinked, "deleting To String unlinks Print");
-}
-
-TEST_CASE(MoveDeletesNodes, "blueprints2.a_blueprint_moved_over_deletes_its_nodes", "CBP-9", test::TestFlags_None)
-{
-    auto registry = std::make_shared<NodeRegistry>();
-    registry->RegisterNodeType("CountedNode", CountedNode::GetStaticTypeInfo().m_Factory);
-    const auto alive = CountedNode::s_Alive;
-    int afterMove = 0;
-    {
-        Blueprint target(registry);
-        target.CreateNode<CountedNode>();
-        Blueprint source(registry);
-        target = std::move(source);
-        afterMove = CountedNode::s_Alive - alive;
-    }
-
-    test::Check(afterMove == 0, "moving another blueprint over one deletes its node: %d alive", afterMove);
-    test::Check(CountedNode::s_Alive == alive, "and none is left when both go: %d alive", CountedNode::s_Alive - alive);
-}
-
-TEST_CASE(Int32AddWraps, "blueprints2.int32_add_wraps_around", "CBP-13", test::TestFlags_None)
-{
-    // A sum out of Int32's range is undefined in C++; UndefinedBehaviorSanitizer reports it.
-    Blueprint blueprint;
-    auto constant = blueprint.CreateNode<ConstInt32Node>();
-    auto add      = blueprint.CreateNode<AddNode>();
-    add->m_A.LinkTo(constant->m_Int32);
-    auto sum = [&](int32_t a, int32_t b)
-    {
-        constant->m_Int32.SetValue(a);
-        add->m_B.SetValue(b);
-        const auto value = blueprint.GetContext().GetPinValue(add->m_Result);
-        return value.GetType() == PinType::Int32 ? value.As<int32_t>() : 0;
-    };
-    const auto up   = sum(INT32_MAX, 1);
-    const auto down = sum(INT32_MIN, -1);
-    const auto far  = sum(INT32_MAX, INT32_MAX);
-
-    test::Check(up == INT32_MIN, "INT32_MAX + 1 is INT32_MIN: %d", up);
-    test::Check(down == INT32_MAX, "INT32_MIN - 1 is INT32_MAX: %d", down);
-    test::Check(far == -2, "INT32_MAX + INT32_MAX is -2: %d", far);
+    Document document(ExampleRegistry(), std::make_shared<TypeTable>());
+    test::Check(document.GetBlueprint().Graphs().size() == 1 && document.GetGraph().Nodes().empty() && document.GetGraph().GetName() == "Event Graph", "one graph, of no nodes");
+    test::Check(!document.m_IsModified && document.m_Undo.empty() && document.m_Redo.empty(), "and no changes to undo");
 }

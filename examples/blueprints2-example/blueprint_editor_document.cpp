@@ -1,5 +1,4 @@
 # include "blueprint_editor_document.h"
-# include "blueprint_editor_utilities.h"
 # include "crude_logger.h"
 # include <cmath>
 # include <stdarg.h>
@@ -21,7 +20,7 @@ static bool ParseId(const crude_json::value& value, uintptr_t& id)
 }
 
 template <typename Id>
-static bool ParseIds(const crude_json::value& value, vector<Id>& result)
+static bool ParseIds(const crude_json::value& value, std::vector<Id>& result)
 {
     if (!value.is_array())
         return false;
@@ -44,6 +43,14 @@ static bool ParseVector(const crude_json::value& value, ImVec2& result)
 
     result = ImVec2(static_cast<float>(value["x"].get<crude_json::number>()), static_cast<float>(value["y"].get<crude_json::number>()));
     return std::isfinite(result.x) && std::isfinite(result.y);
+}
+
+static bool HasNode(const crude_blueprint::Blueprint& blueprint, uintptr_t id)
+{
+    for (auto& graph : blueprint.Graphs())
+        if (graph->FindNode(static_cast<crude_blueprint::Id>(id)))
+            return true;
+    return false;
 }
 
 } // namespace blueprint_editor {
@@ -121,8 +128,8 @@ bool blueprint_editor::Document::DocumentState::Deserialize(const crude_json::va
 
 
 
-blueprint_editor::Document::UndoTransaction::UndoTransaction(Document& document, string_view name)
-    : m_Name(name.to_string())
+blueprint_editor::Document::UndoTransaction::UndoTransaction(Document& document, std::string_view name)
+    : m_Name(name)
     , m_Document(&document)
 {
 }
@@ -132,7 +139,7 @@ blueprint_editor::Document::UndoTransaction::~UndoTransaction()
     Commit();
 }
 
-void blueprint_editor::Document::UndoTransaction::Begin(string_view name /*= ""*/)
+void blueprint_editor::Document::UndoTransaction::Begin(std::string_view name /*= ""*/)
 {
     if (m_HasBegan)
         return;
@@ -158,12 +165,12 @@ void blueprint_editor::Document::UndoTransaction::Begin(string_view name /*= ""*
         AddAction(name);
 }
 
-void blueprint_editor::Document::UndoTransaction::AddAction(string_view name)
+void blueprint_editor::Document::UndoTransaction::AddAction(std::string_view name)
 {
     if (!m_HasBegan || name.empty())
         return;
 
-    m_Actions.appendf("%" PRI_sv "\n", FMT_sv(name));
+    m_Actions.appendf("%.*s\n", static_cast<int>(name.size()), name.data());
 }
 
 void blueprint_editor::Document::UndoTransaction::AddAction(const char* format, ...)
@@ -174,10 +181,10 @@ void blueprint_editor::Document::UndoTransaction::AddAction(const char* format, 
     buffer.appendfv(format, args);
     va_end(args);
 
-    AddAction(string_view(buffer.Buf.Data, buffer.Buf.Size));
+    AddAction(std::string_view(buffer.c_str(), static_cast<size_t>(buffer.size())));
 }
 
-void blueprint_editor::Document::UndoTransaction::Commit(string_view name)
+void blueprint_editor::Document::UndoTransaction::Commit(std::string_view name)
 {
     if (!m_HasBegan || m_IsDone)
         return;
@@ -203,17 +210,20 @@ void blueprint_editor::Document::UndoTransaction::Commit(string_view name)
         if (!m_Actions.empty())
         {
             if (name.empty())
-                name = string_view(m_Actions.c_str(), m_Actions.size() - 1);
+                name = std::string_view(m_Actions.c_str(), static_cast<size_t>(m_Actions.size()) - 1);
 
-            LOGV("[UndoTransaction] Commit: %" PRI_sv, FMT_sv(name));
+            LOGV("[UndoTransaction] Commit: %.*s", static_cast<int>(name.size()), name.data());
 
-            m_State.m_Name = name.to_string();
+            m_State.m_Name = std::string(name);
 
             m_Document->m_Undo.emplace_back(std::move(m_State));
             m_Document->m_Redo.clear();
 
+            auto blueprint = m_Document->m_DocumentState.m_BlueprintState.dump();
             m_Document->m_DocumentState = m_Document->BuildDocumentState();
             m_Document->m_IsModified    = true;
+            if (m_Document->m_DocumentState.m_BlueprintState.dump() != blueprint)
+                ++m_Document->m_Revision;
         }
 
         m_Document->m_MasterTransaction = nullptr;
@@ -241,27 +251,35 @@ void blueprint_editor::Document::UndoTransaction::Discard()
 
 
 
-blueprint_editor::shared_ptr<blueprint_editor::Document::UndoTransaction> blueprint_editor::Document::BeginUndoTransaction(string_view name, string_view action /*= ""*/)
+blueprint_editor::Document::Document(std::shared_ptr<const crude_blueprint::Registry> registry, std::shared_ptr<crude_blueprint::TypeTable> types)
+    : m_Registry(std::move(registry))
+    , m_Types(std::move(types))
+    , m_Blueprint(std::make_unique<crude_blueprint::Blueprint>(m_Registry, m_Types))
+{
+    m_Blueprint->AddGraph("Event Graph");
+}
+
+std::shared_ptr<blueprint_editor::Document::UndoTransaction> blueprint_editor::Document::BeginUndoTransaction(std::string_view name, std::string_view action /*= ""*/)
 {
     auto transaction = std::make_shared<UndoTransaction>(*this, name);
     transaction->Begin(action);
     return transaction;
 }
 
-blueprint_editor::shared_ptr<blueprint_editor::Document::UndoTransaction> blueprint_editor::Document::GetDeferredUndoTransaction(string_view name)
+std::shared_ptr<blueprint_editor::Document::UndoTransaction> blueprint_editor::Document::GetDeferredUndoTransaction(std::string_view name)
 {
     return std::make_shared<UndoTransaction>(*this, name);
 }
 
-void blueprint_editor::Document::SetPath(string_view path)
+void blueprint_editor::Document::SetPath(std::string_view path)
 {
-    m_Path = path.to_string();
+    m_Path = std::string(path);
 
     auto lastSeparator = m_Path.find_last_of("\\/");
-    if (lastSeparator != string::npos)
+    if (lastSeparator != std::string::npos)
         m_Name = m_Path.substr(lastSeparator + 1);
     else
-        m_Name = path.to_string();
+        m_Name = m_Path;
 }
 
 crude_json::value blueprint_editor::Document::Serialize() const
@@ -283,57 +301,53 @@ crude_json::value blueprint_editor::Document::Serialize() const
     return result;
 }
 
-bool blueprint_editor::Document::Deserialize(const crude_json::value& value, Document& result)
+bool blueprint_editor::Document::Deserialize(const crude_json::value& value)
 {
-    if (!value.is_object())
+    if (!value.is_object() || !value.contains("document"))
         return false;
 
-    if (!value.contains("document"))
+    DocumentState state;
+    if (!DocumentState::Deserialize(value["document"], state))
         return false;
 
-    auto& documentValue = value["document"];
+    auto blueprint = LoadBlueprint(state.m_BlueprintState);
+    if (!blueprint)
+        return false;
+
+    NavigationState navigation;
+    auto& view = navigation.m_ViewState;
     auto& viewValue = value["view"];
+    navigation.m_HasViewState = ParseVector(viewValue["min"], view.VisibleMin) && ParseVector(viewValue["max"], view.VisibleMax);
 
-    Document document;
-    if (!DocumentState::Deserialize(documentValue, document.m_DocumentState))
-        return false;
-
-    auto& view = document.m_NavigationState.m_ViewState;
-    document.m_NavigationState.m_HasViewState = ParseVector(viewValue["min"], view.VisibleMin) && ParseVector(viewValue["max"], view.VisibleMax);
-
-    if (!document.m_Blueprint.Load(document.m_DocumentState.m_BlueprintState))
-        return false;
-
-    result = std::move(document);
-
+    m_Blueprint       = std::move(blueprint);
+    m_DocumentState   = std::move(state);
+    m_NavigationState = navigation;
+    m_Undo.clear();
+    m_Redo.clear();
+    m_IsModified = false;
+    ++m_Revision;
     return true;
 }
 
-bool blueprint_editor::Document::Load(string_view path)
+bool blueprint_editor::Document::Load(std::string_view path)
 {
-    auto loadResult = crude_json::value::load(path.to_string());
+    auto loadResult = crude_json::value::load(std::string(path));
     if (!loadResult.second)
         return false;
 
-    Document document;
-    if (!Deserialize(loadResult.first, document))
-        return false;
-
-    *this = std::move(document);
-
-    return true;
+    return Deserialize(loadResult.first);
 }
 
-bool blueprint_editor::Document::Save(string_view path) const
+bool blueprint_editor::Document::Save(std::string_view path) const
 {
     auto result = Serialize();
 
     // Only a file the document can be loaded from again replaces the one at 'path'.
-    Document check;
-    if (!Deserialize(crude_json::value::parse(result.dump()), check))
+    Document check(m_Registry, std::make_shared<crude_blueprint::TypeTable>());
+    if (!check.Deserialize(crude_json::value::parse(result.dump())))
         return false;
 
-    return result.save(path.to_string());
+    return result.save(std::string(path));
 }
 
 bool blueprint_editor::Document::Undo()
@@ -383,13 +397,13 @@ bool blueprint_editor::Document::Redo()
 blueprint_editor::Document::DocumentState blueprint_editor::Document::BuildDocumentState() const
 {
     DocumentState result;
-    m_Blueprint.Save(result.m_BlueprintState);
+    result.m_BlueprintState = crude_blueprint::Save(*m_Blueprint);
 
     // The editor still knows the nodes undo took out of the blueprint; the document doesn't.
-    vector<ed::NodeState> nodes(static_cast<size_t>(ed::GetNodeStates(nullptr, 0)));
+    std::vector<ed::NodeState> nodes(static_cast<size_t>(ed::GetNodeStates(nullptr, 0)));
     nodes.resize(static_cast<size_t>(ed::GetNodeStates(nodes.data(), static_cast<int>(nodes.size()))));
     for (auto& node : nodes)
-        if (m_Blueprint.FindNode(static_cast<uint32_t>(node.Id.Get())))
+        if (HasNode(*m_Blueprint, node.Id.Get()))
             result.m_NodesState.push_back(node);
 
     const auto selected = static_cast<size_t>(ed::GetSelectedObjectCount());
@@ -407,15 +421,23 @@ void blueprint_editor::Document::ApplyState(const NavigationState& state)
         ed::SetViewState(m_NavigationState.m_ViewState);
 }
 
-void blueprint_editor::Document::ApplyState(const DocumentState& state)
+bool blueprint_editor::Document::ApplyState(const DocumentState& state)
 {
-    m_Blueprint.Load(state.m_BlueprintState);
+    if (state.m_BlueprintState.dump() != crude_blueprint::Save(*m_Blueprint).dump())
+    {
+        auto blueprint = LoadBlueprint(state.m_BlueprintState);
+        if (!blueprint)
+            return false;
+        m_Blueprint = std::move(blueprint);
+        ++m_Revision;
+    }
 
     m_DocumentState = state;
     ed::SetNodeStates(m_DocumentState.m_NodesState.data(), static_cast<int>(m_DocumentState.m_NodesState.size()));
     ed::SetSelection(
         m_DocumentState.m_SelectedNodes.data(), static_cast<int>(m_DocumentState.m_SelectedNodes.size()),
         m_DocumentState.m_SelectedLinks.data(), static_cast<int>(m_DocumentState.m_SelectedLinks.size()));
+    return true;
 }
 
 void blueprint_editor::Document::OnMakeCurrent()
@@ -428,4 +450,74 @@ void blueprint_editor::Document::CaptureView()
 {
     m_NavigationState.m_ViewState    = ed::GetViewState();
     m_NavigationState.m_HasViewState = true;
+}
+
+// A blueprint that doesn't load is logged with the reason, and a document of no graph doesn't
+// load either: the editor shows the first.
+std::unique_ptr<crude_blueprint::Blueprint> blueprint_editor::Document::LoadBlueprint(const crude_json::value& state) const
+{
+    auto blueprint = std::make_unique<crude_blueprint::Blueprint>(m_Registry, m_Types);
+    if (auto loaded = crude_blueprint::Load(*blueprint, state); !loaded)
+    {
+        LOGE("The blueprint doesn't load: %.*s", static_cast<int>(loaded.GetError().Message().size()), loaded.GetError().Message().data());
+        return nullptr;
+    }
+    if (blueprint->Graphs().empty())
+    {
+        LOGE("The blueprint has no graph");
+        return nullptr;
+    }
+    return blueprint;
+}
+
+void blueprint_editor::CreateExampleBlueprint(Document& document)
+{
+    using namespace crude_blueprint;
+
+    auto& graph = document.GetGraph();
+    auto add = [&graph](const char* type, ImVec2 position, NodeConfig config = {})
+    {
+        auto node = graph.AddNode(type, std::move(config));
+        IM_ASSERT(node);
+        ed::SetNodePosition(node.ValueOr(0), position);
+        return node.ValueOr(0);
+    };
+    auto pin = [&graph](Id node, std::string_view key)
+    {
+        auto found = graph.FindNode(node) ? graph.FindNode(node)->FindPin(key) : nullptr;
+        IM_ASSERT(found);
+        return found ? found->m_Id : 0;
+    };
+    auto link = [&graph, &pin](Id from, std::string_view output, Id to, std::string_view input, LinkMode mode = LinkMode::Plain)
+    {
+        [[maybe_unused]] auto made = graph.Connect(pin(from, output), pin(to, input), mode);
+        IM_ASSERT(made);
+    };
+    auto constant = [](Value value)
+    {
+        NodeConfig config;
+        config.m_Types["T"]     = value.GetType();
+        config.m_Data["value"] = std::move(value);
+        return config;
+    };
+
+    auto start = add("crude.Start",    ImVec2( 20,  80));
+    auto loop  = add("crude.ForLoop",  ImVec2(200,  60));
+    auto print = add("crude.Print",    ImVec2(760,  40));
+    auto sum   = add("crude.Add",      ImVec2(480, 300));
+    auto ten   = add("crude.Constant", ImVec2(260, 380), constant(Value::Int32(10)));
+    auto done  = add("crude.Print",    ImVec2(760, 180));
+
+    link(start, "then", loop, "enter");
+    link(loop, "body", print, "enter");
+    link(loop, "index", sum, "in.0");
+    link(ten, "value", sum, "in.1");
+    link(sum, "result", print, "text", LinkMode::Cast);
+    link(loop, "completed", done, "enter");
+    [[maybe_unused]] auto last = graph.SetValue(pin(loop, "last"), Value::Int32(4));
+    [[maybe_unused]] auto text = graph.SetValue(pin(done, "text"), Value::String("Done"));
+    IM_ASSERT(last && text);
+
+    // The state the first undo step goes back to.
+    document.m_DocumentState = document.BuildDocumentState();
 }

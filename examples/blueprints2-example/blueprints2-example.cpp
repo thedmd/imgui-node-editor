@@ -2,7 +2,6 @@
 # include <application.h>
 # include <imgui_internal.h>
 # include <tinyfiledialogs.h>
-# include <inttypes.h>
 
 # include "crude_logger.h"
 # include "crude_blueprint.h"
@@ -16,17 +15,16 @@
 
 # include "crude_json.h"
 
-// TODO:
-//  - figure out how to present possible action (ex. Alt + click on link)
-//  -
-
-//#include <float.h>
-//unsigned int fp_control_state = _controlfp(_EM_INEXACT, _MCW_EM);
-
-# include <chrono>
 # include <functional>
-# include <type_traits>
 # include <map>
+# include <memory>
+# include <optional>
+# include <string>
+# include <string_view>
+# include <type_traits>
+# include <unordered_set>
+# include <utility>
+# include <vector>
 
 namespace ed = ax::NodeEditor;
 
@@ -40,29 +38,47 @@ static ImEx::MostRecentlyUsedList Application_GetMostRecentlyOpenFileList()
     return ImEx::MostRecentlyUsedList("MostRecentlyOpenList");
 }
 
-static EntryPointNode* FindEntryPointNode(Blueprint& blueprint)
+// What every document uses: the built-in value types and casts, and the library's node types.
+static std::shared_ptr<const Registry> ExampleRegistry()
 {
-    for (auto& node : blueprint.GetNodes())
+    static const std::shared_ptr<const Registry> registry = []
     {
-        if (node->GetTypeInfo().m_Id == EntryPointNode::GetStaticTypeInfo().m_Id)
-        {
-            return static_cast<EntryPointNode*>(node);
-        }
-    }
+        auto made = std::make_shared<Registry>();
+        [[maybe_unused]] auto builtins = RegisterBuiltins(*made);
+        [[maybe_unused]] auto library  = RegisterLibrary(*made);
+        IM_ASSERT(builtins && library);
+        return made;
+    }();
+    return registry;
+}
 
-    return nullptr;
+static std::shared_ptr<TypeTable> ExampleTypes()
+{
+    static const auto types = std::make_shared<TypeTable>();
+    return types;
+}
+
+static bool HasStart(const Graph& graph)
+{
+    for (auto& node : graph.Nodes())
+        if (!node.m_Type->EventName(node.m_Config).empty())
+            return true;
+    return false;
+}
+
+static std::string Text(std::string_view text)
+{
+    return std::string(text);
 }
 
 
-
-using std::function;
 
 enum class EventHandle : uint64_t { Invalid };
 
 template <typename... Args>
 struct Event
 {
-    using Delegate = function<void(Args...)>;
+    using Delegate = std::function<void(Args...)>;
 
     EventHandle Add(Delegate delegate)
     {
@@ -84,7 +100,7 @@ struct Event
     template <typename... CallArgs>
     void Invoke(CallArgs&&... args)
     {
-        vector<Delegate> delegates;
+        std::vector<Delegate> delegates;
         delegates.reserve(m_Delegates.size());
         for (auto& entry : m_Delegates)
             delegates.push_back(entry.second);
@@ -101,8 +117,8 @@ struct Event
 private:
     using EventHandleType = std::underlying_type_t<EventHandle>;
 
-    map<EventHandle, Delegate> m_Delegates;
-    EventHandleType            m_LastHandleId = 0;
+    std::map<EventHandle, Delegate> m_Delegates;
+    EventHandleType                 m_LastHandleId = 0;
 };
 
 static ed::EditorContext* m_Editor = nullptr;
@@ -116,10 +132,10 @@ struct Action
     using OnTriggeredEvent  = Event<>;
 
     Action() = default;
-    Action(string_view name, OnTriggeredEvent::Delegate delegate = {});
+    Action(std::string_view name, OnTriggeredEvent::Delegate delegate = {});
 
-    void SetName(string_view name);
-    const string& GetName() const;
+    void SetName(std::string_view name);
+    const std::string& GetName() const;
 
     void SetEnabled(bool set);
     bool IsEnabled() const;
@@ -130,28 +146,28 @@ struct Action
     OnTriggeredEvent    OnTriggered;
 
 private:
-    string  m_Name;
-    bool    m_IsEnabled = true;
+    std::string m_Name;
+    bool        m_IsEnabled = true;
 };
 
-Action::Action(string_view name, OnTriggeredEvent::Delegate delegate)
-    : m_Name(name.to_string())
+Action::Action(std::string_view name, OnTriggeredEvent::Delegate delegate)
+    : m_Name(name)
 {
     if (delegate)
         OnTriggered += std::move(delegate);
 }
 
-void Action::SetName(string_view name)
+void Action::SetName(std::string_view name)
 {
     if (m_Name == name)
         return;
 
-    m_Name = name.to_string();
+    m_Name = std::string(name);
 
     OnChange(this);
 }
 
-const crude_blueprint::string& Action::GetName() const
+const std::string& Action::GetName() const
 {
     return m_Name;
 }
@@ -209,24 +225,24 @@ struct BlueprintEditorExample
             return;
 
         auto transaction = document.BeginUndoTransaction("Edit");
-        auto& blueprint = document.GetBlueprint();
+        auto& graph = document.GetGraph();
 
         ed::Edit edit;
         while (ed::QueryEdit(&edit))
         {
-            auto node = edit.NodeCount > 0 ? blueprint.FindNode(static_cast<uint32_t>(edit.NodesAfter[0].Id.Get())) : nullptr;
+            auto node = edit.NodeCount > 0 ? graph.FindNode(static_cast<Id>(edit.NodesAfter[0].Id.Get())) : nullptr;
             switch (edit.Type)
             {
                 case ed::EditType::Move:
                     if (edit.NodeCount == 1 && node)
-                        transaction->AddAction("Move %" PRI_node, FMT_node(node));
+                        transaction->AddAction("Move %s", node->Name().c_str());
                     else
                         transaction->AddAction("Move %d nodes", edit.NodeCount);
                     break;
 
                 case ed::EditType::Resize:
                     if (node)
-                        transaction->AddAction("Resize %" PRI_node, FMT_node(node));
+                        transaction->AddAction("Resize %s", node->Name().c_str());
                     else
                         transaction->AddAction("Resize");
                     break;
@@ -250,40 +266,8 @@ struct BlueprintEditorExample
 
     void CreateExampleDocument()
     {
-        using namespace crude_blueprint;
-
-        m_Document = make_unique<Document>();
-        m_Blueprint = &m_Document->m_Blueprint;
-
-        auto printNode2Node = m_Blueprint->CreateNode<PrintNode>();         ed::SetNodePosition(printNode2Node->m_Id, ImVec2(828, 111));
-        auto entryPointNode = m_Blueprint->CreateNode<EntryPointNode>();    ed::SetNodePosition(entryPointNode->m_Id, ImVec2(-20, 95));
-        auto printNode1Node = m_Blueprint->CreateNode<PrintNode>();         ed::SetNodePosition(printNode1Node->m_Id, ImVec2(828, -1));
-        auto flipFlopNode   = m_Blueprint->CreateNode<FlipFlopNode>();      ed::SetNodePosition(flipFlopNode->m_Id, ImVec2(408, -1));
-        auto toStringNode   = m_Blueprint->CreateNode<ToStringNode>();      ed::SetNodePosition(toStringNode->m_Id, ImVec2(617, 111));
-        auto doNNode        = m_Blueprint->CreateNode<DoNNode>();           ed::SetNodePosition(doNNode->m_Id, ImVec2(168, 95));
-        auto addNode        = m_Blueprint->CreateNode<AddNode>();           ed::SetNodePosition(addNode->m_Id, ImVec2(404, 159));
-
-        entryPointNode->m_Exit.LinkTo(doNNode->m_Enter);
-
-        doNNode->m_N.SetValue(5);
-        doNNode->m_Exit.LinkTo(flipFlopNode->m_Enter);
-
-        toStringNode->m_Value.LinkTo(addNode->m_Result);
-
-        addNode->m_A.LinkTo(doNNode->m_Counter);
-        addNode->m_B.SetValue(3);
-
-        toStringNode->m_Exit.LinkTo(printNode2Node->m_Enter);
-
-        printNode1Node->m_String.SetValue("FlipFlop slot A!");
-        printNode2Node->m_String.SetValue("FlipFlop slot B!");
-        printNode2Node->m_String.LinkTo(toStringNode->m_String);
-
-        flipFlopNode->m_A.LinkTo(printNode1Node->m_Enter);
-        flipFlopNode->m_B.LinkTo(toStringNode->m_Enter);
-
-        // The state the first undo step goes back to.
-        m_Document->m_DocumentState = m_Document->BuildDocumentState();
+        m_Document = std::make_unique<Document>(ExampleRegistry(), ExampleTypes());
+        CreateExampleBlueprint(*m_Document);
     }
 
     void OnStart() override
@@ -297,20 +281,16 @@ struct BlueprintEditorExample
         m_OverlayLogger.AddKeyword("NodeContextMenu");
         m_OverlayLogger.AddKeyword("PinContextMenu");
         m_OverlayLogger.AddKeyword("LinkContextMenu");
+        m_OverlayLogger.AddKeyword("Print");
 
         ImEx::MostRecentlyUsedList::Install(ImGui::GetCurrentContext());
-
-        PrintNode::s_PrintFunction = [](const PrintNode& node, string_view message)
-        {
-            LOGI("PrintNode(%" PRIu32 "): \"%" PRI_sv "\"", node.m_Id, FMT_sv(message));
-        };
 
         CreateDocumentEditor();
 
         CreateExampleDocument();
 
-        for (auto nodeTypeInfo : m_Blueprint->GetNodeRegistry()->GetTypes())
-            m_OverlayLogger.AddKeyword(nodeTypeInfo->m_Name);
+        for (auto type : ExampleRegistry()->NodeTypes())
+            m_OverlayLogger.AddKeyword(type->m_Title);
 
         ed::SetCurrentEditor(nullptr);
     }
@@ -326,7 +306,8 @@ struct BlueprintEditorExample
 
         ed::SetCurrentEditor(m_Editor);
 
-        Blueprint_ContinueRun();
+        if (m_Document)
+            m_Debugger.Update(*m_Document);
         UpdateActions();
         UpdateTitle();
 
@@ -335,21 +316,19 @@ struct BlueprintEditorExample
 
         ImGui::Separator();
 
-        if (m_Blueprint)
+        if (m_Document)
         {
-            DebugOverlay debugOverlay(*m_Blueprint);
-
             ed::Begin("###main_editor");
 
-            CommitBlueprintNodes(*m_Blueprint, debugOverlay);
+            CommitBlueprintNodes(*m_Document);
 
             HandleCreateAction(*m_Document);
             HandleDestroyAction(*m_Document);
-            HandleContextMenuAction(*m_Blueprint);
+            HandleContextMenuAction();
 
             ShowDialogs(*m_Document);
 
-            ShowInfoTooltip(*m_Blueprint);
+            ShowInfoTooltip(*m_Document);
 
             ed::End();
 
@@ -364,8 +343,6 @@ struct BlueprintEditorExample
         m_OverlayLogger.Draw(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
 
         ed::SetCurrentEditor(nullptr);
-
-        //ImGui::ShowMetricsWindow();
     }
 
     ImGuiWindowFlags GetWindowFlags() const override
@@ -384,7 +361,7 @@ struct BlueprintEditorExample
 private:
     void UpdateTitle()
     {
-        string title = GetName();
+        std::string title = GetName();
 
         if (File_IsOpen())
         {
@@ -407,7 +384,6 @@ private:
         auto hasDocument = File_IsOpen();
         auto hasUndo     = hasDocument && !m_Document->m_Undo.empty();
         auto hasRedo     = hasDocument && !m_Document->m_Redo.empty();
-        //auto isModified  = hasDocument && File_IsModified();
 
         m_File_Close.SetEnabled(hasDocument);
         m_File_SaveAs.SetEnabled(hasDocument);
@@ -425,16 +401,13 @@ private:
         m_View_NavigateBackward.SetEnabled(hasDocument && false);
         m_View_NavigateForward.SetEnabled(hasDocument && false);
 
-        auto entryNode = m_Blueprint ? FindEntryPointNode(*m_Blueprint) : nullptr;
+        // An error blocks a run, never an edit or saving.
+        auto canStart = hasDocument && HasStart(m_Document->GetGraph()) && !m_Document->GetGraph().IsBroken();
 
-        bool hasBlueprint  = (m_Blueprint != nullptr);
-        bool hasEntryPoint = (entryNode != nullptr);
-        bool isExecuting   = hasBlueprint && (m_Blueprint->CurrentNode() != nullptr);
-
-        m_Blueprint_Start.SetEnabled(hasBlueprint && hasEntryPoint);
-        m_Blueprint_Step.SetEnabled(hasBlueprint && isExecuting && !m_IsRunning);
-        m_Blueprint_Stop.SetEnabled(hasBlueprint && isExecuting);
-        m_Blueprint_Run.SetEnabled(hasBlueprint && hasEntryPoint && !m_IsRunning);
+        m_Blueprint_Start.SetEnabled(canStart);
+        m_Blueprint_Step.SetEnabled(m_Debugger.IsActive() && !m_Debugger.IsRunning());
+        m_Blueprint_Stop.SetEnabled(m_Debugger.IsActive());
+        m_Blueprint_Run.SetEnabled(canStart && !m_Debugger.IsRunning());
     }
 
     void ShowMainMenu()
@@ -459,7 +432,7 @@ private:
                 if (ImGui::BeginMenu("Open Recent", !mostRecentlyOpenFiles.GetList().empty()))
                 {
                     // Opening a file moves it to the front of the list.
-                    string clickedPath;
+                    std::string clickedPath;
                     for (auto& entry : mostRecentlyOpenFiles.GetList())
                         if (ImGui::MenuItem(entry.c_str()))
                             clickedPath = entry;
@@ -552,35 +525,61 @@ private:
         ImGui::SameLine();
         toolbarAction(m_Blueprint_Run);
 
+        if (!m_Document)
+            return;
+
+        auto& graph = m_Document->GetGraph();
+        auto errors = 0;
+        for (auto& diagnostic : graph.Diagnostics())
+            errors += diagnostic.m_Severity == Severity::Error;
+
         ImGui::SameLine();
-        ImGui::Text("Status: %s", m_Blueprint ? StepResultToString(m_Blueprint->LastStepResult()) : "-");
+        if (errors > 0)
+            ImGui::Text("Status: %d error%s", errors, errors != 1 ? "s" : "");
+        else if (m_Debugger.IsRunning())
+            ImGui::TextUnformatted("Status: running");
+        else if (m_Debugger.IsActive())
+            ImGui::TextUnformatted("Status: paused");
+        else
+            ImGui::TextUnformatted("Status: -");
 
-        if (auto currentNode = m_Blueprint ? m_Blueprint->CurrentNode() : nullptr)
+        if (m_Debugger.IsActive())
         {
+            auto current = graph.FindNode(m_Debugger.CurrentNode());
+            auto next    = graph.FindNode(m_Debugger.NextNode());
             ImGui::SameLine(); ImGui::Spacing();
-            ImGui::SameLine(); ImGui::Text("Current: %" PRI_node, FMT_node(currentNode));
-
-            auto nextNode = m_Blueprint->NextNode();
+            ImGui::SameLine(); ImGui::Text("Current: %s", current ? current->Name().c_str() : "-");
             ImGui::SameLine(); ImGui::Spacing();
-            ImGui::SameLine();
-            if (nextNode)
-                ImGui::Text("Next: %" PRI_node, FMT_node(nextNode));
-            else
-                ImGui::Text("Next: -");
+            ImGui::SameLine(); ImGui::Text("Next: %s", next ? next->Name().c_str() : "-");
         }
     }
 
-    // Iterate over blueprint nodes and commit them to node editor.
-    void CommitBlueprintNodes(Blueprint& blueprint, DebugOverlay& debugOverlay)
+    // Iterate over the graph's nodes and commit them to node editor.
+    void CommitBlueprintNodes(Document& document)
     {
         const auto iconSize = ImVec2(ImGui::GetTextLineHeight(), ImGui::GetTextLineHeight());
 
+        auto& graph = document.GetGraph();
+
+        // A pin with an active link has a filled icon, and an input with one, no value.
+        std::unordered_set<Id> linked;
+        for (auto& link : graph.Links())
+        {
+            if (!link.m_Active)
+                continue;
+            linked.insert(link.m_From);
+            linked.insert(link.m_To);
+        }
+
+        // A value edited in a pin's editor, set once the nodes are drawn.
+        std::optional<std::pair<Id, Value>> valueEdit;
+
+        DebugOverlay debugOverlay(m_Debugger);
         debugOverlay.Begin();
 
-        // Commit all nodes to editor
-        for (auto& node : blueprint.GetNodes())
+        for (auto& node : graph.Nodes())
         {
-            ed::BeginNode(node->m_Id);
+            ed::BeginNode(node.m_Id);
 
             // General node layout:
             //
@@ -594,11 +593,10 @@ private:
             // | +---------------+   +-----------+ |
             // +-----------------------------------+
 
-            // Show title if node has one.
-            auto nodeName = node->GetName();
-            if (!nodeName.empty())
+            auto& title = node.m_Type->m_Title;
             {
-                auto headerBackgroundRenderer = ImEx::ItemBackgroundRenderer([node](ImDrawList* drawList)
+                auto id = node.m_Id;
+                auto headerBackgroundRenderer = ImEx::ItemBackgroundRenderer([id](ImDrawList* drawList)
                 {
                     auto border   = ed::GetStyle().NodeBorderWidth;
                     auto rounding = ed::GetStyle().NodeRounding;
@@ -606,8 +604,8 @@ private:
                     auto itemMin = ImGui::GetItemRectMin();
                     auto itemMax = ImGui::GetItemRectMax();
 
-                    auto nodeStart = ed::GetNodePosition(node->m_Id);
-                    auto nodeSize  = ed::GetNodeSize(node->m_Id);
+                    auto nodeStart = ed::GetNodePosition(id);
+                    auto nodeSize  = ed::GetNodeSize(id);
 
                     itemMin   = nodeStart;
                     itemMin.x = itemMin.x + border - 0.5f;
@@ -616,27 +614,27 @@ private:
                     itemMax.y = itemMax.y + ImGui::GetStyle().ItemSpacing.y + 0.5f;
 
                     drawList->AddRectFilled(itemMin, itemMax, IM_COL32(255, 255, 255, 64), rounding, ImDrawFlags_RoundTop);
-
-                    //drawList->AddRectFilledMultiColor(itemMin, itemMax, IM_COL32(255, 0, 0, 64), rounding, ImDrawFlags_RoundTop);
                 });
 
                 ImGui::PushFont(HeaderFont(), HeaderFont()->LegacySize);
-                ImGui::TextUnformatted(nodeName.data(), nodeName.data() + nodeName.size());
+                ImGui::TextUnformatted(title.data(), title.data() + title.size());
                 ImGui::PopFont();
 
-                //ImEx::Debug_DrawItemRect();
                 ImGui::Spacing();
             }
 
             ImGui::Dummy(ImVec2(100.0f, 0.0f)); // For minimum node width
 
             crude_layout::Grid layout;
-            layout.Begin(node->m_Id, 2, 100.0f);
+            layout.Begin(node.m_Id, 2, 100.0f);
             layout.SetColumnAlignment(0.0f);
 
             // Draw column with input pins.
-            for (auto& pin : node->GetInputPins())
+            for (auto& pin : node.m_Pins)
             {
+                if (pin.m_Direction != Direction::Input)
+                    continue;
+
                 // Add a bit of spacing to separate pins and make value not cramped
                 ImGui::Spacing();
 
@@ -648,7 +646,7 @@ private:
                 //     |       |          |              |
                 //     +-------+----------+--------------+
 
-                ed::BeginPin(pin->m_Id, ed::PinKind::Input);
+                ed::BeginPin(pin.m_Id, ed::PinKind::Input);
                 // [X] - Tell editor to put pivot point in the middle of
                 //       the left side of the pin. This is the point
                 //       where link will be hooked to.
@@ -658,33 +656,29 @@ private:
                 ed::PinPivotAlignment(ImVec2(0.0f, 0.5f));
 
                 // [1] - Icon
-                Icon(iconSize,
-                    PinTypeToIconType(pin->GetType()),
-                    blueprint.HasPinAnyLink(*pin),
-                    PinTypeToColor(pin->GetValueType()));
+                const auto isLinked = linked.count(pin.m_Id) > 0;
+                Icon(iconSize, PinIcon(pin), isLinked, TypeColor(pin.m_DecidedType));
 
                 // [2] - Show pin name if it has one
-                if (!pin->m_Name.empty())
+                if (!pin.m_Name.empty())
                 {
                     ImGui::SameLine();
-                    ImGui::TextUnformatted(pin->m_Name.data(), pin->m_Name.data() + pin->m_Name.size());
+                    ImGui::TextUnformatted(pin.m_Name.data(), pin.m_Name.data() + pin.m_Name.size());
                 }
 
                 // [3] - Show value/editor when pin is not linked to anything
-                if (!blueprint.HasPinAnyLink(*pin))
+                if (!pin.m_Flow && !isLinked && pin.m_DecidedType)
                 {
                     ImGui::SameLine();
-                    if (DrawPinValueWithEditor(*pin))
-                    {
-                        auto transaction = m_Document->BeginUndoTransaction("Edit Value");
-                        transaction->AddAction("%" PRI_pin " value changed", FMT_pin(pin));
-                    }
+                    auto value = InputValue(graph, pin);
+                    if (DrawValueWithEditor(pin.m_Id, value))
+                        valueEdit.emplace(pin.m_Id, std::move(value));
                 }
 
                 ed::EndPin();
 
                 // [Debug Overlay] Show value of the pin if node is currently executed
-                debugOverlay.DrawInputPin(*pin);
+                debugOverlay.DrawInputPin(pin, isLinked);
 
                 layout.NextRow();
             }
@@ -693,8 +687,11 @@ private:
             layout.NextColumn();
 
             // Draw column with output pins.
-            for (auto& pin : node->GetOutputPins())
+            for (auto& pin : node.m_Pins)
             {
+                if (pin.m_Direction != Direction::Output)
+                    continue;
+
                 // Add a bit of spacing to separate pins and make value not cramped
                 ImGui::Spacing();
 
@@ -706,7 +703,16 @@ private:
                 //    |          |       |
                 //    +----------+-------+
 
-                ed::BeginPin(pin->m_Id, ed::PinKind::Output);
+                // A Constant shows its value, and an editor once clicked, before its pin.
+                if (IsConstant(node) && !pin.m_Flow && pin.m_DecidedType)
+                {
+                    auto value = ConstantValue(node, pin);
+                    if (DrawValueWithEditor(pin.m_Id, value))
+                        valueEdit.emplace(pin.m_Id, std::move(value));
+                    ImGui::SameLine();
+                }
+
+                ed::BeginPin(pin.m_Id, ed::PinKind::Output);
 
                 // [X] - Tell editor to put pivot point in the middle of
                 //       the right side of the pin. This is the point
@@ -717,54 +723,84 @@ private:
                 ed::PinPivotAlignment(ImVec2(1.0f, 0.5f));
 
                 // [1] - Show pin name if it has one
-                if (!pin->m_Name.empty())
+                if (!pin.m_Name.empty())
                 {
-                    ImGui::TextUnformatted(pin->m_Name.data(), pin->m_Name.data() + pin->m_Name.size());
+                    ImGui::TextUnformatted(pin.m_Name.data(), pin.m_Name.data() + pin.m_Name.size());
                     ImGui::SameLine();
                 }
 
                 // [2] - Show icon
-                Icon(iconSize,
-                    PinTypeToIconType(pin->GetType()),
-                    blueprint.HasPinAnyLink(*pin),
-                    PinTypeToColor(pin->GetValueType()));
+                Icon(iconSize, PinIcon(pin), linked.count(pin.m_Id) > 0, TypeColor(pin.m_DecidedType));
 
                 ed::EndPin();
 
                 // [Debug Overlay] Show value of the pin if node is currently executed
-                debugOverlay.DrawOutputPin(*pin);
+                debugOverlay.DrawOutputPin(pin);
 
                 layout.NextRow();
             }
 
             layout.End();
 
-            //ImEx::Debug_DrawItemRect();
-
             ed::EndNode();
 
-            //ImEx::Debug_DrawItemRect();
-
             // [Debug Overlay] Show cursor over node
-            debugOverlay.DrawNode(*node);
+            debugOverlay.DrawNode(node.m_Id);
         }
 
-        // Commit all links to editor
-        for (auto& pin : blueprint.GetPins())
+        // Commit all links to editor. A disabled link shows, grey, until its problem is resolved;
+        // one whose pin is gone has nothing to show between.
+        for (auto& link : graph.Links())
         {
-            if (!pin->m_Link)
+            auto from = graph.FindPin(link.m_From);
+            if (!from || !graph.FindPin(link.m_To))
                 continue;
-
-            // To keep things simple, link id is same as pin id.
-            ed::Link(pin->m_Id, pin->m_Id, pin->m_Link->m_Id, PinTypeToColor(pin->GetValueType()));
+            if (link.m_Active)
+                ed::Link(link.m_Id, link.m_From, link.m_To, TypeColor(from->m_DecidedType), from->m_Flow ? 2.5f : 1.5f);
+            else
+                ed::Link(link.m_Id, link.m_From, link.m_To, ImVec4(0.5f, 0.5f, 0.5f, 0.4f), 1.0f);
         }
 
         debugOverlay.End();
+
+        if (valueEdit)
+            SetPinValue(document, valueEdit->first, std::move(valueEdit->second));
     }
 
+    // An input keeps its value in the graph, and a Constant the value of its output in its config.
+    static void SetPinValue(Document& document, Id pinId, Value value)
+    {
+        auto& graph = document.GetGraph();
+        auto  pin   = graph.FindPin(pinId);
+        if (!pin)
+            return;
+
+        const auto   name = graph.NodeOf(pinId)->Name() + "." + pin->m_Key;
+        auto         transaction = document.BeginUndoTransaction("Edit Value");
+        Result<void> set;
+        if (pin->m_Direction == Direction::Input)
+            set = graph.SetValue(pinId, std::move(value));
+        else
+        {
+            auto node   = graph.NodeOf(pinId);
+            auto config = node->m_Config;
+            config.m_Data["value"] = std::move(value);
+            set = graph.SetConfig(node->m_Id, std::move(config));
+        }
+
+        if (!set)
+        {
+            LOGW("%s", Text(set.GetError().Message()).c_str());
+            transaction->Discard();
+        }
+        else
+            transaction->AddAction("%s changed", name.c_str());
+    }
+
+    // While a link is dragged, whether it fits is asked once for each pair of pins.
     void HandleCreateAction(Document& document)
     {
-        Blueprint& blueprint = document.m_Blueprint;
+        auto& graph = document.GetGraph();
 
         ItemBuilder itemBuilder;
 
@@ -773,41 +809,42 @@ private:
 
         if (auto linkBuilder = itemBuilder.QueryNewLink())
         {
-            auto startPin = blueprint.FindPin(static_cast<uint32_t>(linkBuilder->m_StartPinId.Get()));
-            auto endPin   = blueprint.FindPin(static_cast<uint32_t>(linkBuilder->m_EndPinId.Get()));
+            auto startPin = graph.FindPin(static_cast<Id>(linkBuilder->m_StartPinId.Get()));
+            auto endPin   = graph.FindPin(static_cast<Id>(linkBuilder->m_EndPinId.Get()));
+            if (!startPin || !endPin)
+            {
+                linkBuilder->Reject();
+                return;
+            }
 
-            // Editor return pins in order draw by the user. It is up to the
-            // user to determine if it is valid. In blueprints we accept only links
-            // from receivers to providers. Other graph types may allow bi-directional
-            // links between nodes and this ordering make this feature possible.
-            if (endPin->IsReceiver() && startPin->IsProvider())
-                ImSwap(startPin, endPin);
+            // Editor return pins in order draw by the user. A link goes from an output to an input.
+            if (startPin->m_Direction == Direction::Input)
+                std::swap(startPin, endPin);
 
-            if (auto canLinkResult = startPin->CanLinkTo(*endPin))
+            const auto from = startPin->m_Id, to = endPin->m_Id;
+            if (!m_LinkQuery || m_LinkQuery->m_From != from || m_LinkQuery->m_To != to || m_LinkQuery->m_Revision != document.m_Revision)
+                m_LinkQuery = LinkQuery{ from, to, document.m_Revision, graph.CanConnect(from, to) };
+
+            auto describe = [&graph](const Pin& pin) { return graph.NodeOf(pin.m_Id)->Name() + "." + pin.m_Key + " (" + (pin.m_Flow ? std::string("flow") : graph.TypeText(pin.m_Id)) + ")"; };
+            if (m_LinkQuery->m_Fits)
             {
                 ed::Suspend();
                 ImGui::BeginTooltip();
-                ImGui::Text("Valid Link%s%s",
-                    canLinkResult.Reason().empty() ? "" : ": ",
-                    canLinkResult.Reason().empty() ? "" : canLinkResult.Reason().c_str());
+                ImGui::TextUnformatted("Valid Link");
                 ImGui::Separator();
-                ImGui::TextUnformatted("From:");
-                ImGui::Bullet(); ImGui::Text("%" PRI_pin, FMT_pin(startPin));
-                ImGui::Bullet(); ImGui::Text("%" PRI_node, FMT_node(startPin->m_Node));
-                ImGui::TextUnformatted("To:");
-                ImGui::Bullet(); ImGui::Text("%" PRI_pin, FMT_pin(endPin));
-                ImGui::Bullet(); ImGui::Text("%" PRI_node, FMT_node(endPin->m_Node));
+                ImGui::Text("From: %s", describe(*startPin).c_str());
+                ImGui::Text("To: %s", describe(*endPin).c_str());
                 ImGui::EndTooltip();
                 ed::Resume();
 
                 if (linkBuilder->Accept())
                 {
                     auto transaction = document.BeginUndoTransaction("Create Link");
-
-                    if (startPin->LinkTo(*endPin))
+                    auto name = describe(*startPin) + " -> " + describe(*endPin);
+                    if (graph.Connect(from, to))
                     {
-                        LOGV("[HandleCreateAction] %" PRI_pin " linked with %" PRI_pin, FMT_pin(startPin), FMT_pin(endPin));
-                        transaction->AddAction("%" PRI_pin " linked with %" PRI_pin, FMT_pin(startPin), FMT_pin(endPin));
+                        LOGV("[HandleCreateAction] %s", name.c_str());
+                        transaction->AddAction("%s", name.c_str());
                     }
                     else
                         transaction->Discard();
@@ -816,10 +853,7 @@ private:
             else
             {
                 ed::Suspend();
-                ImGui::SetTooltip(
-                    "Invalid Link: %s",
-                    canLinkResult.Reason().c_str()
-                );
+                ImGui::SetTooltip("Invalid Link: %s", Text(m_LinkQuery->m_Fits.GetError().Message()).c_str());
                 ed::Resume();
 
                 linkBuilder->Reject();
@@ -836,21 +870,18 @@ private:
             // When this happen we request CreateNodeDialog to open.
             if (nodeBuilder->Accept())
             {
-                // Get node from which link was pulled (if any). After creating
-                // node we will try to make link with first matching pin of the node.
-                auto pin = blueprint.FindPin(static_cast<uint32_t>(nodeBuilder->m_PinId.Get()));
-
                 ed::Suspend();
                 LOGV("[HandleCreateAction] Open CreateNodeDialog");
-                m_CreateNodeDailog.Open(pin);
+                m_CreateNodeDialog.Open(static_cast<Id>(nodeBuilder->m_PinId.Get()));
                 ed::Resume();
             }
         }
     }
 
+    // A node goes with its links; links go first, so none is asked about twice.
     void HandleDestroyAction(Document& document)
     {
-        Blueprint& blueprint = document.m_Blueprint;
+        auto& graph = document.GetGraph();
 
         ItemDeleter itemDeleter;
 
@@ -859,170 +890,131 @@ private:
 
         auto deferredTransaction = document.GetDeferredUndoTransaction("Destroy Action");
 
-        vector<Node*> nodesToDelete;
-        uint32_t brokenLinkCount = 0;
-
-        // Process all nodes marked for deletion
+        std::vector<Id> nodesToDelete;
         while (auto nodeDeleter = itemDeleter.QueryDeletedNode())
         {
             deferredTransaction->Begin("Delete Item");
-
-            // Remove node, pass 'true' so links attached to node will also be queued for deletion.
             if (nodeDeleter->Accept(true))
-            {
-                auto node = blueprint.FindNode(static_cast<uint32_t>(nodeDeleter->m_NodeId.Get()));
-                if (node != nullptr)
-                    // Queue nodes for deletion. We need to serve links first to avoid crash.
-                    nodesToDelete.push_back(node);
-            }
+                nodesToDelete.push_back(static_cast<Id>(nodeDeleter->m_NodeId.Get()));
         }
 
-        // Process all links marked for deletion
+        int brokenLinkCount = 0;
         while (auto linkDeleter = itemDeleter.QueryDeleteLink())
         {
             deferredTransaction->Begin("Delete Item");
-
-            if (linkDeleter->Accept())
-            {
-                auto startPin = blueprint.FindPin(static_cast<uint32_t>(linkDeleter->m_StartPinId.Get()));
-                if (startPin != nullptr && startPin->IsLinked())
-                {
-                    LOGV("[HandleDestroyAction] %" PRI_pin " unlinked from %" PRI_pin, FMT_pin(startPin), FMT_pin(startPin->GetLink()));
-                    startPin->Unlink();
-                    ++brokenLinkCount;
-                }
-            }
+            if (linkDeleter->Accept() && graph.Disconnect(static_cast<Id>(linkDeleter->m_LinkId.Get())))
+                ++brokenLinkCount;
         }
 
-        // After links was removed, now it is safe to delete nodes.
         for (auto node : nodesToDelete)
         {
-            LOGV("[HandleDestroyAction] %" PRI_node, FMT_node(node));
-            blueprint.DeleteNode(node);
+            auto name = graph.FindNode(node) ? graph.FindNode(node)->Name() : std::string("?");
+            if (graph.RemoveNode(node))
+                LOGV("[HandleDestroyAction] %s", name.c_str());
         }
 
         if (!nodesToDelete.empty() || brokenLinkCount)
         {
-            LOGV("[HandleDestroyAction] %" PRIu32 " node%s deleted, %" PRIu32 " link%s broken",
-                static_cast<uint32_t>(nodesToDelete.size()), nodesToDelete.size() != 1 ? "s" : "",
+            LOGV("[HandleDestroyAction] %d node%s deleted, %d link%s broken",
+                static_cast<int>(nodesToDelete.size()), nodesToDelete.size() != 1 ? "s" : "",
                 brokenLinkCount, brokenLinkCount != 1 ? "s" : "");
         }
     }
 
-    void HandleContextMenuAction(Blueprint& blueprint)
+    void HandleContextMenuAction()
     {
         if (ed::ShowBackgroundContextMenu())
         {
             ed::Suspend();
             LOGV("[HandleContextMenuAction] Open CreateNodeDialog");
-            m_CreateNodeDailog.Open();
+            m_CreateNodeDialog.Open();
             ed::Resume();
         }
 
         ed::NodeId contextNodeId;
         if (ed::ShowNodeContextMenu(&contextNodeId))
         {
-            auto node = blueprint.FindNode(static_cast<uint32_t>(contextNodeId.Get()));
-
             ed::Suspend();
-            LOGV("[HandleContextMenuAction] Open NodeContextMenu for %" PRI_node, FMT_node(node));
-            m_NodeContextMenu.Open(node);
+            m_NodeContextMenu.Open(static_cast<Id>(contextNodeId.Get()));
             ed::Resume();
         }
 
         ed::PinId contextPinId;
         if (ed::ShowPinContextMenu(&contextPinId))
         {
-            auto pin = blueprint.FindPin(static_cast<uint32_t>(contextPinId.Get()));
-
             ed::Suspend();
-            LOGV("[HandleContextMenuAction] Open PinContextMenu for %" PRI_pin, FMT_pin(pin));
-            m_PinContextMenu.Open(pin);
+            m_PinContextMenu.Open(static_cast<Id>(contextPinId.Get()));
             ed::Resume();
         }
 
         ed::LinkId contextLinkId;
         if (ed::ShowLinkContextMenu(&contextLinkId))
         {
-            auto pin = blueprint.FindPin(static_cast<uint32_t>(contextLinkId.Get()));
-
             ed::Suspend();
-            LOGV("[HandleContextMenuAction] Open LinkContextMenu for %" PRI_pin, FMT_pin(pin));
-            m_LinkContextMenu.Open(pin);
+            m_LinkContextMenu.Open(static_cast<Id>(contextLinkId.Get()));
             ed::Resume();
         }
     }
 
     void ShowDialogs(Document& document)
     {
-        Blueprint& blueprint = document.m_Blueprint;
-
         ed::Suspend();
 
-        m_CreateNodeDailog.Show(document);
-        m_NodeContextMenu.Show(blueprint);
-        m_PinContextMenu.Show(blueprint);
-        m_LinkContextMenu.Show(blueprint);
+        m_CreateNodeDialog.Show(document);
+        m_NodeContextMenu.Show(document);
+        m_PinContextMenu.Show(document);
+        m_LinkContextMenu.Show(document);
 
         ed::Resume();
     }
 
-    void ShowInfoTooltip(Blueprint& blueprint)
+    void ShowInfoTooltip(Document& document)
     {
         if (!ed::IsActive())
             return;
 
-        auto hoveredNode = blueprint.FindNode(static_cast<uint32_t>(ed::GetHoveredNode().Get()));
-        auto hoveredPin  = blueprint.FindPin(static_cast<uint32_t>(ed::GetHoveredPin().Get()));
+        auto& graph = document.GetGraph();
+        auto hoveredPin  = graph.FindPin(static_cast<Id>(ed::GetHoveredPin().Get()));
+        auto hoveredNode = graph.FindNode(static_cast<Id>(ed::GetHoveredNode().Get()));
         if (!hoveredNode && hoveredPin)
-            hoveredNode = hoveredPin->m_Node;
+            hoveredNode = graph.NodeOf(hoveredPin->m_Id);
 
-        auto pinTooltip = [](const char* label, const Pin& pin, bool showNode)
+        auto pinTooltip = [&graph](const char* label, const Pin& pin, bool showNode)
         {
             ImGui::TextUnformatted(label);
-            ImGui::Bullet(); ImGui::Text("ID: %" PRIu32, pin.m_Id);
+            ImGui::Bullet(); ImGui::Text("ID: %u", static_cast<unsigned>(pin.m_Id));
+            ImGui::Bullet(); ImGui::Text("Key: %s", pin.m_Key.c_str());
             if (!pin.m_Name.empty())
             {
-                ImGui::Bullet(); ImGui::Text("Name: %" PRI_sv, FMT_sv(pin.m_Name));
+                ImGui::Bullet(); ImGui::Text("Name: %s", pin.m_Name.c_str());
             }
-            if (showNode && pin.m_Node)
+            if (showNode)
             {
-                auto nodeName = pin.m_Node->GetName();
-                ImGui::Bullet(); ImGui::Text("Node: %" PRI_sv, FMT_sv(nodeName));
+                ImGui::Bullet(); ImGui::Text("Node: %s", graph.NodeOf(pin.m_Id)->Name().c_str());
             }
-            ImGui::Bullet(); ImGui::Text("Type: %s", PinTypeToString(pin.GetType()));
-            ImGui::Bullet(); ImGui::Text("Value Type: %s", PinTypeToString(pin.GetValueType()));
+            ImGui::Bullet(); ImGui::Text("Type: %s", pin.m_Flow ? "flow" : graph.TypeText(pin.m_Id).c_str());
+            ImGui::Bullet(); ImGui::Text("%s%s", pin.m_Direction == Direction::Input ? "input" : "output",
+                pin.m_Requirement == Requirement::Required ? ", required" : pin.m_Requirement == Requirement::Recommended ? ", recommended" : "");
+        };
 
-            string flags;
-            if (pin.IsLinked())
-                flags += "linked, ";
-            if (pin.IsInput())
-                flags += "input, ";
-            if (pin.IsOutput())
-                flags += "output, ";
-            if (pin.IsProvider())
-                flags += "provider, ";
-            if (pin.IsReceiver())
-                flags += "receiver, ";
-            if (!flags.empty())
-                flags = flags.substr(0, flags.size() - 2);
-            ImGui::Bullet(); ImGui::Text("Flags: %s", flags.c_str());
+        auto diagnostics = [&graph](Id node, Id pin)
+        {
+            for (auto& diagnostic : graph.Diagnostics())
+            {
+                auto link = diagnostic.m_Link ? graph.FindLink(diagnostic.m_Link) : nullptr;
+                auto here = (node && diagnostic.m_Node == node) || (pin && diagnostic.m_Pin == pin) || (link && (link->m_To == pin || (!pin && graph.NodeOf(link->m_To) && graph.NodeOf(link->m_To)->m_Id == node)));
+                if (here)
+                    ImGui::TextColored(diagnostic.m_Severity == Severity::Error ? ImVec4(1.0f, 0.4f, 0.4f, 1.0f) : ImVec4(1.0f, 0.8f, 0.3f, 1.0f), "%s", Text(diagnostic.m_Error.Message()).c_str());
+            }
         };
 
         if (hoveredNode)
         {
-            auto nodeTypeInfo = hoveredNode->GetTypeInfo();
-            auto nodeName = hoveredNode->GetName();
-
             ed::Suspend();
             ImGui::BeginTooltip();
 
-            ImGui::Text("Node ID: %" PRIu32, hoveredNode->m_Id);
-            ImGui::Text("Name: %" PRI_sv, FMT_sv(nodeName));
-            ImGui::Separator();
-            ImGui::TextUnformatted("Type:");
-            ImGui::Bullet(); ImGui::Text("ID: 0x%08" PRIX32, nodeTypeInfo.m_Id);
-            ImGui::Bullet(); ImGui::Text("Name: %" PRI_sv, FMT_sv(nodeTypeInfo.m_Name));
+            ImGui::Text("Node: %s", hoveredNode->Name().c_str());
+            ImGui::Text("Type: %s", hoveredNode->m_Type->m_Name.c_str());
 
             if (hoveredPin)
             {
@@ -1030,26 +1022,28 @@ private:
                 pinTooltip("Pin", *hoveredPin, false);
             }
 
+            diagnostics(hoveredPin ? 0 : hoveredNode->m_Id, hoveredPin ? hoveredPin->m_Id : 0);
+
             ImGui::EndTooltip();
             ed::Resume();
         }
-        else if (auto hoveredLinkId = ed::GetHoveredLink())
+        else if (auto hoveredLink = graph.FindLink(static_cast<Id>(ed::GetHoveredLink().Get())))
         {
-            // A link deleted in this frame is still hovered, and its pins may be gone.
-            ed::PinId startPinId, endPinId;
-            if (!ed::GetLinkPins(hoveredLinkId, &startPinId, &endPinId))
-                return;
-
-            auto startPin = blueprint.FindPin(static_cast<uint32_t>(startPinId.Get()));
-            auto endPin = blueprint.FindPin(static_cast<uint32_t>(endPinId.Get()));
+            auto startPin = graph.FindPin(hoveredLink->m_From);
+            auto endPin   = graph.FindPin(hoveredLink->m_To);
             if (!startPin || !endPin)
                 return;
 
             ed::Suspend();
             ImGui::BeginTooltip();
 
-            ImGui::Text("Link ID: %" PRIu32, startPin->m_Id);
-            ImGui::Text("Type: %s", PinTypeToString(startPin->GetValueType()));
+            ImGui::Text("Link ID: %u", static_cast<unsigned>(hoveredLink->m_Id));
+            if (!hoveredLink->m_Cast.empty())
+                ImGui::Text("Cast: %s", hoveredLink->m_Cast.c_str());
+            if (hoveredLink->m_Forced)
+                ImGui::TextUnformatted("Forced");
+            if (!hoveredLink->m_Active)
+                ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), "Disabled: %s", Text(hoveredLink->m_Reason.Message()).c_str());
             ImGui::Separator();
             pinTooltip("Start Pin:", *startPin, true);
             ImGui::Separator();
@@ -1079,41 +1073,36 @@ private:
 
         CreateDocumentEditor();
 
-        m_Document = make_unique<Document>();
-        m_Blueprint = &m_Document->m_Blueprint;
+        m_Document = std::make_unique<Document>(ExampleRegistry(), ExampleTypes());
         m_Document->m_DocumentState = m_Document->BuildDocumentState();
     }
 
-    bool File_Open(string_view path, string* error = nullptr)
+    bool File_Open(std::string_view path, std::string* error = nullptr)
     {
-        auto document = make_unique<Document>();
+        auto document = std::make_unique<Document>(ExampleRegistry(), ExampleTypes());
         if (!document->Load(path))
         {
+            auto message = "Failed to load blueprint from file \"" + std::string(path) + "\".";
             if (error)
-            {
-                ImGuiTextBuffer buffer;
-                buffer.appendf("Failed to load blueprint from file \"%" PRI_sv "\".", FMT_sv(path));
-                *error = buffer.c_str();
-            }
+                *error = message;
             else
-                LOGE("Failed to load blueprint from file \"%" PRI_sv "\".", FMT_sv(path));
+                LOGE("%s", message.c_str());
             return false;
         }
 
         if (!File_Close())
             return false;
 
-        LOGI("[File] Open \"%" PRI_sv "\"", FMT_sv(path));
+        LOGI("[File] Open \"%s\"", std::string(path).c_str());
 
         auto mostRecentlyOpenFiles = Application_GetMostRecentlyOpenFileList();
-        mostRecentlyOpenFiles.Add(path.to_string());
+        mostRecentlyOpenFiles.Add(std::string(path));
 
         document->SetPath(path);
 
         CreateDocumentEditor();
 
         m_Document = std::move(document);
-        m_Blueprint = &m_Document->m_Blueprint;
 
         UpdateTitle();
 
@@ -1126,15 +1115,15 @@ private:
     // a shell expands '$' and '`' in them, so text from files stays out: the error message
     // is fixed, and a dialog starts in the document's directory only when its name has none
     // of those characters.
-    static string DialogDirectory(string_view documentPath)
+    static std::string DialogDirectory(std::string_view documentPath)
     {
         auto separator = documentPath.find_last_of("\\/");
-        if (separator == string_view::npos)
+        if (separator == std::string_view::npos)
             return {};
 
-        auto directory = documentPath.substr(0, separator + 1).to_string();
+        auto directory = std::string(documentPath.substr(0, separator + 1));
 # if !defined(_WIN32)
-        if (directory.find_first_of("$`\"'\\") != string::npos)
+        if (directory.find_first_of("$`\"'\\") != std::string::npos)
             return {};
 # endif
         return directory;
@@ -1143,7 +1132,7 @@ private:
     bool File_Open()
     {
         const char* filterPatterns[1] = { "*.bp" };
-        auto directory = m_Document ? DialogDirectory(m_Document->m_Path) : string();
+        auto directory = m_Document ? DialogDirectory(m_Document->m_Path) : std::string();
         auto path = tinyfd_openFileDialog(
             "Open Blueprint...",
             directory.empty() ? nullptr : directory.c_str(),
@@ -1152,11 +1141,11 @@ private:
         if (!path)
             return false;
 
-        string error;
+        std::string error;
         if (!File_Open(path, &error) && !error.empty())
         {
             tinyfd_messageBox(
-                (string(GetName()) + " - Open Blueprint...").c_str(),
+                (std::string(GetName()) + " - Open Blueprint...").c_str(),
                 "The blueprint could not be loaded. The log says which file failed.",
                 "ok", "error", 1);
 
@@ -1192,7 +1181,7 @@ private:
 
         LOGI("[File] Close");
 
-        m_Blueprint = nullptr;
+        m_Debugger.Stop();
         m_Document = nullptr;
 
         DestroyDocumentEditor();
@@ -1202,7 +1191,7 @@ private:
         return true;
     }
 
-    bool File_SaveAsEx(string_view path)
+    bool File_SaveAsEx(std::string_view path)
     {
         if (!File_IsOpen())
             return true;
@@ -1216,13 +1205,13 @@ private:
 
         if (!saved)
         {
-            LOGE("Failed to save blueprint to file \"%" PRI_sv "\".", FMT_sv(path));
+            LOGE("Failed to save blueprint to file \"%s\".", std::string(path).c_str());
             return false;
         }
 
         m_Document->m_IsModified = false;
 
-        LOGI("[File] Save \"%" PRI_sv "\".", FMT_sv(path));
+        LOGI("[File] Save \"%s\".", std::string(path).c_str());
 
         return true;
     }
@@ -1311,76 +1300,40 @@ private:
 
     void Blueprint_Start()
     {
-        auto entryNode = FindEntryPointNode(*m_Blueprint);
-
-        LOGI("Execution: Start");
-        m_Blueprint->Start(*entryNode);
-        m_IsRunning = false;
+        m_Debugger.Start(*m_Document, false);
     }
 
     void Blueprint_Step()
     {
-        LOGI("Execution: Step %" PRIu32, m_Blueprint->StepCount());
-        auto result = m_Blueprint->Step();
-        if (result == StepResult::Done)
-            LOGI("Execution: Done (%" PRIu32 " steps)", m_Blueprint->StepCount());
-        else if (result == StepResult::Error)
-            LOGI("Execution: Failed at step %" PRIu32, m_Blueprint->StepCount());
+        m_Debugger.Step();
     }
 
     void Blueprint_Stop()
     {
-        LOGI("Execution: Stop");
-        m_Blueprint->Stop();
-        m_IsRunning = false;
+        m_Debugger.Stop();
     }
 
     void Blueprint_Run()
     {
-        auto entryNode = FindEntryPointNode(*m_Blueprint);
-
-        LOGI("Execution: Run");
-        m_Blueprint->Start(*entryNode);
-        m_IsRunning = true;
+        m_Debugger.Start(*m_Document, true);
     }
 
-    // Run takes a few milliseconds of steps each frame, so the window stays
-    // responsive and Stop can end a flow that never does.
-    void Blueprint_ContinueRun()
+    struct LinkQuery
     {
-        if (!m_IsRunning)
-            return;
-
-        // An edit or another document ended the execution.
-        if (!m_Blueprint || m_Blueprint->LastStepResult() != StepResult::Success)
-        {
-            m_IsRunning = false;
-            return;
-        }
-
-        const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(5);
-        auto result = StepResult::Success;
-        while (result == StepResult::Success && std::chrono::steady_clock::now() < deadline)
-            result = m_Blueprint->Step();
-
-        if (result == StepResult::Success)
-            return;
-
-        m_IsRunning = false;
-        if (result == StepResult::Done)
-            LOGI("Execution: Done (%" PRIu32 " steps)", m_Blueprint->StepCount());
-        else
-            LOGI("Execution: Failed at step %" PRIu32, m_Blueprint->StepCount());
-    }
+        Id           m_From     = 0;
+        Id           m_To       = 0;
+        uint64_t     m_Revision = 0;
+        Result<void> m_Fits;
+    };
 
     crude_logger::OverlayLogger m_OverlayLogger;
-    string                      m_Title;
+    std::string                 m_Title;
 
-    unique_ptr<Document> m_Document;
-    Blueprint*           m_Blueprint = nullptr;
-    bool                 m_IsRunning = false;
+    std::unique_ptr<Document> m_Document;
+    Debugger                  m_Debugger;
+    std::optional<LinkQuery>  m_LinkQuery;
 
-    CreateNodeDialog m_CreateNodeDailog;
+    CreateNodeDialog m_CreateNodeDialog;
     NodeContextMenu  m_NodeContextMenu;
     PinContextMenu   m_PinContextMenu;
     LinkContextMenu  m_LinkContextMenu;

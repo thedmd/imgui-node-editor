@@ -3,35 +3,26 @@
 # include <imgui_node_editor.h>
 # include <crude_json.h>
 # include "crude_blueprint.h"
-# include "nonstd/string_view.hpp" // span<>, make_span
-# include <vector>
-# include <map>
+# include <cstdint>
 # include <memory>
 # include <string>
-# include <stdint.h>
+# include <string_view>
+# include <vector>
 
 namespace blueprint_editor {
 
 namespace ed = ax::NodeEditor;
 
-using nonstd::string_view;
-using std::shared_ptr;
-using std::weak_ptr;
-using std::map;
-using std::vector;
-using std::string;
-
-using crude_blueprint::Blueprint;
-
+// A blueprint, the layout of its nodes, and the steps undo takes back. One graph shows.
 struct Document
 {
     // What undo restores: the blueprint, and the layout and selection of its nodes.
     struct DocumentState
     {
-        vector<ed::NodeState> m_NodesState;
-        vector<ed::NodeId>    m_SelectedNodes;
-        vector<ed::LinkId>    m_SelectedLinks;
-        crude_json::value     m_BlueprintState;
+        std::vector<ed::NodeState> m_NodesState;
+        std::vector<ed::NodeId>    m_SelectedNodes;
+        std::vector<ed::LinkId>    m_SelectedLinks;
+        crude_json::value          m_BlueprintState;
 
         crude_json::value Serialize() const;
 
@@ -47,14 +38,14 @@ struct Document
 
     struct UndoState
     {
-        string          m_Name;
-        DocumentState   m_State;
+        std::string   m_Name;
+        DocumentState m_State;
     };
 
     struct UndoTransaction
         : std::enable_shared_from_this<UndoTransaction>
     {
-        UndoTransaction(Document& document, string_view name);
+        UndoTransaction(Document& document, std::string_view name);
         UndoTransaction(UndoTransaction&&) = delete;
         UndoTransaction(const UndoTransaction&) = delete;
         ~UndoTransaction();
@@ -62,70 +53,77 @@ struct Document
         UndoTransaction& operator=(UndoTransaction&&) = delete;
         UndoTransaction& operator=(const UndoTransaction&) = delete;
 
-        void Begin(string_view name = "");
-        void AddAction(string_view name);
+        void Begin(std::string_view name = "");
+        void AddAction(std::string_view name);
         void AddAction(const char* format, ...) IM_FMTARGS(2);
-        void Commit(string_view name = "");
+        void Commit(std::string_view name = "");
         void Discard();
 
         const Document* GetDocument() const { return m_Document; }
 
     private:
-        string                      m_Name;
-        Document*                   m_Document = nullptr;
-        UndoState                   m_State;
-        ImGuiTextBuffer             m_Actions;
-        bool                        m_HasBegan = false;
-        bool                        m_IsDone = false;
-        shared_ptr<UndoTransaction> m_MasterTransaction;
+        std::string                      m_Name;
+        Document*                        m_Document = nullptr;
+        UndoState                        m_State;
+        ImGuiTextBuffer                  m_Actions;
+        bool                             m_HasBegan = false;
+        bool                             m_IsDone   = false;
+        std::shared_ptr<UndoTransaction> m_MasterTransaction;
     };
 
-# if !CRUDE_BP_MSVC2015 // [[nodiscard]] is unrecognized attribute
-    [[nodiscard]]
-# endif
-    shared_ptr<UndoTransaction> BeginUndoTransaction(string_view name, string_view action = "");
+    // A new document has an empty graph.
+    Document(std::shared_ptr<const crude_blueprint::Registry> registry, std::shared_ptr<crude_blueprint::TypeTable> types);
 
-# if !CRUDE_BP_MSVC2015 // [[nodiscard]] is unrecognized attribute
-    [[nodiscard]]
-# endif
-    shared_ptr<UndoTransaction> GetDeferredUndoTransaction(string_view name);
+    [[nodiscard]] std::shared_ptr<UndoTransaction> BeginUndoTransaction(std::string_view name, std::string_view action = "");
+    [[nodiscard]] std::shared_ptr<UndoTransaction> GetDeferredUndoTransaction(std::string_view name);
 
-    void SetPath(string_view path);
+    void SetPath(std::string_view path);
 
     crude_json::value Serialize() const;
 
-    static bool Deserialize(const crude_json::value& value, Document& result);
+    // Into this document; a value it can't read leaves the document as it was.
+    bool Deserialize(const crude_json::value& value);
 
-    bool Load(string_view path);
-    bool Save(string_view path) const;
+    bool Load(std::string_view path);
+    bool Save(std::string_view path) const;
 
     bool Undo();
     bool Redo();
 
     DocumentState BuildDocumentState() const;
-    void ApplyState(const DocumentState& state);
-    void ApplyState(const NavigationState& state);
+    bool          ApplyState(const DocumentState& state); // false when its blueprint doesn't load
+    void          ApplyState(const NavigationState& state);
 
     void OnMakeCurrent();
     void CaptureView();
 
-          Blueprint& GetBlueprint()       { return m_Blueprint; }
-    const Blueprint& GetBlueprint() const { return m_Blueprint; }
+          crude_blueprint::Blueprint& GetBlueprint()       { return *m_Blueprint; }
+    const crude_blueprint::Blueprint& GetBlueprint() const { return *m_Blueprint; }
+          crude_blueprint::Graph&     GetGraph()           { return *m_Blueprint->Graphs().front(); }
+    const crude_blueprint::Graph&     GetGraph() const     { return *m_Blueprint->Graphs().front(); }
 
-    string                  m_Path;
-    string                  m_Name;
-    bool                    m_IsModified = false;
-    vector<UndoState>       m_Undo;
-    vector<UndoState>       m_Redo;
+    std::string            m_Path;
+    std::string            m_Name;
+    bool                   m_IsModified = false;
+    uint64_t               m_Revision   = 0; // up with each change to the blueprint, by an edit or undo
+    std::vector<UndoState> m_Undo;
+    std::vector<UndoState> m_Redo;
 
-    DocumentState           m_DocumentState;
-    NavigationState         m_NavigationState;
+    DocumentState   m_DocumentState;
+    NavigationState m_NavigationState;
 
     UndoTransaction* m_MasterTransaction = nullptr;
 
-    Blueprint               m_Blueprint;
+private:
+    std::unique_ptr<crude_blueprint::Blueprint> LoadBlueprint(const crude_json::value& state) const;
+
+    std::shared_ptr<const crude_blueprint::Registry> m_Registry;
+    std::shared_ptr<crude_blueprint::TypeTable>      m_Types;
+    std::unique_ptr<crude_blueprint::Blueprint>      m_Blueprint;
 };
 
+// Start runs For Loop from 0 to 4, and its body prints each index plus 10, through a cast from
+// Int32 to String; then Print says "Done". Needs the document's editor current, for the layout.
+void CreateExampleBlueprint(Document& document);
 
-
-} // namespace blueprint_editor {
+} // namespace blueprint_editor

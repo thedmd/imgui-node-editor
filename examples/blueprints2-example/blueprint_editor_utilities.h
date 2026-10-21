@@ -3,16 +3,10 @@
 #include <imgui_node_editor.h>
 #include "crude_blueprint.h"
 #include "blueprint_editor_icons.h"
-#include <inttypes.h>
-
-# define PRI_sv             ".*s"
-# define FMT_sv(sv)         static_cast<int>((sv).size()), (sv).data()
-
-# define PRI_pin            "s %" PRIu32 "%s%" PRI_sv "%s"
-# define FMT_pin(pin)       "Pin", (pin)->m_Id, (pin)->m_Name.empty() ? "" : " \"", FMT_sv((pin)->m_Name), (pin)->m_Name.empty() ? "" : "\""
-
-# define PRI_node           "s %" PRIu32 "%s%" PRI_sv "%s"
-# define FMT_node(node)     "Node", (node)->m_Id, (node)->GetName().empty() ? "" : " \"", FMT_sv((node)->GetName()), (node)->GetName().empty() ? "" : "\""
+#include <chrono>
+#include <memory>
+#include <string>
+#include <vector>
 
 namespace blueprint_editor {
 struct Document;
@@ -21,27 +15,25 @@ struct Document;
 namespace blueprint_editor_utilities {
 
 using namespace blueprint_editor;
-
 using namespace crude_blueprint;
 
-# if CRUDE_BP_MSVC2015 // Unable to pull symbols from using namespace
-using crude_blueprint::string_view;
+IconType PinIcon(const Pin& pin);     // by its type's kind; a diamond while undecided
+ImVec4   TypeColor(const Type* type); // white for flow and undecided pins
 
-using crude_blueprint::Pin;
-using crude_blueprint::PinType;
-using crude_blueprint::PinValue;
-using crude_blueprint::Node;
-using crude_blueprint::Context;
-using crude_blueprint::Blueprint;
-# endif
+// What an input without a link reads: the value the user typed, the default its node declares,
+// or its type's. None while its type is undecided.
+Value InputValue(const Graph& graph, const Pin& pin);
 
-IconType PinTypeToIconType(PinType pinType); // Returns icon for corresponding pin type.
-ImVec4 PinTypeToColor(PinType pinType); // Returns color for corresponding pin type.
-bool DrawPinValue(const PinValue& value); // Draw widget representing pin value.
-bool EditPinValue(Pin& pin); // Show editor for pin. Returns true if edit is complete.
-bool DrawPinValueWithEditor(Pin& pin); // Draw pin value or editor if value is clicked. Returns true when an edit changed the value.
-const vector<Node*> GetSelectedNodes(Blueprint& blueprint); // Returns selected nodes as a vector.
-const vector<Pin*> GetSelectedLinks(Blueprint& blueprint); // Returns selected links as a vector.
+// A Constant holds its value in its config.
+bool  IsConstant(const Node& node);
+Value ConstantValue(const Node& node, const Pin& pin);
+
+bool DrawValue(const Value& value);        // Draws a value; false for none.
+bool EditValue(Value& value);              // Shows an editor for a value; true once the edit is done.
+bool DrawValueWithEditor(Id id, Value& value); // Draws a value, or its editor once clicked; true when an edit changed it.
+
+std::vector<Id> GetSelectedNodes();
+std::vector<Id> GetSelectedLinks();
 
 // Uses ImDrawListSplitter to draw background under pin value
 struct PinValueBackgroundRenderer
@@ -60,25 +52,59 @@ private:
     float m_Alpha = 1.0f;
 };
 
-// Show overlay while blueprint is executed presenting
-// current state and execution point.
+// A run of a document's blueprint: a context of its compiled program, and the fiber its Start
+// began. Prints go to the log. Any step the document takes since stops the run.
+struct Debugger
+{
+    // A blueprint with an error doesn't start: its diagnostics are logged.
+    bool Start(const Document& document, bool running);
+    void Step();
+    void Stop();
+    // Each frame: a run steps for a few milliseconds, so the window stays responsive.
+    void Update(const Document& document);
+
+    bool IsActive() const;  // a fiber that's ready
+    bool IsRunning() const { return IsActive() && m_Running; }
+
+    const Context* GetContext() const { return m_Context.get(); }
+    Context*       GetContext()       { return m_Context.get(); }
+    Id             CurrentNode() const { return m_Current; } // the node the last step ran
+    Id             NextNode() const;
+    Id             TakenLink() const; // the flow link the last step took
+
+private:
+    struct Monitor final : ContextMonitor
+    {
+        void OnLog(const Context& context, Id node, std::string_view text) override;
+    };
+
+    std::unique_ptr<Context> m_Context;
+    Monitor                  m_Monitor;
+    FiberId                  m_Fiber    = 0;
+    Id                       m_Current  = 0;
+    uint64_t                 m_Revision = 0;
+    bool                     m_Running  = false;
+};
+
+// While a run is paused: a marker over the node the last step ran and over the one next, values
+// beside pins, and the link the step took flowing.
 struct DebugOverlay
 {
-    DebugOverlay(Blueprint& blueprint);
+    explicit DebugOverlay(Debugger& debugger);
 
     void Begin();
     void End();
 
-    void DrawNode(const Node& node);
-    void DrawInputPin(const Pin& pin);
+    void DrawNode(Id node);
+    void DrawInputPin(const Pin& pin, bool linked);
     void DrawOutputPin(const Pin& pin);
 
 private:
-    Blueprint* m_Blueprint = nullptr;
-    const Node* m_CurrentNode = nullptr;
-    const Node* m_NextNode = nullptr;
-    FlowPin m_CurrentFlowPin;
-    ImDrawList* m_DrawList = nullptr;
+    Context*           m_Context = nullptr;
+    Id                 m_Current = 0;
+    Id                 m_Next    = 0;
+    Id                 m_Link    = 0;
+    ImDrawList*        m_DrawList = nullptr;
     ImDrawListSplitter m_Splitter;
 };
 
@@ -151,43 +177,47 @@ private:
     LinkDeleter m_LinkDeleter;
 };
 
-// Dialog for picking new node type
+// Dialog for picking new node type. One opened from a pin links the new node to it, through the
+// first of the node's pins that fits.
 struct CreateNodeDialog
 {
-    void Open(Pin* fromPin = nullptr);
+    void Open(Id fromPin = 0);
     void Show(Document& document);
 
-          Node* GetCreatedNode()       { return m_CreatedNode; }
-    const Node* GetCreatedNode() const { return m_CreatedNode; }
-
-    span<      Pin*>       GetCreatedLinks()       { return m_CreatedLinks; }
-    span<const Pin* const> GetCreatedLinks() const { return make_span(const_cast<const Pin* const*>(m_CreatedLinks.data()), m_CreatedLinks.size()); }
+    Id GetCreatedNode() const { return m_CreatedNode; }
 
 private:
-    vector<Pin*> CreateLinkToFirstMatchingPin(Node& node, Pin& fromPin);
-
-    Node*           m_CreatedNode = nullptr;
-    vector<Pin*>    m_CreatedLinks;
-
-    vector<const NodeTypeInfo*> m_SortedNodes;
+    Id                           m_FromPin     = 0;
+    Id                           m_CreatedNode = 0;
+    std::vector<const NodeType*> m_SortedTypes;
 };
 
 struct NodeContextMenu
 {
-    void Open(Node* node = nullptr);
-    void Show(Blueprint& blueprint);
+    void Open(Id node = 0);
+    void Show(Document& document);
+
+private:
+    Id m_Node = 0;
 };
 
+// For a pin of a type variable, its type: chosen, or reset to what links decide.
 struct PinContextMenu
 {
-    void Open(Pin* pin = nullptr);
-    void Show(Blueprint& blueprint);
+    void Open(Id pin = 0);
+    void Show(Document& document);
+
+private:
+    Id m_Pin = 0;
 };
 
 struct LinkContextMenu
 {
-    void Open(Pin* pin = nullptr);
-    void Show(Blueprint& blueprint);
+    void Open(Id link = 0);
+    void Show(Document& document);
+
+private:
+    Id m_Link = 0;
 };
 
 } // namespace blueprint_editor_utilities {

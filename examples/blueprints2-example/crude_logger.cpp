@@ -1,6 +1,7 @@
 # define IMGUI_DEFINE_MATH_OPERATORS
 # include "crude_logger.h"
 # include <imgui_internal.h>
+# include <algorithm>
 
 # ifdef _WIN32
 #     define CRUDE_LOGGER_HAS_OUTPUT_DEBUG_STRING 1
@@ -190,7 +191,7 @@ void crude_logger::OverlayLogger::Draw(const ImVec2& a, const ImVec2& b)
 
 void crude_logger::OverlayLogger::AddKeyword(string_view keyword)
 {
-    m_Keywords.push_back(keyword.to_string());
+    m_Keywords.emplace_back(keyword);
 }
 
 void crude_logger::OverlayLogger::RemoveKeyword(string_view keyword)
@@ -420,12 +421,15 @@ crude_logger::vector<crude_logger::OverlayLogger::Range> crude_logger::OverlayLo
     // our ranges are build on original string. To properly
     // match generated vertex date we need to shift and shrink
     // ranges.
+    const auto size = static_cast<int>(message.size());
     for (auto& range : result)
     {
-        auto spacesBefore = std::count_if(message.begin(),                 message.begin() + range.m_Start,                isWhitespace);
-        auto spacesInside = std::count_if(message.begin() + range.m_Start, message.begin() + range.m_Start + range.m_Size, isWhitespace);
-        range.m_Start -= static_cast<int>(spacesBefore);
-        range.m_Size  -= static_cast<int>(spacesInside);
+        const auto start = std::min(range.m_Start, size);
+        const auto end   = std::min(range.m_Start + range.m_Size, size);
+        auto spacesBefore = std::count_if(message.begin(),         message.begin() + start, isWhitespace);
+        auto spacesInside = std::count_if(message.begin() + start, message.begin() + end,   isWhitespace);
+        range.m_Start = start - static_cast<int>(spacesBefore);
+        range.m_Size  = end - start - static_cast<int>(spacesInside);
     }
 
     // Drop all empty ranges.

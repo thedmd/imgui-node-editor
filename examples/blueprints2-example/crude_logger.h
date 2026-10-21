@@ -1,14 +1,14 @@
 # pragma once
 # include <imgui.h>
-# include "nonstd/string_view.hpp" // string_view
 # include <vector>
 # include <string>
+# include <string_view>
 # include <time.h>
 # include <stdint.h>
 
 namespace crude_logger {
 
-using nonstd::string_view;
+using std::string_view;
 using std::vector;
 using std::string;
 
@@ -45,16 +45,6 @@ private:
         int     m_Start = 0;
         int     m_Size  = 0;
         ImColor m_Color;
-
-# if CRUDE_BP_MSVC2015 // No aggregate initialization
-        Range() = default;
-        Range(int start, int size, ImColor color)
-            : m_Start(start)
-            , m_Size(size)
-            , m_Color(color)
-        {
-        }
-# endif
     };
 
     struct Entry
