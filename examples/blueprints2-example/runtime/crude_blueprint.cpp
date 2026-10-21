@@ -6,6 +6,7 @@
 # include <exception>
 # include <iterator>
 # include <limits>
+# include <set>
 # include <tuple>
 # include <unordered_set>
 
@@ -44,6 +45,14 @@ const crude_blueprint::Type* crude_blueprint::TypeTable::Get(const ValueType& he
         type = std::make_unique<Type>(Type{ &head, std::move(key), std::move(name) });
     }
     return type.get();
+}
+
+const crude_blueprint::ParameterType& crude_blueprint::TypeTable::Parameter(std::string name, std::vector<const ValueType*> allowed)
+{
+    auto& parameter = m_Parameters[{ name, allowed }];
+    if (!parameter)
+        parameter = std::make_unique<ParameterType>(std::move(name), std::move(allowed));
+    return *parameter;
 }
 
 
@@ -561,6 +570,37 @@ bool crude_blueprint::StructType::Equal(const Value& a, const Value& b) const
     return std::equal(x.begin(), x.end(), y.begin(), y.end());
 }
 
+crude_blueprint::ParameterType::ParameterType(std::string name, std::vector<const ValueType*> allowed)
+    : ValueType(std::move(name))
+    , m_Allowed(std::move(allowed))
+{
+}
+
+crude_blueprint::Value crude_blueprint::ParameterType::Default(const Type&) const
+{
+    return {};
+}
+
+crude_blueprint::Result<crude_blueprint::Value> crude_blueprint::ParameterType::Load(const Type&, const crude_json::value&) const
+{
+    return Error(BlueprintError::WrongType, m_Name + " is a type parameter, which has no values");
+}
+
+crude_json::value crude_blueprint::ParameterType::Save(const Value&) const
+{
+    return {};
+}
+
+std::string crude_blueprint::ParameterType::Format(const Value&) const
+{
+    return {};
+}
+
+bool crude_blueprint::ParameterType::Equal(const Value&, const Value&) const
+{
+    return false;
+}
+
 
 //
 // -------[ Node types ]-------
@@ -823,11 +863,12 @@ struct TypeParser
 {
     static const int c_MaxDepth = 32;
 
-    TypeTable&       m_Table;
-    const Registry&  m_Registry;
-    std::string_view m_Text;
-    size_t           m_At    = 0;
-    int              m_Depth = 0;
+    TypeTable&                           m_Table;
+    const Registry&                      m_Registry;
+    std::string_view                     m_Text;
+    std::span<const VariableDeclaration> m_Parameters = {}; // names that stand for type variables, by index
+    size_t                               m_At    = 0;
+    int                                  m_Depth = 0;
 
     void SkipSpaces()
     {
@@ -853,7 +894,8 @@ struct TypeParser
         return Error(BlueprintError::BadTypeText, Quote(m_Text) + " has '" + m_Text[m_At] + "' at " + std::to_string(m_At));
     }
 
-    Result<const Type*> Parse()
+    // A constructor's arguments are checked once they're all types.
+    Result<TypeTerm> ParseTerm()
     {
         SkipSpaces();
         const auto start = m_At;
@@ -863,21 +905,24 @@ struct TypeParser
             return Unexpected();
 
         const auto name = m_Text.substr(start, m_At - start);
+        for (size_t i = 0; i < m_Parameters.size(); ++i)
+            if (m_Parameters[i].m_Name == name)
+                return TypeTerm(TypeVariable{ static_cast<int>(i) });
         auto head = m_Registry.FindValueType(name);
         if (!head)
             return Error(BlueprintError::UnknownType, "no value type is named " + std::string(name));
 
-        std::vector<const Type*> args;
+        std::vector<TypeTerm> args;
         if (Take('<'))
         {
             if (++m_Depth > c_MaxDepth)
                 return Error(BlueprintError::BadTypeText, "types nest deeper than " + std::to_string(c_MaxDepth));
             do
             {
-                auto arg = Parse();
+                auto arg = ParseTerm();
                 if (!arg)
                     return arg;
-                args.push_back(arg.GetValue());
+                args.push_back(std::move(arg).GetValue());
             }
             while (Take(','));
             if (!Take('>'))
@@ -887,11 +932,67 @@ struct TypeParser
 
         if (static_cast<int>(args.size()) != head->m_Arity)
             return Error(BlueprintError::BadTypeText, std::string(name) + " takes " + std::to_string(head->m_Arity) + (head->m_Arity == 1 ? " type" : " types") + ", not " + std::to_string(args.size()));
-        if (auto check = head->CheckArgs(args); !check)
-            return check.GetError();
-        return m_Table.Get(*head, args);
+        std::vector<const Type*> types;
+        for (auto& arg : args)
+            if (auto type = Concrete(arg))
+                types.push_back(type);
+        if (types.size() == args.size())
+            if (auto check = head->CheckArgs(types); !check)
+                return check.GetError();
+        return TypeTerm(*head, std::move(args));
+    }
+
+    // Null for a term with a variable.
+    const Type* Concrete(const TypeTerm& term)
+    {
+        if (!term.m_Head)
+            return nullptr;
+        std::vector<const Type*> args;
+        for (auto& arg : term.m_Args)
+        {
+            auto type = Concrete(arg);
+            if (!type)
+                return nullptr;
+            args.push_back(type);
+        }
+        return m_Table.Get(*term.m_Head, args);
+    }
+
+    Result<const Type*> Parse()
+    {
+        auto term = ParseTerm();
+        if (!term)
+            return term.GetError();
+        return Concrete(term.GetValue());
+    }
+
+    Result<TypeTerm> ParseWhole()
+    {
+        auto term = ParseTerm();
+        if (!term)
+            return term;
+        SkipSpaces();
+        if (m_At != m_Text.size())
+            return Unexpected();
+        return term;
     }
 };
+
+// Type text of a signature's: its type parameters by name, "Array<T>".
+std::string TermText(const TypeTerm& term, std::span<const VariableDeclaration> parameters)
+{
+    if (!term.m_Head)
+        return term.m_Variable >= 0 && static_cast<size_t>(term.m_Variable) < parameters.size() ? parameters[term.m_Variable].m_Name : std::string("?");
+    auto text = term.m_Head->m_Name;
+    if (!term.m_Args.empty())
+    {
+        text += "<";
+        for (size_t i = 0; i < term.m_Args.size(); ++i)
+            text += (i ? "," : "") + TermText(term.m_Args[i], parameters);
+        text += ">";
+    }
+    return text;
+}
 
 } } // namespace crude_blueprint { namespace {
 
@@ -1071,7 +1172,17 @@ private:
         auto& bound = m_Variables[variable];
         if (Occurs(variable, term))
             return Error(BlueprintError::TypeMismatch, bound.m_Name + " can't be " + Text(term) + ", which contains it");
-        if (!bound.m_Allowed.empty() && std::find(bound.m_Allowed.begin(), bound.m_Allowed.end(), term.m_Head) == bound.m_Allowed.end())
+        auto allows = [&bound](const ValueType* head) { return std::find(bound.m_Allowed.begin(), bound.m_Allowed.end(), head) != bound.m_Allowed.end(); };
+        if (auto parameter = Cast<ParameterType>(term.m_Head); parameter && !bound.m_Allowed.empty())
+        {
+            // A parameter stands for every type it allows, so each of them must fit.
+            if (parameter->m_Allowed.empty())
+                return Error(BlueprintError::TypeMismatch, parameter->m_Name + " may be any type, and " + bound.m_AllowedBy + " takes only " + AllowedText(bound.m_Allowed));
+            for (auto head : parameter->m_Allowed)
+                if (!allows(head))
+                    return Error(BlueprintError::TypeMismatch, parameter->m_Name + " may be " + head->m_Name + ", and " + bound.m_AllowedBy + " takes only " + AllowedText(bound.m_Allowed));
+        }
+        else if (!bound.m_Allowed.empty() && !allows(term.m_Head))
             return Error(BlueprintError::TypeMismatch, bound.m_AllowedBy + " takes only " + AllowedText(bound.m_Allowed) + ", not " + Text(term));
         Save(variable);
         bound.m_Bound   = term;
@@ -1172,6 +1283,74 @@ struct PlaceholderNodeType final : NodeType
 
     const crude_json::value m_Saved;
     const Error             m_Reason;
+};
+
+// A term of a signature as a function's body sees it: its type parameters as types of their own.
+TypeTerm Substitute(const TypeTerm& term, std::span<const ParameterType* const> parameters)
+{
+    if (!term.m_Head)
+        return term.m_Variable >= 0 && static_cast<size_t>(term.m_Variable) < parameters.size() ? TypeTerm(parameters[term.m_Variable]->AsType()) : term;
+    TypeTerm result = term;
+    for (auto& arg : result.m_Args)
+        arg = Substitute(arg, parameters);
+    return result;
+}
+
+// A function's entry, return or call, whose pins follow its signature.
+struct FunctionNodeType final : NodeType
+{
+    CRUDE_BP_RTTI(FunctionNodeType, NodeType)
+
+    enum class Role { Entry, Return, Call };
+
+    FunctionNodeType(std::shared_ptr<const Function> function, Role role)
+        : NodeType(Prefix(role) + function->m_Name, role == Role::Call ? function->m_Name : role == Role::Entry ? "Entry" : "Return", "Functions")
+        , m_Function(std::move(function))
+        , m_Role(role)
+    {
+    }
+
+    static std::string Prefix(Role role)
+    {
+        return role == Role::Entry ? "entry:" : role == Role::Return ? "return:" : "call:";
+    }
+
+    void Declare(NodeDeclaration& declaration, const NodeConfig&, const Bindings&) const override
+    {
+        auto& signature = m_Function->m_Signature;
+        auto& types     = m_Function->m_Parameters;
+        switch (m_Role)
+        {
+            case Role::Entry:
+                if (!signature.m_Pure)
+                    declaration.FlowOutput("then");
+                for (auto& input : signature.m_Inputs)
+                    declaration.Output(input.m_Key, input.m_Name, Substitute(input.m_Type, types));
+                break;
+            case Role::Return:
+                if (!signature.m_Pure)
+                    declaration.FlowInput("enter");
+                for (auto& output : signature.m_Outputs)
+                    declaration.Input(output.m_Key, output.m_Name, Substitute(output.m_Type, types));
+                break;
+            case Role::Call:
+                for (auto& parameter : signature.m_Parameters)
+                    declaration.Variable(parameter.m_Name, parameter.m_Allowed);
+                if (!signature.m_Pure)
+                {
+                    declaration.FlowInput("enter");
+                    declaration.FlowOutput("then");
+                }
+                for (auto& input : signature.m_Inputs)
+                    declaration.Input(input.m_Key, input.m_Name, input.m_Type);
+                for (auto& output : signature.m_Outputs)
+                    declaration.Output(output.m_Key, output.m_Name, output.m_Type);
+                break;
+        }
+    }
+
+    const std::shared_ptr<const Function> m_Function;
+    const Role                            m_Role;
 };
 
 // A node's term in the graph: its variables numbered from the node's first.
@@ -2034,9 +2213,102 @@ const crude_blueprint::Graph* crude_blueprint::Blueprint::FindGraph(Id graph) co
     return nullptr;
 }
 
+crude_blueprint::Result<crude_blueprint::Graph*> crude_blueprint::Blueprint::AddFunction(std::string name, Signature signature)
+{
+    if (auto check = CheckFunction(name, signature); !check)
+        return check.GetError();
+    auto& graph = AddGraph(std::move(name));
+    DefineFunction(graph, std::move(signature));
+    return &graph;
+}
+
+crude_blueprint::Result<void> crude_blueprint::Blueprint::SetSignature(Id graph, Signature signature)
+{
+    auto function = std::find_if(m_Functions.begin(), m_Functions.end(), [graph](const auto& other) { return other->m_Graph == graph; });
+    if (function == m_Functions.end())
+        return Error(BlueprintError::NotFound, "graph " + std::to_string(graph) + " isn't a function's");
+    if (auto check = CheckSignature(signature); !check)
+        return check;
+    (*function)->m_Signature = std::move(signature);
+    SetParameters(**function);
+    for (auto& other : m_Graphs)
+        other->Update();
+    return {};
+}
+
+const crude_blueprint::Function* crude_blueprint::Blueprint::FindFunction(Id graph) const
+{
+    for (auto& function : m_Functions)
+        if (function->m_Graph == graph)
+            return function.get();
+    return nullptr;
+}
+
+crude_blueprint::Result<void> crude_blueprint::Blueprint::CheckFunction(std::string_view name, const Signature& signature) const
+{
+    if (name.empty() || !std::all_of(name.begin(), name.end(), IsNameCharacter))
+        return Error(BlueprintError::BadTypeText, Quote(name) + " isn't a function's name");
+    if (std::any_of(m_Functions.begin(), m_Functions.end(), [name](const auto& other) { return other->m_Name == name; }))
+        return Error(BlueprintError::Duplicate, "a function is named " + std::string(name) + " already");
+    return CheckSignature(signature);
+}
+
+crude_blueprint::Result<void> crude_blueprint::Blueprint::CheckSignature(const Signature& signature) const
+{
+    std::set<std::string_view> names;
+    for (auto& parameter : signature.m_Parameters)
+        if (parameter.m_Name.empty() || !std::all_of(parameter.m_Name.begin(), parameter.m_Name.end(), IsNameCharacter) || !names.insert(parameter.m_Name).second)
+            return Error(BlueprintError::Duplicate, "type parameter " + Quote(parameter.m_Name) + " has no name of its own");
+    std::set<std::string_view> keys = { "enter", "then" };
+    for (auto pins : { &signature.m_Inputs, &signature.m_Outputs })
+    {
+        for (auto& pin : *pins)
+        {
+            if (pin.m_Key.empty() || !keys.insert(pin.m_Key).second)
+                return Error(BlueprintError::Duplicate, "pin " + Quote(pin.m_Key) + " has no key of its own");
+            if (!UsesOnly(pin.m_Type, signature.m_Parameters.size()))
+                return Error(BlueprintError::NotFound, "pin " + pin.m_Key + "'s type has a variable that isn't a type parameter");
+        }
+    }
+    return {};
+}
+
+void crude_blueprint::Blueprint::DefineFunction(const Graph& graph, Signature signature)
+{
+    auto function = std::make_shared<Function>();
+    function->m_Graph     = graph.GetId();
+    function->m_Name      = graph.GetName();
+    function->m_Signature = std::move(signature);
+    SetParameters(*function);
+    for (auto role : { FunctionNodeType::Role::Entry, FunctionNodeType::Role::Return, FunctionNodeType::Role::Call })
+    {
+        auto type = std::make_shared<FunctionNodeType>(function, role);
+        m_Scope.emplace(type->m_Name, std::move(type));
+    }
+    m_Functions.push_back(std::move(function));
+}
+
+void crude_blueprint::Blueprint::SetParameters(Function& function)
+{
+    function.m_Parameters.clear();
+    for (auto& parameter : function.m_Signature.m_Parameters)
+        function.m_Parameters.push_back(&m_Types->Parameter(function.m_Name + "." + parameter.m_Name, parameter.m_Allowed));
+}
+
 const crude_blueprint::NodeType* crude_blueprint::Blueprint::FindNodeType(std::string_view name) const
 {
+    if (auto own = m_Scope.find(name); own != m_Scope.end())
+        return own->second.get();
     return m_Registry->FindNodeType(name);
+}
+
+std::vector<const crude_blueprint::NodeType*> crude_blueprint::Blueprint::NodeTypes() const
+{
+    auto types = m_Registry->NodeTypes();
+    for (auto& [name, type] : m_Scope)
+        types.push_back(type.get());
+    std::sort(types.begin(), types.end(), [](const NodeType* lhs, const NodeType* rhs) { return lhs->m_Name < rhs->m_Name; });
+    return types;
 }
 
 
@@ -2703,6 +2975,44 @@ crude_json::object SaveConfig(const NodeConfig& config)
     return saved;
 }
 
+crude_json::object SaveSignature(const Signature& signature)
+{
+    crude_json::array parameters;
+    for (auto& parameter : signature.m_Parameters)
+    {
+        crude_json::object saved;
+        saved["name"] = parameter.m_Name;
+        if (!parameter.m_Allowed.empty())
+        {
+            crude_json::array allowed;
+            for (auto head : parameter.m_Allowed)
+                allowed.push_back(head->m_Name);
+            saved["allowed"] = std::move(allowed);
+        }
+        parameters.push_back(std::move(saved));
+    }
+    auto pins = [&signature](const std::vector<SignaturePin>& list)
+    {
+        crude_json::array saved;
+        for (auto& pin : list)
+        {
+            crude_json::object one;
+            one["key"]  = pin.m_Key;
+            one["name"] = pin.m_Name;
+            one["type"] = TermText(pin.m_Type, signature.m_Parameters);
+            saved.push_back(std::move(one));
+        }
+        return saved;
+    };
+    crude_json::object saved;
+    saved["parameters"] = std::move(parameters);
+    saved["inputs"]     = pins(signature.m_Inputs);
+    saved["outputs"]    = pins(signature.m_Outputs);
+    if (signature.m_Pure)
+        saved["pure"] = true;
+    return saved;
+}
+
 } } // namespace crude_blueprint { namespace {
 
 // Messages name where a problem is: "graphs[0].nodes[2].pins.in.1".
@@ -2866,7 +3176,7 @@ struct crude_blueprint::FileLoader
 
     Result<void> Understand(Node& node, const crude_json::value& saved, const std::string& where, uint32_t version, const std::string& name)
     {
-        auto type = m_Registry.FindNodeType(name);
+        auto type = m_Blueprint.FindNodeType(name);
         if (!type)
             return Error(BlueprintError::UnknownType, "no node type is named " + name);
         if (version > type->m_Version)
@@ -2956,7 +3266,76 @@ struct crude_blueprint::FileLoader
         return {};
     }
 
-    Result<void> ReadGraph(const crude_json::value& json, const std::string& where)
+    Result<Signature> ReadSignature(const crude_json::value& json, const std::string& where)
+    {
+        if (!json.is_object())
+            return Bad(where, "isn't an object");
+        Signature signature;
+        if (auto parameters = json.find("parameters"))
+        {
+            if (!parameters->is_array())
+                return Bad(where + ".parameters", "isn't an array");
+            auto& list = parameters->get<crude_json::array>();
+            for (size_t i = 0; i < list.size(); ++i)
+            {
+                auto here = where + ".parameters[" + std::to_string(i) + "]";
+                if (!list[i].is_object())
+                    return Bad(here, "isn't an object");
+                auto name = ReadString(list[i], "name", here);
+                if (!name)
+                    return name.GetError();
+                VariableDeclaration parameter{ name.GetValue(), {} };
+                if (auto allowed = list[i].find("allowed"))
+                {
+                    if (!allowed->is_array())
+                        return Bad(here + ".allowed", "isn't an array");
+                    for (auto& head : allowed->get<crude_json::array>())
+                    {
+                        auto type = head.is_string() ? m_Registry.FindValueType(head.get<crude_json::string>()) : nullptr;
+                        if (!type)
+                            return Bad(here + ".allowed", "holds " + head.dump() + ", which no value type is named");
+                        parameter.m_Allowed.push_back(type);
+                    }
+                }
+                signature.m_Parameters.push_back(std::move(parameter));
+            }
+        }
+        for (auto [key, pins] : { std::pair("inputs", &signature.m_Inputs), std::pair("outputs", &signature.m_Outputs) })
+        {
+            auto list = json.find(key);
+            if (!list)
+                continue;
+            if (!list->is_array())
+                return Bad(where + "." + key, "isn't an array");
+            auto& items = list->get<crude_json::array>();
+            for (size_t i = 0; i < items.size(); ++i)
+            {
+                auto here = where + "." + key + "[" + std::to_string(i) + "]";
+                if (!items[i].is_object())
+                    return Bad(here, "isn't an object");
+                auto pinKey  = ReadString(items[i], "key", here);
+                auto pinName = ReadString(items[i], "name", here);
+                auto text    = ReadString(items[i], "type", here);
+                if (!pinKey || !pinName || !text)
+                    return !pinKey ? pinKey.GetError() : !pinName ? pinName.GetError() : text.GetError();
+                TypeParser parser{ m_Types, m_Registry, text.GetValue(), signature.m_Parameters };
+                auto type = parser.ParseWhole();
+                if (!type)
+                    return Error(type.GetError().m_Category, type.GetError().m_Code, here + ".type: " + std::string(type.GetError().Message()));
+                pins->push_back({ pinKey.GetValue(), pinName.GetValue(), std::move(type).GetValue() });
+            }
+        }
+        if (auto pure = json.find("pure"))
+        {
+            if (!pure->is_boolean())
+                return Bad(where + ".pure", "isn't true or false");
+            signature.m_Pure = pure->get<crude_json::boolean>();
+        }
+        return signature;
+    }
+
+    // Every graph's head is read before any graph's nodes, as a call may come before its function.
+    Result<Graph*> ReadGraphHead(const crude_json::value& json, const std::string& where)
     {
         if (!json.is_object())
             return Bad(where, "isn't an object");
@@ -2965,10 +3344,30 @@ struct crude_blueprint::FileLoader
         auto kind = ReadString(json, "kind", where);
         if (!id || !name || !kind)
             return !id ? id.GetError() : !name ? name.GetError() : kind.GetError();
-        if (kind.GetValue() != "event")
+        if (kind.GetValue() != "event" && kind.GetValue() != "function")
             return Bad(where + ".kind", "is " + kind.GetValue() + ", which this runtime doesn't know");
-        auto& graph = *m_Blueprint.m_Graphs.emplace_back(std::make_unique<Graph>(m_Blueprint, id.GetValue(), name.GetValue()));
 
+        std::optional<Signature> signature;
+        if (kind.GetValue() == "function")
+        {
+            auto saved = json.find("signature");
+            if (!saved)
+                return Bad(where, "is a function's, and has no signature");
+            auto read = ReadSignature(*saved, where + ".signature");
+            if (!read)
+                return read.GetError();
+            if (auto check = m_Blueprint.CheckFunction(name.GetValue(), read.GetValue()); !check)
+                return Bad(where, "is a function's that can't be: " + std::string(check.GetError().Message()));
+            signature = std::move(read).GetValue();
+        }
+        auto& graph = *m_Blueprint.m_Graphs.emplace_back(std::make_unique<Graph>(m_Blueprint, id.GetValue(), name.GetValue()));
+        if (signature)
+            m_Blueprint.DefineFunction(graph, std::move(*signature));
+        return &graph;
+    }
+
+    Result<void> ReadGraphBody(Graph& graph, const crude_json::value& json, const std::string& where)
+    {
         auto nodes = json.find("nodes");
         auto links = json.find("links");
         if (!nodes || !nodes->is_array() || !links || !links->is_array())
@@ -3006,8 +3405,16 @@ struct crude_blueprint::FileLoader
         if (!graphs || !graphs->is_array())
             return Error(BlueprintError::BadFile, "the file has no array of graphs");
         auto& graphList = graphs->get<crude_json::array>();
+        std::vector<Graph*> heads;
         for (size_t i = 0; i < graphList.size(); ++i)
-            if (auto read = ReadGraph(graphList[i], "graphs[" + std::to_string(i) + "]"); !read)
+        {
+            auto head = ReadGraphHead(graphList[i], "graphs[" + std::to_string(i) + "]");
+            if (!head)
+                return head.GetError();
+            heads.push_back(head.GetValue());
+        }
+        for (size_t i = 0; i < graphList.size(); ++i)
+            if (auto read = ReadGraphBody(*heads[i], graphList[i], "graphs[" + std::to_string(i) + "]"); !read)
                 return read;
 
         // A file can say less than its IDs need.
@@ -3076,9 +3483,14 @@ crude_json::value crude_blueprint::Save(const Blueprint& blueprint)
         }
 
         crude_json::object saved;
-        saved["id"]    = graph->GetId();
-        saved["kind"]  = "event";
-        saved["name"]  = graph->GetName();
+        saved["id"]   = graph->GetId();
+        saved["kind"] = "event";
+        saved["name"] = graph->GetName();
+        if (auto function = blueprint.FindFunction(graph->GetId()))
+        {
+            saved["kind"]      = "function";
+            saved["signature"] = SaveSignature(function->m_Signature);
+        }
         saved["nodes"] = std::move(nodes);
         saved["links"] = std::move(links);
         graphs.push_back(std::move(saved));
@@ -3102,6 +3514,8 @@ crude_blueprint::Result<void> crude_blueprint::Load(Blueprint& blueprint, const 
     {
         blueprint.m_Graphs.clear();
         blueprint.m_Placeholders.clear();
+        blueprint.m_Functions.clear();
+        blueprint.m_Scope.clear();
         blueprint.m_NextId = 1;
     }
     return read;

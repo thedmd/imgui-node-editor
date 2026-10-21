@@ -273,7 +273,7 @@ TEST_CASE(MalformedFiles, "file.malformed_files_are_refused_and_leave_the_bluepr
         { "no graphs",                   [](crude_json::value& file) { file.erase("graphs"); },                                               "no array of graphs"         },
         { "no next ID",                  [](crude_json::value& file) { file.erase("next_id"); },                                              "has no next_id"             },
         { "a graph without an ID",       [](crude_json::value& file) { file["graphs"][0].erase("id"); },                                      "graphs[0] has no id"        },
-        { "a graph of another kind",     [](crude_json::value& file) { file["graphs"][0]["kind"] = "function"; },                             "doesn't know"               },
+        { "a graph of another kind",     [](crude_json::value& file) { file["graphs"][0]["kind"] = "macro"; },                                "doesn't know"               },
         { "links that aren't an array",  [](crude_json::value& file) { file["graphs"][0]["links"] = 5; },                                     "no array of links"          },
         { "an ID used twice",            [](crude_json::value& file) { file["graphs"][0]["nodes"][1]["id"] = file["graphs"][0]["nodes"][0]["id"]; }, "another part has too" },
         { "a pin's ID that isn't one",   [](crude_json::value& file) { file["graphs"][0]["nodes"][0]["pins"]["then"]["id"] = -3; },           "pins.then.id isn't an ID"   },
@@ -297,6 +297,95 @@ TEST_CASE(MalformedFiles, "file.malformed_files_are_refused_and_leave_the_bluepr
     full.AddGraph("Main");
     auto twice = Load(full, saved);
     test::Check(!twice && full.Graphs().size() == 1, "and a blueprint loads only while it's empty: %s", Message(twice).c_str());
+}
+
+// Main calls Lerp<T: Int32 | Float>(a: T, b: T) -> value: T, an Add of a and b, and Count<T>(items: Array<T>) is pure.
+struct WithFunctions : Fixture
+{
+    WithFunctions()
+    {
+        Signature lerp;
+        lerp.m_Parameters = { { "T", { &Int32ValueType(), &FloatValueType() } } };
+        lerp.m_Inputs     = { { "a", "A", TypeVariable{ 0 } }, { "b", "B", TypeVariable{ 0 } } };
+        lerp.m_Outputs    = { { "value", "Value", TypeVariable{ 0 } } };
+        Signature count;
+        count.m_Parameters = { { "T", {} } };
+        count.m_Inputs     = { { "items", "Items", TypeTerm(ArrayValueType(), { TypeVariable{ 0 } }) } };
+        count.m_Pure       = true;
+
+        auto ints = Add("ConstInt32");
+        auto lerpGraph  = m_Blueprint.AddFunction("Lerp", lerp);
+        auto countGraph = m_Blueprint.AddFunction("Count", count);
+        if (!lerpGraph || !countGraph)
+        {
+            test::Check(false, "the functions are added");
+            return;
+        }
+        auto& body  = *lerpGraph.GetValue();
+        auto  entry = body.AddNode("entry:Lerp"), add = body.AddNode("test.Add"), ret = body.AddNode("return:Lerp");
+        auto  call  = m_Graph.AddNode("call:Lerp");
+        auto  pin   = [](const Graph& graph, const Result<Id>& node, const char* key) { return graph.FindNode(node.ValueOr(0))->FindPin(key)->m_Id; };
+        auto  made  = entry && add && ret && call && countGraph.GetValue()->AddNode("entry:Count")
+            && body.Connect(pin(body, entry, "a"), pin(body, add, "in.0")) && body.Connect(pin(body, entry, "b"), pin(body, add, "in.1"))
+            && body.Connect(pin(body, add, "result"), pin(body, ret, "value")) && m_Graph.Connect(Pin(ints, "value"), pin(m_Graph, call, "a"));
+        if (!made)
+            test::Check(false, "the bodies and the call are made");
+        m_Lerp  = body.GetId();
+        m_Count = countGraph.GetValue()->GetId();
+    }
+
+    Id m_Lerp = 0, m_Count = 0;
+};
+
+TEST_CASE(Functions, "file.functions_round_trip_with_their_signatures", nullptr, test::TestFlags_None)
+{
+    WithFunctions f;
+    auto file     = Save(f.m_Blueprint);
+    auto text     = file.dump();
+    auto loaded   = Loaded(text);
+    auto before   = Describe(f.m_Blueprint);
+    auto after    = Describe(*loaded);
+    test::Check(after == before, "the loaded blueprint is the one saved, though Main calls Lerp before the file has it:\n%s\n--- loaded:\n%s", before.c_str(), after.c_str());
+    test::Check(Save(*loaded).dump() == text, "and saves the same text");
+    auto lerp  = loaded->FindFunction(f.m_Lerp);
+    auto count = loaded->FindFunction(f.m_Count);
+    test::Check(lerp && lerp->m_Signature.m_Parameters.size() == 1 && lerp->m_Signature.m_Parameters[0].m_Allowed.size() == 2 && count && count->m_Signature.m_Pure, "with their signatures");
+
+    auto& signature = file["graphs"][1]["signature"];
+    test::Check(file["graphs"][1]["kind"].get<crude_json::string>() == "function" && signature["parameters"][0]["allowed"].dump() == "[\"Int32\",\"Float\"]", "a function's graph has its signature: %s", signature.dump().c_str());
+    test::Check(signature["inputs"][1]["type"].get<crude_json::string>() == "T" && !signature.contains("pure") && file["graphs"][2]["signature"]["inputs"][0]["type"].get<crude_json::string>() == "Array<T>" && file["graphs"][2]["signature"]["pure"].get<crude_json::boolean>(),
+        "its types as text that names its parameters, and whether it's pure");
+}
+
+TEST_CASE(MalformedFunctions, "file.malformed_functions_are_refused", nullptr, test::TestFlags_None)
+{
+    WithFunctions f;
+    const auto saved = Save(f.m_Blueprint);
+
+    struct Case
+    {
+        const char*                                 what;
+        std::function<void(crude_json::value& file)> change;
+        const char*                                 message; // a part of it
+    };
+    const Case cases[] =
+    {
+        { "a function without a signature", [](crude_json::value& file) { file["graphs"][1].erase("signature"); },                                 "has no signature"            },
+        { "a type no one registered",       [](crude_json::value& file) { file["graphs"][1]["signature"]["inputs"][0]["type"] = "Array<U>"; },     "no value type is named U"    },
+        { "an allowed type no one has",     [](crude_json::value& file) { file["graphs"][1]["signature"]["parameters"][0]["allowed"][1] = "Big"; }, "which no value type is named" },
+        { "a pin without a key",            [](crude_json::value& file) { file["graphs"][1]["signature"]["outputs"][0].erase("key"); },            "has no key"                  },
+        { "two functions of a name",        [](crude_json::value& file) { file["graphs"][2]["name"] = "Lerp"; },                                   "a function is named Lerp"    },
+        { "pure that isn't true or false",  [](crude_json::value& file) { file["graphs"][2]["signature"]["pure"] = 1; },                            "isn't true or false"         },
+    };
+    for (auto& c : cases)
+    {
+        auto file = saved;
+        c.change(file);
+        Blueprint blueprint(FileRegistry(), std::make_shared<TypeTable>());
+        auto read = Load(blueprint, file);
+        auto refused = !read && read.GetError().Message().find(c.message) != std::string_view::npos;
+        test::Check(refused && blueprint.Graphs().empty() && !blueprint.FindNodeType("call:Lerp"), "%s is refused, and leaves no function: %s", c.what, Message(read).c_str());
+    }
 }
 
 TEST_CASE(NextId, "file.new_ids_are_above_every_id_a_file_has", nullptr, test::TestFlags_None)

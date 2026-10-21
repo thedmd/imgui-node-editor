@@ -310,6 +310,7 @@ struct Diagnostic
 //
 
 struct ValueType;
+struct ParameterType;
 class Registry;
 
 // A value type, with its arguments when it's a type constructor: Int32, Array<Int32>,
@@ -330,8 +331,12 @@ public:
     // Type text, as files hold it: "Int32", "Map<String,Array<Int32>>".
     Result<const Type*> Parse(const Registry& registry, std::string_view text);
 
+    // One per name and allowed set, kept as long as the table, as its types may name it.
+    const ParameterType& Parameter(std::string name, std::vector<const ValueType*> allowed);
+
 private:
-    std::map<std::pair<const ValueType*, std::vector<const Type*>>, std::unique_ptr<Type>> m_Types;
+    std::map<std::pair<const ValueType*, std::vector<const Type*>>, std::unique_ptr<Type>>            m_Types;
+    std::map<std::pair<std::string, std::vector<const ValueType*>>, std::unique_ptr<ParameterType>> m_Parameters;
 };
 
 
@@ -456,6 +461,23 @@ struct StructType final : ValueType
 
 private:
     const std::vector<StructField> m_Fields;
+};
+
+// A generic function's type parameter, as its body sees it: a type of its own, which stands for
+// every type it allows, and has no values. Type variables can take it; it never becomes concrete.
+struct ParameterType final : ValueType
+{
+    CRUDE_BP_RTTI(ParameterType, ValueType)
+
+    ParameterType(std::string name, std::vector<const ValueType*> allowed);
+
+    const std::vector<const ValueType*> m_Allowed; // empty: any type
+
+    Value             Default(const Type& type) const override;
+    Result<Value>     Load(const Type& type, const crude_json::value& json) const override;
+    crude_json::value Save(const Value& value) const override;
+    std::string       Format(const Value& value) const override;
+    bool              Equal(const Value& a, const Value& b) const override;
 };
 
 
@@ -764,6 +786,33 @@ struct Link
     Error m_Reason;
 };
 
+// An input or an output of a function.
+struct SignaturePin
+{
+    std::string m_Key;  // stable and saved, as a pin's; "enter" and "then" are the flow pins'
+    std::string m_Name; // shown
+    TypeTerm    m_Type; // its variables are the signature's type parameters, by index
+};
+
+// What a function takes and gives. A pure one has no flow pins, and its body only pure nodes.
+struct Signature
+{
+    std::vector<VariableDeclaration> m_Parameters;
+    std::vector<SignaturePin>        m_Inputs;
+    std::vector<SignaturePin>        m_Outputs;
+    bool                             m_Pure = false;
+};
+
+// A graph that runs when called, with the blueprint's node types for it: "entry:<name>" gives
+// the inputs, "return:<name>" takes the outputs, and "call:<name>" calls it from other graphs.
+struct Function
+{
+    Id                                m_Graph = 0;
+    std::string                       m_Name;
+    Signature                         m_Signature;
+    std::vector<const ParameterType*> m_Parameters; // the type parameters, as the body sees them
+};
+
 // A node type whose new node a link with a pin of the graph would join, and through which pin.
 struct NewNodeFit
 {
@@ -824,6 +873,7 @@ public:
     std::string TypeText(Id pin) const;
 
 private:
+    friend class Blueprint;
     friend struct FileLoader;
 
     struct Problem
@@ -877,9 +927,17 @@ public:
     Graph*       FindGraph(Id graph);
     const Graph* FindGraph(Id graph) const;
 
+    // A function's name is its graph's, and unique among the functions'.
+    Result<Graph*>  AddFunction(std::string name, Signature signature);
+    // Every graph takes the function's new pins: links to the pins it no longer has go disabled.
+    Result<void>    SetSignature(Id graph, Signature signature);
+    const Function* FindFunction(Id graph) const;
+
     std::span<const std::unique_ptr<Graph>> Graphs() const { return m_Graphs; }
 
-    const NodeType* FindNodeType(std::string_view name) const;
+    // The blueprint's own node types first, then the registry's.
+    const NodeType*              FindNodeType(std::string_view name) const;
+    std::vector<const NodeType*> NodeTypes() const; // in the order of their names
 
     Id NewId() { return m_NextId++; }
 
@@ -889,11 +947,18 @@ private:
     friend crude_json::value Save(const Blueprint& blueprint);
     friend Result<void>      Load(Blueprint& blueprint, const crude_json::value& file);
 
-    std::shared_ptr<const Registry>        m_Registry;
-    std::shared_ptr<TypeTable>             m_Types;
-    Id                                     m_NextId = 1;
-    std::vector<std::unique_ptr<Graph>>    m_Graphs;
-    std::vector<std::unique_ptr<NodeType>> m_Placeholders; // for the nodes of types the registry lacks
+    Result<void> CheckFunction(std::string_view name, const Signature& signature) const;
+    Result<void> CheckSignature(const Signature& signature) const;
+    void         DefineFunction(const Graph& graph, Signature signature);
+    void         SetParameters(Function& function);
+
+    std::shared_ptr<const Registry>                                     m_Registry;
+    std::shared_ptr<TypeTable>                                          m_Types;
+    Id                                                                  m_NextId = 1;
+    std::vector<std::unique_ptr<Graph>>                                 m_Graphs;
+    std::vector<std::unique_ptr<NodeType>>                              m_Placeholders; // for the nodes of types the registry lacks
+    std::vector<std::shared_ptr<Function>>                              m_Functions;
+    std::map<std::string, std::shared_ptr<const NodeType>, std::less<>> m_Scope;        // its own node types
 };
 
 
