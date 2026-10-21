@@ -1,6 +1,7 @@
 # include "crude_blueprint_library.h"
 # include <algorithm>
 # include <cmath>
+# include <compare>
 # include <cstdint>
 # include <limits>
 # include <memory>
@@ -382,6 +383,148 @@ struct RandomNode final : NodeType
     }
 };
 
+// a and b of any type T, by their type's own equality.
+struct EqualityNode final : NodeType
+{
+    EqualityNode(std::string name, std::string title, bool equal): NodeType(std::move(name), std::move(title), "Logic"), m_Equal(equal) {}
+
+    void Declare(NodeDeclaration& declaration, const NodeConfig&, const Bindings&) const override
+    {
+        auto T = declaration.Variable("T");
+        declaration.Input("a", "A", T);
+        declaration.Input("b", "B", T);
+        declaration.Output("result", "Result", BoolType());
+    }
+
+    Result<void> Evaluate(EvalContext& context) const override
+    {
+        auto a = context.Get("a");
+        if (!a)
+            return a.GetError();
+        auto b = context.Get("b");
+        if (!b)
+            return b.GetError();
+        auto& value = a.GetValue();
+        context.Set("result", Value::Bool(value.GetType()->m_Head->Equal(value, b.GetValue()) == m_Equal));
+        return {};
+    }
+
+    const bool m_Equal;
+};
+
+// a and b in order: Int32s and Floats as numbers, Strings by their bytes. NaN is in no order.
+struct OrderNode final : NodeType
+{
+    using Holds = bool (*)(std::partial_ordering order);
+
+    OrderNode(std::string name, std::string title, Holds holds): NodeType(std::move(name), std::move(title), "Logic"), m_Holds(holds) {}
+
+    void Declare(NodeDeclaration& declaration, const NodeConfig&, const Bindings&) const override
+    {
+        auto T = declaration.Variable("T", { &Int32ValueType(), &FloatValueType(), &StringValueType() });
+        declaration.Input("a", "A", T);
+        declaration.Input("b", "B", T);
+        declaration.Output("result", "Result", BoolType());
+    }
+
+    Result<void> Evaluate(EvalContext& context) const override
+    {
+        auto a = context.Get("a");
+        if (!a)
+            return a.GetError();
+        auto b = context.Get("b");
+        if (!b)
+            return b.GetError();
+        auto& x = a.GetValue();
+        auto& y = b.GetValue();
+        auto  type  = x.GetType();
+        auto  order = type == &Int32Type() ? std::partial_ordering(x.AsInt32() <=> y.AsInt32())
+                    : type == &FloatType() ? x.AsFloat() <=> y.AsFloat()
+                    : std::partial_ordering(x.AsString().compare(y.AsString()) <=> 0);
+        context.Set("result", Value::Bool(m_Holds(order)));
+        return {};
+    }
+
+    const Holds m_Holds;
+};
+
+// Of a group of Bools, read in order until one decides the result: false for And, true for Or.
+struct ConnectiveNode final : NodeType
+{
+    ConnectiveNode(std::string name, std::string title, bool decider): NodeType(std::move(name), std::move(title), "Logic"), m_Decider(decider) {}
+
+    void Declare(NodeDeclaration& declaration, const NodeConfig&, const Bindings&) const override
+    {
+        auto count = declaration.Group("in", 2, 16);
+        for (int i = 0; i < count; ++i)
+            declaration.Input("in." + std::to_string(i), "", BoolType());
+        declaration.Output("result", "Result", BoolType());
+    }
+
+    Result<void> Evaluate(EvalContext& context) const override
+    {
+        for (int i = 0; context.TypeOf("in." + std::to_string(i)); ++i)
+        {
+            auto value = context.Get<bool>("in." + std::to_string(i));
+            if (!value)
+                return value.GetError();
+            if (value.GetValue() == m_Decider)
+            {
+                context.Set("result", Value::Bool(m_Decider));
+                return {};
+            }
+        }
+        context.Set("result", Value::Bool(!m_Decider));
+        return {};
+    }
+
+    const bool m_Decider;
+};
+
+struct NotNode final : NodeType
+{
+    NotNode(): NodeType("crude.Not", "Not", "Logic") {}
+
+    void Declare(NodeDeclaration& declaration, const NodeConfig&, const Bindings&) const override
+    {
+        declaration.Input("value", "Value", BoolType());
+        declaration.Output("result", "Result", BoolType());
+    }
+
+    Result<void> Evaluate(EvalContext& context) const override
+    {
+        auto value = context.Get<bool>("value");
+        if (!value)
+            return value.GetError();
+        context.Set("result", Value::Bool(!value.GetValue()));
+        return {};
+    }
+};
+
+struct XorNode final : NodeType
+{
+    XorNode(): NodeType("crude.Xor", "Xor", "Logic") {}
+
+    void Declare(NodeDeclaration& declaration, const NodeConfig&, const Bindings&) const override
+    {
+        declaration.Input("a", "A", BoolType());
+        declaration.Input("b", "B", BoolType());
+        declaration.Output("result", "Result", BoolType());
+    }
+
+    Result<void> Evaluate(EvalContext& context) const override
+    {
+        auto a = context.Get<bool>("a");
+        if (!a)
+            return a.GetError();
+        auto b = context.Get<bool>("b");
+        if (!b)
+            return b.GetError();
+        context.Set("result", Value::Bool(a.GetValue() != b.GetValue()));
+        return {};
+    }
+};
+
 struct BranchNode final : NodeType
 {
     BranchNode(): NodeType("crude.Branch", "Branch", "Flow") {}
@@ -461,6 +604,16 @@ crude_blueprint::Result<void> crude_blueprint::RegisterLibrary(Registry& registr
         std::make_unique<MaxNode>(),
         std::make_unique<ClampNode>(),
         std::make_unique<RandomNode>(),
+        std::make_unique<EqualityNode>("crude.Equal", "Equal", true),
+        std::make_unique<EqualityNode>("crude.NotEqual", "Not Equal", false),
+        std::make_unique<OrderNode>("crude.Less", "Less", [](std::partial_ordering order) { return order < 0; }),
+        std::make_unique<OrderNode>("crude.LessOrEqual", "Less Or Equal", [](std::partial_ordering order) { return order <= 0; }),
+        std::make_unique<OrderNode>("crude.Greater", "Greater", [](std::partial_ordering order) { return order > 0; }),
+        std::make_unique<OrderNode>("crude.GreaterOrEqual", "Greater Or Equal", [](std::partial_ordering order) { return order >= 0; }),
+        std::make_unique<ConnectiveNode>("crude.And", "And", false),
+        std::make_unique<ConnectiveNode>("crude.Or", "Or", true),
+        std::make_unique<NotNode>(),
+        std::make_unique<XorNode>(),
         std::make_unique<BranchNode>(),
         std::make_unique<ForLoopNode>(),
     };

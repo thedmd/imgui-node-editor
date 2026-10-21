@@ -290,6 +290,81 @@ TEST_CASE(MathNodes, "library.math_works_on_int32s_and_floats", nullptr, test::T
     CheckComputed(cases);
 }
 
+TEST_CASE(LogicNodes, "library.comparisons_and_logic_give_bools", nullptr, test::TestFlags_None)
+{
+    const auto i = [](int32_t value) { return Value::Int32(value); };
+    const auto f = [](float value) { return Value::Float(value); };
+    const auto s = [](const char* text) { return Value::String(text); };
+    const auto b = [](bool value) { return Value::Bool(value); };
+    const ComputeCase cases[] =
+    {
+        { "Equal",          { { "a", i(3) },      { "b", i(3) } },      "true" },
+        { "Equal",          { { "a", s("a") },    { "b", s("b") } },    "false" },
+        { "Equal",          { { "a", f(0.5f) },   { "b", f(0.5f) } },   "true" },
+        { "NotEqual",       { { "a", i(3) },      { "b", i(4) } },      "true" },
+        { "Less",           { { "a", i(3) },      { "b", i(4) } },      "true" },
+        { "Less",           { { "a", f(4.5f) },   { "b", f(1.0f) } },   "false" },
+        { "Less",           { { "a", s("ab") },   { "b", s("b") } },    "true" },
+        { "LessOrEqual",    { { "a", i(4) },      { "b", i(4) } },      "true" },
+        { "Greater",        { { "a", i(5) },      { "b", i(4) } },      "true" },
+        { "GreaterOrEqual", { { "a", i(3) },      { "b", i(4) } },      "false" },
+        { "And",            { { "in.0", b(true) },  { "in.1", b(true) }, { "in.2", b(false) } }, "false" },
+        { "And",            { { "in.0", b(true) },  { "in.1", b(true) } },  "true" },
+        { "Or",             { { "in.0", b(false) }, { "in.1", b(false) }, { "in.2", b(true) } }, "true" },
+        { "Or",             { { "in.0", b(false) }, { "in.1", b(false) } }, "false" },
+        { "Not",            { { "value", b(true) } }, "false" },
+        { "Xor",            { { "a", b(true) },   { "b", b(false) } },  "true" },
+        { "Xor",            { { "a", b(true) },   { "b", b(true) } },   "false" },
+    };
+    CheckComputed(cases);
+}
+
+TEST_CASE(NaNUnordered, "library.nan_is_in_no_order", nullptr, test::TestFlags_None)
+{
+    // 0 / 0, as no Constant holds NaN.
+    for (auto type : { "Less", "LessOrEqual", "Greater", "GreaterOrEqual" })
+    {
+        Fixture f;
+        auto start = f.Add("Start"), print = f.Add("Print"), node = f.Add(type), divide = f.Add("Divide");
+        f.Link(start, "then", print, "enter");
+        f.Link(f.Constant(Value::Float(0.0f)), "value", divide, "a");
+        f.Link(f.Constant(Value::Float(0.0f)), "value", divide, "b");
+        f.Link(divide, "result", node, "a");
+        f.Link(f.Constant(Value::Float(1.0f)), "value", node, "b");
+        f.Link(node, "result", print, "text", LinkMode::Cast);
+        auto printed = f.Run();
+        test::Check(printed == "false", "%s of NaN and 1: %s", type, printed.c_str());
+    }
+}
+
+TEST_CASE(ConnectivesStop, "library.and_and_or_stop_at_the_input_that_decides", nullptr, test::TestFlags_None)
+{
+    // in.1 reads whether 7 / 0 is 0, and computing it fails.
+    struct Case
+    {
+        const char* type;
+        bool        first;
+        const char* printed;
+    };
+    for (auto& c : { Case{ "And", false, "false" }, Case{ "Or", true, "true" }, Case{ "And", true, "" }, Case{ "Or", false, "" } })
+    {
+        Fixture f;
+        auto start = f.Add("Start"), print = f.Add("Print"), node = f.Add(c.type), equal = f.Add("Equal"), divide = f.Add("Divide");
+        f.Link(start, "then", print, "enter");
+        f.Link(f.Constant(Value::Bool(c.first)), "value", node, "in.0");
+        f.Link(f.Constant(Value::Int32(7)), "value", divide, "a");
+        f.Link(f.Constant(Value::Int32(0)), "value", divide, "b");
+        f.Link(divide, "result", equal, "a");
+        f.Link(f.Constant(Value::Int32(0)), "value", equal, "b");
+        f.Link(equal, "result", node, "in.1");
+        f.Link(node, "result", print, "text", LinkMode::Cast);
+        FiberState end = FiberState::Ready;
+        auto printed = f.Run(&end);
+        const auto decided = *c.printed != 0;
+        test::Check(printed == c.printed && (end == FiberState::Failed) != decided, "%s with in.0 %s %s: %s", c.type, c.first ? "true" : "false", decided ? "decides without in.1" : "reads in.1, which fails", printed.c_str());
+    }
+}
+
 TEST_CASE(RandomPerStep, "library.random_gives_one_value_a_step", nullptr, test::TestFlags_None)
 {
     // Random - Random reads one value; the Prints after it, each a step of its own, read two.
