@@ -542,6 +542,11 @@ struct GroupDeclaration
     int                      m_Max = 0;
 };
 
+struct NodeConfig;
+
+// The config's count of indices, within the group's bounds; without one, the minimum.
+int GroupCount(const GroupDeclaration& group, const NodeConfig& config);
+
 // What a node instance's pins depend on, besides its type variables: saved, and changed by edits.
 struct NodeConfig
 {
@@ -666,6 +671,7 @@ public:
     const CastInfo*                  FindCast(const Type* from, const Type* to) const;
     std::span<const CastInfo* const> CastsFrom(const Type* from) const;
     const NodeType*                  FindNodeType(std::string_view name) const;
+    std::vector<const NodeType*>     NodeTypes() const; // in the order of their names
 
 private:
     std::map<std::string, const ValueType*, std::less<>> m_ValueTypes;

@@ -624,15 +624,19 @@ void crude_blueprint::NodeDeclaration::FlowOutput(std::string key, std::string n
     AddPin({ std::move(key), std::move(name), Direction::Output, true, {}, {}, options.m_Requirement });
 }
 
+int crude_blueprint::GroupCount(const GroupDeclaration& group, const NodeConfig& config)
+{
+    auto it = config.m_Groups.find(group.m_Name);
+    return it != config.m_Groups.end() ? std::clamp(it->second, group.m_Min, group.m_Max) : group.m_Min;
+}
+
 int crude_blueprint::NodeDeclaration::Group(std::string name, int min, int max, std::vector<std::string> prefixes)
 {
     CRUDE_BP_ASSERT(0 <= min && min <= max);
     if (prefixes.empty())
         prefixes.push_back(name);
-    auto it = m_Config.m_Groups.find(name);
-    auto count = it != m_Config.m_Groups.end() ? std::clamp(it->second, min, max) : min;
     m_Groups.push_back({ std::move(name), std::move(prefixes), min, max });
-    return count;
+    return GroupCount(m_Groups.back(), m_Config);
 }
 
 void crude_blueprint::NodeDeclaration::AddPin(PinDeclaration pin)
@@ -735,6 +739,14 @@ const crude_blueprint::NodeType* crude_blueprint::Registry::FindNodeType(std::st
 {
     auto it = m_NodeTypes.find(name);
     return it != m_NodeTypes.end() ? it->second : nullptr;
+}
+
+std::vector<const crude_blueprint::NodeType*> crude_blueprint::Registry::NodeTypes() const
+{
+    std::vector<const NodeType*> types;
+    for (auto& [name, type] : m_NodeTypes)
+        types.push_back(type);
+    return types;
 }
 
 crude_blueprint::Result<void> crude_blueprint::RegisterBuiltins(Registry& registry)
@@ -1389,8 +1401,7 @@ crude_blueprint::Result<void> crude_blueprint::Graph::AddGroupPin(Id node, std::
     auto declared = std::find_if(changed->m_Groups.begin(), changed->m_Groups.end(), [group](const GroupDeclaration& other) { return other.m_Name == group; });
     if (declared == changed->m_Groups.end())
         return Error(BlueprintError::NotFound, changed->Name() + " has no group " + std::string(group));
-    auto it    = changed->m_Config.m_Groups.find(group);
-    auto count = it != changed->m_Config.m_Groups.end() ? std::clamp(it->second, declared->m_Min, declared->m_Max) : declared->m_Min;
+    auto count = GroupCount(*declared, changed->m_Config);
     if (count >= declared->m_Max)
         return Error(BlueprintError::OutOfRange, changed->Name() + "." + declared->m_Name + " has its most pins, " + std::to_string(declared->m_Max));
     changed->m_Config.m_Groups[declared->m_Name] = count + 1;
@@ -1408,8 +1419,7 @@ crude_blueprint::Result<void> crude_blueprint::Graph::RemoveGroupPin(Id node, st
     auto declared = std::find_if(changed->m_Groups.begin(), changed->m_Groups.end(), [group](const GroupDeclaration& other) { return other.m_Name == group; });
     if (declared == changed->m_Groups.end())
         return Error(BlueprintError::NotFound, changed->Name() + " has no group " + std::string(group));
-    auto it    = changed->m_Config.m_Groups.find(group);
-    auto count = it != changed->m_Config.m_Groups.end() ? std::clamp(it->second, declared->m_Min, declared->m_Max) : declared->m_Min;
+    auto count = GroupCount(*declared, changed->m_Config);
     if (index < 0 || index >= count)
         return Error(BlueprintError::OutOfRange, changed->Name() + "." + declared->m_Name + " has no index " + std::to_string(index));
     if (count <= declared->m_Min)

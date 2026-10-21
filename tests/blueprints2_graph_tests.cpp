@@ -269,6 +269,8 @@ TEST_CASE(NodeTypesDeclareFromConfig, "graph.node_types_declare_pins_from_their_
     const auto five = Groups("in", 5), many = Groups("in", 99), few = Groups("in", 0);
     test::Check(Declared(s_Add, five).Pins().size() == 6, "a config gives the group 5 indices");
     test::Check(Declared(s_Add, many).Pins().size() == 17 && Declared(s_Add, few).Pins().size() == 3, "within the group's bounds");
+    auto& group = add.Groups()[0];
+    test::Check(GroupCount(group, five) == 5 && GroupCount(group, many) == 16 && GroupCount(group, few) == 2 && GroupCount(group, none) == 2, "as GroupCount() says");
 
     const auto pairs = Groups("pair", 2);
     auto map = Declared(s_MakeMap, pairs);
@@ -330,6 +332,8 @@ TEST_CASE(RegistryHoldsNodeTypes, "graph.registry_holds_node_types", nullptr, te
     test::Check(owned && makeMap && makeMap != &s_MakeMap && makeMap->m_Title == "MakeMap", "one the registry keeps, too");
     test::Check(!twice && twice.GetError().Is(BlueprintError::Duplicate) && registry.FindNodeType("test.Add") == &s_Add, "a second node type of a name is refused");
     test::Check(!registry.FindNodeType("test.Subtract"), "and one nothing registered isn't found");
+    auto types = registry.NodeTypes();
+    test::Check(types.size() == 2 && types[0] == &s_Add && types[1] == makeMap, "the registry lists its node types by name");
 }
 
 TEST_CASE(LinkDecidesTypes, "graph.a_link_decides_types_and_unlinking_undoes_it", nullptr, test::TestFlags_None)
