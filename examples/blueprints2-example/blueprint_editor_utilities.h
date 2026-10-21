@@ -182,8 +182,7 @@ private:
     std::vector<Problem> m_Problems;
 };
 
-// While a run is paused: a marker over the node the last step ran and over the one next, values
-// beside pins, and the link the step took flowing.
+// While a run is paused: values beside pins, and the link the step took flowing.
 struct DebugOverlay
 {
     explicit DebugOverlay(Debugger& debugger);
@@ -191,7 +190,6 @@ struct DebugOverlay
     void Begin();
     void End();
 
-    void DrawNode(Id node);
     void DrawInputPin(const Pin& pin, bool linked);
     void DrawOutputPin(const Pin& pin);
 

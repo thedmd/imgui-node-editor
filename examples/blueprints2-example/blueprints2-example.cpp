@@ -600,11 +600,20 @@ private:
         DebugOverlay debugOverlay(m_Debugger);
         debugOverlay.Begin();
 
+        // A paused run's next node has a blue border, and the node its last step ran an orange one.
+        const auto current = m_Debugger.IsActive() ? m_Debugger.CurrentNode() : 0;
+        const auto next    = m_Debugger.IsActive() ? m_Debugger.NextNode() : 0;
         for (auto& node : graph.Nodes())
         {
             const auto errors   = m_Problems.Count(Severity::Error, node.m_Id);
             const auto warnings = m_Problems.Count(Severity::Warning, node.m_Id);
-            if (errors > 0)
+            const auto stepped  = node.m_Id == next || node.m_Id == current;
+            if (stepped)
+            {
+                ed::PushStyleColor(ed::StyleColor_NodeBorder, ImGui::GetStyleColorVec4(node.m_Id == next ? ImGuiCol_NavCursor : ImGuiCol_PlotHistogram));
+                ed::PushStyleVar(ed::StyleVar_NodeBorderWidth, 3.0f);
+            }
+            else if (errors > 0)
                 ed::PushStyleColor(ed::StyleColor_NodeBorder, ImColor(ProblemColor(Severity::Error)));
 
             ed::BeginNode(node.m_Id);
@@ -832,11 +841,13 @@ private:
             layout.End();
 
             ed::EndNode();
-            if (errors > 0)
+            if (stepped)
+            {
+                ed::PopStyleVar();
                 ed::PopStyleColor();
-
-            // [Debug Overlay] Show cursor over node
-            debugOverlay.DrawNode(node.m_Id);
+            }
+            else if (errors > 0)
+                ed::PopStyleColor();
         }
 
         // Commit all links to editor. A disabled link shows, grey, until its problem is resolved;

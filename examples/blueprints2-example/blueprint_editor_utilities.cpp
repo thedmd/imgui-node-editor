@@ -780,37 +780,6 @@ void blueprint_editor_utilities::DebugOverlay::End()
     }
 }
 
-void blueprint_editor_utilities::DebugOverlay::DrawNode(Id node)
-{
-    if (!m_Context)
-        return;
-
-    auto isCurrentNode = m_Current == node;
-    auto isNextNode    = m_Next == node;
-    if (!isCurrentNode && !isNextNode)
-        return;
-
-    // Draw to layer over nodes
-    m_Splitter.SetCurrentChannel(m_DrawList, 1);
-
-    // Save current layout to avoid conflicts with node measurements
-    ImEx::ScopedSuspendLayout suspendLayout;
-
-    auto itemRectMin = ImGui::GetItemRectMin();
-    auto itemRectMax = ImGui::GetItemRectMax();
-
-    auto pivot = ImVec2((itemRectMin.x + itemRectMax.x) * 0.5f, itemRectMin.y);
-    auto markerMin = pivot - ImVec2(40.0f, 35.0f);
-    auto markerMax = pivot + ImVec2(40.0f, 0.0f);
-
-    auto color = ImGui::GetStyleColorVec4(isCurrentNode ? ImGuiCol_PlotHistogram : ImGuiCol_NavCursor);
-
-    DrawIcon(m_DrawList, markerMin, markerMax, IconType::FlowDown, true, ImColor(color), 0);
-
-    // Switch back to normal layer
-    m_Splitter.SetCurrentChannel(m_DrawList, 0);
-}
-
 void blueprint_editor_utilities::DebugOverlay::DrawInputPin(const Pin& pin, bool linked)
 {
     if (!m_Context || !linked || pin.m_Flow)
