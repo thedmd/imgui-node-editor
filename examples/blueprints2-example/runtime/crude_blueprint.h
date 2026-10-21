@@ -8,17 +8,25 @@
 # include <concepts>
 # include <cstddef>
 # include <cstdint>
+# include <map>
+# include <memory>
 # include <optional>
+# include <span>
 # include <string>
 # include <string_view>
 # include <type_traits>
 # include <utility>
 # include <variant>
+# include <vector>
 
 # ifndef CRUDE_BP_ASSERT
 #     include <cassert>
 #     define CRUDE_BP_ASSERT(_EXPR) assert(_EXPR)
 # endif
+
+namespace crude_json {
+struct value;
+} // namespace crude_json
 
 namespace crude_blueprint {
 
@@ -278,6 +286,153 @@ struct Diagnostic
     Id       m_Node  = 0;
     Id       m_Pin   = 0;
     Id       m_Link  = 0;
+};
+
+
+//
+// -------[ Types ]-------
+//
+
+struct ValueType;
+
+// A value type, with its arguments when it's a type constructor: Int32, Array<Int32>,
+// Map<String,Int32>. There is one of each, so types compare by address.
+struct Type
+{
+    const ValueType*         m_Head = nullptr;
+    std::vector<const Type*> m_Args;
+    std::string              m_Name;
+};
+
+// Interns constructed types. A value type that isn't a type constructor is its own type.
+class TypeTable
+{
+public:
+    const Type* Get(const ValueType& head, std::span<const Type* const> args = {});
+
+private:
+    std::map<std::pair<const ValueType*, std::vector<const Type*>>, std::unique_ptr<Type>> m_Types;
+};
+
+
+//
+// -------[ Values ]-------
+//
+
+// 24 bytes. Strings, arrays, maps, structs and the application's values are boxed.
+class Value
+{
+public:
+    // No type: a placeholder, which nothing hands out as a value.
+    Value() = default;
+
+    static Value Bool(bool value);
+    static Value Int32(int32_t value);
+    static Value Float(float value);
+    static Value String(std::string text);
+    static Value Array(const Type& type, std::vector<Value> items);
+    // Sorted by key; of equal keys, the last one stays.
+    static Value Map(const Type& type, std::vector<std::pair<Value, Value>> entries);
+    // In the struct's order of fields.
+    static Value Struct(const Type& type, std::vector<Value> fields);
+    static Value Boxed(const Type& type, Ref<const Box> box);
+
+    const Type* GetType() const { return m_Type; }
+    bool        IsValid() const { return m_Type != nullptr; }
+
+    bool                                     AsBool() const;
+    int32_t                                  AsInt32() const;
+    float                                    AsFloat() const;
+    std::string_view                         AsString() const;
+    std::span<const Value>                   AsArray() const;
+    std::span<const std::pair<Value, Value>> AsMap() const;
+    std::span<const Value>                   AsStruct() const;
+    const Box*                               AsBox() const;
+
+    // A map's value for a key, or null.
+    const Value* Find(const Value& key) const;
+
+    bool operator==(const Value& other) const;
+
+private:
+    using Data = std::variant<bool, int32_t, float, Ref<const Box>>;
+
+    Value(const Type& type, Data data): m_Type(&type), m_Data(std::move(data)) {}
+
+    const Type* m_Type = nullptr;
+    Data        m_Data;
+};
+
+
+//
+// -------[ Value types ]-------
+//
+
+struct ValueType
+{
+    CRUDE_BP_RTTI_ROOT(ValueType)
+
+    explicit ValueType(std::string name, int arity = 0);
+    ValueType(const ValueType&) = delete;
+    ValueType& operator=(const ValueType&) = delete;
+    virtual ~ValueType() = default;
+
+    const std::string m_Name;   // saved
+    const int         m_Arity;  // > 0: a type constructor, such as Array with 1
+
+    const Type& AsType() const { return m_Self; }
+
+    virtual Value             Default(const Type& type) const = 0;
+    virtual Result<Value>     Load(const Type& type, const crude_json::value& json) const = 0;
+    virtual crude_json::value Save(const Value& value) const = 0;
+    virtual std::string       Format(const Value& value) const = 0;
+    virtual bool              Equal(const Value& a, const Value& b) const = 0;
+
+    // Map keys: values with an order.
+    virtual bool IsKey() const { return false; }
+    virtual int  Compare(const Value& a, const Value& b) const;
+
+private:
+    const Type m_Self;
+};
+
+const ValueType& BoolValueType();
+const ValueType& Int32ValueType();
+const ValueType& FloatValueType();
+const ValueType& StringValueType();
+const ValueType& ArrayValueType();  // Array<T>
+const ValueType& MapValueType();    // Map<K, V>, with K a key
+
+inline const Type& BoolType()   { return BoolValueType().AsType(); }
+inline const Type& Int32Type()  { return Int32ValueType().AsType(); }
+inline const Type& FloatType()  { return FloatValueType().AsType(); }
+inline const Type& StringType() { return StringValueType().AsType(); }
+
+struct StructField
+{
+    std::string m_Name;
+    const Type* m_Type = nullptr;
+};
+
+// In files, a struct is an object: fields it lacks take their defaults, and fields it has
+// that the struct doesn't are ignored, so documents survive changes to the struct.
+struct StructType final : ValueType
+{
+    CRUDE_BP_RTTI(StructType, ValueType)
+
+    StructType(std::string name, std::vector<StructField> fields);
+
+    std::span<const StructField> Fields() const { return m_Fields; }
+    int FindField(std::string_view name) const; // -1 for none
+
+    Value             Default(const Type& type) const override;
+    Result<Value>     Load(const Type& type, const crude_json::value& json) const override;
+    crude_json::value Save(const Value& value) const override;
+    std::string       Format(const Value& value) const override;
+    bool              Equal(const Value& a, const Value& b) const override;
+
+private:
+    const std::vector<StructField> m_Fields;
 };
 
 } // namespace crude_blueprint
