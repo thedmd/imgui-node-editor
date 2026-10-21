@@ -181,7 +181,10 @@ void Application::LoadFonts()
     ImFontConfig config;
     config.PixelSnapH = true;
 
-    m_DefaultFont = io.Fonts->AddFontFromFileTTF(ResolvePath("data/Play-Regular.ttf").c_str(), 18.0f, &config);
+    ImFontConfig play = config;
+    play.GlyphOffset.y = -1.0f;
+
+    m_DefaultFont = io.Fonts->AddFontFromFileTTF(ResolvePath("data/Play-Regular.ttf").c_str(), 18.0f, &play);
     m_HeaderFont  = io.Fonts->AddFontFromFileTTF(ResolvePath("data/Cuprum-Bold.ttf").c_str(),  20.0f, &config);
 }
 
