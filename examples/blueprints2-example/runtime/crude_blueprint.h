@@ -713,6 +713,14 @@ struct Pin : PinDeclaration
     std::string m_Wildcard;              // an undecided type, as shown: "?{Int32|Float}", "Array<?>"
 };
 
+// A struct pin split into its fields, which the node's code still reads, or writes, as one.
+struct SplitPin
+{
+    std::string m_Key;
+    const Type* m_Type      = nullptr; // the struct's
+    Direction   m_Direction = Direction::Input;
+};
+
 struct Node
 {
     Id              m_Id   = 0;
@@ -730,6 +738,7 @@ struct Node
     std::vector<VariableDeclaration> m_Variables;
     std::vector<GroupDeclaration>    m_Groups;
     std::vector<Pin>                 m_Pins;
+    std::vector<SplitPin>            m_Splits;
     Bindings                         m_Bindings;
 
     const Pin* FindPin(std::string_view key) const;
@@ -923,6 +932,7 @@ struct ProgramNode
     std::string             m_Name;          // as messages name it: "Add#7"
     bool                    m_Pure  = false; // without flow pins
     std::vector<ProgramPin> m_Pins;
+    std::vector<SplitPin>   m_Splits;
 };
 
 // A blueprint as it was compiled. Contexts share it, so edits never reach a run in progress.

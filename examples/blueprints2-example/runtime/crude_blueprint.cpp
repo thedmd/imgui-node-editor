@@ -1243,7 +1243,7 @@ const StructType* SplittableStruct(const PinDeclaration& pin)
 }
 
 // Fields of split fields split too.
-void Split(std::vector<PinDeclaration>& pins, std::span<const std::string> split)
+void Split(std::vector<PinDeclaration>& pins, std::span<const std::string> split, std::vector<SplitPin>& splits)
 {
     for (size_t i = 0; i < pins.size();)
     {
@@ -1279,6 +1279,7 @@ void Split(std::vector<PinDeclaration>& pins, std::span<const std::string> split
             ++i;
             continue;
         }
+        splits.push_back({ pin.m_Key, &structType->AsType(), pin.m_Direction });
         pins.erase(pins.begin() + static_cast<std::ptrdiff_t>(i));
         pins.insert(pins.begin() + static_cast<std::ptrdiff_t>(i), std::make_move_iterator(fields.begin()), std::make_move_iterator(fields.end()));
     }
@@ -1742,7 +1743,8 @@ void crude_blueprint::Graph::Declare()
 
         NodeDeclaration declaration(node.m_Config);
         node.m_Type->Declare(declaration, node.m_Config, node.m_Bindings);
-        Split(declaration.m_Pins, node.m_Config.m_Split);
+        node.m_Splits.clear();
+        Split(declaration.m_Pins, node.m_Config.m_Split, node.m_Splits);
         node.m_Variables = std::move(declaration.m_Variables);
         node.m_Groups    = std::move(declaration.m_Groups);
         node.m_Pins.clear();
@@ -2000,6 +2002,19 @@ int FindPinByKey(const ProgramNode& node, std::string_view key)
     return -1;
 }
 
+const SplitPin* FindSplit(const ProgramNode& node, std::string_view key, Direction direction)
+{
+    for (auto& split : node.m_Splits)
+        if (split.m_Key == key && split.m_Direction == direction)
+            return &split;
+    return nullptr;
+}
+
+std::span<const StructField> FieldsOf(const SplitPin& split)
+{
+    return static_cast<const StructType*>(split.m_Type->m_Head)->Fields();
+}
+
 } } // namespace crude_blueprint { namespace {
 
 crude_blueprint::Result<crude_blueprint::Exit> crude_blueprint::NodeType::Execute(ExecContext&, std::string_view) const
@@ -2062,6 +2077,7 @@ crude_blueprint::CompileResult crude_blueprint::Compile(const Blueprint& bluepri
             record.m_Config = node.m_Config;
             record.m_Name   = node.Name();
             record.m_Pure   = std::none_of(node.m_Pins.begin(), node.m_Pins.end(), [](const Pin& pin) { return pin.m_Flow; });
+            record.m_Splits = node.m_Splits;
             for (auto& pin : node.m_Pins)
             {
                 auto& compiled = record.m_Pins.emplace_back();
@@ -2189,9 +2205,23 @@ crude_blueprint::Result<crude_blueprint::Value> crude_blueprint::NodeContext::Ge
 {
     auto& node = m_Context.m_Program->m_Nodes[m_Node];
     auto  pin  = FindPinByKey(node, input);
-    CRUDE_BP_ASSERT(pin >= 0 && !node.m_Pins[pin].m_Flow && node.m_Pins[pin].m_Direction == Direction::Input && "no data input of that key");
     if (pin < 0)
-        return Error(BlueprintError::NotFound, node.m_Name + " has no input " + std::string(input));
+    {
+        auto split = FindSplit(node, input, Direction::Input);
+        CRUDE_BP_ASSERT(split && "no data input of that key");
+        if (!split)
+            return Error(BlueprintError::NotFound, node.m_Name + " has no input " + std::string(input));
+        std::vector<Value> fields;
+        for (auto& field : FieldsOf(*split))
+        {
+            auto value = Get(std::string(input) + "." + field.m_Name);
+            if (!value)
+                return value.GetError();
+            fields.push_back(std::move(value).GetValue());
+        }
+        return Value::Struct(*split->m_Type, std::move(fields));
+    }
+    CRUDE_BP_ASSERT(!node.m_Pins[pin].m_Flow && node.m_Pins[pin].m_Direction == Direction::Input && "no data input of that key");
     return m_Context.Read(m_Node, pin);
 }
 
@@ -2201,10 +2231,10 @@ crude_blueprint::Result<std::vector<crude_blueprint::Value>> crude_blueprint::No
     std::vector<Value> values;
     for (int index = 0;; ++index)
     {
-        auto pin = FindPinByKey(node, std::string(prefix) + "." + std::to_string(index));
-        if (pin < 0)
+        auto key = std::string(prefix) + "." + std::to_string(index);
+        if (FindPinByKey(node, key) < 0 && !FindSplit(node, key, Direction::Input))
             return values;
-        auto value = m_Context.Read(m_Node, pin);
+        auto value = Get(key);
         if (!value)
             return value.GetError();
         values.push_back(std::move(value).GetValue());
@@ -2215,8 +2245,19 @@ void crude_blueprint::NodeContext::Set(std::string_view output, Value value)
 {
     auto& node = m_Context.m_Program->m_Nodes[m_Node];
     auto  pin  = FindPinByKey(node, output);
-    CRUDE_BP_ASSERT(pin >= 0 && node.m_Pins[pin].m_Slot >= 0 && "no data output of that key");
-    if (pin < 0 || node.m_Pins[pin].m_Slot < 0)
+    if (pin < 0)
+    {
+        auto split = FindSplit(node, output, Direction::Output);
+        CRUDE_BP_ASSERT(split && value.GetType() == split->m_Type && "no data output of that key, or a value of another type than the output's");
+        if (!split || value.GetType() != split->m_Type)
+            return;
+        auto fields = FieldsOf(*split);
+        for (size_t i = 0; i < fields.size(); ++i)
+            Set(std::string(output) + "." + fields[i].m_Name, value.AsStruct()[i]);
+        return;
+    }
+    CRUDE_BP_ASSERT(node.m_Pins[pin].m_Slot >= 0 && "no data output of that key");
+    if (node.m_Pins[pin].m_Slot < 0)
         return;
     auto type = node.m_Pins[pin].m_Type;
     CRUDE_BP_ASSERT(value.GetType() == type && "a value of another type than the output's");
@@ -2229,12 +2270,18 @@ const crude_blueprint::Type* crude_blueprint::NodeContext::TypeOf(std::string_vi
 {
     auto& node  = m_Context.m_Program->m_Nodes[m_Node];
     auto  found = FindPinByKey(node, pin);
-    return found >= 0 ? node.m_Pins[found].m_Type : nullptr;
+    if (found >= 0)
+        return node.m_Pins[found].m_Type;
+    for (auto& split : node.m_Splits)
+        if (split.m_Key == pin)
+            return split.m_Type;
+    return nullptr;
 }
 
 bool crude_blueprint::NodeContext::HasPin(std::string_view pin) const
 {
-    return FindPinByKey(m_Context.m_Program->m_Nodes[m_Node], pin) >= 0;
+    auto& node = m_Context.m_Program->m_Nodes[m_Node];
+    return FindPinByKey(node, pin) >= 0 || FindSplit(node, pin, Direction::Input) || FindSplit(node, pin, Direction::Output);
 }
 
 const crude_blueprint::NodeConfig& crude_blueprint::NodeContext::Config() const

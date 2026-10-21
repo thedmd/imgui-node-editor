@@ -243,6 +243,47 @@ TestNodeType s_Hint("Hint", [](NodeDeclaration& d, const NodeConfig&, const Bind
 },
 [](ExecContext&, std::string_view) -> Result<Exit> { return Exit::To("then"); });
 
+StructType s_Point("test.Point", { { "x", &Int32Type() }, { "y", &Int32Type() } });
+StructType s_Box("test.Box", { { "min", &s_Point.AsType() }, { "max", &s_Point.AsType() } });
+
+// Moves a point by as much on both axes.
+TestNodeType s_Shift("Shift", [](NodeDeclaration& d, const NodeConfig&, const Bindings&)
+{
+    d.Input("point", "Point", s_Point.AsType());
+    d.Input("by", "By", Int32Type());
+    d.Output("moved", "Moved", s_Point.AsType());
+},
+{}, [](EvalContext& context) -> Result<void>
+{
+    auto point = context.Get("point");
+    auto by    = context.Get<int32_t>("by");
+    if (!point || !by)
+        return !point ? point.GetError() : by.GetError();
+    auto fields = point.GetValue().AsStruct();
+    context.Set("moved", Value::Struct(s_Point.AsType(), { Value::Int32(fields[0].AsInt32() + by.GetValue()), Value::Int32(fields[1].AsInt32() + by.GetValue()) }));
+    return {};
+});
+
+// Logs "x,y" of a point, and the width of a box.
+TestNodeType s_Show("Show", [](NodeDeclaration& d, const NodeConfig&, const Bindings&)
+{
+    d.FlowInput("enter");
+    d.Input("point", "Point", s_Point.AsType());
+    d.Input("box", "Box", s_Box.AsType());
+    d.FlowOutput("then");
+},
+[](ExecContext& context, std::string_view) -> Result<Exit>
+{
+    auto point = context.Get("point");
+    auto box   = context.Get("box");
+    if (!point || !box)
+        return !point ? Failed(point) : Failed(box);
+    auto xy     = point.GetValue().AsStruct();
+    auto bounds = box.GetValue().AsStruct();
+    context.Log(std::to_string(xy[0].AsInt32()) + "," + std::to_string(xy[1].AsInt32()) + " " + std::to_string(bounds[1].AsStruct()[0].AsInt32() - bounds[0].AsStruct()[0].AsInt32()));
+    return Exit::To("then");
+});
+
 std::shared_ptr<const Registry> ContextRegistry()
 {
     static const std::shared_ptr<const Registry> registry = []
@@ -250,7 +291,7 @@ std::shared_ptr<const Registry> ContextRegistry()
         auto made = std::make_shared<Registry>();
         auto ok = RegisterBuiltins(*made).IsOk();
         for (auto type : { &s_Start, &s_Log, &s_Twice, &s_Count, &s_Plus, &s_Text, &s_Number, &s_Word, &s_Repeat, &s_Fail, &s_Throw, &s_Lost, &s_Idle,
-                           &s_Broken, &s_Pass, &s_Need, &s_Hint, &s_Probe, &s_Tick })
+                           &s_Broken, &s_Pass, &s_Need, &s_Hint, &s_Probe, &s_Tick, &s_Shift, &s_Show })
             ok = made->AddNodeType(*type).IsOk() && ok;
         if (!ok)
             test::Check(false, "the test registry is made");
@@ -733,6 +774,34 @@ TEST_CASE(RunAndStop, "context.run_steps_fibers_until_they_end_or_the_time_is_up
     context.Stop(fiber.ValueOr(0));
     auto stopped = context.Run(std::chrono::seconds(1));
     test::Check(!stopped && context.Fibers()[0].m_State == FiberState::Stopped && !context.Step(fiber.ValueOr(0)), "stopped, it takes no more steps");
+}
+
+TEST_CASE(SplitPinsRun, "context.a_split_pin_reads_and_writes_its_struct_whole", nullptr, test::TestFlags_None)
+{
+    // Shift's point and its moved point are split, and so are Show's point, its box and the box's
+    // min, two deep; neither node's code changes.
+    Fixture f;
+    auto start = f.Add("Start"), shift = f.Add("Shift"), show = f.Add("Show");
+    auto split = true;
+    for (auto [node, key] : { std::pair(shift, "point"), std::pair(shift, "moved"), std::pair(show, "point"), std::pair(show, "box"), std::pair(show, "box.min") })
+        split = f.m_Graph.SplitPin(node, key, true).IsOk() && split;
+    f.Link(start, "then", show, "enter");
+    f.SetValue(shift, "point.x", Value::Int32(1));
+    f.SetValue(shift, "point.y", Value::Int32(2));
+    f.SetValue(shift, "by", Value::Int32(10));
+    f.Link(shift, "moved.x", show, "point.x");
+    f.Link(shift, "moved.y", show, "point.y");
+    f.SetValue(show, "box.min.x", Value::Int32(3));
+    f.SetValue(show, "box.max", Value::Struct(s_Point.AsType(), { Value::Int32(8), Value::Int32(0) }));
+    auto program = f.Compiled();
+    if (!split || !program)
+        return test::Check(false, "the pins are split, and the blueprint compiles");
+
+    Context context(program);
+    Logs    logs;
+    context.SetMonitor(&logs);
+    auto end = Finish(context, context.Start("Start").ValueOr(0));
+    test::Check(end == FiberState::Done && logs.m_Text == "11,12 5", "Shift moves (1, 2) by 10, and Show gets it and a box from 3 to 8: %s", logs.m_Text.c_str());
 }
 
 TEST_CASE(NodeState, "context.state_belongs_to_a_node_in_a_context", nullptr, test::TestFlags_None)
