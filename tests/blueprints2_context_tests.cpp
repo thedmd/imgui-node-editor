@@ -514,7 +514,7 @@ TEST_CASE(ErrorStopsItsFiber, "context.a_run_time_error_stops_only_its_fiber", n
     auto ready   = context.Run(std::chrono::seconds(1));
     auto fibers  = context.Fibers();
     auto diagnostics = context.Diagnostics();
-    test::Check(failing && running && !ready && fibers.size() == 2 && fibers[0].m_State == FiberState::Failed && fibers[1].m_State == FiberState::Done, "one fiber fails, and the other runs to its end");
+    test::Check(failing && running && ready == RunState::Idle && fibers.size() == 2 && fibers[0].m_State == FiberState::Failed && fibers[1].m_State == FiberState::Done, "one fiber fails, and the other runs to its end");
     test::Check(logs.m_Text == "still" && diagnostics.size() == 1 && diagnostics[0].m_Node == fail && diagnostics[0].m_Error.Is(BlueprintError::OutOfRange) && diagnostics[0].m_Graph == f.m_Graph.GetId(), "the error is a diagnostic on its node: %s", Messages(diagnostics).c_str());
     test::Check(fibers[0].m_Node == fail, "and the failed fiber stays at that node");
 }
@@ -770,10 +770,48 @@ TEST_CASE(RunAndStop, "context.run_steps_fibers_until_they_end_or_the_time_is_up
     Context context(program);
     auto fiber   = context.Start("Start");
     auto running = context.Run(std::chrono::milliseconds(2));
-    test::Check(running && context.StepCount() > 2, "an endless fiber is still ready once the time is up: %d steps", static_cast<int>(context.StepCount()));
+    test::Check(running == RunState::Running && context.StepCount() > 2, "an endless fiber is still ready once the time is up: %d steps", static_cast<int>(context.StepCount()));
     context.Stop(fiber.ValueOr(0));
     auto stopped = context.Run(std::chrono::seconds(1));
-    test::Check(!stopped && context.Fibers()[0].m_State == FiberState::Stopped && !context.Step(fiber.ValueOr(0)), "stopped, it takes no more steps");
+    test::Check(stopped == RunState::Idle && context.Fibers()[0].m_State == FiberState::Stopped && !context.Step(fiber.ValueOr(0)), "stopped, it takes no more steps");
+}
+
+TEST_CASE(Breakpoints, "context.run_stops_before_a_node_with_a_breakpoint_and_step_doesnt", nullptr, test::TestFlags_None)
+{
+    // Start, then Count and a Log in a loop, with a breakpoint on the Log.
+    Fixture f;
+    auto start = f.Add("Start"), count = f.Add("Count"), log = f.Add("Log");
+    f.Link(start, "then", count, "enter");
+    f.Link(count, "then", log, "enter");
+    f.Link(log, "then", count, "enter");
+    f.SetValue(log, "text", Value::String("a"));
+    auto program = f.Compiled();
+    if (!program)
+        return;
+    Context context(program);
+    Logs    logs;
+    context.SetMonitor(&logs);
+    auto fiber = context.Start("Start").ValueOr(0);
+    context.SetBreakpoint(log, true);
+
+    auto first = context.Run(std::chrono::seconds(1));
+    auto info  = context.Fibers()[0];
+    test::Check(first == RunState::Breakpoint && info.m_Node == log && info.m_Ran == count && info.m_AtBreakpoint && logs.m_Text.empty(), "Run stops before the Log, once Count ran");
+    auto second = context.Run(std::chrono::seconds(1));
+    test::Check(second == RunState::Breakpoint && logs.m_Text == "a" && context.Fibers()[0].m_Node == log, "run again, the Log runs, and the loop stops before it again: %s", logs.m_Text.c_str());
+
+    auto stepped = context.Step(fiber);
+    auto ran     = context.Fibers()[0];
+    test::Check(stepped && logs.m_Text == "a a" && ran.m_Ran == log && !ran.m_AtBreakpoint, "Step runs the Log, breakpoint or not");
+    test::Check(context.Step(fiber) && context.Step(fiber) && logs.m_Text == "a a a", "and steps through it each time round");
+
+    context.SetBreakpoint(log, false);
+    auto running = context.Run(std::chrono::milliseconds(2));
+    test::Check(running == RunState::Running && context.StepCount() > 10, "without the breakpoint, the loop runs on until the time is up: %d steps", static_cast<int>(context.StepCount()));
+    context.SetBreakpoint(log, true);
+    auto again = context.Run(std::chrono::seconds(1));
+    context.Stop(fiber);
+    test::Check(again == RunState::Breakpoint && !context.Fibers()[0].m_AtBreakpoint && context.Run(std::chrono::seconds(1)) == RunState::Idle, "stopped there, a fiber is at no breakpoint");
 }
 
 TEST_CASE(SplitPinsRun, "context.a_split_pin_reads_and_writes_its_struct_whole", nullptr, test::TestFlags_None)

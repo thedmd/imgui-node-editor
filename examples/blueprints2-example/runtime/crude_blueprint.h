@@ -997,10 +997,20 @@ enum class FiberState : uint8_t
 // A fiber is one line of execution: an event's run.
 struct FiberInfo
 {
-    FiberId    m_Id    = 0;
-    FiberState m_State = FiberState::Ready;
-    Id         m_Node  = 0; // the node it runs next
-    Id         m_Link  = 0; // the flow link its last step took; 0 for none, as into a loop's node again
+    FiberId    m_Id           = 0;
+    FiberState m_State        = FiberState::Ready;
+    Id         m_Node         = 0;     // the node it runs next
+    Id         m_Ran          = 0;     // the node its last step ran
+    Id         m_Link         = 0;     // the flow link its last step took; 0 for none, as into a loop's node again
+    bool       m_AtBreakpoint = false; // Run() stopped it before its next node, which has a breakpoint
+};
+
+// Why Run() returned.
+enum class RunState : uint8_t
+{
+    Idle,       // no fiber is ready
+    Running,    // the time is up, and fibers are ready
+    Breakpoint, // a fiber is before a node with a breakpoint
 };
 
 // A value as the debugger shows it.
@@ -1075,11 +1085,14 @@ public:
     explicit Context(std::shared_ptr<const Program> program);
 
     Result<FiberId>    Start(std::string_view event);
-    // Runs the fiber's next node.
+    // Runs the fiber's next node, breakpoint or not.
     Result<FiberState> Step(FiberId fiber);
-    // Steps the ready fibers in turn until none is ready or the time is up; true while one is.
-    bool               Run(std::chrono::microseconds budget);
+    // Steps the ready fibers in turn until none is ready, the time is up, or a fiber is before a
+    // node with a breakpoint. Run again, that fiber runs the node.
+    RunState           Run(std::chrono::microseconds budget);
     void               Stop(FiberId fiber);
+    // Of a node with flow pins; a pure node's never stops a run.
+    void               SetBreakpoint(Id node, bool enabled);
 
     std::vector<FiberInfo>      Fibers() const;
     uint64_t                    StepCount() const   { return m_Step; }
@@ -1113,9 +1126,10 @@ private:
 
     std::shared_ptr<const Program> m_Program;
     std::vector<Value>             m_Slots;
-    std::vector<uint64_t>          m_SlotSteps; // the step that wrote each slot
-    std::vector<uint64_t>          m_Computed;  // per node: the generation of a pure node's outputs
-    std::vector<std::any>          m_States;    // per node
+    std::vector<uint64_t>          m_SlotSteps;   // the step that wrote each slot
+    std::vector<uint64_t>          m_Computed;    // per node: the generation of a pure node's outputs
+    std::vector<std::any>          m_States;      // per node
+    std::vector<bool>              m_Breakpoints; // per node
     std::vector<Fiber>             m_Fibers;
     std::vector<Diagnostic>        m_Diagnostics;
     ContextMonitor*                m_Monitor    = nullptr;

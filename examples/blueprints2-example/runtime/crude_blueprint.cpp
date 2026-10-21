@@ -2383,6 +2383,7 @@ crude_blueprint::Context::Context(std::shared_ptr<const Program> program)
     m_SlotSteps.resize(m_Program->m_Slots.size(), 0);
     m_Computed.resize(m_Program->m_Nodes.size(), 0);
     m_States.resize(m_Program->m_Nodes.size());
+    m_Breakpoints.resize(m_Program->m_Nodes.size(), false);
 }
 
 crude_blueprint::Result<crude_blueprint::FiberId> crude_blueprint::Context::Start(std::string_view event)
@@ -2413,6 +2414,8 @@ crude_blueprint::Result<crude_blueprint::FiberState> crude_blueprint::Context::S
     const auto  index = fiber->m_Node;
     const auto  entry = fiber->m_Entry;
     auto&       node  = m_Program->m_Nodes[index];
+    fiber->m_Info.m_Ran          = node.m_Id;
+    fiber->m_Info.m_AtBreakpoint = false;
     ExecContext context(*this, index, fiber->m_Again);
     auto        exit  = Contained([&] { return node.m_Type->Execute(context, entry >= 0 ? std::string_view(node.m_Pins[entry].m_Key) : std::string_view()); });
     if (!exit)
@@ -2438,7 +2441,7 @@ crude_blueprint::Result<crude_blueprint::FiberState> crude_blueprint::Context::S
     return fiber->m_Info.m_State;
 }
 
-bool crude_blueprint::Context::Run(std::chrono::microseconds budget)
+crude_blueprint::RunState crude_blueprint::Context::Run(std::chrono::microseconds budget)
 {
     const auto deadline = std::chrono::steady_clock::now() + budget;
     for (;;)
@@ -2446,15 +2449,24 @@ bool crude_blueprint::Context::Run(std::chrono::microseconds budget)
         auto ready = false;
         for (size_t i = 0; i < m_Fibers.size(); ++i)
         {
-            if (m_Fibers[i].m_Info.m_State != FiberState::Ready)
+            auto& fiber = m_Fibers[i];
+            if (fiber.m_Info.m_State != FiberState::Ready)
                 continue;
+            if (m_Breakpoints[fiber.m_Node] && !fiber.m_Info.m_AtBreakpoint)
+            {
+                fiber.m_Info.m_AtBreakpoint = true;
+                return RunState::Breakpoint;
+            }
             ready = true;
-            [[maybe_unused]] auto state = Step(m_Fibers[i].m_Info.m_Id);
+            [[maybe_unused]] auto state = Step(fiber.m_Info.m_Id);
         }
         if (!ready)
-            return false;
+            return RunState::Idle;
         if (std::chrono::steady_clock::now() >= deadline)
-            return std::any_of(m_Fibers.begin(), m_Fibers.end(), [](const Fiber& fiber) { return fiber.m_Info.m_State == FiberState::Ready; });
+        {
+            auto any = std::any_of(m_Fibers.begin(), m_Fibers.end(), [](const Fiber& fiber) { return fiber.m_Info.m_State == FiberState::Ready; });
+            return any ? RunState::Running : RunState::Idle;
+        }
     }
 }
 
@@ -2462,9 +2474,16 @@ void crude_blueprint::Context::Stop(FiberId id)
 {
     if (auto fiber = FindFiber(id); fiber && fiber->m_Info.m_State == FiberState::Ready)
     {
-        fiber->m_Info.m_State = FiberState::Stopped;
-        fiber->m_Info.m_Node  = 0;
+        fiber->m_Info.m_State        = FiberState::Stopped;
+        fiber->m_Info.m_Node         = 0;
+        fiber->m_Info.m_AtBreakpoint = false;
     }
+}
+
+void crude_blueprint::Context::SetBreakpoint(Id node, bool enabled)
+{
+    if (auto index = m_Program->FindNode(node); index >= 0)
+        m_Breakpoints[index] = enabled;
 }
 
 std::vector<crude_blueprint::FiberInfo> crude_blueprint::Context::Fibers() const
