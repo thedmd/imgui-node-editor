@@ -42,18 +42,16 @@ ImVec4 blueprint_editor_utilities::HeaderColor(const Blueprint& blueprint, const
     auto rgb = [](uint32_t color) { return ImVec4(static_cast<float>((color >> 16) & 0xFF) / 255.0f, static_cast<float>((color >> 8) & 0xFF) / 255.0f, static_cast<float>(color & 0xFF) / 255.0f, 1.0f); };
     auto& type = *node.m_Type;
     if (!type.EventName(node.m_Config).empty())
-        return rgb(0xCC2222);
+        return rgb(0xC43B3B);
+    if (blueprint.MaySuspend(type))
+        return rgb(0x1F8A8A);
     if (blueprint.FunctionOf(type))
-        return type.m_Name.starts_with("call:") ? rgb(0xFF8000) : rgb(0xFF04FF);
-    if (type.m_Name.starts_with("make:") || type.m_Name.starts_with("break:"))
-        return rgb(0x8DC286);
-    if (IsConstant(node) && !node.m_Pins.empty())
-        return PinColor(node.m_Pins.front());
-    if (type.m_Category == "Arrays" || type.m_Category == "Maps")
-        return rgb(0x67A4CD);
+        return type.m_Name.starts_with("call:") ? rgb(0x3568B8) : rgb(0x6E4FB3);
+    if (type.m_Name == "crude.Print" || type.m_Name == "crude.Assert")
+        return rgb(0xA66A1E);
     if (std::none_of(node.m_Pins.begin(), node.m_Pins.end(), [](const Pin& pin) { return pin.m_Flow; }))
-        return rgb(0x80C8F7);
-    return ImVec4(1.0f, 1.0f, 1.0f, 1.0f);
+        return rgb(0x3C8A52);
+    return rgb(0x5A6270);
 }
 
 // Arrays take their items' colors, and maps their values'. Other types without a color of their
@@ -151,6 +149,134 @@ bool blueprint_editor_utilities::IsConstant(const Node& node)
 bool blueprint_editor_utilities::IsCustomEvent(const Node& node)
 {
     return node.m_Type->m_Name == "crude.CustomEvent";
+}
+
+bool blueprint_editor_utilities::IsCompact(const Node& node)
+{
+    return IsConstant(node) || !GetterVariable(node).empty();
+}
+
+std::string_view blueprint_editor_utilities::GetterVariable(const Node& node)
+{
+    constexpr std::string_view prefix = "get:";
+    const std::string_view name = node.m_Type->m_Name;
+    return name.starts_with(prefix) ? name.substr(prefix.size()) : std::string_view();
+}
+
+namespace blueprint_editor_utilities { namespace {
+
+constexpr float c_Cut        = 10.0f;
+constexpr float c_CompactCut = 8.0f;
+constexpr float c_BandPad    = 16.0f; // between a title and the band's slant
+constexpr float c_Stripe     = 4.0f;  // a compact node's, along its left edge
+
+// Clockwise from the top-left cut. Grown all around, a cut grows by (2 - sqrt(2)) times as much,
+// which keeps its edge at 45°.
+void OutlinePath(ImDrawList* drawList, ImVec2 a, ImVec2 b, bool compact, float grow = 0.0f)
+{
+    const auto cut = (compact ? c_CompactCut : c_Cut) + 0.5857864f * grow;
+    a -= ImVec2(grow, grow);
+    b += ImVec2(grow, grow);
+    drawList->PathLineTo(ImVec2(a.x, a.y + cut));
+    drawList->PathLineTo(ImVec2(a.x + cut, a.y));
+    if (compact)
+    {
+        drawList->PathLineTo(ImVec2(b.x - cut, a.y));
+        drawList->PathLineTo(ImVec2(b.x, a.y + cut));
+    }
+    else
+        drawList->PathLineTo(ImVec2(b.x, a.y));
+    drawList->PathLineTo(ImVec2(b.x, b.y - cut));
+    drawList->PathLineTo(ImVec2(b.x - cut, b.y));
+    if (compact)
+    {
+        drawList->PathLineTo(ImVec2(a.x + cut, b.y));
+        drawList->PathLineTo(ImVec2(a.x, b.y - cut));
+    }
+    else
+        drawList->PathLineTo(ImVec2(a.x, b.y));
+}
+
+} } // namespace blueprint_editor_utilities { namespace {
+
+void blueprint_editor_utilities::DrawNodeLook(ImDrawList* drawList, ImVec2 min, ImVec2 max, const NodeLook& look)
+{
+    OutlinePath(drawList, min, max, look.m_Compact);
+    drawList->PathFillConvex(IM_COL32(32, 33, 38, 255));
+    if (look.m_Compact)
+    {
+        drawList->PathLineTo(ImVec2(min.x, min.y + c_CompactCut));
+        drawList->PathLineTo(ImVec2(min.x + c_Stripe, min.y + c_CompactCut - c_Stripe));
+        drawList->PathLineTo(ImVec2(min.x + c_Stripe, max.y - c_CompactCut + c_Stripe));
+        drawList->PathLineTo(ImVec2(min.x, max.y - c_CompactCut));
+        drawList->PathFillConvex(look.m_Stripe);
+    }
+    else
+    {
+        const auto bottom = look.m_BandBottom;
+        auto top = [&]
+        {
+            drawList->PathLineTo(ImVec2(min.x, min.y + c_Cut));
+            drawList->PathLineTo(ImVec2(min.x + c_Cut, min.y));
+        };
+        top();
+        drawList->PathLineTo(ImVec2(max.x, min.y));
+        drawList->PathLineTo(ImVec2(max.x, bottom));
+        drawList->PathLineTo(ImVec2(min.x, bottom));
+        drawList->PathFillConvex(IM_COL32(42, 44, 50, 255));
+
+        // The slant meets the band's bottom where it meets its top, less the band's height.
+        const auto end = BandEnd(look.m_TitleRight, bottom - min.y);
+        const auto low = end - (bottom - min.y);
+        top();
+        if (end <= max.x)
+        {
+            drawList->PathLineTo(ImVec2(end, min.y));
+            drawList->PathLineTo(ImVec2(low, bottom));
+        }
+        else if (low < max.x)
+        {
+            drawList->PathLineTo(ImVec2(max.x, min.y));
+            drawList->PathLineTo(ImVec2(max.x, min.y + end - max.x));
+            drawList->PathLineTo(ImVec2(low, bottom));
+        }
+        else
+        {
+            drawList->PathLineTo(ImVec2(max.x, min.y));
+            drawList->PathLineTo(ImVec2(max.x, bottom));
+        }
+        drawList->PathLineTo(ImVec2(min.x, bottom));
+        drawList->PathFillConvex(look.m_Band);
+        drawList->AddLineH(min.x, max.x, bottom, IM_COL32(0, 0, 0, 90));
+    }
+
+    OutlinePath(drawList, min, max, look.m_Compact);
+    drawList->PathStroke(look.m_Border, look.m_BorderWidth, ImDrawFlags_Closed | ImDrawFlags_StrokeInside);
+    if (look.m_Selected)
+    {
+        // 2 px wide, 2 px out: the inside stroke of the outline grown by both.
+        OutlinePath(drawList, min, max, look.m_Compact, 4.0f);
+        drawList->PathStroke(IM_COL32(255, 255, 255, 220), 2.0f, ImDrawFlags_Closed | ImDrawFlags_StrokeInside);
+    }
+}
+
+float blueprint_editor_utilities::BandEnd(float titleRight, float bandHeight)
+{
+    return titleRight + c_BandPad + bandHeight;
+}
+
+ImVec2 blueprint_editor_utilities::CutCenter(bool compact)
+{
+    const auto cut = compact ? c_CompactCut : c_Cut;
+    return ImVec2(cut, cut) * 0.5f;
+}
+
+ImVec4 blueprint_editor_utilities::NodePadding(const NodeLook& look)
+{
+    auto padding = ax::NodeEditor::GetStyle().NodePadding;
+    if (look.m_Compact)
+        padding.x += c_Stripe;
+    return padding;
 }
 
 blueprint_editor_utilities::Value blueprint_editor_utilities::ConstantValue(const Node& node, const Pin& pin)

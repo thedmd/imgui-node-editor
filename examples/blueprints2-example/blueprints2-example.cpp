@@ -197,6 +197,17 @@ struct BlueprintEditorExample
             ed::Config config;
             config.SettingsName = nullptr;
             editor = ed::CreateEditor(&config);
+
+            // Nodes draw their own fills, borders and rings, on their cut outlines. The editor
+            // draws its rings from the style as the canvas ends, so a push wouldn't hide them.
+            auto previous = ed::GetCurrentEditor();
+            ed::SetCurrentEditor(editor);
+            auto& style = ed::GetStyle();
+            style.NodeBorderWidth         = 0.0f;
+            style.HoveredNodeBorderWidth  = 0.0f;
+            style.SelectedNodeBorderWidth = 0.0f;
+            style.Colors[ed::StyleColor_NodeBg].w = 0.0f;
+            ed::SetCurrentEditor(previous);
         }
         return editor;
     }
@@ -705,27 +716,36 @@ private:
             }
         }
 
-        // A paused run's next node has a blue border, and the node its last step ran an orange one.
-        // The example draws the borders, over the header bands, on the nodes' outlines.
+        // A paused run's next node has a blue border, and the node its last step ran an orange one;
+        // a node with errors a red one, and a hovered node a brighter one.
         const auto current = m_Debugger.IsActive() ? m_Debugger.CurrentNode() : 0;
         const auto next    = m_Debugger.IsActive() ? m_Debugger.NextNode() : 0;
-        ed::PushStyleVar(ed::StyleVar_NodeBorderWidth, 0.0f);
+        const auto hovered = static_cast<Id>(ed::GetHoveredNode().Get());
         for (auto& node : graph.Nodes())
         {
             const auto errors   = m_Problems.Count(Severity::Error, node.m_Id);
             const auto warnings = m_Problems.Count(Severity::Warning, node.m_Id);
             const auto stepped  = node.m_Id == next || node.m_Id == current;
-            auto borderColor = ImGui::ColorConvertFloat4ToU32(ed::GetStyle().Colors[ed::StyleColor_NodeBorder]);
-            auto borderWidth = 1.0f;
+            const auto compact  = IsCompact(node);
+            NodeLook look;
+            look.m_Compact     = compact;
+            look.m_Selected    = ed::IsNodeSelected(node.m_Id);
+            look.m_Border      = node.m_Id == hovered ? IM_COL32(255, 255, 255, 80) : IM_COL32(255, 255, 255, 38);
+            look.m_BorderWidth = node.m_Id == hovered ? 1.5f : 1.0f;
             if (stepped)
             {
-                borderColor = ImGui::GetColorU32(node.m_Id == next ? ImGuiCol_NavCursor : ImGuiCol_PlotHistogram);
-                borderWidth = 3.0f;
+                look.m_Border      = ImGui::GetColorU32(node.m_Id == next ? ImGuiCol_NavCursor : ImGuiCol_PlotHistogram);
+                look.m_BorderWidth = 2.0f;
             }
             else if (errors > 0)
-                borderColor = ProblemColor(Severity::Error);
+            {
+                look.m_Border      = ProblemColor(Severity::Error);
+                look.m_BorderWidth = 1.5f;
+            }
 
+            ed::PushStyleVar(ed::StyleVar_NodePadding, NodePadding(look));
             ed::BeginNode(node.m_Id);
+            ed::PopStyleVar();
 
             // General node layout:
             //
@@ -751,26 +771,31 @@ private:
                 title += ">";
             }
 
-            // A band of a tint of what the node is, white one fainter.
-            auto tint = HeaderColor(document.GetBlueprint(), node);
-            tint.w    = tint.x + tint.y + tint.z >= 3.0f ? 0.25f : 0.55f;
-            auto band = ImGui::GetColorU32(tint);
-            auto bandBottom = 0.0f;
+            // The band, of the color of what the node is, ends past the title, and the problems'
+            // pills and the clock of a node that may suspend follow it.
+            if (!compact)
             {
+                look.m_Band = ImGui::GetColorU32(HeaderColor(document.GetBlueprint(), node));
                 ImGui::BeginGroup();
                 ImGui::PushFont(HeaderFont(), HeaderFont()->LegacySize);
                 ImGui::TextUnformatted(title.data(), title.data() + title.size());
                 ImGui::PopFont();
+                look.m_TitleRight = ImGui::GetItemRectMax().x;
+                const auto bandHeight = ImGui::GetItemRectMax().y + ImGui::GetStyle().ItemSpacing.y - ed::GetNodePosition(node.m_Id).y;
+                auto       sameLine   = [&, first = true]() mutable
+                {
+                    ImGui::SameLine(0.0f, std::exchange(first, false) ? BandEnd(look.m_TitleRight, bandHeight) - look.m_TitleRight : -1.0f);
+                };
                 if (errors > 0 || warnings > 0)
                 {
-                    ImGui::SameLine();
+                    sameLine();
                     if (ProblemPills(errors, warnings) && !m_Bubbles.erase(node.m_Id))
                         m_Bubbles.insert(node.m_Id);
                 }
                 auto wait = waits.find(node.m_Id);
                 if (wait != waits.end() || document.GetBlueprint().MaySuspend(*node.m_Type))
                 {
-                    ImGui::SameLine();
+                    sameLine();
                     if (LatentMark(wait != waits.end() ? wait->second : std::string()))
                     {
                         ed::Suspend();
@@ -779,15 +804,14 @@ private:
                     }
                 }
                 ImGui::EndGroup();
-                bandBottom = ImGui::GetItemRectMax().y + ImGui::GetStyle().ItemSpacing.y;
+                look.m_BandBottom = ImGui::GetItemRectMax().y + ImGui::GetStyle().ItemSpacing.y;
 
                 ImGui::Spacing();
+                ImGui::Dummy(ImVec2(100.0f, 0.0f)); // For minimum node width
             }
 
-            ImGui::Dummy(ImVec2(100.0f, 0.0f)); // For minimum node width
-
             crude_layout::Grid layout;
-            layout.Begin(node.m_Id, 2, 100.0f);
+            layout.Begin(node.m_Id, 2, compact ? -1.0f : 100.0f);
             layout.SetColumnAlignment(0.0f);
 
             // A group's [+] and [-] follow its last pin, or end the inputs while it has none.
@@ -932,6 +956,16 @@ private:
                 //    |          |       |
                 //    +----------+-------+
 
+                // A compact node shows its problems' pills before its value or its variable's name.
+                if (compact && (errors > 0 || warnings > 0))
+                {
+                    if (ProblemPills(errors, warnings) && !m_Bubbles.erase(node.m_Id))
+                        m_Bubbles.insert(node.m_Id);
+                    ImGui::SameLine();
+                }
+                if (compact)
+                    look.m_Stripe = ImGui::GetColorU32(PinColor(pin));
+
                 // A Constant shows its value, and an editor once clicked, before its pin.
                 if (HasValueEditor(graph, pin))
                 {
@@ -958,10 +992,11 @@ private:
                 //       does not look good for blueprint nodes.
                 ed::PinPivotAlignment(ImVec2(1.0f, 0.5f));
 
-                // [1] - Show pin name if it has one
-                if (!pin.m_Name.empty())
+                // [1] - Show pin name if it has one; a compact node's, its variable's, if any
+                const auto label = compact ? GetterVariable(node) : std::string_view(pin.m_Name);
+                if (!label.empty())
                 {
-                    ImGui::TextUnformatted(pin.m_Name.data(), pin.m_Name.data() + pin.m_Name.size());
+                    ImGui::TextUnformatted(label.data(), label.data() + label.size());
                     ImGui::SameLine();
                 }
 
@@ -983,14 +1018,10 @@ private:
 
             if (auto drawList = ed::GetNodeBackgroundDrawList(node.m_Id))
             {
-                const auto min      = ed::GetNodePosition(node.m_Id);
-                const auto max      = min + ed::GetNodeSize(node.m_Id);
-                const auto rounding = ed::GetStyle().NodeRounding;
-                drawList->AddRectFilled(min, ImVec2(max.x, bandBottom), band, rounding, ImDrawFlags_RoundTop);
-                drawList->AddRect(min, max, borderColor, rounding, borderWidth);
+                const auto min = ed::GetNodePosition(node.m_Id);
+                DrawNodeLook(drawList, min, min + ed::GetNodeSize(node.m_Id), look);
             }
         }
-        ed::PopStyleVar();
 
         // While a run goes on, a flow link it took in its last steps is thicker, the more so the more
         // recently, but for the one it took last, which flows. A run that ended keeps its context, for
@@ -1047,19 +1078,20 @@ private:
         drawList->PopClipRect();
     }
 
-    // A red disc over the top-left corner of each node with a breakpoint.
+    // A red disc on the top-left cut of each node with a breakpoint, to the canvas's scale.
     void ShowBreakpoints(const Document& document, ImVec2 canvasMin, ImVec2 canvasMax)
     {
-        const auto radius = ImGui::GetTextLineHeight() * 0.35f;
-        auto drawList = ImGui::GetWindowDrawList();
+        const auto scale    = ed::CanvasToScreen(ImVec2(1.0f, 0.0f)).x - ed::CanvasToScreen(ImVec2(0.0f, 0.0f)).x;
+        const auto radius   = 6.0f * scale;
+        auto       drawList = ImGui::GetWindowDrawList();
         drawList->PushClipRect(canvasMin, canvasMax, true);
         for (auto& node : document.GetGraph().Nodes())
         {
             if (!m_Debugger.HasBreakpoint(node.m_Id))
                 continue;
-            const auto center = ed::CanvasToScreen(ed::GetNodePosition(node.m_Id)) + ImVec2(radius, radius) * 0.5f;
+            const auto center = ed::CanvasToScreen(ed::GetNodePosition(node.m_Id) + CutCenter(IsCompact(node)));
             drawList->AddCircleFilled(center, radius, IM_COL32(220, 48, 48, 255));
-            drawList->AddCircle(center, radius, IM_COL32(32, 32, 32, 255), 0, 1.5f);
+            drawList->AddCircle(center, radius, IM_COL32(32, 32, 32, 255), 0, 1.5f * scale);
         }
         drawList->PopClipRect();
     }

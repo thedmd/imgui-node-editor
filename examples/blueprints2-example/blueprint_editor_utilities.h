@@ -31,9 +31,9 @@ ImVec4   TypeColor(const Type* type);
 // another type.
 std::string TypeParameterText(const Blueprint& blueprint, const Type* type);
 std::string AllowedText(const VariableDeclaration& parameter); // "Int32, Float", or "any type"
-// What a node is, as Spark's blueprint editor colors node headers: events red, a function's entry
-// and returns magenta, calls orange, Make and Break green, arrays and maps steel blue, a Constant
-// its type's color, other pure nodes light blue, and the rest white.
+// What a node is, by the color of its header's band: an event red, a node that may suspend its
+// fiber teal, a function's entry and returns violet, its calls blue, Print and Assert amber, other
+// pure nodes green, and the rest slate.
 ImVec4   HeaderColor(const Blueprint& blueprint, const Node& node);
 
 // What an input without a link reads: the value the user typed, the default its node declares,
@@ -49,6 +49,31 @@ bool  IsConstant(const Node& node);
 Value ConstantValue(const Node& node, const Pin& pin);
 // A Custom Event's config holds its event's name, and the names of its parameters.
 bool  IsCustomEvent(const Node& node);
+// A Constant, and a variable's Get, show as a row of their own, without a header; a Get's row names
+// its variable.
+bool             IsCompact(const Node& node);
+std::string_view GetterVariable(const Node& node); // empty for a node that isn't a variable's Get
+
+// A node's look behind its content, on its outline: the top-left and bottom-right corners cut at
+// 45°, and a compact node's other two as well. Over a darker header row, a header's band runs from
+// the top-left cut past its title and ends in a 45° slant, or spans a node too narrow for that; a
+// compact node has a stripe of its type's color along its left edge instead. The border is stroked
+// inside the outline, and the selection's ring outside it, past a gap.
+struct NodeLook
+{
+    ImU32 m_Band        = 0;
+    float m_BandBottom  = 0.0f; // a header's
+    float m_TitleRight  = 0.0f; // the band's slant starts past it
+    ImU32 m_Stripe      = 0;    // a compact node's
+    ImU32 m_Border      = 0;
+    float m_BorderWidth = 1.0f;
+    bool  m_Compact     = false;
+    bool  m_Selected    = false;
+};
+void   DrawNodeLook(ImDrawList* drawList, ImVec2 min, ImVec2 max, const NodeLook& look);
+float  BandEnd(float titleRight, float bandHeight); // where the band's slant starts, at its top
+ImVec2 CutCenter(bool compact);                    // the middle of a node's top-left cut, from its top-left
+ImVec4 NodePadding(const NodeLook& look);          // the editor's, a compact node's from inside its stripe
 
 bool HasLinks(const Graph& graph, Id pin);              // active or disabled
 bool HasValueEditor(const Graph& graph, const Pin& pin); // an input without an active link, or a Constant's output; of a decided type
