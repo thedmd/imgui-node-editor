@@ -17,7 +17,7 @@ void crude_layout::Grid::Begin(ImU32 id, int columns, float width)
 
     for (int i = 0; i < columns; ++i)
     {
-        ImGui::PushID(ColumnSeed());
+        ImGui::PushID(ColumnSeed(i));
         m_Storage->SetFloat(ImGui::GetID("MaximumColumnWidthAcc"), -1.0f);
         ImGui::PopID();
     }
