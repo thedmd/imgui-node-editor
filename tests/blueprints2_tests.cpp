@@ -517,6 +517,45 @@ TEST_CASE(CanvasActionsFire, "blueprints2.only_the_first_active_canvas_action_fi
     test::Check(fired[1] == 1 && fired[2] == 0 && fired[3] == 1, "elsewhere, only the global one: %d %d %d", fired[1], fired[2], fired[3]);
 }
 
+TEST_CASE(GroupPinEdits, "blueprints2.group_pins_are_added_and_removed_in_undo_steps", nullptr, test::TestFlags_None)
+{
+    // The example's Add has in.0, from For Loop's index, and in.1, from the Constant.
+    test::Session session(UnnamedConfig());
+    OverlayLog    log;
+    Example       example(session);
+    auto& document = example.m_Document;
+    auto  add      = example.Node("crude.Add");
+    auto  inputs   = [&] { return document.GetGraph().FindNode(add)->m_Pins.size() - 1; };
+    auto  linkedTo = [&](std::string_view key)
+    {
+        auto pin = document.GetGraph().FindNode(add)->FindPin(key);
+        return pin && blueprint_editor_utilities::HasLinks(document.GetGraph(), pin->m_Id);
+    };
+
+    size_t grown = 0, shrunk = 0;
+    bool   kept = false, gone = false;
+    session.Use([&]
+    {
+        blueprint_editor_utilities::AddGroupPin(document, add, "in");
+        grown = inputs();
+
+        // The name in the node's declaration, which the edit replaces, as the pin's menu passes it.
+        auto& group = document.GetGraph().FindNode(add)->m_Groups.front();
+        blueprint_editor_utilities::RemoveGroupPin(document, add, group.m_Name, 1);
+        shrunk = inputs();
+        kept   = linkedTo("in.0");
+        gone   = !linkedTo("in.1");
+    });
+
+    test::Check(grown == 3 && shrunk == 2, "Add grows to 3 inputs, and back to 2: %d, %d", static_cast<int>(grown), static_cast<int>(shrunk));
+    test::Check(kept && gone, "in.1 went with its link, and in.2, unlinked, took its place");
+    test::Check(document.m_Undo.size() == 2 && document.m_Undo[0].m_Name.find("added") != std::string::npos && document.m_Undo[1].m_Name.find("removed") != std::string::npos,
+        "each is an undo step: %s; %s", document.m_Undo.empty() ? "-" : document.m_Undo[0].m_Name.c_str(), document.m_Undo.size() < 2 ? "-" : document.m_Undo[1].m_Name.c_str());
+
+    session.Use([&] { document.Undo(); });
+    test::Check(inputs() == 3 && linkedTo("in.1"), "undo brings in.1 back with its link");
+}
+
 TEST_CASE(NewDocuments, "blueprints2.a_new_document_has_an_empty_graph", nullptr, test::TestFlags_None)
 {
     Document document(ExampleRegistry(), std::make_shared<TypeTable>());

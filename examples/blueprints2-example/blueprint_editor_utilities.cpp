@@ -108,6 +108,58 @@ const blueprint_editor_utilities::VariableDeclaration* blueprint_editor_utilitie
     return &graph.NodeOf(pin.m_Id)->m_Variables[static_cast<size_t>(pin.m_Type.m_Variable)];
 }
 
+const blueprint_editor_utilities::GroupDeclaration* blueprint_editor_utilities::FindGroup(const Node& node, std::string_view key, int* index)
+{
+    for (auto& group : node.m_Groups)
+    {
+        if (auto at = GroupIndex(group, key); at >= 0)
+        {
+            if (index)
+                *index = at;
+            return &group;
+        }
+    }
+    return nullptr;
+}
+
+void blueprint_editor_utilities::AddGroupPin(Document& document, Id node, std::string group)
+{
+    auto& graph = document.GetGraph();
+    auto  found = graph.FindNode(node);
+    if (!found)
+        return;
+
+    const auto name = found->Name();
+    auto transaction = document.BeginUndoTransaction("Add Pin");
+    if (auto added = graph.AddGroupPin(node, group); !added)
+    {
+        auto message = added.GetError().Message();
+        LOGW("%.*s", static_cast<int>(message.size()), message.data());
+        transaction->Discard();
+        return;
+    }
+    transaction->AddAction("%s: %s pin added", name.c_str(), group.c_str());
+}
+
+void blueprint_editor_utilities::RemoveGroupPin(Document& document, Id node, std::string group, int index)
+{
+    auto& graph = document.GetGraph();
+    auto  found = graph.FindNode(node);
+    if (!found)
+        return;
+
+    const auto name = found->Name();
+    auto transaction = document.BeginUndoTransaction("Remove Pin");
+    if (auto removed = graph.RemoveGroupPin(node, group, index); !removed)
+    {
+        auto message = removed.GetError().Message();
+        LOGW("%.*s", static_cast<int>(message.size()), message.data());
+        transaction->Discard();
+        return;
+    }
+    transaction->AddAction("%s: %s.%d removed", name.c_str(), group.c_str(), index);
+}
+
 bool blueprint_editor_utilities::DrawValue(const Value& value)
 {
     auto type = value.GetType();
@@ -854,6 +906,10 @@ void blueprint_editor_utilities::PinContextMenu::Show(Document& document)
         if (ImGui::MenuItem("Break Links", nullptr, nullptr, pin != nullptr && ax::NodeEditor::HasAnyLinks(ax::NodeEditor::PinId(m_Pin))))
             ax::NodeEditor::BreakLinks(ax::NodeEditor::PinId(m_Pin));
 
+        int  index  = -1;
+        auto group  = pin ? FindGroup(*node, pin->m_Key, &index) : nullptr;
+        auto remove = group && ImGui::MenuItem("Remove Pin", nullptr, nullptr, GroupCount(*group, node->m_Config) > group->m_Min);
+
         // The choice is set once the menu is drawn.
         auto variable = pin ? PinVariable(graph, *pin) : nullptr;
         std::optional<const Type*> choice; // null: reset
@@ -897,6 +953,8 @@ void blueprint_editor_utilities::PinContextMenu::Show(Document& document)
             else
                 transaction->AddAction("%s: %s", graph.FindNode(id)->Name().c_str(), what);
         }
+        else if (remove)
+            RemoveGroupPin(document, node->m_Id, group->m_Name, index);
 
         ImGui::EndPopup();
     }

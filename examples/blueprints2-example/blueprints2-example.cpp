@@ -580,8 +580,8 @@ private:
             linked.insert(link.m_To);
         }
 
-        // A value edited in a pin's editor, set once the nodes are drawn.
-        std::optional<std::pair<Id, Value>> valueEdit;
+        // An edit made with a node's widgets, done once the nodes are drawn.
+        std::function<void()> edit;
 
         DebugOverlay debugOverlay(m_Debugger);
         debugOverlay.Begin();
@@ -638,6 +638,35 @@ private:
             layout.Begin(node.m_Id, 2, 100.0f);
             layout.SetColumnAlignment(0.0f);
 
+            // A group's [+] and [-] follow its last pin, or end the inputs while it has none.
+            std::map<const GroupDeclaration*, const Pin*> lastOfGroup;
+            for (auto& pin : node.m_Pins)
+                if (auto group = FindGroup(node, pin.m_Key))
+                    lastOfGroup[group] = &pin;
+            auto groupButtons = [&](const GroupDeclaration& group)
+            {
+                const auto count = GroupCount(group, node.m_Config);
+                ImGui::Spacing();
+                ImGui::PushID(group.m_Name.c_str());
+                ImGui::BeginDisabled(count >= group.m_Max);
+                if (ImGui::SmallButton("+"))
+                    edit = [&document, id = node.m_Id, name = group.m_Name] { AddGroupPin(document, id, name); };
+                ImGui::EndDisabled();
+                ImGui::SameLine();
+                ImGui::BeginDisabled(count <= group.m_Min);
+                if (ImGui::SmallButton("-"))
+                    edit = [&document, id = node.m_Id, name = group.m_Name, index = count - 1] { RemoveGroupPin(document, id, name, index); };
+                ImGui::EndDisabled();
+                ImGui::PopID();
+                layout.NextRow();
+            };
+            auto groupButtonsAfter = [&](const Pin& pin)
+            {
+                for (auto& [group, last] : lastOfGroup)
+                    if (last == &pin)
+                        groupButtons(*group);
+            };
+
             // Draw column with input pins.
             for (auto& pin : node.m_Pins)
             {
@@ -681,7 +710,7 @@ private:
                     ImGui::SameLine();
                     auto value = InputValue(graph, pin);
                     if (DrawValueWithEditor(pin.m_Id, value))
-                        valueEdit.emplace(pin.m_Id, std::move(value));
+                        edit = [&document, id = pin.m_Id, value] { SetPinValue(document, id, value); };
                 }
 
                 ed::EndPin();
@@ -690,7 +719,11 @@ private:
                 debugOverlay.DrawInputPin(pin, isLinked);
 
                 layout.NextRow();
+                groupButtonsAfter(pin);
             }
+            for (auto& group : node.m_Groups)
+                if (!lastOfGroup.contains(&group))
+                    groupButtons(group);
 
             layout.SetColumnAlignment(1.0f);
             layout.NextColumn();
@@ -717,7 +750,7 @@ private:
                 {
                     auto value = ConstantValue(node, pin);
                     if (DrawValueWithEditor(pin.m_Id, value))
-                        valueEdit.emplace(pin.m_Id, std::move(value));
+                        edit = [&document, id = pin.m_Id, value] { SetPinValue(document, id, value); };
                     ImGui::SameLine();
                 }
 
@@ -747,6 +780,7 @@ private:
                 debugOverlay.DrawOutputPin(pin);
 
                 layout.NextRow();
+                groupButtonsAfter(pin);
             }
 
             layout.End();
@@ -772,8 +806,8 @@ private:
 
         debugOverlay.End();
 
-        if (valueEdit)
-            SetPinValue(document, valueEdit->first, std::move(valueEdit->second));
+        if (edit)
+            edit();
     }
 
     // An input keeps its value in the graph, and a Constant the value of its output in its config.
@@ -987,6 +1021,18 @@ private:
         const auto pinValue   = pin && HasValueEditor(graph, *pin);
         const auto pinTyped   = pin && PinVariable(graph, *pin);
 
+        auto owner   = node ? node : pin ? graph.NodeOf(pin->m_Id) : nullptr;
+        auto canGrow = false, canShrink = false;
+        if (owner)
+        {
+            for (auto& group : owner->m_Groups)
+            {
+                const auto count = GroupCount(group, owner->m_Config);
+                canGrow   = canGrow || count < group.m_Max;
+                canShrink = canShrink || count > group.m_Min;
+            }
+        }
+
         CanvasActions actions(overCanvas);
         actions.Gesture("Create Link", "Drag Pin to Pin", pin != nullptr);
         actions.Gesture("Create Linked Node", "Drag Pin to Canvas", pin != nullptr);
@@ -995,6 +1041,8 @@ private:
         actions.Gesture("Break Link", "Alt+Click", link != nullptr);
         actions.Gesture("Delete Selection", "Delete", ed::GetSelectedObjectCount() > 0);
         actions.Gesture("Edit Value", "Click", pinValue);
+        actions.Gesture("Add Pin", "Click +", canGrow);
+        actions.Gesture("Remove Pin", "Click -", canShrink);
         actions.Gesture("Choose Type", "Right-Click", pinTyped);
         actions.Gesture("Create Node", "Space", background && !typing);
         actions.Gesture("Create Node", "Right-Click", background);

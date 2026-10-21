@@ -34,6 +34,13 @@ bool HasValueEditor(const Graph& graph, const Pin& pin); // an input without an 
 // The node's type variable that is the pin's type, not one inside a type such as Array<T>.
 const VariableDeclaration* PinVariable(const Graph& graph, const Pin& pin);
 
+// The node's group a key is of, and the key's index there.
+const GroupDeclaration* FindGroup(const Node& node, std::string_view key, int* index = nullptr);
+
+// Edits of one undo step each. One the graph refuses is logged, and makes no step.
+void AddGroupPin(Document& document, Id node, std::string group);
+void RemoveGroupPin(Document& document, Id node, std::string group, int index);
+
 bool DrawValue(const Value& value);        // Draws a value; false for none.
 bool EditValue(Value& value);              // Shows an editor for a value; true once the edit is done.
 bool DrawValueWithEditor(Id id, Value& value); // Draws a value, or its editor once clicked; true when an edit changed it.
