@@ -347,6 +347,7 @@ struct BlueprintEditorExample
 
     void OnFrame(float deltaTime) override
     {
+        ClosePopupsOnClickOutside();
         ed::SetCurrentEditor(m_Document ? EditorFor(m_Document->GetGraph().GetId()) : nullptr);
         if (auto graph = std::exchange(m_PendingDelete, 0); graph && m_Document)
             DeleteFunction(graph);

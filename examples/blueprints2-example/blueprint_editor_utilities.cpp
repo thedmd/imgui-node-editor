@@ -829,6 +829,19 @@ void blueprint_editor_utilities::CanvasActions::Draw(ImVec2 canvasMin, ImVec2 ca
 
 
 
+void blueprint_editor_utilities::ClosePopupsOnClickOutside()
+{
+    auto& g = *ImGui::GetCurrentContext();
+    if (g.OpenPopupStack.empty() || ImGui::GetTopMostPopupModal())
+        return;
+    if (!ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !ImGui::IsMouseClicked(ImGuiMouseButton_Right))
+        return;
+    auto hovered = g.HoveredWindow;
+    if (!hovered || (hovered->RootWindow->Flags & ImGuiWindowFlags_Popup))
+        return;
+    ImGui::FocusWindow(hovered);
+}
+
 std::vector<blueprint_editor_utilities::Id> blueprint_editor_utilities::GetSelectedNodes()
 {
     std::vector<ax::NodeEditor::NodeId> nodeIds(static_cast<size_t>(ax::NodeEditor::GetSelectedNodes(nullptr, 0)));

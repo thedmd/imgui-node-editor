@@ -1310,3 +1310,44 @@ TEST_CASE(RunArgumentsTyped, "blueprints2.a_run_takes_the_arguments_typed_for_it
     auto fibers = called ? debugger.GetContext()->Fibers() : std::vector<FiberInfo>();
     test::Check(called && fibers.size() == 1 && fibers[0].m_State == FiberState::Done && fibers[0].m_Results == std::vector<Value>{ Value::Float(2.5f) }, "called with them, a generic function runs, typed by them");
 }
+
+TEST_CASE(ClicksPastPopups, "blueprints2.a_click_outside_a_popup_closes_it_and_reaches_what_it_is_over", nullptr, test::TestFlags_None)
+{
+    // A node, and a popup over the canvas away from it.
+    test::Session session(UnnamedConfig());
+    session.BeforeHost = [] { blueprint_editor_utilities::ClosePopupsOnClickOutside(); };
+    ImVec2 node;
+    bool   open = false, shown = false;
+    session.DefaultContent = [&](int frame)
+    {
+        if (frame == 0)
+            ed::SetNodePosition(1, ImVec2(100.0f, 100.0f));
+        ed::BeginNode(1);
+        ImGui::TextUnformatted("Node");
+        ed::EndNode();
+        node = ed::CanvasToScreen(ed::GetNodePosition(1) + ImVec2(10.0f, 10.0f));
+        ed::Suspend();
+        if (std::exchange(open, false))
+            ImGui::OpenPopup("##menu");
+        ImGui::SetNextWindowPos(ImVec2(600.0f, 400.0f), ImGuiCond_Appearing);
+        shown = ImGui::BeginPopup("##menu");
+        if (shown)
+        {
+            ImGui::TextUnformatted("Menu");
+            ImGui::EndPopup();
+        }
+        ed::Resume();
+    };
+    session.Run(3);
+    open = true;
+    session.Run(3);
+    const auto opened = shown;
+    session.Click(node);
+    const auto selected = session.Use([] { return ed::IsNodeSelected(1); });
+    test::Check(opened && !shown && selected, "the click closes the popup, and selects the node");
+
+    open = true;
+    session.Run(3);
+    session.Click(ImVec2(620.0f, 410.0f));
+    test::Check(shown, "a click in the popup leaves it open");
+}

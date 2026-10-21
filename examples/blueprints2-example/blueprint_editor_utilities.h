@@ -115,6 +115,11 @@ bool DrawValueWithEditor(Id id, Value& value); // Draws a value, or its editor o
 // Enter gives the name typed. Escape closes it, and so does losing what the name is of.
 std::optional<std::string> NamePopup(const char* id, bool& open, std::span<char> name, bool exists);
 
+// Before a frame's widgets: a click outside the open popups closes them, so that it also reaches
+// what it's over. ImGui would close them after the widgets, which ignore the click while a popup is
+// open. A click over a popup, and any while a modal is open, stays ImGui's.
+void ClosePopupsOnClickOutside();
+
 std::vector<Id> GetSelectedNodes();
 std::vector<Id> GetSelectedLinks();
 
