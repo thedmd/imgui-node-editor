@@ -840,6 +840,14 @@ struct Function
     std::vector<const ParameterType*> m_Parameters; // the type parameters, as the body sees them
 };
 
+// A value that every graph of a blueprint shares, in each context, of its default's type: the
+// blueprint's node types "get:<name>" read it, and "set:<name>" write it, as the host can.
+struct Variable
+{
+    std::string m_Name;
+    Value       m_Default;
+};
+
 // A node type whose new node a link with a pin of the graph would join, and through which pin.
 struct NewNodeFit
 {
@@ -965,6 +973,14 @@ public:
     // holds one, or calls one that may.
     bool            MaySuspend(const NodeType& type) const;
 
+    // A variable's name is unique among the variables'. A new type gives its nodes new pins, and
+    // links that no longer fit go disabled; a new name, their node types.
+    Result<void>                 AddVariable(Variable variable);
+    Result<void>                 SetVariable(std::string_view name, Variable variable);
+    Result<void>                 RemoveVariable(std::string_view name); // refused while a node uses it
+    const Variable*              FindVariable(std::string_view name) const;
+    std::vector<const Variable*> Variables() const; // in the order they were added
+
     std::span<const std::unique_ptr<Graph>> Graphs() const { return m_Graphs; }
 
     // The blueprint's own node types first, then the registry's.
@@ -984,6 +1000,8 @@ private:
     Result<void> CheckSignature(const Signature& signature) const;
     void         DefineFunction(const Graph& graph, Signature signature);
     void         SetParameters(Function& function);
+    Result<void> CheckVariable(const Variable& variable, std::string_view replaced) const;
+    void         DefineVariable(const std::shared_ptr<const Variable>& variable);
 
     std::shared_ptr<const Registry>                                     m_Registry;
     std::shared_ptr<TypeTable>                                          m_Types;
@@ -991,6 +1009,7 @@ private:
     std::vector<std::unique_ptr<Graph>>                                 m_Graphs;
     std::vector<std::unique_ptr<NodeType>>                              m_Placeholders; // for the nodes of types the registry lacks
     std::vector<std::shared_ptr<Function>>                              m_Functions;
+    std::vector<std::shared_ptr<Variable>>                              m_Variables;
     std::map<std::string, std::shared_ptr<const NodeType>, std::less<>> m_Scope;        // its own node types
 };
 
@@ -1076,6 +1095,7 @@ class Program
 public:
     std::span<const ProgramNode>     Nodes() const     { return m_Nodes; }
     std::span<const ProgramFunction> Functions() const { return m_Functions; }
+    std::span<const Variable>        Variables() const { return m_Variables; }
 
     int FindNode(Id node) const; // its index, or -1
     int FindEvent(std::string_view name) const;
@@ -1090,6 +1110,7 @@ private:
     std::map<std::string, int, std::less<>>      m_Events;
     std::unordered_map<Id, std::pair<int, int>>  m_Pins;      // each pin's node and pin, by index
     std::vector<ProgramFunction>                 m_Functions;
+    std::vector<Variable>                        m_Variables;
     std::shared_ptr<TypeTable>                   m_Types;     // for a call's types, of the parameters it was given
     std::vector<std::shared_ptr<const NodeType>> m_Owned;     // the blueprint's node types its nodes are of
 };
@@ -1193,6 +1214,9 @@ public:
     const NodeConfig& Config() const;
     void              Log(std::string_view text);
     double            Time() const; // the context's clock
+    // A variable of the blueprint's, by name.
+    Result<Value>     GetVariable(std::string_view name) const;
+    Result<void>      SetVariable(std::string_view name, Value value);
 
     // The node's own, in this context: made on first use, and kept until the context goes.
     template <typename T>
@@ -1254,10 +1278,14 @@ public:
     void               AdvanceTo(double time);
     // Readies the fibers that wait for the signal; one that none waits for is lost.
     void               Signal(std::string_view signal);
+    // The blueprint's variables, by name, each from its default on. One takes only values of its type.
+    Result<Value>      GetVariable(std::string_view name) const;
+    Result<void>       SetVariable(std::string_view name, Value value);
     // Of a node with flow pins; a pure node's never stops a run.
     void               SetBreakpoint(Id node, bool enabled);
     // Goes on with a program compiled from the same blueprint with other values: typed into inputs,
-    // or held in configs, as a Constant's. One that differs in more is refused.
+    // held in configs, as a Constant's, or variables' defaults, which only later contexts start at.
+    // One that differs in more is refused.
     Result<void>       Patch(std::shared_ptr<const Program> program);
 
     std::vector<FiberInfo>      Fibers() const;
@@ -1309,12 +1337,14 @@ private:
     FiberState    Fail(Fiber& fiber, Error error, int node);
     void          Resume(Fiber& fiber);
     Fiber*        FindFiber(FiberId fiber);
+    int           FindVariable(std::string_view name) const;
 
     std::shared_ptr<const Program>       m_Program;
     std::vector<Value>                   m_Slots;
     std::vector<std::optional<uint64_t>> m_SlotSteps;   // the step that wrote each slot
     std::vector<uint64_t>                m_Computed;    // per node: the generation of a pure node's outputs
     std::vector<std::any>                m_States;      // per node
+    std::vector<Value>                   m_Variables;
     std::vector<bool>                    m_Breakpoints; // per node
     CallFrame                            m_Events;      // the event graphs', for reading values outside fibers
     std::vector<Fiber>                   m_Fibers;

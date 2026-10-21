@@ -1361,6 +1361,57 @@ struct FunctionNodeType final : NodeType
     const Role                            m_Role;
 };
 
+// A variable's Get, which reads it, or Set, which writes it.
+struct VariableNodeType final : NodeType
+{
+    CRUDE_BP_RTTI(VariableNodeType, NodeType)
+
+    VariableNodeType(std::shared_ptr<const Variable> variable, bool set)
+        : NodeType((set ? "set:" : "get:") + variable->m_Name, (set ? "Set " : "Get ") + variable->m_Name, "Variables")
+        , m_Variable(std::move(variable))
+        , m_Set(set)
+    {
+    }
+
+    void Declare(NodeDeclaration& declaration, const NodeConfig&, const Bindings&) const override
+    {
+        auto& type = *m_Variable->m_Default.GetType();
+        if (!m_Set)
+            return declaration.Output("value", m_Variable->m_Name, type);
+        declaration.FlowInput("enter");
+        declaration.Input("value", m_Variable->m_Name, type);
+        declaration.FlowOutput("then");
+        declaration.Output("result", {}, type);
+    }
+
+    Result<Exit> Execute(ExecContext& context, std::string_view entry) const override
+    {
+        if (!m_Set)
+            return NodeType::Execute(context, entry);
+        auto value = context.Get("value");
+        if (!value)
+            return value.GetError();
+        if (auto set = context.SetVariable(m_Variable->m_Name, value.GetValue()); !set)
+            return set.GetError();
+        context.Set("result", std::move(value).GetValue());
+        return Exit::To("then");
+    }
+
+    Result<void> Evaluate(EvalContext& context) const override
+    {
+        if (m_Set)
+            return NodeType::Evaluate(context);
+        auto value = context.GetVariable(m_Variable->m_Name);
+        if (!value)
+            return value.GetError();
+        context.Set("value", std::move(value).GetValue());
+        return {};
+    }
+
+    const std::shared_ptr<const Variable> m_Variable;
+    const bool                            m_Set;
+};
+
 bool HasParameter(const Type* type)
 {
     return type && (IsA<ParameterType>(type->m_Head) || std::any_of(type->m_Args.begin(), type->m_Args.end(), HasParameter));
@@ -2330,6 +2381,102 @@ void crude_blueprint::Blueprint::SetParameters(Function& function)
         function.m_Parameters.push_back(&m_Types->Parameter(function.m_Name + "." + parameter.m_Name, parameter.m_Allowed));
 }
 
+crude_blueprint::Result<void> crude_blueprint::Blueprint::AddVariable(Variable variable)
+{
+    if (auto check = CheckVariable(variable, {}); !check)
+        return check;
+    auto added = std::make_shared<Variable>(std::move(variable));
+    DefineVariable(added);
+    m_Variables.push_back(std::move(added));
+    return {};
+}
+
+// A variable keeps its object while its name stays, so its node types follow its type. Renamed, it
+// gets another, and node types of the new name: those of the old one keep naming it to the
+// programs compiled before.
+crude_blueprint::Result<void> crude_blueprint::Blueprint::SetVariable(std::string_view name, Variable variable)
+{
+    auto found = std::find_if(m_Variables.begin(), m_Variables.end(), [name](const auto& other) { return other->m_Name == name; });
+    if (found == m_Variables.end())
+        return Error(BlueprintError::NotFound, "no variable is named " + std::string(name));
+    if (auto check = CheckVariable(variable, name); !check)
+        return check;
+    if (variable.m_Name == name)
+        **found = std::move(variable);
+    else
+    {
+        const auto get = m_Scope.at("get:" + std::string(name)), set = m_Scope.at("set:" + std::string(name));
+        auto renamed = std::make_shared<Variable>(std::move(variable));
+        DefineVariable(renamed);
+        const auto newGet = m_Scope.at("get:" + renamed->m_Name).get(), newSet = m_Scope.at("set:" + renamed->m_Name).get();
+        for (auto& graph : m_Graphs)
+            for (auto& node : graph->m_Nodes)
+                node.m_Type = node.m_Type == get.get() ? newGet : node.m_Type == set.get() ? newSet : node.m_Type;
+        m_Scope.erase(get->m_Name);
+        m_Scope.erase(set->m_Name);
+        *found = std::move(renamed);
+    }
+    for (auto& graph : m_Graphs)
+        graph->Update();
+    return {};
+}
+
+crude_blueprint::Result<void> crude_blueprint::Blueprint::RemoveVariable(std::string_view name)
+{
+    auto found = std::find_if(m_Variables.begin(), m_Variables.end(), [name](const auto& other) { return other->m_Name == name; });
+    if (found == m_Variables.end())
+        return Error(BlueprintError::NotFound, "no variable is named " + std::string(name));
+    const auto get = m_Scope.at("get:" + std::string(name)).get(), set = m_Scope.at("set:" + std::string(name)).get();
+    for (auto& graph : m_Graphs)
+        for (auto& node : graph->Nodes())
+            if (node.m_Type == get || node.m_Type == set)
+                return Error(BlueprintError::Unsupported, node.Name() + " uses " + std::string(name));
+    m_Scope.erase(get->m_Name);
+    m_Scope.erase(set->m_Name);
+    m_Variables.erase(found);
+    return {};
+}
+
+const crude_blueprint::Variable* crude_blueprint::Blueprint::FindVariable(std::string_view name) const
+{
+    for (auto& variable : m_Variables)
+        if (variable->m_Name == name)
+            return variable.get();
+    return nullptr;
+}
+
+std::vector<const crude_blueprint::Variable*> crude_blueprint::Blueprint::Variables() const
+{
+    std::vector<const Variable*> variables;
+    for (auto& variable : m_Variables)
+        variables.push_back(variable.get());
+    return variables;
+}
+
+crude_blueprint::Result<void> crude_blueprint::Blueprint::CheckVariable(const Variable& variable, std::string_view replaced) const
+{
+    auto& name = variable.m_Name;
+    if (name.empty() || !std::all_of(name.begin(), name.end(), IsNameCharacter))
+        return Error(BlueprintError::BadTypeText, Quote(name) + " isn't a variable's name");
+    if (name != replaced && FindVariable(name))
+        return Error(BlueprintError::Duplicate, "a variable is named " + name + " already");
+    auto type = variable.m_Default.GetType();
+    if (!type)
+        return Error(BlueprintError::Undecided, name + " has no default, which gives its type");
+    if (HasParameter(type))
+        return Error(BlueprintError::WrongType, name + " can't be of a function's type parameter");
+    return Savable(variable.m_Default, name);
+}
+
+void crude_blueprint::Blueprint::DefineVariable(const std::shared_ptr<const Variable>& variable)
+{
+    for (auto set : { false, true })
+    {
+        auto type = std::make_shared<VariableNodeType>(variable, set);
+        m_Scope.emplace(type->m_Name, std::move(type));
+    }
+}
+
 const crude_blueprint::NodeType* crude_blueprint::Blueprint::FindNodeType(std::string_view name) const
 {
     if (auto own = m_Scope.find(name); own != m_Scope.end())
@@ -2440,6 +2587,9 @@ crude_blueprint::CompileResult crude_blueprint::Compile(const Blueprint& bluepri
         failed = true;
     };
 
+    for (auto& variable : blueprint.m_Variables)
+        program->m_Variables.push_back(*variable);
+
     std::unordered_map<Id, int> records;   // each node's, by its ID
     std::unordered_map<Id, int> functions; // each function's, by its graph's ID
     for (auto& graph : blueprint.Graphs())
@@ -2510,11 +2660,11 @@ crude_blueprint::CompileResult crude_blueprint::Compile(const Blueprint& bluepri
                 error(Error(BlueprintError::Duplicate, node.Name() + " starts " + event + ", as another node does"), graph->GetId(), node.m_Id, 0);
 
             record.m_Function = function;
+            if (auto own = blueprint.m_Scope.find(node.m_Type->m_Name); own != blueprint.m_Scope.end() && own->second.get() == node.m_Type)
+                program->m_Owned.push_back(own->second);
             auto role = Cast<FunctionNodeType>(node.m_Type);
             if (!role)
                 continue;
-            if (auto own = blueprint.m_Scope.find(role->m_Name); own != blueprint.m_Scope.end())
-                program->m_Owned.push_back(own->second);
             const auto target = functions.at(role->m_Function->m_Graph);
             auto&      callee = program->m_Functions[target];
             if (role->m_Role == FunctionNodeType::Role::Call)
@@ -2757,6 +2907,16 @@ double crude_blueprint::NodeContext::Time() const
     return m_Context.m_Time;
 }
 
+crude_blueprint::Result<crude_blueprint::Value> crude_blueprint::NodeContext::GetVariable(std::string_view name) const
+{
+    return m_Context.GetVariable(name);
+}
+
+crude_blueprint::Result<void> crude_blueprint::NodeContext::SetVariable(std::string_view name, Value value)
+{
+    return m_Context.SetVariable(name, std::move(value));
+}
+
 std::any& crude_blueprint::NodeContext::StateSlot()
 {
     return m_Context.m_States[m_Node];
@@ -2776,6 +2936,8 @@ crude_blueprint::Context::Context(std::shared_ptr<const Program> program)
     m_Computed.resize(m_Program->m_Nodes.size(), 0);
     m_States.resize(m_Program->m_Nodes.size());
     m_Breakpoints.resize(m_Program->m_Nodes.size(), false);
+    for (auto& variable : m_Program->m_Variables)
+        m_Variables.push_back(variable.m_Default);
 }
 
 crude_blueprint::Result<crude_blueprint::FiberId> crude_blueprint::Context::Start(std::string_view event)
@@ -2909,6 +3071,28 @@ void crude_blueprint::Context::Signal(std::string_view signal)
             Resume(fiber);
 }
 
+crude_blueprint::Result<crude_blueprint::Value> crude_blueprint::Context::GetVariable(std::string_view name) const
+{
+    auto index = FindVariable(name);
+    if (index < 0)
+        return Error(BlueprintError::NotFound, "no variable is named " + std::string(name));
+    return m_Variables[index];
+}
+
+// A pure output that read the variable computes again.
+crude_blueprint::Result<void> crude_blueprint::Context::SetVariable(std::string_view name, Value value)
+{
+    auto index = FindVariable(name);
+    if (index < 0)
+        return Error(BlueprintError::NotFound, "no variable is named " + std::string(name));
+    auto type = m_Program->m_Variables[index].m_Default.GetType();
+    if (value.GetType() != type)
+        return Error(BlueprintError::WrongType, std::string(name) + " is of " + type->m_Name + ", not " + (value.GetType() ? value.GetType()->m_Name : std::string("no type")));
+    m_Variables[index] = std::move(value);
+    ++m_Generation;
+    return {};
+}
+
 void crude_blueprint::Context::SetBreakpoint(Id node, bool enabled)
 {
     if (auto index = m_Program->FindNode(node); index >= 0)
@@ -2940,9 +3124,14 @@ crude_blueprint::Result<void> crude_blueprint::Context::Patch(std::shared_ptr<co
         return std::tie(a.m_Graph, a.m_Name, a.m_Entry, a.m_Return, a.m_FirstNode, a.m_NodeCount, a.m_FirstSlot, a.m_SlotCount, a.m_Parameters, a.m_Pure, a.m_Inputs, a.m_Outputs)
             == std::tie(b.m_Graph, b.m_Name, b.m_Entry, b.m_Return, b.m_FirstNode, b.m_NodeCount, b.m_FirstSlot, b.m_SlotCount, b.m_Parameters, b.m_Pure, b.m_Inputs, b.m_Outputs);
     };
+    auto sameVariable = [](const Variable& a, const Variable& b)
+    {
+        return a.m_Name == b.m_Name && a.m_Default.GetType() == b.m_Default.GetType();
+    };
     auto& before = *m_Program;
     auto& after  = *program;
     if (before.m_Slots != after.m_Slots || before.m_Events != after.m_Events || before.m_Pins != after.m_Pins
+        || !std::equal(before.m_Variables.begin(), before.m_Variables.end(), after.m_Variables.begin(), after.m_Variables.end(), sameVariable)
         || !std::equal(before.m_Nodes.begin(), before.m_Nodes.end(), after.m_Nodes.begin(), after.m_Nodes.end(), sameNode)
         || !std::equal(before.m_Functions.begin(), before.m_Functions.end(), after.m_Functions.begin(), after.m_Functions.end(), sameFunction))
         return Error(BlueprintError::Unsupported, "the program differs in more than its values");
@@ -3295,6 +3484,15 @@ crude_blueprint::Context::Fiber* crude_blueprint::Context::FindFiber(FiberId id)
         if (fiber.m_Info.m_Id == id)
             return &fiber;
     return nullptr;
+}
+
+int crude_blueprint::Context::FindVariable(std::string_view name) const
+{
+    auto& variables = m_Program->m_Variables;
+    for (size_t i = 0; i < variables.size(); ++i)
+        if (variables[i].m_Name == name)
+            return static_cast<int>(i);
+    return -1;
 }
 
 
@@ -3709,6 +3907,22 @@ struct crude_blueprint::FileLoader
     }
 
     // Every graph's head is read before any graph's nodes, as a call may come before its function.
+    Result<void> ReadVariable(const crude_json::value& json, const std::string& where)
+    {
+        if (!json.is_object())
+            return Bad(where, "isn't an object");
+        auto name  = ReadString(json, "name", where);
+        auto value = json.find("value");
+        if (!name || !value)
+            return !name ? name.GetError() : Bad(where, "has no value");
+        auto read = ReadValue(*value, where + ".value");
+        if (!read)
+            return read.GetError();
+        if (auto added = m_Blueprint.AddVariable({ name.GetValue(), std::move(read).GetValue() }); !added)
+            return Bad(where, "is a variable that can't be: " + std::string(added.GetError().Message()));
+        return {};
+    }
+
     Result<Graph*> ReadGraphHead(const crude_json::value& json, const std::string& where)
     {
         if (!json.is_object())
@@ -3786,6 +4000,15 @@ struct crude_blueprint::FileLoader
             if (!head)
                 return head.GetError();
             heads.push_back(head.GetValue());
+        }
+        if (auto variables = file.find("variables"))
+        {
+            if (!variables->is_array())
+                return Bad("the file's variables", "aren't an array");
+            auto& list = variables->get<crude_json::array>();
+            for (size_t i = 0; i < list.size(); ++i)
+                if (auto read = ReadVariable(list[i], "variables[" + std::to_string(i) + "]"); !read)
+                    return read;
         }
         for (size_t i = 0; i < graphList.size(); ++i)
             if (auto read = ReadGraphBody(*heads[i], graphList[i], "graphs[" + std::to_string(i) + "]"); !read)
@@ -3875,6 +4098,18 @@ crude_json::value crude_blueprint::Save(const Blueprint& blueprint)
     file["version"] = c_Version;
     file["next_id"] = blueprint.m_NextId;
     file["graphs"]  = std::move(graphs);
+    if (!blueprint.m_Variables.empty())
+    {
+        crude_json::array variables;
+        for (auto& variable : blueprint.m_Variables)
+        {
+            crude_json::object saved;
+            saved["name"]  = variable->m_Name;
+            saved["value"] = SaveValue(variable->m_Default);
+            variables.push_back(std::move(saved));
+        }
+        file["variables"] = std::move(variables);
+    }
     return file;
 }
 
@@ -3889,6 +4124,7 @@ crude_blueprint::Result<void> crude_blueprint::Load(Blueprint& blueprint, const 
         blueprint.m_Graphs.clear();
         blueprint.m_Placeholders.clear();
         blueprint.m_Functions.clear();
+        blueprint.m_Variables.clear();
         blueprint.m_Scope.clear();
         blueprint.m_NextId = 1;
     }

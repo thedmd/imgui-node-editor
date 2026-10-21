@@ -158,6 +158,7 @@ if (IMGUI_NODE_EDITOR_TESTS_BLUEPRINTS2)
         blueprints2_graph_tests.cpp
         blueprints2_library_tests.cpp
         blueprints2_tests.cpp
+        blueprints2_variable_tests.cpp
     )
     add_executable(blueprints2_tests
         blueprints2_fixture.h
