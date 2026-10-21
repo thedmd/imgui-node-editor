@@ -718,6 +718,68 @@ TEST_CASE(SplitEdits, "blueprints2.struct_pins_split_and_recombine_in_undo_steps
     test::Check(recombined == "x y struct" && document.m_Undo.size() == 2, "recombined, it's whole again, in two undo steps: %s", recombined.c_str());
 }
 
+TEST_CASE(CreateNodeDialogs, "blueprints2.the_create_node_dialog_makes_what_its_search_finds_first", nullptr, test::TestFlags_None)
+{
+    // Opened from the example's Add.result, an Int32, "pr" finds only Print, whose text takes it
+    // through a cast. Opened from no pin, "or" finds Or before For Loop, which has it inside.
+    test::Session session(UnnamedConfig());
+    OverlayLog    log;
+    Example       example(session);
+    auto& document = example.m_Document;
+    auto& graph    = document.GetGraph();
+    auto  result   = example.Pin(example.Node("crude.Add"), "result");
+
+    blueprint_editor_utilities::CreateNodeDialog dialog;
+    std::function<void()> open;
+    bool shown = false;
+    session.DefaultContent = [&](int)
+    {
+        ed::Suspend();
+        if (open)
+            std::exchange(open, nullptr)();
+        dialog.Show(document);
+        shown = ImGui::IsPopupOpen("##create_node");
+        ed::Resume();
+    };
+    auto type = [&](const char* text, ImGuiKey key)
+    {
+        session.Run(2);
+        for (auto c = text; *c; ++c)
+            ImGui::GetIO().AddInputCharacter(*c);
+        session.Run(2);
+        test::Key(key, true);
+        session.Run(1);
+        test::Key(key, false);
+        session.Run(2);
+    };
+    auto count = [&] { return graph.Nodes().size(); };
+
+    test::MouseMove(ImVec2(500.0f, 400.0f));
+    const auto nodes = count();
+    open = [&] { dialog.Open(result); };
+    type("pr", ImGuiKey_Enter);
+    auto print = graph.FindNode(dialog.GetCreatedNode());
+    auto link  = std::find_if(graph.Links().begin(), graph.Links().end(), [&](const Link& other) { return other.m_From == result && print && other.m_To == print->FindPin("text")->m_Id; });
+    test::Check(count() == nodes + 1 && print && print->m_Type->m_Name == "crude.Print" && !shown, "Enter makes a Print, and closes the dialog");
+    test::Check(link != graph.Links().end() && link->m_Active && link->m_Cast == "Int32->String", "linked from Add.result through the cast");
+    test::Check(document.m_Undo.size() == 1, "in one undo step: %d", static_cast<int>(document.m_Undo.size()));
+
+    // Print begins with "p", but needs a cast; Append has it inside, and takes Int32 as it is.
+    open = [&] { dialog.Open(result); };
+    type("p", ImGuiKey_Enter);
+    auto append = graph.FindNode(dialog.GetCreatedNode());
+    test::Check(append && append->m_Type->m_Name == "crude.Append", "what needs no cast comes first: %s", append ? append->m_Type->m_Name.c_str() : "none");
+
+    open = [&] { dialog.Open(); };
+    type("or", ImGuiKey_Enter);
+    auto made = graph.FindNode(dialog.GetCreatedNode());
+    test::Check(count() == nodes + 3 && made && made->m_Type->m_Name == "crude.Or", "a title that begins with the search comes first: %s", made ? made->m_Type->m_Name.c_str() : "none");
+
+    open = [&] { dialog.Open(); };
+    type("or", ImGuiKey_Escape);
+    test::Check(count() == nodes + 3 && !shown, "Esc closes the dialog, making nothing");
+}
+
 TEST_CASE(NewDocuments, "blueprints2.a_new_document_has_an_empty_graph", nullptr, test::TestFlags_None)
 {
     Document document(ExampleRegistry(), std::make_shared<TypeTable>());

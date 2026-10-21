@@ -7,6 +7,7 @@
 # include <algorithm>
 # include <cmath>
 # include <optional>
+# include <tuple>
 # include <utility>
 
 blueprint_editor_utilities::IconType blueprint_editor_utilities::PinIcon(const Pin& pin)
@@ -948,10 +949,11 @@ void blueprint_editor_utilities::ItemDeleter::NodeDeleter::Reject()
 
 void blueprint_editor_utilities::CreateNodeDialog::Open(Id fromPin)
 {
-    m_FromPin = fromPin;
+    m_FromPin   = fromPin;
+    m_Revision  = std::nullopt;
+    m_Focus     = true;
+    m_Search[0] = 0;
     ImGui::OpenPopup("##create_node");
-
-    m_SortedTypes.clear();
 }
 
 void blueprint_editor_utilities::CreateNodeDialog::Show(Document& document)
@@ -963,61 +965,170 @@ void blueprint_editor_utilities::CreateNodeDialog::Show(Document& document)
         return;
 
     auto popupPosition = ImGui::GetMousePosOnOpeningCurrentPopup();
-
-    if (m_SortedTypes.empty())
-    {
-        m_SortedTypes = document.GetBlueprint().GetRegistry().NodeTypes();
-        std::sort(m_SortedTypes.begin(), m_SortedTypes.end(), [](const NodeType* lhs, const NodeType* rhs) { return lhs->m_Title < rhs->m_Title; });
-    }
+    if (m_Revision != document.m_Revision)
+        Update(document);
 
     auto& graph = document.GetGraph();
-    for (auto type : m_SortedTypes)
+    const auto width = ImGui::GetFontSize() * 18.0f;
+    if (m_Focus)
     {
-        if (!ImGui::Selectable(type->m_Title.c_str()))
-        {
-            if (ImGui::IsItemHovered() && !type->m_Category.empty())
-                ImGui::SetTooltip("%s", type->m_Category.c_str());
-            continue;
-        }
-
-        auto transaction = document.BeginUndoTransaction("Create Node");
-        auto node = graph.AddNode(type->m_Name);
-        if (!node)
-        {
-            auto message = node.GetError().Message();
-            LOGE("[CreateNodeDialog] %.*s", static_cast<int>(message.size()), message.data());
-            transaction->Discard();
-            continue;
-        }
-
-        ax::NodeEditor::SetNodePosition(node.GetValue(), ax::NodeEditor::ScreenToCanvas(popupPosition));
-        ax::NodeEditor::SelectNode(node.GetValue());
-        m_CreatedNode = node.GetValue();
-
-        auto name = graph.FindNode(m_CreatedNode)->Name();
-        if (auto from = m_FromPin ? graph.FindPin(m_FromPin) : nullptr)
-        {
-            const auto fromId = from->m_Id;
-            const auto output = from->m_Direction == Direction::Output;
-            std::vector<std::pair<Id, std::string>> candidates;
-            for (auto& pin : graph.FindNode(m_CreatedNode)->m_Pins)
-                if ((pin.m_Direction == Direction::Output) != output && pin.m_Flow == from->m_Flow)
-                    candidates.emplace_back(pin.m_Id, pin.m_Key);
-            for (auto& [pin, key] : candidates)
-            {
-                if (graph.Connect(output ? fromId : pin, output ? pin : fromId))
-                {
-                    LOGV("[CreateNodeDialog] %s linked through its %s", name.c_str(), key.c_str());
-                    break;
-                }
-            }
-        }
-
-        LOGV("[CreateNodeDialog] %s created", name.c_str());
-        transaction->AddAction("%s created", name.c_str());
+        ImGui::SetKeyboardFocusHere();
+        m_Focus = false;
     }
+    ImGui::SetNextItemWidth(width);
+    const auto enter = ImGui::InputTextWithHint("##search", "Search", m_Search, sizeof(m_Search), ImGuiInputTextFlags_EnterReturnsTrue);
+    if (auto from = m_FromPin ? graph.FindPin(m_FromPin) : nullptr)
+        ImGui::TextDisabled("From %s pin", from->m_Flow ? "flow" : graph.TypeText(from->m_Id).c_str());
+
+    const NewNodeFit* chosen = nullptr;
+    ImGui::BeginChild("##types", ImVec2(width, ImGui::GetTextLineHeightWithSpacing() * 16.0f));
+    if (m_Entries.empty())
+        ImGui::TextDisabled("No node takes a link with it");
+    else if (m_Search[0])
+    {
+        std::vector<std::pair<int, const NewNodeFit*>> matches;
+        for (auto& entry : m_Entries)
+        {
+            auto& title = entry.m_Type->m_Title;
+            if (auto found = ImStristr(title.c_str(), title.c_str() + title.size(), m_Search, nullptr))
+                matches.emplace_back((entry.m_Cast.empty() ? 0 : 2) + (found == title.c_str() ? 0 : 1), &entry);
+        }
+        std::stable_sort(matches.begin(), matches.end(), [](const auto& lhs, const auto& rhs)
+        {
+            return std::tie(lhs.first, lhs.second->m_Type->m_Title) < std::tie(rhs.first, rhs.second->m_Type->m_Title);
+        });
+
+        for (size_t i = 0; i < matches.size(); ++i)
+        {
+            auto entry = matches[i].second;
+            if (!entry->m_Cast.empty() && (i == 0 || matches[i - 1].second->m_Cast.empty()))
+                ImGui::SeparatorText("With cast");
+            if (ShowType(*entry) || (enter && i == 0))
+                chosen = entry;
+        }
+        if (matches.empty())
+            ImGui::TextDisabled("No node matches");
+    }
+    else
+    {
+        ImGui::PushID(m_FromPin ? "from_pin" : "all");
+        const auto flags = m_FromPin ? ImGuiTreeNodeFlags_DefaultOpen : ImGuiTreeNodeFlags_None;
+        const char* group = nullptr;
+        bool open = false;
+        for (auto& entry : m_Entries)
+        {
+            auto label = !entry.m_Cast.empty() ? "With cast" : entry.m_Type->m_Category.empty() ? "Other" : entry.m_Type->m_Category.c_str();
+            if (!group || std::string_view(label) != group)
+            {
+                if (open)
+                    ImGui::TreePop();
+                group = label;
+                open  = ImGui::TreeNodeEx(label, flags);
+            }
+            if (open && ShowType(entry))
+                chosen = &entry;
+        }
+        if (open)
+            ImGui::TreePop();
+        ImGui::PopID();
+    }
+    ImGui::EndChild();
+
+    if (chosen)
+    {
+        Create(document, *chosen, popupPosition);
+        ImGui::CloseCurrentPopup();
+    }
+    else if (ImGui::IsKeyPressed(ImGuiKey_Escape, false))
+        ImGui::CloseCurrentPopup();
 
     ImGui::EndPopup();
+}
+
+void blueprint_editor_utilities::CreateNodeDialog::Update(Document& document)
+{
+    m_Revision = document.m_Revision;
+    auto& graph = document.GetGraph();
+    if (m_FromPin && !graph.FindPin(m_FromPin))
+        m_FromPin = 0;
+
+    auto types = document.GetBlueprint().GetRegistry().NodeTypes();
+    m_Entries.clear();
+    if (m_FromPin)
+    {
+        if (auto fits = graph.FitNewNodes(m_FromPin, types))
+            m_Entries = std::move(fits).GetValue();
+    }
+    else
+    {
+        for (auto type : types)
+            m_Entries.push_back({ type, {}, {} });
+    }
+    auto order = [](const NewNodeFit& entry)
+    {
+        const auto cast = !entry.m_Cast.empty();
+        return std::tuple(cast, cast ? std::string_view() : std::string_view(entry.m_Type->m_Category), std::string_view(entry.m_Type->m_Title));
+    };
+    std::stable_sort(m_Entries.begin(), m_Entries.end(), [&order](const NewNodeFit& lhs, const NewNodeFit& rhs) { return order(lhs) < order(rhs); });
+}
+
+bool blueprint_editor_utilities::CreateNodeDialog::ShowType(const NewNodeFit& entry)
+{
+    ImGui::PushID(entry.m_Type);
+    const auto chosen = ImGui::Selectable(entry.m_Type->m_Title.c_str());
+    if (ImGui::IsItemHovered() && (!entry.m_Type->m_Category.empty() || !entry.m_Pin.empty()))
+    {
+        ImGui::BeginTooltip();
+        if (!entry.m_Type->m_Category.empty())
+            ImGui::TextUnformatted(entry.m_Type->m_Category.c_str());
+        if (!entry.m_Pin.empty())
+            ImGui::TextDisabled("Links its %s", entry.m_Pin.c_str());
+        ImGui::EndTooltip();
+    }
+    if (auto arrow = entry.m_Cast.find("->"); arrow != std::string::npos)
+    {
+        ImGui::SameLine();
+        ImGui::TextDisabled("(%.*s -> %s)", static_cast<int>(arrow), entry.m_Cast.c_str(), entry.m_Cast.c_str() + arrow + 2);
+    }
+    ImGui::PopID();
+    return chosen;
+}
+
+void blueprint_editor_utilities::CreateNodeDialog::Create(Document& document, const NewNodeFit& entry, ImVec2 position)
+{
+    auto& graph = document.GetGraph();
+    auto transaction = document.BeginUndoTransaction("Create Node");
+    auto node = graph.AddNode(entry.m_Type->m_Name);
+    if (!node)
+    {
+        auto message = node.GetError().Message();
+        LOGE("[CreateNodeDialog] %.*s", static_cast<int>(message.size()), message.data());
+        transaction->Discard();
+        return;
+    }
+
+    ax::NodeEditor::SetNodePosition(node.GetValue(), ax::NodeEditor::ScreenToCanvas(position));
+    ax::NodeEditor::SelectNode(node.GetValue());
+    m_CreatedNode = node.GetValue();
+
+    auto name = graph.FindNode(m_CreatedNode)->Name();
+    auto from = m_FromPin ? graph.FindPin(m_FromPin) : nullptr;
+    auto pin  = graph.FindNode(m_CreatedNode)->FindPin(entry.m_Pin);
+    if (from && pin)
+    {
+        const auto output = from->m_Direction == Direction::Output;
+        auto link = graph.Connect(output ? from->m_Id : pin->m_Id, output ? pin->m_Id : from->m_Id, entry.m_Cast.empty() ? LinkMode::Plain : LinkMode::Cast);
+        if (link)
+            LOGV("[CreateNodeDialog] %s linked through its %s", name.c_str(), entry.m_Pin.c_str());
+        else
+        {
+            auto message = link.GetError().Message();
+            LOGW("[CreateNodeDialog] %s not linked: %.*s", name.c_str(), static_cast<int>(message.size()), message.data());
+        }
+    }
+
+    LOGV("[CreateNodeDialog] %s created", name.c_str());
+    transaction->AddAction("%s created", name.c_str());
 }
 
 

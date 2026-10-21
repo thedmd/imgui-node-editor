@@ -260,8 +260,9 @@ private:
     LinkDeleter m_LinkDeleter;
 };
 
-// Dialog for picking new node type. One opened from a pin links the new node to it, through the
-// first of the node's pins that fits.
+// Dialog for picking a new node's type, searched for or by category. One opened from a pin lists
+// only the types whose new node takes a link with it, those that need a cast apart, and links the
+// new node to it.
 struct CreateNodeDialog
 {
     void Open(Id fromPin = 0);
@@ -270,9 +271,16 @@ struct CreateNodeDialog
     Id GetCreatedNode() const { return m_CreatedNode; }
 
 private:
-    Id                           m_FromPin     = 0;
-    Id                           m_CreatedNode = 0;
-    std::vector<const NodeType*> m_SortedTypes;
+    void Update(Document& document);
+    bool ShowType(const NewNodeFit& entry);
+    void Create(Document& document, const NewNodeFit& entry, ImVec2 position);
+
+    Id                      m_FromPin     = 0;
+    Id                      m_CreatedNode = 0;
+    std::optional<uint64_t> m_Revision;   // of the document the entries are of
+    bool                    m_Focus       = false;
+    char                    m_Search[64]  = {};
+    std::vector<NewNodeFit> m_Entries;    // by category and title; those that need a cast last, by title
 };
 
 struct NodeContextMenu
