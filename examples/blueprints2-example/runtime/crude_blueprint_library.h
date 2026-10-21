@@ -7,8 +7,15 @@
 
 namespace crude_blueprint {
 
-// Events, flow, values, math, logic, text and arrays, each named "crude." and its title without
-// spaces: "crude.ForLoop".
+enum class LibraryError : uint16_t
+{
+    AssertFailed = 1, // an Assert's condition was false
+};
+
+constexpr ErrorCategory CategoryOf(LibraryError) { return ErrorCategory::Library; }
+
+// Events, flow, values, math, logic, text, arrays, maps and debugging, each named "crude." and its
+// title without spaces: "crude.ForLoop".
 Result<void> RegisterLibrary(Registry& registry);
 
 } // namespace crude_blueprint

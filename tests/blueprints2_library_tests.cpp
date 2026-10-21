@@ -3,6 +3,7 @@
 //------------------------------------------------------------------------------
 # include "blueprints2_fixture.h"
 # include "crude_blueprint_library.h"
+# include <algorithm>
 # include <chrono>
 # include <cstdint>
 # include <cstdio>
@@ -82,8 +83,13 @@ struct Fixture : BlueprintFixture
         auto start = Add("Start"), print = Add("Print"), node = Add(type);
         for (auto& [key, value] : inputs)
         {
-            while (!m_Graph.FindNode(node)->FindPin(key) && m_Graph.AddGroupPin(node, "in"))
-                ;
+            while (!m_Graph.FindNode(node)->FindPin(key))
+            {
+                auto& groups = m_Graph.FindNode(node)->m_Groups;
+                auto  group  = std::find_if(groups.begin(), groups.end(), [key = key](const GroupDeclaration& other) { return GroupIndex(other, key) >= 0; });
+                if (group == groups.end() || !m_Graph.AddGroupPin(node, std::string(group->m_Name)))
+                    break;
+            }
             Link(Constant(value), "value", node, key);
         }
         Link(start, "then", print, "enter");
@@ -618,6 +624,80 @@ TEST_CASE(BreakArrays, "library.break_array_gives_an_item_for_each_output", null
             test::Check(printed == "20", "into 2 outputs, the second is 20: %s", printed.c_str());
         else
             test::Check(end == FiberState::Failed && !diagnostics.empty() && diagnostics[0].m_Error.Message() == "the array has 2 items, not the 3 it breaks into", "into 3, it's too short: %s", diagnostics.empty() ? "" : std::string(diagnostics[0].m_Error.Message()).c_str());
+    }
+}
+
+TEST_CASE(MapNodes, "library.maps_are_made_read_and_changed", nullptr, test::TestFlags_None)
+{
+    // Maps of Int32 to String; a map's type comes from the type table of the blueprint it's for.
+    using Entries = std::vector<std::pair<int32_t, const char*>>;
+    struct Case
+    {
+        const char* type;
+        const char* output;
+        std::vector<std::pair<const char*, std::variant<Value, Entries>>> inputs;
+        const char* expected;
+    };
+    const auto i = [](int32_t value) { return Value::Int32(value); };
+    const auto s = [](const char* text) { return Value::String(text); };
+    const Entries ab = { { 1, "a" }, { 2, "b" } };
+    const Case cases[] =
+    {
+        { "MakeMap",  "map",    { { "key.0", i(2) }, { "value.0", s("b") }, { "key.1", i(1) }, { "value.1", s("a") } }, "{1: \"a\", 2: \"b\"}" },
+        { "MakeMap",  "map",    { { "key.0", i(1) }, { "value.0", s("x") }, { "key.1", i(1) }, { "value.1", s("y") } }, "{1: \"y\"}" },
+        { "Find",     "value",  { { "map", ab }, { "key", i(2) } }, "b" },
+        { "Find",     "found",  { { "map", ab }, { "key", i(2) } }, "true" },
+        { "Find",     "value",  { { "map", ab }, { "key", i(3) } }, "" },
+        { "Find",     "found",  { { "map", ab }, { "key", i(3) } }, "false" },
+        { "Contains", "result", { { "map", ab }, { "key", i(1) } }, "true" },
+        { "Contains", "result", { { "map", ab }, { "key", i(5) } }, "false" },
+        { "Insert",   "result", { { "map", ab }, { "key", i(3) }, { "value", s("c") } }, "{1: \"a\", 2: \"b\", 3: \"c\"}" },
+        { "Insert",   "result", { { "map", ab }, { "key", i(1) }, { "value", s("z") } }, "{1: \"z\", 2: \"b\"}" },
+        { "Remove",   "result", { { "map", ab }, { "key", i(1) } }, "{2: \"b\"}" },
+        { "Remove",   "result", { { "map", ab }, { "key", i(5) } }, "{1: \"a\", 2: \"b\"}" },
+        { "Keys",     "items",  { { "map", ab } }, "[1, 2]" },
+        { "Values",   "items",  { { "map", ab } }, "[\"a\", \"b\"]" },
+    };
+    for (auto& c : cases)
+    {
+        Fixture f;
+        auto&  type = *f.m_Blueprint.GetTypes().Get(MapValueType(), std::vector<const Type*>{ &Int32Type(), &StringType() });
+        Inputs inputs;
+        for (auto& [key, input] : c.inputs)
+        {
+            if (auto value = std::get_if<Value>(&input))
+            {
+                inputs.emplace_back(key, *value);
+                continue;
+            }
+            std::vector<std::pair<Value, Value>> entries;
+            for (auto& [entryKey, entryValue] : std::get<Entries>(input))
+                entries.emplace_back(Value::Int32(entryKey), Value::String(entryValue));
+            inputs.emplace_back(key, Value::Map(type, std::move(entries)));
+        }
+        auto got = f.Compute(c.type, inputs, c.output);
+        test::Check(got == c.expected, "%s of %s, %s: %s", c.type, Describe(inputs).c_str(), c.output, got.c_str());
+    }
+}
+
+TEST_CASE(AssertStops, "library.a_failing_assert_stops_its_fiber", nullptr, test::TestFlags_None)
+{
+    for (auto condition : { true, false })
+    {
+        Fixture f;
+        auto start = f.Add("Start"), check = f.Add("Assert"), after = f.Printer("after");
+        f.Link(start, "then", check, "enter");
+        f.Link(f.Constant(Value::Bool(condition)), "value", check, "condition");
+        f.Link(f.Constant(Value::String("it holds")), "value", check, "message");
+        f.Link(check, "then", after, "enter");
+        FiberState                  end = FiberState::Ready;
+        std::span<const Diagnostic> diagnostics;
+        auto printed = f.Run(&end, &diagnostics);
+        if (condition)
+            test::Check(printed == "after" && end == FiberState::Done, "true goes on: %s", printed.c_str());
+        else
+            test::Check(printed.empty() && end == FiberState::Failed && diagnostics.size() == 1 && diagnostics[0].m_Node == check && diagnostics[0].m_Error.Is(LibraryError::AssertFailed) && diagnostics[0].m_Error.Message() == "assertion failed: it holds",
+                "false stops the fiber at Assert: %s", diagnostics.empty() ? "" : std::string(diagnostics[0].m_Error.Message()).c_str());
     }
 }
 

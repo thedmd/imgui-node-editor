@@ -766,6 +766,235 @@ struct AppendNode final : NodeType
     }
 };
 
+// The types a map may take its keys of.
+TypeVariable Keys(NodeDeclaration& declaration)
+{
+    return declaration.Variable("K", { &Int32ValueType(), &StringValueType() });
+}
+
+TypeTerm MapOf(TypeVariable key, TypeVariable value)
+{
+    return TypeTerm(MapValueType(), { key, value });
+}
+
+// Of a group of entries, key.0 and value.0 and on; of equal keys, the last entry's stays.
+struct MakeMapNode final : NodeType
+{
+    MakeMapNode(): NodeType("crude.MakeMap", "Make Map", "Maps") {}
+
+    void Declare(NodeDeclaration& declaration, const NodeConfig&, const Bindings&) const override
+    {
+        auto K     = Keys(declaration);
+        auto V     = declaration.Variable("V");
+        auto count = declaration.Group("entry", 1, 16, { "key", "value" });
+        for (int i = 0; i < count; ++i)
+        {
+            declaration.Input("key." + std::to_string(i), "Key " + std::to_string(i), K);
+            declaration.Input("value." + std::to_string(i), "Value " + std::to_string(i), V);
+        }
+        declaration.Output("map", "Map", MapOf(K, V));
+    }
+
+    Result<void> Evaluate(EvalContext& context) const override
+    {
+        auto keys = context.Inputs("key");
+        if (!keys)
+            return keys.GetError();
+        auto values = context.Inputs("value");
+        if (!values)
+            return values.GetError();
+        std::vector<std::pair<Value, Value>> entries;
+        for (size_t i = 0; i < keys.GetValue().size(); ++i)
+            entries.emplace_back(keys.GetValue()[i], values.GetValue()[i]);
+        context.Set("map", Value::Map(*context.TypeOf("map"), std::move(entries)));
+        return {};
+    }
+};
+
+// The map and the key, which each node of a map reads first.
+struct MapAndKey
+{
+    Value m_Map;
+    Value m_Key;
+};
+
+Result<MapAndKey> ReadMapAndKey(EvalContext& context)
+{
+    auto map = context.Get("map");
+    if (!map)
+        return map.GetError();
+    auto key = context.Get("key");
+    if (!key)
+        return key.GetError();
+    return MapAndKey{ std::move(map).GetValue(), std::move(key).GetValue() };
+}
+
+// The value of the key, or its type's default when there's none.
+struct FindNode final : NodeType
+{
+    FindNode(): NodeType("crude.Find", "Find", "Maps") {}
+
+    void Declare(NodeDeclaration& declaration, const NodeConfig&, const Bindings&) const override
+    {
+        auto K = Keys(declaration);
+        auto V = declaration.Variable("V");
+        declaration.Input("map", "Map", MapOf(K, V));
+        declaration.Input("key", "Key", K);
+        declaration.Output("value", "Value", V);
+        declaration.Output("found", "Found", BoolType());
+    }
+
+    Result<void> Evaluate(EvalContext& context) const override
+    {
+        auto read = ReadMapAndKey(context);
+        if (!read)
+            return read.GetError();
+        auto  found = read.GetValue().m_Map.Find(read.GetValue().m_Key);
+        auto& type  = *context.TypeOf("value");
+        context.Set("value", found ? *found : type.m_Head->Default(type));
+        context.Set("found", Value::Bool(found != nullptr));
+        return {};
+    }
+};
+
+struct ContainsNode final : NodeType
+{
+    ContainsNode(): NodeType("crude.Contains", "Contains", "Maps") {}
+
+    void Declare(NodeDeclaration& declaration, const NodeConfig&, const Bindings&) const override
+    {
+        auto K = Keys(declaration);
+        auto V = declaration.Variable("V");
+        declaration.Input("map", "Map", MapOf(K, V));
+        declaration.Input("key", "Key", K);
+        declaration.Output("result", "Result", BoolType());
+    }
+
+    Result<void> Evaluate(EvalContext& context) const override
+    {
+        auto read = ReadMapAndKey(context);
+        if (!read)
+            return read.GetError();
+        context.Set("result", Value::Bool(read.GetValue().m_Map.Find(read.GetValue().m_Key) != nullptr));
+        return {};
+    }
+};
+
+// A copy of the map, with the value at the key, in place of any there.
+struct InsertNode final : NodeType
+{
+    InsertNode(): NodeType("crude.Insert", "Insert", "Maps") {}
+
+    void Declare(NodeDeclaration& declaration, const NodeConfig&, const Bindings&) const override
+    {
+        auto K = Keys(declaration);
+        auto V = declaration.Variable("V");
+        declaration.Input("map", "Map", MapOf(K, V));
+        declaration.Input("key", "Key", K);
+        declaration.Input("value", "Value", V);
+        declaration.Output("result", "Result", MapOf(K, V));
+    }
+
+    Result<void> Evaluate(EvalContext& context) const override
+    {
+        auto read = ReadMapAndKey(context);
+        if (!read)
+            return read.GetError();
+        auto value = context.Get("value");
+        if (!value)
+            return value.GetError();
+        auto entries = read.GetValue().m_Map.AsMap();
+        std::vector<std::pair<Value, Value>> result(entries.begin(), entries.end());
+        result.emplace_back(read.GetValue().m_Key, std::move(value).GetValue());
+        context.Set("result", Value::Map(*context.TypeOf("result"), std::move(result)));
+        return {};
+    }
+};
+
+// A copy of the map, without the key.
+struct RemoveNode final : NodeType
+{
+    RemoveNode(): NodeType("crude.Remove", "Remove", "Maps") {}
+
+    void Declare(NodeDeclaration& declaration, const NodeConfig&, const Bindings&) const override
+    {
+        auto K = Keys(declaration);
+        auto V = declaration.Variable("V");
+        declaration.Input("map", "Map", MapOf(K, V));
+        declaration.Input("key", "Key", K);
+        declaration.Output("result", "Result", MapOf(K, V));
+    }
+
+    Result<void> Evaluate(EvalContext& context) const override
+    {
+        auto read = ReadMapAndKey(context);
+        if (!read)
+            return read.GetError();
+        auto& [map, key] = read.GetValue();
+        std::vector<std::pair<Value, Value>> result;
+        for (auto& entry : map.AsMap())
+            if (!(entry.first == key))
+                result.push_back(entry);
+        context.Set("result", Value::Map(*context.TypeOf("result"), std::move(result)));
+        return {};
+    }
+};
+
+// The keys or the values of a map, in the order of its keys.
+struct MapItemsNode final : NodeType
+{
+    MapItemsNode(std::string name, std::string title, bool keys): NodeType(std::move(name), std::move(title), "Maps"), m_Keys(keys) {}
+
+    void Declare(NodeDeclaration& declaration, const NodeConfig&, const Bindings&) const override
+    {
+        auto K = Keys(declaration);
+        auto V = declaration.Variable("V");
+        declaration.Input("map", "Map", MapOf(K, V));
+        declaration.Output("items", m_Keys ? "Keys" : "Values", ArrayOf(m_Keys ? K : V));
+    }
+
+    Result<void> Evaluate(EvalContext& context) const override
+    {
+        auto map = context.Get("map");
+        if (!map)
+            return map.GetError();
+        std::vector<Value> items;
+        for (auto& [key, value] : map.GetValue().AsMap())
+            items.push_back(m_Keys ? key : value);
+        context.Set("items", Value::Array(*context.TypeOf("items"), std::move(items)));
+        return {};
+    }
+
+    const bool m_Keys;
+};
+
+// A false condition stops the fiber, with the message.
+struct AssertNode final : NodeType
+{
+    AssertNode(): NodeType("crude.Assert", "Assert", "Debugging") {}
+
+    void Declare(NodeDeclaration& declaration, const NodeConfig&, const Bindings&) const override
+    {
+        declaration.FlowInput("enter");
+        declaration.Input("condition", "Condition", BoolType());
+        declaration.Input("message", "Message", StringType());
+        declaration.FlowOutput("then");
+    }
+
+    Result<Exit> Execute(ExecContext& context, std::string_view) const override
+    {
+        auto condition = context.Get<bool>("condition");
+        if (!condition)
+            return condition.GetError();
+        if (condition.GetValue())
+            return Exit::To("then");
+        auto message = context.Get<std::string>("message");
+        if (!message)
+            return message.GetError();
+        return Error(LibraryError::AssertFailed, message.GetValue().empty() ? std::string("an assertion failed") : "assertion failed: " + message.GetValue());
+    }
+};
+
 struct BranchNode final : NodeType
 {
     BranchNode(): NodeType("crude.Branch", "Branch", "Flow") {}
@@ -1089,6 +1318,14 @@ crude_blueprint::Result<void> crude_blueprint::RegisterLibrary(Registry& registr
         std::make_unique<GetNode>(),
         std::make_unique<SetNode>(),
         std::make_unique<AppendNode>(),
+        std::make_unique<MakeMapNode>(),
+        std::make_unique<FindNode>(),
+        std::make_unique<ContainsNode>(),
+        std::make_unique<InsertNode>(),
+        std::make_unique<RemoveNode>(),
+        std::make_unique<MapItemsNode>("crude.Keys", "Keys", true),
+        std::make_unique<MapItemsNode>("crude.Values", "Values", false),
+        std::make_unique<AssertNode>(),
         std::make_unique<BranchNode>(),
         std::make_unique<ForLoopNode>(),
         std::make_unique<SequenceNode>(),
