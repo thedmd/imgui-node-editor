@@ -336,7 +336,10 @@ struct BlueprintEditorExample
         ImVec2 canvasMin, canvasMax;
         if (m_Document)
         {
-            ed::Begin("###main_editor");
+            auto& style  = ImGui::GetStyle();
+            auto  strip  = m_ShowProblems ? ImGui::GetTextLineHeightWithSpacing() * 5.0f + style.WindowPadding.y * 2.0f : 0.0f;
+            auto  canvas = ImGui::GetContentRegionAvail().y - (m_ShowProblems ? strip + style.ItemSpacing.y : 0.0f);
+            ed::Begin("###main_editor", ImVec2(0.0f, ImMax(canvas, 1.0f)));
 
             CommitBlueprintNodes(*m_Document);
 
@@ -354,6 +357,8 @@ struct BlueprintEditorExample
 
             ShowBubbles(*m_Document, canvasMin, canvasMax);
             DeclareActions(*m_Document, canvasMin, canvasMax);
+            if (m_ShowProblems)
+                ShowProblems(*m_Document, ImVec2(canvasMin.x, canvasMax.y + style.ItemSpacing.y), ImVec2(canvasMax.x - canvasMin.x, strip));
 
             RecordEdits(*m_Document);
         }
@@ -502,6 +507,7 @@ private:
                 menuAction(m_View_NavigateForward);
                 ImGui::Separator();
                 ImGui::MenuItem("Show Actions", nullptr, &m_ShowActions);
+                ImGui::MenuItem("Show Problems", nullptr, &m_ShowProblems);
                 if (ImGui::MenuItem("Show or Hide All Problems", "Ctrl+Shift+D", false, File_IsOpen() && !m_Problems.Problems().empty()))
                     ToggleBubbles();
 
@@ -916,6 +922,52 @@ private:
         drawList->PopClipRect();
     }
 
+    // A row for each problem; choosing one goes to it.
+    void ShowProblems(const Document& document, ImVec2 position, ImVec2 size)
+    {
+        ImGui::SetCursorScreenPos(position);
+        if (ImGui::BeginChild("##problems", size, ImGuiChildFlags_Borders))
+        {
+            auto& graph    = document.GetGraph();
+            auto  problems = m_Problems.Problems();
+            auto  line     = ImGui::GetTextLineHeight();
+            if (problems.empty())
+                ImGui::TextDisabled("No problems");
+            for (size_t i = 0; i < problems.size(); ++i)
+            {
+                auto& problem = problems[i];
+                auto  node    = graph.FindNode(problem.m_Node);
+                auto  at      = ImGui::GetCursorScreenPos();
+                ImGui::Dummy(ImVec2(line, line));
+                ProblemSign(ImGui::GetWindowDrawList(), at + ImVec2(line, line) * 0.5f, line * 0.3f, problem.m_Diagnostic.m_Severity);
+                ImGui::SameLine();
+
+                auto label = ProblemList::Text(graph, problem) + (problem.m_Run ? ", in the run" : "");
+                if (node && !label.starts_with(node->Name()))
+                    label = node->Name() + ": " + label;
+                ImGui::PushID(static_cast<int>(i));
+                if (ImGui::Selectable(label.c_str(), m_ProblemIndex == i))
+                    GoToProblem(i);
+                ImGui::PopID();
+            }
+        }
+        ImGui::EndChild();
+    }
+
+    // Selects the problem's node, and brings it into view.
+    void GoToProblem(size_t index)
+    {
+        auto problems = m_Problems.Problems();
+        if (index >= problems.size())
+            return;
+        m_ProblemIndex = index;
+        if (auto node = problems[index].m_Node)
+        {
+            ed::SelectNode(node);
+            ed::NavigateToSelection();
+        }
+    }
+
     // Each node's bubble opens, unless all are open already: then all close.
     void ToggleBubbles()
     {
@@ -1182,6 +1234,12 @@ private:
         actions.Gesture("Create Node", "Right-Click", background);
         if (actions.Press("Show or Hide All Problems", ImGuiMod_Ctrl | ImGuiMod_Shift | ImGuiKey_D, !m_Problems.Problems().empty()))
             ToggleBubbles();
+        const auto problems = m_Problems.Problems().size();
+        const auto current  = m_ProblemIndex < problems;
+        if (actions.Press("Next Problem", ImGuiKey_F8, problems > 0, true))
+            GoToProblem(current ? (m_ProblemIndex + 1) % problems : 0);
+        if (actions.Press("Previous Problem", ImGuiMod_Shift | ImGuiKey_F8, problems > 0, true))
+            GoToProblem(current ? (m_ProblemIndex + problems - 1) % problems : problems - 1);
         if (actions.Press("Run", ImGuiKey_F5, m_Blueprint_Run.IsEnabled(), true))
             m_Blueprint_Run.Execute();
         if (actions.Press("Step", ImGuiKey_F10, m_Blueprint_Step.IsEnabled(), true))
@@ -1424,6 +1482,7 @@ private:
         m_Problems = {};
         m_Bubbles.clear();
         m_RunBubbles.clear();
+        m_ProblemIndex = SIZE_MAX;
         m_Document = nullptr;
 
         DestroyDocumentEditor();
@@ -1579,7 +1638,9 @@ private:
     std::unordered_set<Id>    m_Bubbles;    // nodes whose problems show
     std::unordered_set<Id>    m_RunBubbles; // nodes whose bubble a run's error opened
     std::optional<LinkQuery>  m_LinkQuery;
-    bool                      m_ShowActions = true;
+    bool                      m_ShowActions  = true;
+    bool                      m_ShowProblems = true;
+    size_t                    m_ProblemIndex = SIZE_MAX; // the problem chosen last
 
     CreateNodeDialog m_CreateNodeDialog;
     NodeContextMenu  m_NodeContextMenu;
