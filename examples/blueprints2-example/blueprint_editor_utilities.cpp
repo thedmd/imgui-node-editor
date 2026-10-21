@@ -274,6 +274,23 @@ void blueprint_editor_utilities::RemoveTypeParameter(Document& document, Id grap
     });
 }
 
+void blueprint_editor_utilities::RenameFunction(Document& document, Id graph, std::string name)
+{
+    auto function = document.GetBlueprint().FindFunction(graph);
+    if (!function || function->m_Name == name)
+        return;
+    const auto old = function->m_Name;
+    auto transaction = document.BeginUndoTransaction("Rename Function");
+    if (auto renamed = document.GetBlueprint().RenameFunction(graph, name); !renamed)
+    {
+        auto message = renamed.GetError().Message();
+        LOGW("[Function] %s: %.*s", old.c_str(), static_cast<int>(message.size()), message.data());
+        transaction->Discard();
+        return;
+    }
+    transaction->AddAction("%s renamed %s", old.c_str(), name.c_str());
+}
+
 void blueprint_editor_utilities::AddVariable(Document& document)
 {
     auto&       blueprint = document.GetBlueprint();

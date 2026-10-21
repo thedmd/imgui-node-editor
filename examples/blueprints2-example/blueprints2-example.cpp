@@ -1294,16 +1294,31 @@ private:
         return document.GetBlueprint().FunctionOf(*node->m_Type);
     }
 
-    // A tab for each graph, a function's with "()", and one to add a function.
+    // A tab for each graph, a function's with "()", and one to add a function. A function's tab,
+    // double-clicked or from its menu, renames it.
     void ShowGraphTabs(Document& document)
     {
         if (!ImGui::BeginTabBar("##graphs", ImGuiTabBarFlags_FittingPolicyScroll))
             return;
         for (auto& graph : document.GetBlueprint().Graphs())
         {
-            auto id    = graph->GetId();
-            auto label = graph->GetName() + (document.GetBlueprint().FindFunction(id) ? "()" : "") + "###" + std::to_string(id);
-            if (!ImGui::BeginTabItem(label.c_str(), nullptr, m_TabRequest == id ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None))
+            auto id       = graph->GetId();
+            auto function = document.GetBlueprint().FindFunction(id) != nullptr;
+            auto label    = graph->GetName() + (function ? "()" : "") + "###" + std::to_string(id);
+            auto shown    = ImGui::BeginTabItem(label.c_str(), nullptr, m_TabRequest == id ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None);
+            auto rename   = function && ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left);
+            if (function && ImGui::BeginPopupContextItem())
+            {
+                rename = ImGui::MenuItem("Rename...");
+                ImGui::EndPopup();
+            }
+            if (rename)
+            {
+                m_RenamedFunction = id;
+                m_RenameFocus     = true;
+                std::snprintf(m_RenameText, sizeof(m_RenameText), "%s", graph->GetName().c_str());
+            }
+            if (!shown)
                 continue;
             if (m_TabRequest == id)
                 m_TabRequest = 0;
@@ -1316,6 +1331,24 @@ private:
         if (ImGui::IsItemHovered())
             ImGui::SetTooltip("Add Function");
         ImGui::EndTabBar();
+        ShowRenameFunction(document);
+    }
+
+    // A new name for a function, taken on Enter.
+    void ShowRenameFunction(Document& document)
+    {
+        if (m_RenameFocus)
+            ImGui::OpenPopup("##rename-function");
+        if (!ImGui::BeginPopup("##rename-function"))
+            return;
+        if (std::exchange(m_RenameFocus, false))
+            ImGui::SetKeyboardFocusHere();
+        const auto done = ImGui::InputText("##name", m_RenameText, sizeof(m_RenameText), ImGuiInputTextFlags_EnterReturnsTrue);
+        if (done)
+            RenameFunction(document, m_RenamedFunction, m_RenameText);
+        if (done || ImGui::IsKeyPressed(ImGuiKey_Escape, false) || !document.GetBlueprint().FindFunction(m_RenamedFunction))
+            ImGui::CloseCurrentPopup();
+        ImGui::EndPopup();
     }
 
     // Selects the node, and brings it into view, in its graph.
@@ -2106,6 +2139,9 @@ private:
     bool                      m_PendingRemember = true;
     Id                        m_PendingNode     = 0;     // to go to once its graph shows
     Id                        m_FollowedNode    = 0;     // the run's next node, as its graph last showed for it
+    Id                        m_RenamedFunction = 0;     // its graph's ID
+    bool                      m_RenameFocus     = false; // the rename popup opens, its name focused
+    char                      m_RenameText[64]  = {};
     Debugger                  m_Debugger;
     ProblemList               m_Problems;
     std::unordered_set<Id>    m_Bubbles;    // nodes whose problems show

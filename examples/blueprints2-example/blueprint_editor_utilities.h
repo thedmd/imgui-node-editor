@@ -77,6 +77,7 @@ void ChangeSignature(Document& document, Id graph, std::string_view what, const 
 void AddSignaturePin(Document& document, Id graph, bool input); // of a key of its own, an Int32
 // A type parameter that a pin's type has can't go.
 void RemoveTypeParameter(Document& document, Id graph, int index);
+void RenameFunction(Document& document, Id graph, std::string name);
 
 // Edits of the blueprint's variables, one undo step each. One the blueprint refuses is logged.
 void AddVariable(Document& document); // an Int32, named Variable1, or of the first number free

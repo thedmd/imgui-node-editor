@@ -1033,3 +1033,33 @@ TEST_CASE(VariableEdits, "blueprints2.variables_change_in_undo_steps_and_go_with
     session.Use([&] { document.Undo(); });
     test::Check(document.GetBlueprint().FindVariable("Health") && document.GetGraph().FindNode(added.ValueOr(0)), "and undoing it brings both back");
 }
+
+TEST_CASE(FunctionNames, "blueprints2.a_function_is_renamed_in_one_undo_step", nullptr, test::TestFlags_None)
+{
+    test::Session session(UnnamedConfig());
+    OverlayLog    log;
+    Example       example(session);
+    auto& document = example.m_Document;
+    auto  graph    = Id(0);
+    session.Use([&]
+    {
+        auto transaction = document.BeginUndoTransaction("Add Functions");
+        auto first = document.GetBlueprint().AddFunction("Function1", {});
+        if (first && document.GetBlueprint().AddFunction("Function2", {}))
+            transaction->AddAction("Function1 and Function2 added");
+        graph = first ? first.GetValue()->GetId() : 0;
+    });
+    using blueprint_editor_utilities::RenameFunction;
+
+    session.Use([&]
+    {
+        RenameFunction(document, graph, "Clamp");
+        RenameFunction(document, graph, "Function2");
+        RenameFunction(document, graph, "Clamp");
+    });
+    auto renamed = document.GetBlueprint().FindFunction(graph);
+    test::Check(renamed && renamed->m_Name == "Clamp" && document.GetBlueprint().FindGraph(graph)->GetName() == "Clamp" && document.m_Undo.size() == 2, "renamed, it's one undo step; a name it can't take, or its own, makes none");
+    session.Use([&] { document.Undo(); });
+    auto undone = document.GetBlueprint().FindFunction(graph);
+    test::Check(undone && undone->m_Name == "Function1", "and undoing it gives the old name back");
+}
