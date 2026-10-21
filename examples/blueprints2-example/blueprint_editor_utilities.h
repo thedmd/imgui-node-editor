@@ -25,6 +25,10 @@ using namespace crude_blueprint;
 IconType PinIcon(const Pin& pin);     // by its type's kind; a diamond while undecided
 ImVec4   PinColor(const Pin& pin);    // white for flow, grey while undecided, else its type's
 ImVec4   TypeColor(const Type* type);
+// What a node is, as Spark's blueprint editor colors node headers: events red, a function's entry
+// and returns magenta, calls orange, Make and Break green, arrays and maps steel blue, a Constant
+// its type's color, other pure nodes light blue, and the rest white.
+ImVec4   HeaderColor(const Blueprint& blueprint, const Node& node);
 
 // What an input without a link reads: the value the user typed, the default its node declares,
 // or its type's. None while its type is undecided.

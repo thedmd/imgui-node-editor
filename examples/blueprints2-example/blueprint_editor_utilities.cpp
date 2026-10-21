@@ -37,6 +37,25 @@ ImVec4 blueprint_editor_utilities::PinColor(const Pin& pin)
     return TypeColor(pin.m_DecidedType);
 }
 
+ImVec4 blueprint_editor_utilities::HeaderColor(const Blueprint& blueprint, const Node& node)
+{
+    auto rgb = [](uint32_t color) { return ImVec4(static_cast<float>((color >> 16) & 0xFF) / 255.0f, static_cast<float>((color >> 8) & 0xFF) / 255.0f, static_cast<float>(color & 0xFF) / 255.0f, 1.0f); };
+    auto& type = *node.m_Type;
+    if (!type.EventName(node.m_Config).empty())
+        return rgb(0xCC2222);
+    if (blueprint.FunctionOf(type))
+        return type.m_Name.starts_with("call:") ? rgb(0xFF8000) : rgb(0xFF04FF);
+    if (type.m_Name.starts_with("make:") || type.m_Name.starts_with("break:"))
+        return rgb(0x8DC286);
+    if (IsConstant(node) && !node.m_Pins.empty())
+        return PinColor(node.m_Pins.front());
+    if (type.m_Category == "Arrays" || type.m_Category == "Maps")
+        return rgb(0x67A4CD);
+    if (std::none_of(node.m_Pins.begin(), node.m_Pins.end(), [](const Pin& pin) { return pin.m_Flow; }))
+        return rgb(0x80C8F7);
+    return ImVec4(1.0f, 1.0f, 1.0f, 1.0f);
+}
+
 // Arrays take their items' colors, and maps their values'. Other types without a color of their
 // own take one from their name, so each keeps it.
 ImVec4 blueprint_editor_utilities::TypeColor(const Type* type)

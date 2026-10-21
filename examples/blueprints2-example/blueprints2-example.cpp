@@ -713,8 +713,12 @@ private:
             const auto event = node.m_Type->EventName(node.m_Config);
             const auto title = event.empty() ? node.m_Type->m_Title : event;
             {
-                auto id = node.m_Id;
-                auto headerBackgroundRenderer = ImEx::ItemBackgroundRenderer([id](ImDrawList* drawList)
+                // A tint of what the node is, white one fainter.
+                auto tint  = HeaderColor(document.GetBlueprint(), node);
+                tint.w     = tint.x + tint.y + tint.z >= 3.0f ? 0.25f : 0.55f;
+                auto id    = node.m_Id;
+                auto color = ImGui::GetColorU32(tint);
+                auto headerBackgroundRenderer = ImEx::ItemBackgroundRenderer([id, color](ImDrawList* drawList)
                 {
                     auto border   = ed::GetStyle().NodeBorderWidth;
                     auto rounding = ed::GetStyle().NodeRounding;
@@ -731,7 +735,7 @@ private:
                     itemMax.x = nodeStart.x + nodeSize.x - border + 0.5f;
                     itemMax.y = itemMax.y + ImGui::GetStyle().ItemSpacing.y + 0.5f;
 
-                    drawList->AddRectFilled(itemMin, itemMax, IM_COL32(255, 255, 255, 64), rounding, ImDrawFlags_RoundTop);
+                    drawList->AddRectFilled(itemMin, itemMax, color, rounding, ImDrawFlags_RoundTop);
                 });
 
                 ImGui::BeginGroup();
