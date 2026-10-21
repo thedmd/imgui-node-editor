@@ -462,11 +462,145 @@ struct CastInfo
 
 
 //
+// -------[ Node types ]-------
+//
+
+enum class Direction : uint8_t { Input, Output };
+
+// Without a link, an input uses its default, and an output goes unread.
+enum class Requirement : uint8_t
+{
+    Optional,
+    Recommended,    // a warning without a link
+    Required,       // an error without a link, so the blueprint can't run
+};
+
+// One of a node's type variables, as its declaration made it.
+struct TypeVariable
+{
+    int m_Index = -1;
+};
+
+// A pin's type as a node declares it: a type, a type variable, or a type constructor applied to
+// these, such as Array<T>.
+struct TypeTerm
+{
+    const ValueType*      m_Head     = nullptr; // null: the variable
+    int                   m_Variable = -1;
+    std::vector<TypeTerm> m_Args;
+
+    TypeTerm() = default;
+    TypeTerm(const Type& type);
+    TypeTerm(TypeVariable variable): m_Variable(variable.m_Index) {}
+    TypeTerm(const ValueType& head, std::vector<TypeTerm> args);
+};
+
+struct VariableDeclaration
+{
+    std::string                   m_Name;
+    std::vector<const ValueType*> m_Allowed; // the heads it may take, Array for any Array<T>; empty: any
+};
+
+struct PinDeclaration
+{
+    std::string m_Key;                       // stable and saved: "a", "in.2", "pos.x"
+    std::string m_Name;                      // shown on the node
+    Direction   m_Direction   = Direction::Input;
+    bool        m_Flow        = false;
+    TypeTerm    m_Type;                      // a data pin's
+    Value       m_Default;                   // none: its type's
+    Requirement m_Requirement = Requirement::Optional;
+};
+
+struct PinOptions
+{
+    Value       m_Default;
+    Requirement m_Requirement = Requirement::Optional;
+};
+
+// Pins the user adds and removes. Each index has a pin per prefix, keyed "<prefix>.<index>".
+struct GroupDeclaration
+{
+    std::string              m_Name;
+    std::vector<std::string> m_Prefixes;
+    int                      m_Min = 0;
+    int                      m_Max = 0;
+};
+
+// What a node instance's pins depend on, besides its type variables: saved, and changed by edits.
+struct NodeConfig
+{
+    std::map<std::string, int, std::less<>>         m_Groups; // indices per group
+    std::map<std::string, const Type*, std::less<>> m_Types;  // the type variables the user chose
+
+    bool operator==(const NodeConfig& other) const = default;
+};
+
+// What a node's type variables resolved to in the graph's previous round. Undecided ones are absent.
+struct Bindings
+{
+    std::map<std::string, const Type*, std::less<>> m_Types;
+
+    const Type* Get(std::string_view variable) const;
+
+    bool operator==(const Bindings& other) const = default;
+};
+
+class NodeDeclaration
+{
+public:
+    explicit NodeDeclaration(const NodeConfig& config): m_Config(config) {}
+
+    TypeVariable Variable(std::string name, std::vector<const ValueType*> allowed = {});
+
+    void Input(std::string key, std::string name, TypeTerm type, PinOptions options = {});
+    void Output(std::string key, std::string name, TypeTerm type, PinOptions options = {});
+    void FlowInput(std::string key, std::string name = {}, PinOptions options = {});
+    void FlowOutput(std::string key, std::string name = {}, PinOptions options = {});
+
+    // How many indices the config gives the group, within min and max. The node declares their pins.
+    // The prefixes are the group's name when none are given.
+    int Group(std::string name, int min, int max, std::vector<std::string> prefixes = {});
+
+    std::span<const VariableDeclaration> Variables() const { return m_Variables; }
+    std::span<const PinDeclaration>      Pins() const      { return m_Pins; }
+    std::span<const GroupDeclaration>    Groups() const    { return m_Groups; }
+
+private:
+    friend class Graph;
+
+    void AddPin(PinDeclaration pin);
+
+    const NodeConfig&                m_Config;
+    std::vector<VariableDeclaration> m_Variables;
+    std::vector<PinDeclaration>      m_Pins;
+    std::vector<GroupDeclaration>    m_Groups;
+};
+
+// One registered type can be many node types: Make for each struct, a call for each function.
+struct NodeType
+{
+    CRUDE_BP_RTTI_ROOT(NodeType)
+
+    NodeType(std::string name, std::string title, std::string category = {});
+    NodeType(const NodeType&) = delete;
+    NodeType& operator=(const NodeType&) = delete;
+    virtual ~NodeType() = default;
+
+    const std::string m_Name;     // registered and saved: "crude.Add"
+    const std::string m_Title;    // shown: "Add"
+    const std::string m_Category; // "Math"
+
+    virtual void Declare(NodeDeclaration& declaration, const NodeConfig& config, const Bindings& bindings) const = 0;
+};
+
+
+//
 // -------[ Registry ]-------
 //
 
-// Value types and casts. One per application, shared by its blueprints: everything is
-// registered at start-up, and nothing is ever unregistered.
+// Value types, casts and node types. One per application, shared by its blueprints: everything
+// is registered at start-up, and nothing is ever unregistered.
 class Registry
 {
 public:
@@ -474,16 +608,21 @@ public:
     Result<void> AddValueType(const ValueType& type);
     Result<void> AddValueType(std::unique_ptr<ValueType> type);
     Result<void> AddCast(CastInfo cast);
+    Result<void> AddNodeType(const NodeType& type);
+    Result<void> AddNodeType(std::unique_ptr<NodeType> type);
 
     const ValueType*                 FindValueType(std::string_view name) const;
     const CastInfo*                  FindCast(const Type* from, const Type* to) const;
     std::span<const CastInfo* const> CastsFrom(const Type* from) const;
+    const NodeType*                  FindNodeType(std::string_view name) const;
 
 private:
     std::map<std::string, const ValueType*, std::less<>> m_ValueTypes;
     std::vector<std::unique_ptr<ValueType>>              m_OwnedValueTypes;
     std::vector<std::unique_ptr<CastInfo>>               m_Casts;
     std::map<const Type*, std::vector<const CastInfo*>>  m_CastsFrom;
+    std::map<std::string, const NodeType*, std::less<>>  m_NodeTypes;
+    std::vector<std::unique_ptr<NodeType>>               m_OwnedNodeTypes;
 };
 
 // The built-in value types, and the casts between them.

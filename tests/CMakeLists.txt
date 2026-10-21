@@ -167,6 +167,7 @@ if (IMGUI_NODE_EDITOR_TESTS_BLUEPRINTS2)
 
     set(_RuntimeTestSources
         blueprints2_core_tests.cpp
+        blueprints2_graph_tests.cpp
     )
     add_executable(blueprints2_tests
         harness.cpp

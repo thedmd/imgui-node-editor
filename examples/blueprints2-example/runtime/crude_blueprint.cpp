@@ -559,6 +559,94 @@ bool crude_blueprint::StructType::Equal(const Value& a, const Value& b) const
 
 
 //
+// -------[ Node types ]-------
+//
+
+namespace crude_blueprint { namespace {
+
+bool UsesOnly(const TypeTerm& term, size_t variables)
+{
+    if (!term.m_Head)
+        return term.m_Variable >= 0 && static_cast<size_t>(term.m_Variable) < variables;
+    return std::all_of(term.m_Args.begin(), term.m_Args.end(), [variables](const TypeTerm& arg) { return UsesOnly(arg, variables); });
+}
+
+} } // namespace crude_blueprint { namespace {
+
+crude_blueprint::TypeTerm::TypeTerm(const Type& type)
+    : m_Head(type.m_Head)
+{
+    for (auto arg : type.m_Args)
+        m_Args.emplace_back(*arg);
+}
+
+crude_blueprint::TypeTerm::TypeTerm(const ValueType& head, std::vector<TypeTerm> args)
+    : m_Head(&head)
+    , m_Args(std::move(args))
+{
+    CRUDE_BP_ASSERT(static_cast<int>(m_Args.size()) == head.m_Arity);
+}
+
+const crude_blueprint::Type* crude_blueprint::Bindings::Get(std::string_view variable) const
+{
+    auto it = m_Types.find(variable);
+    return it != m_Types.end() ? it->second : nullptr;
+}
+
+crude_blueprint::TypeVariable crude_blueprint::NodeDeclaration::Variable(std::string name, std::vector<const ValueType*> allowed)
+{
+    CRUDE_BP_ASSERT(std::none_of(m_Variables.begin(), m_Variables.end(), [&name](const VariableDeclaration& variable) { return variable.m_Name == name; }));
+    m_Variables.push_back({ std::move(name), std::move(allowed) });
+    return { static_cast<int>(m_Variables.size()) - 1 };
+}
+
+void crude_blueprint::NodeDeclaration::Input(std::string key, std::string name, TypeTerm type, PinOptions options)
+{
+    AddPin({ std::move(key), std::move(name), Direction::Input, false, std::move(type), std::move(options.m_Default), options.m_Requirement });
+}
+
+void crude_blueprint::NodeDeclaration::Output(std::string key, std::string name, TypeTerm type, PinOptions options)
+{
+    AddPin({ std::move(key), std::move(name), Direction::Output, false, std::move(type), std::move(options.m_Default), options.m_Requirement });
+}
+
+void crude_blueprint::NodeDeclaration::FlowInput(std::string key, std::string name, PinOptions options)
+{
+    AddPin({ std::move(key), std::move(name), Direction::Input, true, {}, {}, options.m_Requirement });
+}
+
+void crude_blueprint::NodeDeclaration::FlowOutput(std::string key, std::string name, PinOptions options)
+{
+    AddPin({ std::move(key), std::move(name), Direction::Output, true, {}, {}, options.m_Requirement });
+}
+
+int crude_blueprint::NodeDeclaration::Group(std::string name, int min, int max, std::vector<std::string> prefixes)
+{
+    CRUDE_BP_ASSERT(0 <= min && min <= max);
+    if (prefixes.empty())
+        prefixes.push_back(name);
+    auto it = m_Config.m_Groups.find(name);
+    auto count = it != m_Config.m_Groups.end() ? std::clamp(it->second, min, max) : min;
+    m_Groups.push_back({ std::move(name), std::move(prefixes), min, max });
+    return count;
+}
+
+void crude_blueprint::NodeDeclaration::AddPin(PinDeclaration pin)
+{
+    CRUDE_BP_ASSERT(!pin.m_Key.empty() && std::none_of(m_Pins.begin(), m_Pins.end(), [&pin](const PinDeclaration& other) { return other.m_Key == pin.m_Key; }));
+    CRUDE_BP_ASSERT(pin.m_Flow || UsesOnly(pin.m_Type, m_Variables.size()));
+    m_Pins.push_back(std::move(pin));
+}
+
+crude_blueprint::NodeType::NodeType(std::string name, std::string title, std::string category)
+    : m_Name(std::move(name))
+    , m_Title(std::move(title))
+    , m_Category(std::move(category))
+{
+}
+
+
+//
 // -------[ Registry ]-------
 //
 
@@ -619,6 +707,29 @@ std::span<const crude_blueprint::CastInfo* const> crude_blueprint::Registry::Cas
     if (it == m_CastsFrom.end())
         return {};
     return it->second;
+}
+
+crude_blueprint::Result<void> crude_blueprint::Registry::AddNodeType(const NodeType& type)
+{
+    CRUDE_BP_ASSERT(!type.m_Name.empty());
+    if (!m_NodeTypes.emplace(type.m_Name, &type).second)
+        return Error(BlueprintError::Duplicate, "a node type named " + type.m_Name + " is already registered");
+    return {};
+}
+
+crude_blueprint::Result<void> crude_blueprint::Registry::AddNodeType(std::unique_ptr<NodeType> type)
+{
+    CRUDE_BP_ASSERT(type);
+    if (auto result = AddNodeType(*type); !result)
+        return result;
+    m_OwnedNodeTypes.push_back(std::move(type));
+    return {};
+}
+
+const crude_blueprint::NodeType* crude_blueprint::Registry::FindNodeType(std::string_view name) const
+{
+    auto it = m_NodeTypes.find(name);
+    return it != m_NodeTypes.end() ? it->second : nullptr;
 }
 
 crude_blueprint::Result<void> crude_blueprint::RegisterBuiltins(Registry& registry)
