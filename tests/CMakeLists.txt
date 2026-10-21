@@ -20,7 +20,7 @@ endif()
 option(IMGUI_NODE_EDITOR_TESTS_BLUEPRINTS2 "Also test blueprints2-example's blueprint model and documents" ${_IsPinnedImGui})
 set(IMGUI_NODE_EDITOR_TESTS_DEFINITIONS "" CACHE STRING "Definitions for Dear ImGui and the editor, for example IMGUI_DISABLE_OBSOLETE_FUNCTIONS")
 option(IMGUI_NODE_EDITOR_TESTS_SANITIZE "Build with AddressSanitizer and run the tests that need it" OFF)
-option(IMGUI_NODE_EDITOR_WARNINGS_AS_ERRORS "Treat warnings in the node editor sources as errors" OFF)
+option(IMGUI_NODE_EDITOR_WARNINGS_AS_ERRORS "Treat warnings in the node editor and blueprints2-example runtime sources as errors" OFF)
 
 if (NOT IMGUI_DIR)
     include(FetchContent)
@@ -71,13 +71,18 @@ add_library(imgui_node_editor_for_tests STATIC
 )
 target_include_directories(imgui_node_editor_for_tests PUBLIC ${IMGUI_NODE_EDITOR_ROOT_DIR})
 target_link_libraries(imgui_node_editor_for_tests PUBLIC imgui_for_tests)
-if (IMGUI_NODE_EDITOR_WARNINGS_AS_ERRORS)
-    if (MSVC)
-        target_compile_options(imgui_node_editor_for_tests PRIVATE /W4 /WX)
-    else()
-        target_compile_options(imgui_node_editor_for_tests PRIVATE -Wall -Wextra -Werror)
+
+function(treat_warnings_as_errors _Target)
+    if (IMGUI_NODE_EDITOR_WARNINGS_AS_ERRORS)
+        if (MSVC)
+            target_compile_options(${_Target} PRIVATE /W4 /WX)
+        else()
+            target_compile_options(${_Target} PRIVATE -Wall -Wextra -Werror)
+        endif()
     endif()
-endif()
+endfunction()
+
+treat_warnings_as_errors(imgui_node_editor_for_tests)
 
 set(_TestSources
     api_tests.cpp
@@ -148,25 +153,60 @@ if (IMGUI_NODE_EDITOR_TESTS_SANITIZE)
     target_compile_definitions(node_editor_tests PRIVATE IMGUI_NODE_EDITOR_TESTS_SANITIZE)
 endif()
 
+# blueprints2-example's new runtime, which the example doesn't use yet. C++20.
+if (IMGUI_NODE_EDITOR_TESTS_BLUEPRINTS2)
+    set(_RuntimeDir ${IMGUI_NODE_EDITOR_ROOT_DIR}/examples/blueprints2-example/runtime)
+    add_library(blueprints2_runtime STATIC
+        ${_RuntimeDir}/crude_blueprint.cpp
+        ${_RuntimeDir}/crude_blueprint.h
+    )
+    target_include_directories(blueprints2_runtime PUBLIC ${_RuntimeDir})
+    target_compile_features(blueprints2_runtime PUBLIC cxx_std_20)
+    target_link_libraries(blueprints2_runtime PUBLIC imgui_node_editor_for_tests) # crude_json
+    treat_warnings_as_errors(blueprints2_runtime)
+
+    set(_RuntimeTestSources
+        blueprints2_core_tests.cpp
+    )
+    add_executable(blueprints2_tests
+        harness.cpp
+        harness.h
+        main.cpp
+        test_config.h
+        ${_RuntimeTestSources}
+    )
+    target_link_libraries(blueprints2_tests PRIVATE blueprints2_runtime)
+    if (IMGUI_NODE_EDITOR_TESTS_SANITIZE)
+        target_compile_definitions(blueprints2_tests PRIVATE IMGUI_NODE_EDITOR_TESTS_SANITIZE)
+    endif()
+endif()
+
 # One CTest test per TEST_CASE. Tests of open findings are expected to fail, and
 # tests that detect memory errors run only in sanitized builds.
 enable_testing()
-foreach (_Source ${_TestSources})
-    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${_Source})
-    file(STRINGS ${_Source} _Lines REGEX "^TEST_CASE\\(")
-    foreach (_Line ${_Lines})
-        if (NOT _Line MATCHES "^TEST_CASE\\([A-Za-z0-9_]+, \"([^\"]+)\", ([^,]+), ([^)]+)\\)")
-            message(FATAL_ERROR "${_Source}: TEST_CASE must stay on one line with literal arguments: ${_Line}")
-        endif()
-        set(_Name  "${CMAKE_MATCH_1}")
-        set(_Flags "${CMAKE_MATCH_3}")
-        if (_Flags MATCHES "NeedsSanitizer" AND NOT IMGUI_NODE_EDITOR_TESTS_SANITIZE)
-            continue()
-        endif()
-        add_test(NAME ${_Name} COMMAND node_editor_tests ${_Name})
-        set_tests_properties(${_Name} PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 120)
-        if (_Flags MATCHES "KnownFailure")
-            set_tests_properties(${_Name} PROPERTIES WILL_FAIL TRUE)
-        endif()
+function(add_test_cases _Executable)
+    foreach (_Source ${ARGN})
+        set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${_Source})
+        file(STRINGS ${_Source} _Lines REGEX "^TEST_CASE\\(")
+        foreach (_Line ${_Lines})
+            if (NOT _Line MATCHES "^TEST_CASE\\([A-Za-z0-9_]+, \"([^\"]+)\", ([^,]+), ([^)]+)\\)")
+                message(FATAL_ERROR "${_Source}: TEST_CASE must stay on one line with literal arguments: ${_Line}")
+            endif()
+            set(_Name  "${CMAKE_MATCH_1}")
+            set(_Flags "${CMAKE_MATCH_3}")
+            if (_Flags MATCHES "NeedsSanitizer" AND NOT IMGUI_NODE_EDITOR_TESTS_SANITIZE)
+                continue()
+            endif()
+            add_test(NAME ${_Name} COMMAND ${_Executable} ${_Name})
+            set_tests_properties(${_Name} PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 120)
+            if (_Flags MATCHES "KnownFailure")
+                set_tests_properties(${_Name} PROPERTIES WILL_FAIL TRUE)
+            endif()
+        endforeach()
     endforeach()
-endforeach()
+endfunction()
+
+add_test_cases(node_editor_tests ${_TestSources})
+if (IMGUI_NODE_EDITOR_TESTS_BLUEPRINTS2)
+    add_test_cases(blueprints2_tests ${_RuntimeTestSources})
+endif()
