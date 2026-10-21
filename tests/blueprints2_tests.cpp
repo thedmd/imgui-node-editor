@@ -21,6 +21,8 @@ using blueprint_editor::Document;
 using blueprint_editor::ExampleRegistry;
 using blueprint_editor_utilities::CanvasActions;
 using blueprint_editor_utilities::Debugger;
+using blueprint_editor_utilities::RunArguments;
+using blueprint_editor_utilities::ValueText;
 
 namespace {
 
@@ -1210,4 +1212,101 @@ TEST_CASE(EventParameterRenames, "blueprints2.a_custom_events_parameter_is_renam
 
     session.Use([&] { document.Undo(); });
     test::Check(name() == "Count", "undone, it has its name again: %s", name().c_str());
+}
+
+TEST_CASE(RunArgumentsTyped, "blueprints2.a_run_takes_the_arguments_typed_for_it", nullptr, test::TestFlags_None)
+{
+    // Spawn(Who: String, Times: Int32), and Echo<T: Int32 | Float>(x: T) -> y: T, which returns x.
+    test::Session session(UnnamedConfig());
+    OverlayLog    log;
+    Example       example(session);
+    auto& document = example.m_Document;
+    auto  spawn    = Id(0), print = Id(0), entry = Id(0), echoGraph = Id(0);
+    session.Use([&]
+    {
+        auto& graph = document.GetGraph();
+        NodeConfig config;
+        config.m_Data["event"]   = Value::String("Spawn");
+        config.m_Groups["param"] = 2;
+        config.m_Types["T0"]     = &StringType();
+        config.m_Types["T1"]     = &Int32Type();
+        config.m_Names           = { { "param.0", "Who" }, { "param.1", "Times" } };
+        Signature echo;
+        echo.m_Parameters = { { "T", { &Int32ValueType(), &FloatValueType() } } };
+        echo.m_Inputs     = { { "x", "X", TypeVariable{ 0 } } };
+        echo.m_Outputs    = { { "y", "Y", TypeVariable{ 0 } } };
+        auto transaction = document.BeginUndoTransaction("Add Spawn and Echo");
+        auto added = graph.AddNode("crude.CustomEvent", config), printed = graph.AddNode("crude.Print");
+        auto function = document.GetBlueprint().AddFunction("Echo", echo);
+        if (!added || !printed || !function)
+            return;
+        auto& body = *function.GetValue();
+        auto  from = body.AddNode("entry:Echo"), to = body.AddNode("return:Echo");
+        auto  pin  = [&body](Id node, const char* key) { return body.FindNode(node)->FindPin(key)->m_Id; };
+        if (graph.Connect(example.Pin(added.GetValue(), "then"), example.Pin(printed.GetValue(), "enter")) && graph.Connect(example.Pin(added.GetValue(), "param.0"), example.Pin(printed.GetValue(), "text"))
+            && from && to && body.Connect(pin(from.GetValue(), "then"), pin(to.GetValue(), "enter")) && body.Connect(pin(from.GetValue(), "x"), pin(to.GetValue(), "y")))
+            transaction->AddAction("Spawn and Echo added");
+        spawn = added.ValueOr(0), print = printed.ValueOr(0), entry = from.ValueOr(0), echoGraph = body.GetId();
+    });
+
+    auto& blueprint = document.GetBlueprint();
+    auto  types     = [&blueprint](const RunArguments& run)
+    {
+        std::string text;
+        for (size_t i = 0; i < run.m_Names.size(); ++i)
+        {
+            auto type = run.TypeOf(blueprint.GetTypes(), i);
+            text += (i ? ", " : "") + run.m_Names[i] + ": " + (type ? type->m_Name : "?") + " = " + (i < run.m_Values.size() ? ValueText(run.m_Values[i]) : "");
+        }
+        return text;
+    };
+    auto run = RunArguments::Of(document, spawn);
+    if (!run)
+        return test::Check(false, "Spawn's node takes arguments");
+    run->Settle(blueprint);
+    test::Check(!run->m_Call && run->m_Name == "Spawn" && run->Asks() && types(*run) == "Who: String = , Times: Int32 = 0" && run->IsReady(blueprint.GetTypes()), "an event takes its parameters, by their names, of their types' defaults: %s", types(*run).c_str());
+    test::Check(!RunArguments::Of(document, print) && !RunArguments::Of(document, example.Node("crude.Start"))->Asks(), "a node of no event takes none, and Start asks for none");
+
+    Debugger debugger;
+    run->m_Values = { Value::String("Bob"), Value::Int32(3) };
+    auto started = debugger.Start(document, false, "Spawn", run->m_Values);
+    auto who     = started ? debugger.GetContext()->Evaluate(example.Pin(spawn, "param.0")) : Result<Watch>(BlueprintError::NotFound);
+    test::Check(started && who && who.GetValue().m_Value == Value::String("Bob"), "a run of the event starts with the values typed");
+    const Value wrong[] = { Value::Int32(1), Value::Int32(3) };
+    test::Check(!debugger.Start(document, false, "Spawn", wrong) && !debugger.GetContext(), "and one of a value of another type doesn't start");
+
+    // Echo is in its own graph.
+    document.m_ShownGraph = echoGraph;
+    auto echo = RunArguments::Of(document, entry);
+    if (!echo)
+        return test::Check(false, "Echo's entry takes arguments");
+    echo->Settle(blueprint);
+    auto choices = std::string();
+    for (auto choice : RunArguments::Choices(blueprint.GetRegistry(), echo->m_Parameters[0]))
+        choices += (choices.empty() ? "" : " ") + choice->m_Name;
+    test::Check(echo->m_Call && choices == "Float Int32" && echo->m_Chosen[0] == &FloatType() && types(*echo) == "X: Float = 0", "a generic function's type parameter takes the first type it allows, its inputs following: %s; %s", choices.c_str(), types(*echo).c_str());
+
+    echo->m_Values[0]  = Value::Float(2.5f);
+    auto kept          = *echo;
+    echo->m_Chosen[0]  = &Int32Type();
+    echo->Settle(blueprint);
+    test::Check(types(*echo) == "X: Int32 = 0", "another type gives its inputs their new types' defaults: %s", types(*echo).c_str());
+    echo->m_Chosen[0] = &StringType();
+    echo->Settle(blueprint);
+    test::Check(echo->m_Chosen[0] == &FloatType(), "a type the parameter doesn't allow goes back to the first it does");
+
+    auto again = RunArguments::Of(document, entry);
+    again->Reuse(kept);
+    again->Settle(blueprint);
+    test::Check(types(*again) == "X: Float = 2.5", "a later run reuses an earlier one's arguments: %s", types(*again).c_str());
+    auto other = RunArguments::Of(document, entry);
+    other->m_Name = "Other";
+    other->Reuse(kept);
+    test::Check(other->m_Values.empty(), "but not those of another function's");
+
+    auto called = debugger.Call(document, true, "Echo", again->m_Values);
+    for (int i = 0; i < 10 && debugger.IsRunning(); ++i)
+        debugger.Update(document);
+    auto fibers = called ? debugger.GetContext()->Fibers() : std::vector<FiberInfo>();
+    test::Check(called && fibers.size() == 1 && fibers[0].m_State == FiberState::Done && fibers[0].m_Results == std::vector<Value>{ Value::Float(2.5f) }, "called with them, a generic function runs, typed by them");
 }

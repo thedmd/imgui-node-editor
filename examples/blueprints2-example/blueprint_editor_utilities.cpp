@@ -271,6 +271,22 @@ bool SameTerm(const TypeTerm& a, const TypeTerm& b)
     return a.m_Head == b.m_Head && a.m_Variable == b.m_Variable && std::equal(a.m_Args.begin(), a.m_Args.end(), b.m_Args.begin(), b.m_Args.end(), SameTerm);
 }
 
+// Null while a variable of the term has no type.
+const Type* TypeWith(TypeTable& table, const TypeTerm& term, std::span<const Type* const> variables)
+{
+    if (!term.m_Head)
+        return term.m_Variable >= 0 && static_cast<size_t>(term.m_Variable) < variables.size() ? variables[static_cast<size_t>(term.m_Variable)] : nullptr;
+    std::vector<const Type*> args;
+    for (auto& arg : term.m_Args)
+    {
+        auto type = TypeWith(table, arg, variables);
+        if (!type)
+            return nullptr;
+        args.push_back(type);
+    }
+    return table.Get(*term.m_Head, args);
+}
+
 } } // namespace blueprint_editor_utilities { namespace {
 
 void blueprint_editor_utilities::RemoveTypeParameter(Document& document, Id graph, int index)
@@ -895,17 +911,17 @@ void blueprint_editor_utilities::Debugger::Monitor::OnLog(const Context& context
     LOGI("[Print] %s: \"%.*s\"", name.c_str(), static_cast<int>(text.size()), text.data());
 }
 
-bool blueprint_editor_utilities::Debugger::Start(const Document& document, bool running, std::string_view event)
+bool blueprint_editor_utilities::Debugger::Start(const Document& document, bool running, std::string_view event, std::span<const Value> arguments)
 {
-    return Begin(document, running, event, false);
+    return Begin(document, running, event, false, arguments);
 }
 
-bool blueprint_editor_utilities::Debugger::Call(const Document& document, bool running, std::string_view function)
+bool blueprint_editor_utilities::Debugger::Call(const Document& document, bool running, std::string_view function, std::span<const Value> arguments)
 {
-    return Begin(document, running, function, true);
+    return Begin(document, running, function, true, arguments);
 }
 
-bool blueprint_editor_utilities::Debugger::Begin(const Document& document, bool running, std::string_view name, bool call)
+bool blueprint_editor_utilities::Debugger::Begin(const Document& document, bool running, std::string_view name, bool call, std::span<const Value> arguments)
 {
     m_Context.reset();
     m_Running  = false;
@@ -936,19 +952,21 @@ bool blueprint_editor_utilities::Debugger::Begin(const Document& document, bool 
     {
         if (!call || function.m_Name != name)
             continue;
-        if (!function.m_Parameters.empty())
+        if (!function.m_Parameters.empty() && arguments.empty())
         {
-            LOGE("Execution: %s is generic, and runs only as its calls give it types", function.m_Name.c_str());
+            LOGE("Execution: %s is generic, and runs only with arguments, which give it types", function.m_Name.c_str());
             m_Context.reset();
             return false;
         }
         node = function.m_Entry;
     }
-    std::vector<Value> arguments;
-    if (node >= 0)
+    std::vector<Value> defaults;
+    if (node >= 0 && arguments.empty())
         for (auto& pin : program.Nodes()[static_cast<size_t>(node)].m_Pins)
             if (!pin.m_Flow && pin.m_Direction == Direction::Output)
-                arguments.push_back(pin.m_Type->m_Head->Default(*pin.m_Type));
+                defaults.push_back(pin.m_Type->m_Head->Default(*pin.m_Type));
+    if (arguments.empty())
+        arguments = defaults;
     auto fiber = call ? m_Context->Call(name, arguments) : m_Context->Start(name, arguments);
     if (!fiber)
     {
@@ -958,10 +976,14 @@ bool blueprint_editor_utilities::Debugger::Begin(const Document& document, bool 
         return false;
     }
 
-    if (!call && name == "Start")
-        LOGI("Execution: %s", running ? "Run" : "Start");
-    else
-        LOGI("Execution: %s %.*s", call ? "Call" : running ? "Run" : "Start", static_cast<int>(name.size()), name.data());
+    // "Run" for the Start event, "Run Spawn("Bob", 3)" for another, "Call Echo(0)" for a function.
+    auto what = !call && name == "Start" ? std::string() : " " + std::string(name);
+    for (size_t i = 0; i < arguments.size(); ++i)
+    {
+        auto text = ValueText(arguments[i]);
+        what += (i ? ", " : "(") + (arguments[i].GetType() == &StringType() ? "\"" + text + "\"" : text) + (i + 1 < arguments.size() ? "" : ")");
+    }
+    LOGI("Execution: %s%s", call ? "Call" : running ? "Run" : "Start", what.c_str());
     m_Fiber    = fiber.GetValue();
     m_Revision = document.m_Revision;
     m_Running  = running;
@@ -1585,6 +1607,7 @@ void blueprint_editor_utilities::NodeContextMenu::Open(Id node)
 void blueprint_editor_utilities::NodeContextMenu::Show(Document& document, Debugger& debugger)
 {
     ShowRename(document);
+    ShowArguments(document, debugger);
     if (!ImGui::IsPopupOpen("##node-context-menu"))
         return;
 
@@ -1602,10 +1625,26 @@ void blueprint_editor_utilities::NodeContextMenu::Show(Document& document, Debug
                     debugger.SetBreakpoint(selected, enabled);
         }
 
+        auto run     = node ? RunArguments::Of(document, node->m_Id) : std::nullopt;
+        auto runItem = [&](const char* label, bool enabled)
+        {
+            const auto asks = run && run->Asks();
+            if (!ImGui::MenuItem(asks ? (std::string(label) + "...").c_str() : label, nullptr, false, enabled))
+                return;
+            if (asks)
+            {
+                m_Run    = node->m_Id;
+                m_Asking = true;
+            }
+            else if (run->m_Call)
+                debugger.Call(document, true, run->m_Name);
+            else
+                debugger.Start(document, true, run->m_Name);
+        };
+
         if (auto event = node ? node->m_Type->EventName(node->m_Config) : std::string(); !event.empty())
         {
-            if (ImGui::MenuItem("Run Event"))
-                debugger.Start(document, true, event);
+            runItem("Run Event", true);
             if (IsCustomEvent(*node) && ImGui::MenuItem("Rename Event..."))
             {
                 m_RenamedEvent = node->m_Id;
@@ -1622,8 +1661,7 @@ void blueprint_editor_utilities::NodeContextMenu::Show(Document& document, Debug
             const auto  graph    = signature.m_Function->m_Graph;
             const auto& declared = signature.m_Function->m_Signature;
             ImGui::Separator();
-            if (ImGui::MenuItem("Run Function", nullptr, false, !declared.m_Pure && declared.m_Parameters.empty()))
-                debugger.Call(document, true, signature.m_Function->m_Name);
+            runItem("Run Function", run.has_value());
             if (ImGui::MenuItem("Pure", nullptr, declared.m_Pure))
                 change = [&document, graph, pure = declared.m_Pure] { ChangeSignature(document, graph, pure ? "Make Impure" : "Make Pure", [](Signature& changed) { changed.m_Pure = !changed.m_Pure; }); };
             if (ImGui::BeginMenu("Type Parameters"))
@@ -1710,6 +1748,186 @@ void blueprint_editor_utilities::NodeContextMenu::ShowRename(Document& document)
 {
     if (auto name = NamePopup("##rename-event", m_Renaming, m_EventName, document.GetGraph().FindNode(m_RenamedEvent) != nullptr))
         RenameEvent(document, m_RenamedEvent, *name);
+}
+
+void blueprint_editor_utilities::NodeContextMenu::ShowArguments(Document& document, Debugger& debugger)
+{
+    auto& blueprint = document.GetBlueprint();
+    if (std::exchange(m_Asking, false))
+    {
+        auto asked = RunArguments::Of(document, m_Run);
+        if (!asked)
+            return;
+        if (auto used = m_Used.find(asked->Key()); used != m_Used.end())
+            asked->Reuse(used->second);
+        asked->Settle(blueprint);
+        m_Arguments = std::move(*asked);
+        ++m_Asked;
+        ImGui::OpenPopup("##run-arguments");
+    }
+    if (!ImGui::BeginPopup("##run-arguments"))
+        return;
+    auto current = RunArguments::Of(document, m_Run);
+    if (!current || !current->Asks())
+    {
+        ImGui::CloseCurrentPopup();
+        ImGui::EndPopup();
+        return;
+    }
+    current->Reuse(m_Arguments);
+    current->Settle(blueprint);
+    m_Arguments = std::move(*current);
+
+    auto& arguments = m_Arguments;
+    auto& types     = blueprint.GetTypes();
+    ImGui::Text("Run %s", arguments.m_Name.c_str());
+    ImGui::Separator();
+    // Of IDs of their own each time, the value editors open closed.
+    ImGui::PushID(m_Asked);
+    if (ImGui::BeginTable("##arguments", 3, ImGuiTableFlags_SizingFixedFit))
+    {
+        for (size_t i = 0; i < arguments.m_Parameters.size(); ++i)
+        {
+            ImGui::PushID(static_cast<int>(i));
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::AlignTextToFramePadding();
+            ImGui::TextUnformatted(arguments.m_Parameters[i].m_Name.c_str());
+            ImGui::TableNextColumn();
+            ImGui::TextDisabled("type");
+            ImGui::TableNextColumn();
+            auto& chosen = arguments.m_Chosen[i];
+            ImGui::SetNextItemWidth(120.0f);
+            if (ImGui::BeginCombo("##type", chosen ? chosen->m_Name.c_str() : "none"))
+            {
+                for (auto choice : RunArguments::Choices(blueprint.GetRegistry(), arguments.m_Parameters[i]))
+                    if (ImGui::Selectable(choice->m_Name.c_str(), choice == chosen))
+                        chosen = choice;
+                ImGui::EndCombo();
+            }
+            ImGui::PopID();
+        }
+        for (size_t i = 0; i < arguments.m_Names.size(); ++i)
+        {
+            ImGui::PushID(static_cast<int>(arguments.m_Parameters.size() + i));
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::AlignTextToFramePadding();
+            ImGui::TextUnformatted(arguments.m_Names[i].c_str());
+            ImGui::TableNextColumn();
+            auto type = arguments.TypeOf(types, i);
+            ImGui::TextDisabled("%s", type ? type->m_Name.c_str() : "undecided");
+            ImGui::TableNextColumn();
+            if (type && arguments.m_Values[i].GetType() == type)
+                DrawValueWithEditor(static_cast<Id>(i + 1), arguments.m_Values[i]);
+            ImGui::PopID();
+        }
+        ImGui::EndTable();
+    }
+    ImGui::PopID();
+    ImGui::Separator();
+    ImGui::BeginDisabled(!arguments.IsReady(types));
+    const auto run = ImGui::Button("Run");
+    ImGui::EndDisabled();
+    ImGui::SameLine();
+    if (ImGui::Button("Cancel") || ImGui::IsKeyPressed(ImGuiKey_Escape, false))
+        ImGui::CloseCurrentPopup();
+    if (run)
+    {
+        m_Used[arguments.Key()] = arguments;
+        ImGui::CloseCurrentPopup();
+        if (arguments.m_Call)
+            debugger.Call(document, true, arguments.m_Name, arguments.m_Values);
+        else
+            debugger.Start(document, true, arguments.m_Name, arguments.m_Values);
+    }
+    ImGui::EndPopup();
+}
+
+std::optional<blueprint_editor_utilities::RunArguments> blueprint_editor_utilities::RunArguments::Of(const Document& document, Id id)
+{
+    auto node = document.GetGraph().FindNode(id);
+    if (!node)
+        return std::nullopt;
+    RunArguments run;
+    run.m_Name = node->m_Type->EventName(node->m_Config);
+    if (!run.m_Name.empty())
+    {
+        for (auto& pin : node->m_Pins)
+        {
+            if (pin.m_Flow || pin.m_Direction != Direction::Output)
+                continue;
+            run.m_Names.push_back(pin.m_Name);
+            run.m_Terms.push_back(pin.m_DecidedType ? TypeTerm(*pin.m_DecidedType) : TypeTerm());
+        }
+        return run;
+    }
+    auto signature = SignatureNodeOf(document.GetBlueprint(), *node);
+    if (!signature.m_Function || !signature.m_Entry || signature.m_Function->m_Signature.m_Pure)
+        return std::nullopt;
+    auto& declared = signature.m_Function->m_Signature;
+    run.m_Name       = signature.m_Function->m_Name;
+    run.m_Call       = true;
+    run.m_Parameters = declared.m_Parameters;
+    for (auto& input : declared.m_Inputs)
+    {
+        run.m_Names.push_back(input.m_Name);
+        run.m_Terms.push_back(input.m_Type);
+    }
+    return run;
+}
+
+std::vector<const blueprint_editor_utilities::Type*> blueprint_editor_utilities::RunArguments::Choices(const Registry& registry, const VariableDeclaration& parameter)
+{
+    std::vector<const Type*> choices;
+    for (auto head : registry.ValueTypes())
+    {
+        auto allowed = parameter.m_Allowed.empty() || std::find(parameter.m_Allowed.begin(), parameter.m_Allowed.end(), head) != parameter.m_Allowed.end();
+        if (head->m_Arity == 0 && allowed)
+            choices.push_back(&head->AsType());
+    }
+    return choices;
+}
+
+std::string blueprint_editor_utilities::RunArguments::Key() const
+{
+    return (m_Call ? "call:" : "") + m_Name;
+}
+
+const blueprint_editor_utilities::Type* blueprint_editor_utilities::RunArguments::TypeOf(TypeTable& types, size_t value) const
+{
+    return value < m_Terms.size() ? TypeWith(types, m_Terms[value], m_Chosen) : nullptr;
+}
+
+void blueprint_editor_utilities::RunArguments::Reuse(const RunArguments& other)
+{
+    if (other.Key() != Key())
+        return;
+    m_Chosen = other.m_Chosen;
+    m_Values = other.m_Values;
+}
+
+void blueprint_editor_utilities::RunArguments::Settle(const Blueprint& blueprint)
+{
+    m_Chosen.resize(m_Parameters.size(), nullptr);
+    for (size_t i = 0; i < m_Parameters.size(); ++i)
+    {
+        auto choices = Choices(blueprint.GetRegistry(), m_Parameters[i]);
+        if (std::find(choices.begin(), choices.end(), m_Chosen[i]) == choices.end())
+            m_Chosen[i] = choices.empty() ? nullptr : choices.front();
+    }
+    m_Values.resize(m_Names.size());
+    for (size_t i = 0; i < m_Names.size(); ++i)
+        if (auto type = TypeOf(blueprint.GetTypes(), i); type && m_Values[i].GetType() != type)
+            m_Values[i] = type->m_Head->Default(*type);
+}
+
+bool blueprint_editor_utilities::RunArguments::IsReady(TypeTable& types) const
+{
+    for (size_t i = 0; i < m_Names.size(); ++i)
+        if (auto type = TypeOf(types, i); !type || i >= m_Values.size() || m_Values[i].GetType() != type)
+            return false;
+    return true;
 }
 
 void blueprint_editor_utilities::PinContextMenu::Open(Id pin)

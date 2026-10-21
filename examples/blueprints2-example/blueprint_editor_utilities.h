@@ -5,6 +5,7 @@
 #include "blueprint_editor_icons.h"
 #include <chrono>
 #include <functional>
+#include <map>
 #include <memory>
 #include <optional>
 #include <set>
@@ -165,10 +166,11 @@ private:
 // on only while it runs.
 struct Debugger
 {
-    // A blueprint with an error doesn't start: its diagnostics are logged. The event's parameters,
-    // or the function's inputs, get their types' defaults; a generic function doesn't run.
-    bool Start(const Document& document, bool running, std::string_view event = "Start");
-    bool Call(const Document& document, bool running, std::string_view function);
+    // A blueprint with an error doesn't start: its diagnostics are logged. Without arguments, the
+    // event's parameters, or the function's inputs, get their types' defaults, and a generic
+    // function doesn't run.
+    bool Start(const Document& document, bool running, std::string_view event = "Start", std::span<const Value> arguments = {});
+    bool Call(const Document& document, bool running, std::string_view function, std::span<const Value> arguments = {});
     void Continue(); // a paused run runs on
     void Step();     // a fiber that waits for its time skips the wait
     void Stop();
@@ -209,7 +211,7 @@ private:
         void OnLog(const Context& context, Id node, std::string_view text) override;
     };
 
-    bool                     Begin(const Document& document, bool running, std::string_view name, bool call);
+    bool                     Begin(const Document& document, bool running, std::string_view name, bool call, std::span<const Value> arguments);
     std::optional<FiberInfo> Fiber() const;
     void                     Report(); // how the fiber ended, once
 
@@ -361,9 +363,39 @@ private:
     bool                    m_Scroll      = false; // to the selected one
 };
 
+// What a run of an event or of a function takes, and the arguments for it: a value for each of
+// the event's parameters or the function's inputs, and for a generic function, a type for each of
+// its type parameters, which its inputs' types follow.
+struct RunArguments
+{
+    std::string                      m_Name;       // the event's, or the function's
+    bool                             m_Call = false;
+    std::vector<VariableDeclaration> m_Parameters; // the function's type parameters
+    std::vector<const Type*>         m_Chosen;     // a type for each
+    std::vector<std::string>         m_Names;      // the parameters', or the inputs'
+    std::vector<TypeTerm>            m_Terms;      // their types, of m_Parameters by index; none while undecided
+    std::vector<Value>               m_Values;
+
+    // An event's node's, or an impure function's entry's, of the graph that shows.
+    static std::optional<RunArguments> Of(const Document& document, Id node);
+    // The types a type parameter may be given: those it allows that take no type arguments.
+    static std::vector<const Type*> Choices(const Registry& registry, const VariableDeclaration& parameter);
+
+    std::string Key() const; // the same for the runs of an event, or of a function
+    bool        Asks() const { return !m_Parameters.empty() || !m_Names.empty(); }
+    const Type* TypeOf(TypeTable& types, size_t value) const; // null while undecided
+    // The choices and values of another run of the same event or function, Settle() fitting them.
+    void        Reuse(const RunArguments& other);
+    // Each type parameter of a type it may be, the first when it had none, and each value of its
+    // type, its type's default when it was of another.
+    void        Settle(const Blueprint& blueprint);
+    bool        IsReady(TypeTable& types) const; // each value of its decided type
+};
+
 // For a node, or for the selection when the node is in it. A function's entry runs its function,
 // and has its type parameters, and whether it's pure. An event's node runs the event, and a Custom
-// Event's renames it.
+// Event's renames it. A run that takes arguments asks for them in a popup, which offers those of
+// the last run of the same event or function.
 struct NodeContextMenu
 {
     void Open(Id node = 0);
@@ -371,11 +403,18 @@ struct NodeContextMenu
 
 private:
     void ShowRename(Document& document);
+    void ShowArguments(Document& document, Debugger& debugger);
 
     Id   m_Node          = 0;
     Id   m_RenamedEvent  = 0; // the Custom Event whose name the rename popup edits
     bool m_Renaming      = false;
     char m_EventName[64] = {};
+
+    Id                                  m_Run    = 0;     // the node whose run the arguments popup starts
+    bool                                m_Asking = false; // the arguments popup opens
+    int                                 m_Asked  = 0;     // times it opened
+    RunArguments                        m_Arguments;
+    std::map<std::string, RunArguments> m_Used;           // by key, of the last run each
 };
 
 // For a pin of a type variable, its type: chosen, or reset to what links decide.
