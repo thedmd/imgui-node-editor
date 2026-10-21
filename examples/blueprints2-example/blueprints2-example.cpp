@@ -307,7 +307,10 @@ struct BlueprintEditorExample
         ed::SetCurrentEditor(m_Editor);
 
         if (m_Document)
+        {
             m_Debugger.Update(*m_Document);
+            m_Problems.Update(*m_Document, m_Debugger);
+        }
         UpdateActions();
         UpdateTitle();
 
@@ -409,7 +412,7 @@ private:
         m_View_NavigateForward.SetEnabled(hasDocument && false);
 
         // An error blocks a run, never an edit or saving.
-        auto canStart = hasDocument && HasStart(m_Document->GetGraph()) && !m_Document->GetGraph().IsBroken();
+        auto canStart = hasDocument && HasStart(m_Document->GetGraph()) && !m_Problems.BlocksRun();
 
         m_Blueprint_Start.SetEnabled(canStart);
         m_Blueprint_Step.SetEnabled(m_Debugger.IsActive() && !m_Debugger.IsRunning());
@@ -537,10 +540,8 @@ private:
         if (!m_Document)
             return;
 
-        auto& graph = m_Document->GetGraph();
-        auto errors = 0;
-        for (auto& diagnostic : graph.Diagnostics())
-            errors += diagnostic.m_Severity == Severity::Error;
+        auto& graph  = m_Document->GetGraph();
+        auto  errors = m_Problems.Count(Severity::Error);
 
         ImGui::SameLine();
         if (errors > 0)
@@ -592,6 +593,11 @@ private:
 
         for (auto& node : graph.Nodes())
         {
+            const auto errors   = m_Problems.Count(Severity::Error, node.m_Id);
+            const auto warnings = m_Problems.Count(Severity::Warning, node.m_Id);
+            if (errors > 0)
+                ed::PushStyleColor(ed::StyleColor_NodeBorder, ImColor(ProblemColor(Severity::Error)));
+
             ed::BeginNode(node.m_Id);
 
             // General node layout:
@@ -629,9 +635,16 @@ private:
                     drawList->AddRectFilled(itemMin, itemMax, IM_COL32(255, 255, 255, 64), rounding, ImDrawFlags_RoundTop);
                 });
 
+                ImGui::BeginGroup();
                 ImGui::PushFont(HeaderFont(), HeaderFont()->LegacySize);
                 ImGui::TextUnformatted(title.data(), title.data() + title.size());
                 ImGui::PopFont();
+                if (errors > 0 || warnings > 0)
+                {
+                    ImGui::SameLine();
+                    ProblemPills(errors, warnings);
+                }
+                ImGui::EndGroup();
 
                 ImGui::Spacing();
             }
@@ -809,6 +822,8 @@ private:
             layout.End();
 
             ed::EndNode();
+            if (errors > 0)
+                ed::PopStyleColor();
 
             // [Debug Overlay] Show cursor over node
             debugOverlay.DrawNode(node.m_Id);
@@ -1135,14 +1150,15 @@ private:
                 pin.m_Requirement == Requirement::Required ? ", required" : pin.m_Requirement == Requirement::Recommended ? ", recommended" : "");
         };
 
-        auto diagnostics = [&graph](Id node, Id pin)
+        auto diagnostics = [this, &graph](Id node, Id pin)
         {
-            for (auto& diagnostic : graph.Diagnostics())
+            for (auto& problem : m_Problems.Problems())
             {
-                auto link = diagnostic.m_Link ? graph.FindLink(diagnostic.m_Link) : nullptr;
-                auto here = (node && diagnostic.m_Node == node) || (pin && diagnostic.m_Pin == pin) || (link && (link->m_To == pin || (!pin && graph.NodeOf(link->m_To) && graph.NodeOf(link->m_To)->m_Id == node)));
+                auto& diagnostic = problem.m_Diagnostic;
+                auto  link = diagnostic.m_Link ? graph.FindLink(diagnostic.m_Link) : nullptr;
+                auto  here = pin ? diagnostic.m_Pin == pin || (link && link->m_To == pin) : problem.m_Node == node;
                 if (here)
-                    ImGui::TextColored(diagnostic.m_Severity == Severity::Error ? ImVec4(1.0f, 0.4f, 0.4f, 1.0f) : ImVec4(1.0f, 0.8f, 0.3f, 1.0f), "%s", Text(diagnostic.m_Error.Message()).c_str());
+                    ImGui::TextColored(ImColor(ProblemColor(diagnostic.m_Severity)), "%s", Text(diagnostic.m_Error.Message()).c_str());
             }
         };
 
@@ -1320,6 +1336,7 @@ private:
         LOGI("[File] Close");
 
         m_Debugger.Stop();
+        m_Problems = {};
         m_Document = nullptr;
 
         DestroyDocumentEditor();
@@ -1471,6 +1488,7 @@ private:
 
     std::unique_ptr<Document> m_Document;
     Debugger                  m_Debugger;
+    ProblemList               m_Problems;
     std::optional<LinkQuery>  m_LinkQuery;
     bool                      m_ShowActions = true;
 

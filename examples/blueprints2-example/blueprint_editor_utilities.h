@@ -6,6 +6,7 @@
 #include <chrono>
 #include <memory>
 #include <optional>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -50,6 +51,9 @@ std::string DescribePin(const Graph& graph, const Pin& pin);
 void CreateLink(Document& document, Id from, Id to, LinkMode mode = LinkMode::Plain);
 void AddGroupPin(Document& document, Id node, std::string group);
 void RemoveGroupPin(Document& document, Id node, std::string group, int index);
+
+ImU32 ProblemColor(Severity severity);
+void  ProblemPills(int errors, int warnings); // a red disc and a yellow triangle, with their counts
 
 bool DrawValue(const Value& value);        // Draws a value; false for none.
 bool EditValue(Value& value);              // Shows an editor for a value; true once the edit is done.
@@ -132,6 +136,29 @@ private:
     Id                       m_Current  = 0;
     uint64_t                 m_Revision = 0;
     bool                     m_Running  = false;
+};
+
+// What's wrong with a document's blueprint: its graphs' problems and compiling's, for its revision,
+// and the errors of a debugger's run. Each is a node's: a link's is its input's node's.
+struct ProblemList
+{
+    struct Problem
+    {
+        Diagnostic m_Diagnostic;
+        Id         m_Node = 0; // none for one of the graph itself
+        bool       m_Run  = false;
+    };
+
+    void Update(const Document& document, const Debugger& debugger);
+
+    std::span<const Problem> Problems() const { return m_Problems; }
+    int  Count(Severity severity, Id node = 0) const; // of a node, or of all
+    bool BlocksRun() const;                           // an error, before running
+
+private:
+    uint64_t             m_Revision = UINT64_MAX;
+    std::vector<Problem> m_Compiled;
+    std::vector<Problem> m_Problems;
 };
 
 // While a run is paused: a marker over the node the last step ran and over the one next, values

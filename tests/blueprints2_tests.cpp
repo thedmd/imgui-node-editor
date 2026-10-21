@@ -9,6 +9,7 @@
 # include "crude_logger.h"
 # include "imgui_extras.h"
 # include <crude_json.h>
+# include <algorithm>
 # include <cstdio>
 # include <functional>
 # include <memory>
@@ -607,6 +608,76 @@ TEST_CASE(LinkEdits, "blueprints2.links_are_made_in_undo_steps", nullptr, test::
     session.Use([&] { blueprint_editor_utilities::CreateLink(document, from, to, LinkMode::Cast); });
     test::Check(cast() && cast()->m_Cast == "Int32->String" && document.m_Undo.size() == 1 && document.m_Undo[0].m_Name.ends_with(", cast"),
         "through a cast, it's made in one step: %s", document.m_Undo.empty() ? "-" : document.m_Undo[0].m_Name.c_str());
+}
+
+TEST_CASE(ProblemLists, "blueprints2.problems_are_listed_by_their_nodes", nullptr, test::TestFlags_None)
+{
+    test::Session session(UnnamedConfig());
+    OverlayLog    log;
+    Example       example(session);
+    auto& document = example.m_Document;
+    auto& graph    = document.GetGraph();
+    auto  edit     = [&](const std::function<void()>& change)
+    {
+        session.Use([&]
+        {
+            auto transaction = document.BeginUndoTransaction("Edit");
+            change();
+            transaction->AddAction("edited");
+        });
+    };
+    Debugger                                debugger;
+    blueprint_editor_utilities::ProblemList problems;
+    problems.Update(document, debugger);
+    test::Check(problems.Problems().empty() && !problems.BlocksRun(), "the example has none");
+
+    // Compiling refuses a new Add of no type: an error for each of its pins.
+    Id add = 0;
+    edit([&] { add = graph.AddNode("crude.Add").ValueOr(0); });
+    problems.Update(document, debugger);
+    test::Check(problems.Count(Severity::Error, add) == 3 && problems.Count(Severity::Error) == 3 && problems.BlocksRun(), "a new Add has 3 errors, which block a run: %d", problems.Count(Severity::Error));
+
+    // A Float forced into the example's Add disables both links of its Int32, and each problem is
+    // the link's input's node's.
+    NodeConfig floats;
+    floats.m_Types["T"] = &FloatType();
+    auto sum = example.Node("crude.Add"), print = example.Node("crude.Print");
+    edit([&]
+    {
+        auto constant = graph.AddNode("crude.Constant", floats).ValueOr(0);
+        if (!graph.Connect(example.Pin(constant, "value"), example.Pin(sum, "in.1"), LinkMode::Force))
+            test::Check(false, "the Float is forced");
+    });
+    problems.Update(document, debugger);
+    test::Check(problems.Count(Severity::Error, sum) == 1 && problems.Count(Severity::Error, print) == 1, "For Loop's index into Add, and Add's result into Print: %d, %d",
+        problems.Count(Severity::Error, sum), problems.Count(Severity::Error, print));
+}
+
+TEST_CASE(RunProblems, "blueprints2.a_runs_error_is_listed_until_the_run_goes", nullptr, test::TestFlags_None)
+{
+    // The Constant as Int32's largest: Add overflows at index 1.
+    test::Session session(UnnamedConfig());
+    OverlayLog    log;
+    Example       example(session);
+    auto& document = example.m_Document;
+    auto& graph    = document.GetGraph();
+    auto  ten      = example.Node("crude.Constant"), add = example.Node("crude.Add");
+    auto  config   = graph.FindNode(ten)->m_Config;
+    config.m_Data["value"] = Value::Int32(2147483647);
+    auto set = graph.SetConfig(ten, config);
+
+    Debugger debugger;
+    debugger.Start(document, true);
+    for (int i = 0; i < 100 && debugger.IsActive(); ++i)
+        debugger.Step();
+    blueprint_editor_utilities::ProblemList problems;
+    problems.Update(document, debugger);
+    auto runs = std::count_if(problems.Problems().begin(), problems.Problems().end(), [](auto& problem) { return problem.m_Run; });
+    test::Check(set && runs == 1 && problems.Count(Severity::Error, add) == 1 && !problems.BlocksRun(), "the overflow is Add's error, which doesn't block running again: %d", static_cast<int>(runs));
+
+    debugger.Stop();
+    problems.Update(document, debugger);
+    test::Check(problems.Problems().empty(), "and goes with the run");
 }
 
 TEST_CASE(NewDocuments, "blueprints2.a_new_document_has_an_empty_graph", nullptr, test::TestFlags_None)

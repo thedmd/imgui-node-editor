@@ -216,6 +216,45 @@ void blueprint_editor_utilities::RemoveGroupPin(Document& document, Id node, std
     transaction->AddAction("%s: %s.%d removed", name.c_str(), group.c_str(), index);
 }
 
+ImU32 blueprint_editor_utilities::ProblemColor(Severity severity)
+{
+    switch (severity)
+    {
+        case Severity::Error:   return IM_COL32(255,  88,  88, 255);
+        case Severity::Warning: return IM_COL32(255, 204,  77, 255);
+        case Severity::Info:    break;
+    }
+    return IM_COL32(170, 170, 170, 255);
+}
+
+void blueprint_editor_utilities::ProblemPills(int errors, int warnings)
+{
+    auto drawList = ImGui::GetWindowDrawList();
+    auto size     = ImGui::GetTextLineHeight();
+    auto sign = [drawList, size](int count, Severity severity)
+    {
+        auto at = ImGui::GetCursorScreenPos();
+        ImGui::Dummy(ImVec2(size, size));
+        auto center = at + ImVec2(size, size) * 0.5f;
+        auto radius = size * 0.32f;
+        if (severity == Severity::Error)
+            drawList->AddCircleFilled(center, radius, ProblemColor(severity));
+        else
+            drawList->AddTriangleFilled(center + ImVec2(0.0f, -radius), center + ImVec2(radius, radius * 0.8f), center + ImVec2(-radius, radius * 0.8f), ProblemColor(severity));
+        ImGui::SameLine(0.0f, 2.0f);
+        ImGui::Text("%d", count);
+    };
+
+    ImGui::BeginGroup();
+    if (errors > 0)
+        sign(errors, Severity::Error);
+    if (errors > 0 && warnings > 0)
+        ImGui::SameLine();
+    if (warnings > 0)
+        sign(warnings, Severity::Warning);
+    ImGui::EndGroup();
+}
+
 bool blueprint_editor_utilities::DrawValue(const Value& value)
 {
     auto type = value.GetType();
@@ -565,6 +604,45 @@ blueprint_editor_utilities::Id blueprint_editor_utilities::Debugger::TakenLink()
             if (fiber.m_Id == m_Fiber)
                 return fiber.m_Link;
     return 0;
+}
+
+void blueprint_editor_utilities::ProblemList::Update(const Document& document, const Debugger& debugger)
+{
+    auto& graph = document.GetGraph();
+    auto  owner = [&graph](const Diagnostic& diagnostic) -> Id
+    {
+        if (diagnostic.m_Node)
+            return diagnostic.m_Node;
+        auto link = diagnostic.m_Link ? graph.FindLink(diagnostic.m_Link) : nullptr;
+        auto node = link ? graph.NodeOf(link->m_To) : diagnostic.m_Pin ? graph.NodeOf(diagnostic.m_Pin) : nullptr;
+        return node ? node->m_Id : 0;
+    };
+
+    if (m_Revision != document.m_Revision)
+    {
+        m_Revision = document.m_Revision;
+        m_Compiled.clear();
+        for (auto& diagnostic : Compile(document.GetBlueprint()).m_Diagnostics)
+            m_Compiled.push_back({ diagnostic, owner(diagnostic), false });
+    }
+
+    m_Problems = m_Compiled;
+    if (auto context = debugger.GetContext())
+        for (auto& diagnostic : context->Diagnostics())
+            m_Problems.push_back({ diagnostic, owner(diagnostic), true });
+}
+
+int blueprint_editor_utilities::ProblemList::Count(Severity severity, Id node) const
+{
+    return static_cast<int>(std::count_if(m_Problems.begin(), m_Problems.end(), [severity, node](const Problem& problem)
+    {
+        return problem.m_Diagnostic.m_Severity == severity && (!node || problem.m_Node == node);
+    }));
+}
+
+bool blueprint_editor_utilities::ProblemList::BlocksRun() const
+{
+    return std::any_of(m_Compiled.begin(), m_Compiled.end(), [](const Problem& problem) { return problem.m_Diagnostic.m_Severity == Severity::Error; });
 }
 
 blueprint_editor_utilities::DebugOverlay::DebugOverlay(Debugger& debugger)
