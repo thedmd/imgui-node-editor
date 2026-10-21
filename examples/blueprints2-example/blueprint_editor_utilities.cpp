@@ -76,12 +76,42 @@ ImVec4 blueprint_editor_utilities::TypeColor(const Type* type)
     if (head == &StringValueType())
         return ImVec4(124 / 255.0f,  21 / 255.0f, 153 / 255.0f, 1.0f);
 
+    // A function's type parameter by its own name, which stays when the function is renamed.
+    std::string_view name = head->m_Name;
+    if (Cast<ParameterType>(head))
+        name = name.substr(name.rfind('.') + 1);
     uint32_t hash = 2166136261u;
-    for (auto c : head->m_Name)
+    for (auto c : name)
         hash = (hash ^ static_cast<uint8_t>(c)) * 16777619u;
     float r, g, b;
     ImGui::ColorConvertHSVtoRGB(static_cast<float>(hash % 360) / 360.0f, 0.6f, 0.9f, r, g, b);
     return ImVec4(r, g, b, 1.0f);
+}
+
+std::string blueprint_editor_utilities::TypeParameterText(const Blueprint& blueprint, const Type* type)
+{
+    if (!type || !Cast<ParameterType>(type->m_Head))
+        return {};
+    for (auto& graph : blueprint.Graphs())
+    {
+        auto function = blueprint.FindFunction(graph->GetId());
+        for (size_t i = 0; function && i < function->m_Parameters.size(); ++i)
+        {
+            if (function->m_Parameters[i] != type->m_Head)
+                continue;
+            auto& parameter = function->m_Signature.m_Parameters[i];
+            return parameter.m_Name + ", a type parameter of " + function->m_Name + "; allows " + AllowedText(parameter);
+        }
+    }
+    return {};
+}
+
+std::string blueprint_editor_utilities::AllowedText(const VariableDeclaration& parameter)
+{
+    std::string text;
+    for (auto head : parameter.m_Allowed)
+        text += (text.empty() ? "" : ", ") + head->m_Name;
+    return text.empty() ? "any type" : text;
 }
 
 blueprint_editor_utilities::Value blueprint_editor_utilities::InputValue(const Graph& graph, const Pin& pin)
@@ -330,6 +360,24 @@ void blueprint_editor_utilities::RenameFunction(Document& document, Id graph, st
         return;
     }
     transaction->AddAction("%s renamed %s", old.c_str(), name.c_str());
+}
+
+void blueprint_editor_utilities::RenameTypeParameter(Document& document, Id graph, size_t index, std::string name)
+{
+    auto function = document.GetBlueprint().FindFunction(graph);
+    if (!function || index >= function->m_Signature.m_Parameters.size() || function->m_Signature.m_Parameters[index].m_Name == name)
+        return;
+    const auto owner = function->m_Name;
+    const auto old   = function->m_Signature.m_Parameters[index].m_Name;
+    auto transaction = document.BeginUndoTransaction("Rename Type Parameter");
+    if (auto renamed = document.GetBlueprint().RenameTypeParameter(graph, index, name); !renamed)
+    {
+        auto message = renamed.GetError().Message();
+        LOGW("[Signature] %s: %.*s", owner.c_str(), static_cast<int>(message.size()), message.data());
+        transaction->Discard();
+        return;
+    }
+    transaction->AddAction("%s.%s renamed %s", owner.c_str(), old.c_str(), name.c_str());
 }
 
 void blueprint_editor_utilities::RemoveFunction(Document& document, Id graph)
@@ -1620,6 +1668,7 @@ void blueprint_editor_utilities::NodeContextMenu::Open(Id node)
 void blueprint_editor_utilities::NodeContextMenu::Show(Document& document, Debugger& debugger)
 {
     ShowRename(document);
+    ShowRenameParameter(document);
     ShowArguments(document, debugger);
     if (!ImGui::IsPopupOpen("##node-context-menu"))
         return;
@@ -1704,6 +1753,13 @@ void blueprint_editor_utilities::NodeContextMenu::Show(Document& document, Debug
                     ImGui::PopItemFlag();
                     ImGui::Separator();
                     ImGui::TextDisabled("Allows %s", parameter.m_Allowed.empty() ? "any type" : "the types checked");
+                    if (ImGui::MenuItem("Rename..."))
+                    {
+                        m_ParameterGraph    = graph;
+                        m_Parameter         = i;
+                        m_RenamingParameter = true;
+                        std::snprintf(m_ParameterName, sizeof(m_ParameterName), "%s", parameter.m_Name.c_str());
+                    }
                     if (ImGui::MenuItem("Remove"))
                         change = [&document, graph, i] { RemoveTypeParameter(document, graph, static_cast<int>(i)); };
                     ImGui::EndMenu();
@@ -1761,6 +1817,24 @@ void blueprint_editor_utilities::NodeContextMenu::ShowRename(Document& document)
 {
     if (auto name = NamePopup("##rename-event", m_Renaming, m_EventName, document.GetGraph().FindNode(m_RenamedEvent) != nullptr))
         RenameEvent(document, m_RenamedEvent, *name);
+}
+
+// The name typed is checked as the blueprint will check it, so the reason it can't be shows at once.
+void blueprint_editor_utilities::NodeContextMenu::ShowRenameParameter(Document& document)
+{
+    auto& blueprint = document.GetBlueprint();
+    auto  function  = blueprint.FindFunction(m_ParameterGraph);
+    const auto exists = function && m_Parameter < function->m_Signature.m_Parameters.size();
+    std::string problem;
+    if (exists && ImGui::IsPopupOpen("##rename-parameter") && function->m_Signature.m_Parameters[m_Parameter].m_Name != m_ParameterName)
+    {
+        auto signature = function->m_Signature;
+        signature.m_Parameters[m_Parameter].m_Name = m_ParameterName;
+        if (auto check = blueprint.CheckSignature(signature); !check)
+            problem = check.GetError().Message();
+    }
+    if (auto name = NamePopup("##rename-parameter", m_RenamingParameter, m_ParameterName, exists, problem))
+        RenameTypeParameter(document, m_ParameterGraph, m_Parameter, *name);
 }
 
 void blueprint_editor_utilities::NodeContextMenu::ShowArguments(Document& document, Debugger& debugger)
@@ -2116,7 +2190,7 @@ void blueprint_editor_utilities::PinContextMenu::ShowRename(Document& document)
     });
 }
 
-std::optional<std::string> blueprint_editor_utilities::NamePopup(const char* id, bool& open, std::span<char> name, bool exists)
+std::optional<std::string> blueprint_editor_utilities::NamePopup(const char* id, bool& open, std::span<char> name, bool exists, std::string_view problem)
 {
     const auto opening = std::exchange(open, false);
     if (opening)
@@ -2125,11 +2199,16 @@ std::optional<std::string> blueprint_editor_utilities::NamePopup(const char* id,
         return std::nullopt;
     if (opening)
         ImGui::SetKeyboardFocusHere();
-    const auto done = ImGui::InputText("##name", name.data(), name.size(), ImGuiInputTextFlags_EnterReturnsTrue);
-    if (done || ImGui::IsKeyPressed(ImGuiKey_Escape, false) || !exists)
+    const auto done     = ImGui::InputText("##name", name.data(), name.size(), ImGuiInputTextFlags_EnterReturnsTrue);
+    const auto accepted = done && problem.empty();
+    if (done && !accepted)
+        ImGui::SetKeyboardFocusHere(-1);
+    if (!problem.empty())
+        ImGui::TextColored(ImColor(ProblemColor(Severity::Error)), "%.*s", static_cast<int>(problem.size()), problem.data());
+    if (accepted || ImGui::IsKeyPressed(ImGuiKey_Escape, false) || !exists)
         ImGui::CloseCurrentPopup();
     ImGui::EndPopup();
-    if (!done || !exists)
+    if (!accepted || !exists)
         return std::nullopt;
     return std::string(name.data());
 }

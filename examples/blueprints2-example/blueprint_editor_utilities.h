@@ -26,6 +26,10 @@ using namespace crude_blueprint;
 IconType PinIcon(const Pin& pin);     // by its type's kind; a diamond while undecided
 ImVec4   PinColor(const Pin& pin);    // white for flow, grey while undecided, else its type's
 ImVec4   TypeColor(const Type* type);
+// "T, a type parameter of Lerp; allows Int32, Float" for a function's type parameter; empty for
+// another type.
+std::string TypeParameterText(const Blueprint& blueprint, const Type* type);
+std::string AllowedText(const VariableDeclaration& parameter); // "Int32, Float", or "any type"
 // What a node is, as Spark's blueprint editor colors node headers: events red, a function's entry
 // and returns magenta, calls orange, Make and Break green, arrays and maps steel blue, a Constant
 // its type's color, other pure nodes light blue, and the rest white.
@@ -87,6 +91,7 @@ void AddSignaturePin(Document& document, Id graph, bool input); // of a key of i
 void RemoveTypeParameter(Document& document, Id graph, int index);
 void RenameFunction(Document& document, Id graph, std::string name);
 void RemoveFunction(Document& document, Id graph); // with the calls of it in other graphs
+void RenameTypeParameter(Document& document, Id graph, size_t index, std::string name);
 void RenameEvent(Document& document, Id node, std::string name); // a Custom Event's
 void RenamePin(Document& document, Id pin, std::string name);    // in its node's config; an empty name gives back the declared one
 
@@ -112,8 +117,9 @@ ValueEdit EditValue(Value& value);
 bool DrawValueWithEditor(Id id, Value& value); // Draws a value, or its editor once clicked; true when an edit changed it.
 
 // A popup of a name's field, which opens while 'open' is set, its field focused, and clears it.
-// Enter gives the name typed. Escape closes it, and so does losing what the name is of.
-std::optional<std::string> NamePopup(const char* id, bool& open, std::span<char> name, bool exists);
+// Enter gives the name typed, unless a problem with it shows under the field. Escape closes it,
+// and so does losing what the name is of.
+std::optional<std::string> NamePopup(const char* id, bool& open, std::span<char> name, bool exists, std::string_view problem = {});
 
 // Before a frame's widgets: a click outside the open popups closes them, so that it also reaches
 // what it's over. ImGui would close them after the widgets, which ignore the click while a popup is
@@ -398,9 +404,9 @@ struct RunArguments
 };
 
 // For a node, or for the selection when the node is in it. A function's entry runs its function,
-// and has its type parameters, and whether it's pure. An event's node runs the event, and a Custom
-// Event's renames it. A run that takes arguments asks for them in a popup, which offers those of
-// the last run of the same event or function.
+// and edits its type parameters, their names and the types each allows, and whether it's pure. An
+// event's node runs the event, and a Custom Event's renames it. A run that takes arguments asks for
+// them in a popup, which offers those of the last run of the same event or function.
 struct NodeContextMenu
 {
     void Open(Id node = 0);
@@ -408,12 +414,18 @@ struct NodeContextMenu
 
 private:
     void ShowRename(Document& document);
+    void ShowRenameParameter(Document& document);
     void ShowArguments(Document& document, Debugger& debugger);
 
     Id   m_Node          = 0;
     Id   m_RenamedEvent  = 0; // the Custom Event whose name the rename popup edits
     bool m_Renaming      = false;
     char m_EventName[64] = {};
+
+    Id     m_ParameterGraph    = 0; // the function whose type parameter the rename popup edits
+    size_t m_Parameter         = 0;
+    bool   m_RenamingParameter = false;
+    char   m_ParameterName[64] = {};
 
     Id                                  m_Run    = 0;     // the node whose run the arguments popup starts
     bool                                m_Asking = false; // the arguments popup opens

@@ -1015,6 +1015,8 @@ public:
     Result<void>    RenameFunction(Id graph, std::string name);
     // Its calls keep the types chosen for it, under the new name.
     Result<void>    RenameTypeParameter(Id graph, size_t index, std::string name);
+    // What SetSignature() refuses a signature for.
+    Result<void>    CheckSignature(const Signature& signature) const;
     // With its graph; refused while another graph calls it.
     Result<void>    RemoveFunction(Id graph);
     const Function* FindFunction(Id graph) const;
@@ -1048,7 +1050,6 @@ private:
     friend CompileResult     Compile(const Blueprint& blueprint);
 
     Result<void> CheckFunction(std::string_view name, const Signature& signature) const;
-    Result<void> CheckSignature(const Signature& signature) const;
     void         DefineFunction(const Graph& graph, Signature signature);
     void         SetParameters(Function& function);
     Result<void> CheckVariable(const Variable& variable, std::string_view replaced) const;

@@ -1351,3 +1351,46 @@ TEST_CASE(ClicksPastPopups, "blueprints2.a_click_outside_a_popup_closes_it_and_r
     session.Click(ImVec2(620.0f, 410.0f));
     test::Check(shown, "a click in the popup leaves it open");
 }
+
+TEST_CASE(TypeParameterRenames, "blueprints2.a_type_parameter_is_renamed_in_one_undo_step", nullptr, test::TestFlags_None)
+{
+    // Echo<T: Int32 | Float>(x: T), whose entry's pin is of T.
+    test::Session session(UnnamedConfig());
+    OverlayLog    log;
+    Example       example(session);
+    auto& document = example.m_Document;
+    auto  graph    = Id(0), entry = Id(0);
+    session.Use([&]
+    {
+        Signature echo;
+        echo.m_Parameters = { { "T", { &Int32ValueType(), &FloatValueType() } } };
+        echo.m_Inputs     = { { "x", "X", TypeVariable{ 0 } } };
+        auto transaction = document.BeginUndoTransaction("Add Echo");
+        auto added = document.GetBlueprint().AddFunction("Echo", echo);
+        auto made  = added ? added.GetValue()->AddNode("entry:Echo") : Result<Id>(BlueprintError::NotFound);
+        if (made)
+            transaction->AddAction("Echo added");
+        graph = added ? added.GetValue()->GetId() : 0;
+        entry = made.ValueOr(0);
+    });
+    auto& blueprint = document.GetBlueprint();
+    auto  pinType   = [&blueprint, graph, entry] { return blueprint.FindGraph(graph)->FindNode(entry)->FindPin("x")->m_DecidedType; };
+    test::Check(blueprint_editor_utilities::TypeParameterText(blueprint, pinType()) == "T, a type parameter of Echo; allows Int32, Float", "a pin of the parameter tells it: %s", blueprint_editor_utilities::TypeParameterText(blueprint, pinType()).c_str());
+    const auto color = blueprint_editor_utilities::TypeColor(pinType());
+
+    session.Use([&]
+    {
+        blueprint_editor_utilities::RenameTypeParameter(document, graph, 0, "Item");
+        blueprint_editor_utilities::RenameTypeParameter(document, graph, 0, "Item");
+        blueprint_editor_utilities::RenameTypeParameter(document, graph, 0, "Int32");
+    });
+    test::Check(blueprint.FindFunction(graph)->m_Signature.m_Parameters[0].m_Name == "Item" && document.m_Undo.size() == 2, "renamed, it is one undo step; its own name, and a refused one, make none");
+    test::Check(blueprint_editor_utilities::TypeParameterText(blueprint, pinType()).starts_with("Item, a type parameter of Echo"), "its pins tell the new name");
+
+    session.Use([&] { blueprint_editor_utilities::RenameFunction(document, graph, "Repeat"); });
+    const auto renamed = blueprint_editor_utilities::TypeColor(pinType());
+    session.Use([&] { blueprint_editor_utilities::RenameTypeParameter(document, graph, 0, "T"); });
+    const auto back = blueprint_editor_utilities::TypeColor(pinType());
+    test::Check(back.x == color.x && back.y == color.y && back.z == color.z && (renamed.x != color.x || renamed.y != color.y || renamed.z != color.z), "a parameter's color follows its own name, not its function's");
+    test::Check(blueprint_editor_utilities::TypeParameterText(blueprint, &Int32Type()).empty(), "and a type that isn't a parameter tells nothing of one");
+}

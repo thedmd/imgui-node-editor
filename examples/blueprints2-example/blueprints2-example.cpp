@@ -741,7 +741,15 @@ private:
 
             // An event's node is titled by the event's name.
             const auto event = node.m_Type->EventName(node.m_Config);
-            const auto title = event.empty() ? node.m_Type->m_Title : event;
+            auto title = event.empty() ? node.m_Type->m_Title : event;
+            if (auto owner = SignatureNodeOf(document.GetBlueprint(), node); owner.m_Function && owner.m_Entry && !owner.m_Function->m_Signature.m_Parameters.empty())
+            {
+                // A generic function's entry names its type parameters.
+                auto& parameters = owner.m_Function->m_Signature.m_Parameters;
+                for (size_t i = 0; i < parameters.size(); ++i)
+                    title += (i ? ", " : " <") + parameters[i].m_Name;
+                title += ">";
+            }
 
             // A band of a tint of what the node is, white one fainter.
             auto tint = HeaderColor(document.GetBlueprint(), node);
@@ -1826,7 +1834,8 @@ private:
             {
                 ImGui::Bullet(); ImGui::Text("Node: %s", graph.NodeOf(pin.m_Id)->Name().c_str());
             }
-            ImGui::Bullet(); ImGui::Text("Type: %s", pin.m_Flow ? "flow" : graph.TypeText(pin.m_Id).c_str());
+            auto parameter = pin.m_Flow ? std::string() : TypeParameterText(document.GetBlueprint(), pin.m_DecidedType);
+            ImGui::Bullet(); ImGui::Text("Type: %s", pin.m_Flow ? "flow" : !parameter.empty() ? parameter.c_str() : graph.TypeText(pin.m_Id).c_str());
             for (auto& link : graph.Links())
             {
                 if (link.m_To != pin.m_Id || !link.m_Active || link.m_Cast.empty())
