@@ -1190,6 +1190,7 @@ private:
         const auto pinLinked  = pin && HasLinks(graph, pin->m_Id);
         const auto pinValue   = pin && HasValueEditor(graph, *pin);
         const auto pinTyped   = pin && PinVariable(graph, *pin);
+        const auto pinSplits  = pin && (SplittableStruct(*pin) || !SplitOf(*graph.NodeOf(pin->m_Id), pin->m_Key).empty());
 
         auto owner   = node ? node : pin ? graph.NodeOf(pin->m_Id) : nullptr;
         auto canGrow = false, canShrink = false;
@@ -1215,6 +1216,7 @@ private:
         actions.Gesture("Add Pin", "Click +", canGrow);
         actions.Gesture("Remove Pin", "Click -", canShrink);
         actions.Gesture("Choose Type", "Right-Click", pinTyped);
+        actions.Gesture("Split or Recombine", "Double-Click", pinSplits);
         actions.Gesture("Create Node", "Space", background && !typing);
         actions.Gesture("Create Node", "Right-Click", background);
         if (actions.Press("Show or Hide All Problems", ImGuiMod_Ctrl | ImGuiMod_Shift | ImGuiKey_D, !m_Problems.Problems().empty()))
@@ -1234,6 +1236,15 @@ private:
 
         if (m_ShowActions)
             actions.Draw(canvasMin, canvasMax);
+
+        if (auto clicked = graph.FindPin(static_cast<Id>(ed::GetDoubleClickedPin().Get())))
+        {
+            const auto owner = graph.NodeOf(clicked->m_Id)->m_Id;
+            if (SplittableStruct(*clicked))
+                SplitStructPin(document, owner, clicked->m_Key, true);
+            else if (auto splitOf = SplitOf(*graph.NodeOf(clicked->m_Id), clicked->m_Key); !splitOf.empty())
+                SplitStructPin(document, owner, splitOf, false);
+        }
     }
 
     void ShowDialogs(Document& document)

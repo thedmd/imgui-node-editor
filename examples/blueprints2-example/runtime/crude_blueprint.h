@@ -713,6 +713,10 @@ struct Pin : PinDeclaration
     std::string m_Wildcard;              // an undecided type, as shown: "?{Int32|Float}", "Array<?>"
 };
 
+// A data pin declared with a struct type, which can split into its fields; a pin of a type
+// variable can't.
+const StructType* SplittableStruct(const PinDeclaration& pin);
+
 // A struct pin split into its fields, which the node's code still reads, or writes, as one.
 struct SplitPin
 {

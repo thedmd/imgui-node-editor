@@ -694,6 +694,30 @@ TEST_CASE(RunProblems, "blueprints2.a_runs_error_is_listed_until_the_run_goes", 
     test::Check(problems.Problems().empty(), "and goes with the run");
 }
 
+TEST_CASE(SplitEdits, "blueprints2.struct_pins_split_and_recombine_in_undo_steps", nullptr, test::TestFlags_None)
+{
+    // A Make Vector2, whose output splits into x and y.
+    test::Session session(UnnamedConfig());
+    OverlayLog    log;
+    Example       example(session);
+    auto& document = example.m_Document;
+    auto& graph    = document.GetGraph();
+    auto  make     = graph.AddNode("make:example.Vector2").ValueOr(0);
+    auto  keys     = [&] { std::string text; for (auto& pin : graph.FindNode(make)->m_Pins) text += (text.empty() ? "" : " ") + pin.m_Key; return text; };
+
+    std::string split, of, recombined;
+    session.Use([&]
+    {
+        blueprint_editor_utilities::SplitStructPin(document, make, "struct", true);
+        split = keys();
+        of    = blueprint_editor_utilities::SplitOf(*graph.FindNode(make), "struct.y");
+        blueprint_editor_utilities::SplitStructPin(document, make, "struct", false);
+        recombined = keys();
+    });
+    test::Check(split == "x y struct.x struct.y" && of == "struct", "split, the output is its fields, of the split struct: %s; %s", split.c_str(), of.c_str());
+    test::Check(recombined == "x y struct" && document.m_Undo.size() == 2, "recombined, it's whole again, in two undo steps: %s", recombined.c_str());
+}
+
 TEST_CASE(NewDocuments, "blueprints2.a_new_document_has_an_empty_graph", nullptr, test::TestFlags_None)
 {
     Document document(ExampleRegistry(), std::make_shared<TypeTable>());

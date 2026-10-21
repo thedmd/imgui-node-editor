@@ -1236,12 +1236,6 @@ std::optional<std::string> AfterRemoval(const std::string& key, const GroupDecla
     return key;
 }
 
-// A data pin declared with a struct type; a pin of a type variable can't split.
-const StructType* SplittableStruct(const PinDeclaration& pin)
-{
-    return pin.m_Flow ? nullptr : Cast<StructType>(pin.m_Type.m_Head);
-}
-
 // Fields of split fields split too.
 void Split(std::vector<PinDeclaration>& pins, std::span<const std::string> split, std::vector<SplitPin>& splits)
 {
@@ -1286,6 +1280,11 @@ void Split(std::vector<PinDeclaration>& pins, std::span<const std::string> split
 }
 
 } } // namespace crude_blueprint { namespace {
+
+const crude_blueprint::StructType* crude_blueprint::SplittableStruct(const PinDeclaration& pin)
+{
+    return pin.m_Flow ? nullptr : Cast<StructType>(pin.m_Type.m_Head);
+}
 
 int crude_blueprint::GroupIndex(const GroupDeclaration& group, std::string_view key)
 {

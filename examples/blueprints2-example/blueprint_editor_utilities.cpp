@@ -148,6 +148,34 @@ const blueprint_editor_utilities::GroupDeclaration* blueprint_editor_utilities::
     return nullptr;
 }
 
+std::string blueprint_editor_utilities::SplitOf(const Node& node, std::string_view key)
+{
+    std::string_view found;
+    for (auto& split : node.m_Config.m_Split)
+        if (key.size() > split.size() && key.starts_with(split) && key[split.size()] == '.' && split.size() > found.size())
+            found = split;
+    return std::string(found);
+}
+
+void blueprint_editor_utilities::SplitStructPin(Document& document, Id node, std::string key, bool split)
+{
+    auto& graph = document.GetGraph();
+    auto  found = graph.FindNode(node);
+    if (!found)
+        return;
+
+    const auto name = found->Name();
+    auto transaction = document.BeginUndoTransaction(split ? "Split Pin" : "Recombine Pin");
+    if (auto done = graph.SplitPin(node, key, split); !done)
+    {
+        auto message = done.GetError().Message();
+        LOGW("%.*s", static_cast<int>(message.size()), message.data());
+        transaction->Discard();
+        return;
+    }
+    transaction->AddAction("%s: %s %s", name.c_str(), key.c_str(), split ? "split" : "recombined");
+}
+
 std::string blueprint_editor_utilities::DescribePin(const Graph& graph, const Pin& pin)
 {
     return graph.NodeOf(pin.m_Id)->Name() + "." + pin.m_Key + " (" + (pin.m_Flow ? std::string("flow") : graph.TypeText(pin.m_Id)) + ")";
@@ -1061,6 +1089,10 @@ void blueprint_editor_utilities::PinContextMenu::Show(Document& document)
         auto group  = pin ? FindGroup(*node, pin->m_Key, &index) : nullptr;
         auto remove = group && ImGui::MenuItem("Remove Pin", nullptr, nullptr, GroupCount(*group, node->m_Config) > group->m_Min);
 
+        auto splitOf   = pin ? SplitOf(*node, pin->m_Key) : std::string();
+        auto split     = pin && SplittableStruct(*pin) && ImGui::MenuItem("Split Struct Pin");
+        auto recombine = !splitOf.empty() && ImGui::MenuItem("Recombine Struct Pin");
+
         // The choice is set once the menu is drawn.
         auto variable = pin ? PinVariable(graph, *pin) : nullptr;
         std::optional<const Type*> choice; // null: reset
@@ -1106,6 +1138,8 @@ void blueprint_editor_utilities::PinContextMenu::Show(Document& document)
         }
         else if (remove)
             RemoveGroupPin(document, node->m_Id, group->m_Name, index);
+        else if (split || recombine)
+            SplitStructPin(document, node->m_Id, split ? pin->m_Key : splitOf, split);
 
         ImGui::EndPopup();
     }

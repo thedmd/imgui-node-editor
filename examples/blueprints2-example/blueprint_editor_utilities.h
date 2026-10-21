@@ -44,6 +44,9 @@ const VariableDeclaration* PinVariable(const Graph& graph, const Pin& pin);
 // The node's group a key is of, and the key's index there.
 const GroupDeclaration* FindGroup(const Node& node, std::string_view key, int* index = nullptr);
 
+// The split pin a key is a field of, the innermost: "box.min" of "box.min.x"; empty for none.
+std::string SplitOf(const Node& node, std::string_view key);
+
 // As the log and tooltips name it: "Add#7.in.0 (Int32)".
 std::string DescribePin(const Graph& graph, const Pin& pin);
 
@@ -51,6 +54,7 @@ std::string DescribePin(const Graph& graph, const Pin& pin);
 void CreateLink(Document& document, Id from, Id to, LinkMode mode = LinkMode::Plain);
 void AddGroupPin(Document& document, Id node, std::string group);
 void RemoveGroupPin(Document& document, Id node, std::string group, int index);
+void SplitStructPin(Document& document, Id node, std::string key, bool split);
 
 ImU32 ProblemColor(Severity severity);
 bool  ProblemPills(int errors, int warnings); // a red disc and a yellow triangle, with their counts; true when clicked
