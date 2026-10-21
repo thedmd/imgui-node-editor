@@ -1103,6 +1103,9 @@ public:
     void               Stop(FiberId fiber);
     // Of a node with flow pins; a pure node's never stops a run.
     void               SetBreakpoint(Id node, bool enabled);
+    // Goes on with a program compiled from the same blueprint with other values: typed into inputs,
+    // or held in configs, as a Constant's. One that differs in more is refused.
+    Result<void>       Patch(std::shared_ptr<const Program> program);
 
     std::vector<FiberInfo>      Fibers() const;
     uint64_t                    StepCount() const   { return m_Step; }

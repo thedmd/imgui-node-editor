@@ -847,6 +847,44 @@ TEST_CASE(Trace, "context.the_trace_keeps_the_flow_links_the_last_steps_took", n
         "after many steps, it keeps the last %d", static_cast<int>(Context::c_TraceLength));
 }
 
+TEST_CASE(Patching, "context.a_run_goes_on_with_a_program_of_other_values", nullptr, test::TestFlags_None)
+{
+    // Start, then Count and a Twice in a loop. Twice logs its a, from a Number, and its b, typed in;
+    // another Number goes unused.
+    Fixture f;
+    auto start = f.Add("Start"), count = f.Add("Count"), twice = f.Add("Twice"), number = f.Add("Number", Holds(Value::Int32(1)));
+    auto other = f.Add("Number", Holds(Value::Int32(9)));
+    f.Link(start, "then", count, "enter");
+    f.Link(count, "then", twice, "enter");
+    f.Link(twice, "then", count, "enter");
+    f.Link(number, "value", twice, "a");
+    f.SetValue(twice, "b", Value::Int32(2));
+    auto program = f.Compiled();
+    if (!program)
+        return;
+    Context context(program);
+    Logs    logs;
+    context.SetMonitor(&logs);
+    auto fiber   = context.Start("Start").ValueOr(0);
+    auto stepped = context.Step(fiber).IsOk() && context.Step(fiber).IsOk() && context.Step(fiber).IsOk();
+    test::Check(stepped && logs.m_Text == "1,2", "Twice logs the values it was compiled with: %s", logs.m_Text.c_str());
+
+    // Values in the Number's config, and typed into Twice's b.
+    auto edited = f.m_Graph.SetConfig(number, Holds(Value::Int32(5))).IsOk() && f.m_Graph.SetValue(f.Pin(twice, "b"), Value::Int32(6)).IsOk();
+    auto patched = edited ? context.Patch(f.Compiled()) : Result<void>(BlueprintError::NotFound);
+    auto read    = context.Evaluate(f.Pin(number, "value"));
+    test::Check(patched && read && read.GetValue().m_Value == Value::Int32(5), "the run takes a program of other values, and reads them at once: %s", Message(patched).c_str());
+    stepped = context.Step(fiber).IsOk() && context.Step(fiber).IsOk();
+    auto counted = context.Evaluate(f.Pin(count, "count"));
+    test::Check(stepped && logs.m_Text == "1,2 5,6" && counted && counted.GetValue().m_Value == Value::Int32(2), "and goes on with them, Count's state as it was: %s", logs.m_Text.c_str());
+
+    f.Link(other, "value", twice, "a");
+    auto refused = context.Patch(f.Compiled());
+    stepped = context.Step(fiber).IsOk() && context.Step(fiber).IsOk();
+    test::Check(!refused && refused.GetError().Is(BlueprintError::Unsupported), "a program whose Twice reads the other Number is refused: %s", Message(refused).c_str());
+    test::Check(stepped && logs.m_Text == "1,2 5,6 5,6", "and the run goes on as it was");
+}
+
 TEST_CASE(SplitPinsRun, "context.a_split_pin_reads_and_writes_its_struct_whole", nullptr, test::TestFlags_None)
 {
     // Shift's point and its moved point are split, and so are Show's point, its box and the box's

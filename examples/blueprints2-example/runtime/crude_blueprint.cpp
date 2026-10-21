@@ -2492,6 +2492,36 @@ void crude_blueprint::Context::SetBreakpoint(Id node, bool enabled)
         m_Breakpoints[index] = enabled;
 }
 
+crude_blueprint::Result<void> crude_blueprint::Context::Patch(std::shared_ptr<const Program> program)
+{
+    CRUDE_BP_ASSERT(program);
+    auto samePin = [](const ProgramPin& a, const ProgramPin& b)
+    {
+        return std::tie(a.m_Id, a.m_Key, a.m_Direction, a.m_Flow, a.m_Type, a.m_Source, a.m_Cast, a.m_Link, a.m_Slot, a.m_Target, a.m_TargetPin)
+            == std::tie(b.m_Id, b.m_Key, b.m_Direction, b.m_Flow, b.m_Type, b.m_Source, b.m_Cast, b.m_Link, b.m_Slot, b.m_Target, b.m_TargetPin);
+    };
+    auto sameSplit = [](const SplitPin& a, const SplitPin& b)
+    {
+        return std::tie(a.m_Key, a.m_Type, a.m_Direction) == std::tie(b.m_Key, b.m_Type, b.m_Direction);
+    };
+    auto sameNode = [&samePin, &sameSplit](const ProgramNode& a, const ProgramNode& b)
+    {
+        return std::tie(a.m_Id, a.m_Graph, a.m_Type, a.m_Name, a.m_Pure) == std::tie(b.m_Id, b.m_Graph, b.m_Type, b.m_Name, b.m_Pure)
+            && std::tie(a.m_Config.m_Groups, a.m_Config.m_Types, a.m_Config.m_Split) == std::tie(b.m_Config.m_Groups, b.m_Config.m_Types, b.m_Config.m_Split)
+            && std::equal(a.m_Pins.begin(), a.m_Pins.end(), b.m_Pins.begin(), b.m_Pins.end(), samePin)
+            && std::equal(a.m_Splits.begin(), a.m_Splits.end(), b.m_Splits.begin(), b.m_Splits.end(), sameSplit);
+    };
+    auto& before = *m_Program;
+    auto& after  = *program;
+    if (before.m_Slots != after.m_Slots || before.m_Events != after.m_Events || before.m_Pins != after.m_Pins
+        || !std::equal(before.m_Nodes.begin(), before.m_Nodes.end(), after.m_Nodes.begin(), after.m_Nodes.end(), sameNode))
+        return Error(BlueprintError::Unsupported, "the program differs in more than its values");
+
+    m_Program = std::move(program);
+    ++m_Generation;
+    return {};
+}
+
 std::vector<crude_blueprint::FiberInfo> crude_blueprint::Context::Fibers() const
 {
     std::vector<FiberInfo> fibers;
