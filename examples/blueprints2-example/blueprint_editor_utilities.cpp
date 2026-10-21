@@ -177,6 +177,20 @@ void blueprint_editor_utilities::SplitStructPin(Document& document, Id node, std
     transaction->AddAction("%s: %s %s", name.c_str(), key.c_str(), split ? "split" : "recombined");
 }
 
+const blueprint_editor_utilities::Graph* blueprint_editor_utilities::GraphOf(const Blueprint& blueprint, Id node)
+{
+    for (auto& graph : blueprint.Graphs())
+        if (graph->FindNode(node))
+            return graph.get();
+    return nullptr;
+}
+
+const blueprint_editor_utilities::Node* blueprint_editor_utilities::FindNode(const Blueprint& blueprint, Id node)
+{
+    auto graph = GraphOf(blueprint, node);
+    return graph ? graph->FindNode(node) : nullptr;
+}
+
 std::string blueprint_editor_utilities::DescribePin(const Graph& graph, const Pin& pin)
 {
     return graph.NodeOf(pin.m_Id)->Name() + "." + pin.m_Key + " (" + (pin.m_Flow ? std::string("flow") : graph.TypeText(pin.m_Id)) + ")";
@@ -728,13 +742,13 @@ void blueprint_editor_utilities::Debugger::Report()
 
 void blueprint_editor_utilities::ProblemList::Update(const Document& document, const Debugger& debugger)
 {
-    auto& graph = document.GetGraph();
-    auto  owner = [&graph](const Diagnostic& diagnostic) -> Id
+    auto owner = [&document](const Diagnostic& diagnostic) -> Id
     {
-        if (diagnostic.m_Node)
+        auto graph = document.GetBlueprint().FindGraph(diagnostic.m_Graph);
+        if (diagnostic.m_Node || !graph)
             return diagnostic.m_Node;
-        auto link = diagnostic.m_Link ? graph.FindLink(diagnostic.m_Link) : nullptr;
-        auto node = link ? graph.NodeOf(link->m_To) : diagnostic.m_Pin ? graph.NodeOf(diagnostic.m_Pin) : nullptr;
+        auto link = diagnostic.m_Link ? graph->FindLink(diagnostic.m_Link) : nullptr;
+        auto node = link ? graph->NodeOf(link->m_To) : diagnostic.m_Pin ? graph->NodeOf(diagnostic.m_Pin) : nullptr;
         return node ? node->m_Id : 0;
     };
 
@@ -752,11 +766,12 @@ void blueprint_editor_utilities::ProblemList::Update(const Document& document, c
             m_Problems.push_back({ diagnostic, owner(diagnostic), true });
 }
 
-std::string blueprint_editor_utilities::ProblemList::Text(const Graph& graph, const Problem& problem)
+std::string blueprint_editor_utilities::ProblemList::Text(const Blueprint& blueprint, const Problem& problem)
 {
     auto& diagnostic = problem.m_Diagnostic;
-    auto  link       = diagnostic.m_Link ? graph.FindLink(diagnostic.m_Link) : nullptr;
-    auto  input      = link ? graph.FindPin(link->m_To) : nullptr;
+    auto  graph      = blueprint.FindGraph(diagnostic.m_Graph);
+    auto  link       = graph && diagnostic.m_Link ? graph->FindLink(diagnostic.m_Link) : nullptr;
+    auto  input      = link ? graph->FindPin(link->m_To) : nullptr;
     auto  message    = std::string(diagnostic.m_Error.Message());
     return input ? input->m_Key + ": " + message : message;
 }
@@ -1014,7 +1029,18 @@ void blueprint_editor_utilities::CreateNodeDialog::Update(Document& document)
     if (m_FromPin && !graph.FindPin(m_FromPin))
         m_FromPin = 0;
 
-    auto types = document.GetBlueprint().GetRegistry().NodeTypes();
+    // A function's entry and returns go only in its own graph, which has one entry at most.
+    auto& blueprint = document.GetBlueprint();
+    auto  types     = blueprint.NodeTypes();
+    std::erase_if(types, [&blueprint, &graph](const NodeType* type)
+    {
+        auto function = blueprint.FunctionOf(*type);
+        if (!function || type->m_Name.starts_with("call:"))
+            return false;
+        if (function->m_Graph != graph.GetId())
+            return true;
+        return type->m_Name.starts_with("entry:") && std::any_of(graph.Nodes().begin(), graph.Nodes().end(), [type](const Node& node) { return node.m_Type == type; });
+    });
     m_Entries.clear();
     if (m_FromPin)
     {

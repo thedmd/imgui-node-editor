@@ -289,14 +289,23 @@ crude_json::value blueprint_editor::Document::Serialize() const
     crude_json::value result;
     result["document"] = BuildDocumentState().Serialize();
 
-    auto& view = result["view"];
-    if (m_NavigationState.m_HasViewState)
+    // "view" is the first graph's, as documents of one graph have it.
+    auto save = [](const ed::ViewState& state)
     {
-        auto& state = m_NavigationState.m_ViewState;
+        crude_json::value view;
         view["min"]["x"] = state.VisibleMin.x;
         view["min"]["y"] = state.VisibleMin.y;
         view["max"]["x"] = state.VisibleMax.x;
         view["max"]["y"] = state.VisibleMax.y;
+        return view;
+    };
+    const auto first = m_Blueprint->Graphs().front()->GetId();
+    for (auto& [graph, state] : m_NavigationState.m_Views)
+    {
+        if (graph == first)
+            result["view"] = save(state);
+        else if (m_Blueprint->FindGraph(graph))
+            result["views"][std::to_string(graph)] = save(state);
     }
 
     return result;
@@ -316,13 +325,28 @@ bool blueprint_editor::Document::Deserialize(const crude_json::value& value)
         return false;
 
     NavigationState navigation;
-    auto& view = navigation.m_ViewState;
-    auto& viewValue = value["view"];
-    navigation.m_HasViewState = ParseVector(viewValue["min"], view.VisibleMin) && ParseVector(viewValue["max"], view.VisibleMax);
+    auto load = [&navigation](crude_blueprint::Id graph, const crude_json::value& view)
+    {
+        ed::ViewState state;
+        if (ParseVector(view["min"], state.VisibleMin) && ParseVector(view["max"], state.VisibleMax))
+            navigation.m_Views[graph] = state;
+    };
+    if (value.contains("view"))
+        load(blueprint->Graphs().front()->GetId(), value["view"]);
+    if (auto views = value.find("views"); views && views->is_object())
+    {
+        for (auto& [key, view] : views->get<crude_json::object>())
+        {
+            uintptr_t graph = 0;
+            if (ParseId(crude_json::value(std::strtod(key.c_str(), nullptr)), graph) && blueprint->FindGraph(static_cast<crude_blueprint::Id>(graph)))
+                load(static_cast<crude_blueprint::Id>(graph), view);
+        }
+    }
 
     m_Blueprint       = std::move(blueprint);
     m_DocumentState   = std::move(state);
     m_NavigationState = navigation;
+    m_ShownGraph      = 0;
     m_Undo.clear();
     m_Redo.clear();
     m_IsModified = false;
@@ -401,10 +425,14 @@ blueprint_editor::Document::DocumentState blueprint_editor::Document::BuildDocum
     result.m_BlueprintState = crude_blueprint::Save(*m_Blueprint);
 
     // The editor still knows the nodes undo took out of the blueprint; the document doesn't.
+    auto& shown = GetGraph();
     std::vector<ed::NodeState> nodes(static_cast<size_t>(ed::GetNodeStates(nullptr, 0)));
     nodes.resize(static_cast<size_t>(ed::GetNodeStates(nodes.data(), static_cast<int>(nodes.size()))));
     for (auto& node : nodes)
-        if (HasNode(*m_Blueprint, node.Id.Get()))
+        if (shown.FindNode(static_cast<crude_blueprint::Id>(node.Id.Get())))
+            result.m_NodesState.push_back(node);
+    for (auto& node : m_DocumentState.m_NodesState)
+        if (!shown.FindNode(static_cast<crude_blueprint::Id>(node.Id.Get())) && HasNode(*m_Blueprint, node.Id.Get()))
             result.m_NodesState.push_back(node);
 
     const auto selected = static_cast<size_t>(ed::GetSelectedObjectCount());
@@ -418,8 +446,8 @@ blueprint_editor::Document::DocumentState blueprint_editor::Document::BuildDocum
 void blueprint_editor::Document::ApplyState(const NavigationState& state)
 {
     m_NavigationState = state;
-    if (m_NavigationState.m_HasViewState)
-        ed::SetViewState(m_NavigationState.m_ViewState);
+    if (auto view = m_NavigationState.m_Views.find(GetGraph().GetId()); view != m_NavigationState.m_Views.end())
+        ed::SetViewState(view->second);
 }
 
 bool blueprint_editor::Document::ApplyState(const DocumentState& state)
@@ -434,23 +462,50 @@ bool blueprint_editor::Document::ApplyState(const DocumentState& state)
     }
 
     m_DocumentState = state;
-    ed::SetNodeStates(m_DocumentState.m_NodesState.data(), static_cast<int>(m_DocumentState.m_NodesState.size()));
-    ed::SetSelection(
-        m_DocumentState.m_SelectedNodes.data(), static_cast<int>(m_DocumentState.m_SelectedNodes.size()),
-        m_DocumentState.m_SelectedLinks.data(), static_cast<int>(m_DocumentState.m_SelectedLinks.size()));
+    ApplyLayout();
     return true;
+}
+
+void blueprint_editor::Document::ApplyLayout()
+{
+    auto& shown = GetGraph();
+    std::vector<ed::NodeState> nodes;
+    for (auto& node : m_DocumentState.m_NodesState)
+        if (shown.FindNode(static_cast<crude_blueprint::Id>(node.Id.Get())))
+            nodes.push_back(node);
+    std::vector<ed::NodeId> selectedNodes;
+    std::vector<ed::LinkId> selectedLinks;
+    for (auto node : m_DocumentState.m_SelectedNodes)
+        if (shown.FindNode(static_cast<crude_blueprint::Id>(node.Get())))
+            selectedNodes.push_back(node);
+    for (auto link : m_DocumentState.m_SelectedLinks)
+        if (shown.FindLink(static_cast<crude_blueprint::Id>(link.Get())))
+            selectedLinks.push_back(link);
+    ed::SetNodeStates(nodes.data(), static_cast<int>(nodes.size()));
+    ed::SetSelection(selectedNodes.data(), static_cast<int>(selectedNodes.size()), selectedLinks.data(), static_cast<int>(selectedLinks.size()));
 }
 
 void blueprint_editor::Document::OnMakeCurrent()
 {
-    ApplyState(m_DocumentState);
+    ApplyLayout();
     ApplyState(m_NavigationState);
 }
 
 void blueprint_editor::Document::CaptureView()
 {
-    m_NavigationState.m_ViewState    = ed::GetViewState();
-    m_NavigationState.m_HasViewState = true;
+    m_NavigationState.m_Views[GetGraph().GetId()] = ed::GetViewState();
+}
+
+crude_blueprint::Graph& blueprint_editor::Document::GetGraph()
+{
+    auto graph = m_Blueprint->FindGraph(m_ShownGraph);
+    return graph ? *graph : *m_Blueprint->Graphs().front();
+}
+
+const crude_blueprint::Graph& blueprint_editor::Document::GetGraph() const
+{
+    auto graph = m_Blueprint->FindGraph(m_ShownGraph);
+    return graph ? *graph : *m_Blueprint->Graphs().front();
 }
 
 // A blueprint that doesn't load is logged with the reason, and a document of no graph doesn't

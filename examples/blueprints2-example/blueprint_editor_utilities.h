@@ -51,6 +51,10 @@ std::string SplitOf(const Node& node, std::string_view key);
 // As the log and tooltips name it: "Add#7.in.0 (Int32)".
 std::string DescribePin(const Graph& graph, const Pin& pin);
 
+// The graph a node is in, and the node, of all the blueprint's graphs.
+const Graph* GraphOf(const Blueprint& blueprint, Id node);
+const Node*  FindNode(const Blueprint& blueprint, Id node);
+
 // Edits of one undo step each. One the graph refuses is logged, and makes no step.
 void CreateLink(Document& document, Id from, Id to, LinkMode mode = LinkMode::Plain);
 void AddGroupPin(Document& document, Id node, std::string group);
@@ -183,7 +187,7 @@ struct ProblemList
     void Update(const Document& document, const Debugger& debugger);
 
     // As the editor shows it: a link's names its input pin, "text: a cast needs both types decided".
-    static std::string Text(const Graph& graph, const Problem& problem);
+    static std::string Text(const Blueprint& blueprint, const Problem& problem);
 
     std::span<const Problem> Problems() const { return m_Problems; }
     int  Count(Severity severity, Id node = 0) const; // of a node, or of all

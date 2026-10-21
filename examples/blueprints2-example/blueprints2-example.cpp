@@ -44,11 +44,12 @@ static std::shared_ptr<TypeTable> ExampleTypes()
     return types;
 }
 
-static bool HasStart(const Graph& graph)
+static bool HasStart(const Blueprint& blueprint)
 {
-    for (auto& node : graph.Nodes())
-        if (!node.m_Type->EventName(node.m_Config).empty())
-            return true;
+    for (auto& graph : blueprint.Graphs())
+        for (auto& node : graph->Nodes())
+            if (!node.m_Type->EventName(node.m_Config).empty())
+                return true;
     return false;
 }
 
@@ -107,7 +108,6 @@ private:
     EventHandleType                 m_LastHandleId = 0;
 };
 
-static ed::EditorContext* m_Editor = nullptr;
 
 
 
@@ -186,22 +186,58 @@ struct BlueprintEditorExample
 {
     using Application::Application;
 
-    // Each document has its own editor, so nothing of one shows in the next. The
-    // document keeps the layout; the editor stays out of imgui.ini.
-    void CreateDocumentEditor()
+    // Each graph of a document has its own editor, made when the graph first shows, so nothing of
+    // one shows in another. The document keeps the layout; the editors stay out of imgui.ini.
+    ed::EditorContext* EditorFor(Id graph)
     {
-        ed::DestroyEditor(m_Editor);
-
-        ed::Config config;
-        config.SettingsName = nullptr;
-        m_Editor = ed::CreateEditor(&config);
-        ed::SetCurrentEditor(m_Editor);
+        auto& editor = m_Editors[graph];
+        if (!editor)
+        {
+            ed::Config config;
+            config.SettingsName = nullptr;
+            editor = ed::CreateEditor(&config);
+        }
+        return editor;
     }
 
-    void DestroyDocumentEditor()
+    void DestroyEditors()
     {
-        ed::DestroyEditor(m_Editor);
-        m_Editor = nullptr;
+        for (auto& [graph, editor] : m_Editors)
+            ed::DestroyEditor(editor);
+        m_Editors.clear();
+        m_History.clear();
+        m_HistoryIndex = 0;
+        m_TabRequest   = 0;
+        m_PendingGraph = 0;
+        m_PendingNode  = 0;
+        m_FollowedNode = 0;
+    }
+
+    // The document's editor current, for the graph it shows, which is the first of navigation.
+    void MakeDocumentCurrent()
+    {
+        ed::SetCurrentEditor(EditorFor(m_Document->GetGraph().GetId()));
+        m_History      = { m_Document->GetGraph().GetId() };
+        m_HistoryIndex = 0;
+    }
+
+    // Before the editor begins: the graph's editor becomes current, with the graph's layout and view.
+    void ShowGraph(Id graph, bool remember = true)
+    {
+        auto& document = *m_Document;
+        if (graph == document.GetGraph().GetId() || !document.GetBlueprint().FindGraph(graph))
+            return;
+        document.CaptureView();
+        document.m_ShownGraph = graph;
+        ed::SetCurrentEditor(EditorFor(graph));
+        document.OnMakeCurrent();
+        m_TabRequest = graph;
+        if (remember)
+        {
+            m_History.resize(m_HistoryIndex + 1);
+            m_History.push_back(graph);
+            m_HistoryIndex = m_History.size() - 1;
+        }
     }
 
     // The edits the user completed in a frame make one undo step. Navigation isn't reported.
@@ -253,6 +289,7 @@ struct BlueprintEditorExample
     void CreateExampleDocument()
     {
         m_Document = std::make_unique<Document>(ExampleRegistry(), ExampleTypes());
+        MakeDocumentCurrent();
         CreateExampleBlueprint(*m_Document);
     }
 
@@ -271,8 +308,6 @@ struct BlueprintEditorExample
 
         ImEx::MostRecentlyUsedList::Install(ImGui::GetCurrentContext());
 
-        CreateDocumentEditor();
-
         CreateExampleDocument();
 
         for (auto type : ExampleRegistry()->NodeTypes())
@@ -283,19 +318,32 @@ struct BlueprintEditorExample
 
     void OnStop() override
     {
-        DestroyDocumentEditor();
+        DestroyEditors();
     }
 
     void OnFrame(float deltaTime) override
     {
         IM_UNUSED(deltaTime);
 
-        ed::SetCurrentEditor(m_Editor);
+        ed::SetCurrentEditor(m_Document ? EditorFor(m_Document->GetGraph().GetId()) : nullptr);
 
         if (m_Document)
         {
             m_Debugger.Update(*m_Document);
             m_Problems.Update(*m_Document, m_Debugger);
+
+            // A paused run shows the graph of the node it runs next.
+            auto next = m_Debugger.IsActive() && !m_Debugger.IsRunning() ? m_Debugger.NextNode() : 0;
+            if (next != m_FollowedNode)
+            {
+                m_FollowedNode = next;
+                if (auto graph = GraphOf(m_Document->GetBlueprint(), next); graph && graph->GetId() != m_Document->GetGraph().GetId())
+                    m_PendingGraph = graph->GetId();
+            }
+            if (auto graph = std::exchange(m_PendingGraph, 0))
+                ShowGraph(graph, std::exchange(m_PendingRemember, true));
+            if (auto node = std::exchange(m_PendingNode, 0); node && m_Document->GetGraph().FindNode(node))
+                GoToNode(node);
 
             // A run's error opens its node's bubble, once in each run.
             auto running = false;
@@ -321,6 +369,8 @@ struct BlueprintEditorExample
         ImVec2 canvasMin, canvasMax;
         if (m_Document)
         {
+            ShowGraphTabs(*m_Document);
+
             auto& style  = ImGui::GetStyle();
             auto  strip  = m_ShowPanels ? ImGui::GetTextLineHeightWithSpacing() * 5.0f + ImGui::GetFrameHeightWithSpacing() + style.WindowPadding.y * 2.0f : 0.0f;
             auto  canvas = ImGui::GetContentRegionAvail().y - (m_ShowPanels ? strip + style.ItemSpacing.y : 0.0f);
@@ -414,11 +464,12 @@ private:
         m_Edit_Delete.SetEnabled(hasDocument && false);
         m_Edit_SelectAll.SetEnabled(hasDocument && false);
 
-        m_View_NavigateBackward.SetEnabled(hasDocument && false);
-        m_View_NavigateForward.SetEnabled(hasDocument && false);
+        m_View_NavigateBackward.SetEnabled(hasDocument && m_HistoryIndex > 0);
+        m_View_NavigateForward.SetEnabled(hasDocument && m_HistoryIndex + 1 < m_History.size());
+        m_Blueprint_AddFunction.SetEnabled(hasDocument);
 
         // An error blocks a run, never an edit or saving.
-        auto canStart = hasDocument && HasStart(m_Document->GetGraph()) && !m_Problems.BlocksRun();
+        auto canStart = hasDocument && HasStart(m_Document->GetBlueprint()) && !m_Problems.BlocksRun();
 
         m_Blueprint_Start.SetEnabled(canStart);
         m_Blueprint_Step.SetEnabled(m_Debugger.IsActive() && !m_Debugger.IsRunning());
@@ -507,6 +558,8 @@ private:
                 menuAction(m_Blueprint_Stop);
                 ImGui::Separator();
                 menuAction(m_Blueprint_Run);
+                ImGui::Separator();
+                menuAction(m_Blueprint_AddFunction);
 
                 ImGui::EndMenu();
             }
@@ -549,8 +602,7 @@ private:
         if (!m_Document)
             return;
 
-        auto& graph  = m_Document->GetGraph();
-        auto  errors = m_Problems.Count(Severity::Error);
+        auto errors = m_Problems.Count(Severity::Error);
 
         ImGui::SameLine();
         if (errors > 0)
@@ -564,8 +616,9 @@ private:
 
         if (m_Debugger.IsActive())
         {
-            auto current = graph.FindNode(m_Debugger.CurrentNode());
-            auto next    = graph.FindNode(m_Debugger.NextNode());
+            auto& blueprint = m_Document->GetBlueprint();
+            auto  current   = FindNode(blueprint, m_Debugger.CurrentNode());
+            auto  next      = FindNode(blueprint, m_Debugger.NextNode());
             ImGui::SameLine(); ImGui::Spacing();
             ImGui::SameLine(); ImGui::Text("Current: %s", current ? current->Name().c_str() : "-");
             ImGui::SameLine(); ImGui::Spacing();
@@ -925,7 +978,7 @@ private:
             {
                 if (problem.m_Node != node.m_Id)
                     continue;
-                auto& text = lines.emplace_back(&problem, ProblemList::Text(document.GetGraph(), problem)).second;
+                auto& text = lines.emplace_back(&problem, ProblemList::Text(document.GetBlueprint(), problem)).second;
                 auto  textSize = ImGui::CalcTextSize(text.c_str(), nullptr, false, wrap);
                 size.x  = ImMax(size.x, line + textSize.x);
                 size.y += textSize.y + spacing;
@@ -993,7 +1046,7 @@ private:
             ProblemSign(ImGui::GetWindowDrawList(), at + ImVec2(line, line) * 0.5f, line * 0.3f, problem.m_Diagnostic.m_Severity);
             ImGui::SameLine();
 
-            auto label = ProblemList::Text(graph, problem) + (problem.m_Run ? ", in the run" : "");
+            auto label = ProblemList::Text(document.GetBlueprint(), problem) + (problem.m_Run ? ", in the run" : "");
             if (node && !label.starts_with(node->Name()))
                 label = node->Name() + ": " + label;
             ImGui::PushID(static_cast<int>(i));
@@ -1088,15 +1141,55 @@ private:
         ImGui::EndTable();
     }
 
-    // Selects the problem's node, and brings it into view.
+    // Selects the problem's node, and brings it into view, in its graph.
     void GoToProblem(size_t index)
     {
         auto problems = m_Problems.Problems();
         if (index >= problems.size())
             return;
         m_ProblemIndex = index;
-        if (auto node = problems[index].m_Node)
+        auto node = problems[index].m_Node;
+        if (!node)
+            return;
+        if (auto graph = GraphOf(m_Document->GetBlueprint(), node); graph && graph->GetId() != m_Document->GetGraph().GetId())
+        {
+            m_PendingGraph = graph->GetId();
+            m_PendingNode  = node;
+        }
+        else
             GoToNode(node);
+    }
+
+    // The function a call node calls.
+    static const Function* CalledFunction(const Document& document, const Node* node)
+    {
+        if (!node || !node->m_Type->m_Name.starts_with("call:"))
+            return nullptr;
+        return document.GetBlueprint().FunctionOf(*node->m_Type);
+    }
+
+    // A tab for each graph, a function's with "()", and one to add a function.
+    void ShowGraphTabs(Document& document)
+    {
+        if (!ImGui::BeginTabBar("##graphs", ImGuiTabBarFlags_FittingPolicyScroll))
+            return;
+        for (auto& graph : document.GetBlueprint().Graphs())
+        {
+            auto id    = graph->GetId();
+            auto label = graph->GetName() + (document.GetBlueprint().FindFunction(id) ? "()" : "") + "###" + std::to_string(id);
+            if (!ImGui::BeginTabItem(label.c_str(), nullptr, m_TabRequest == id ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None))
+                continue;
+            if (m_TabRequest == id)
+                m_TabRequest = 0;
+            else if (!m_TabRequest && id != document.GetGraph().GetId())
+                m_PendingGraph = id;
+            ImGui::EndTabItem();
+        }
+        if (ImGui::TabItemButton("+", ImGuiTabItemFlags_Trailing))
+            m_Blueprint_AddFunction.Execute();
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Add Function");
+        ImGui::EndTabBar();
     }
 
     void GoToNode(Id node)
@@ -1371,6 +1464,7 @@ private:
         actions.Gesture("Remove Pin", "Click -", canShrink);
         actions.Gesture("Choose Type", "Right-Click", pinTyped);
         actions.Gesture("Split or Recombine", "Double-Click", pinSplits);
+        actions.Gesture("Open Function", "Double-Click", !pin && CalledFunction(document, node));
         actions.Gesture("Create Node", "Space", background && !typing);
         actions.Gesture("Create Node", "Right-Click", background);
         if (actions.Press("Show or Hide All Problems", ImGuiMod_Ctrl | ImGuiMod_Shift | ImGuiKey_D, !m_Problems.Problems().empty()))
@@ -1387,6 +1481,10 @@ private:
             m_Blueprint_Step.Execute();
         if (actions.Press("Stop", ImGuiMod_Shift | ImGuiKey_F5, m_Blueprint_Stop.IsEnabled(), true))
             m_Blueprint_Stop.Execute();
+        if (actions.Press("Navigate Backward", ImGuiMod_Alt | ImGuiKey_LeftArrow, m_View_NavigateBackward.IsEnabled(), true))
+            m_View_NavigateBackward.Execute();
+        if (actions.Press("Navigate Forward", ImGuiMod_Alt | ImGuiKey_RightArrow, m_View_NavigateForward.IsEnabled(), true))
+            m_View_NavigateForward.Execute();
         auto selected = GetSelectedNodes();
         if (actions.Press("Toggle Breakpoint", ImGuiKey_F9, owner || !selected.empty(), true))
         {
@@ -1399,6 +1497,8 @@ private:
         if (m_ShowActions)
             actions.Draw(canvasMin, canvasMax);
 
+        if (auto function = CalledFunction(document, graph.FindNode(static_cast<Id>(ed::GetDoubleClickedNode().Get()))))
+            m_PendingGraph = function->m_Graph;
         if (auto clicked = graph.FindPin(static_cast<Id>(ed::GetDoubleClickedPin().Get())))
         {
             const auto owner = graph.NodeOf(clicked->m_Id)->m_Id;
@@ -1476,7 +1576,7 @@ private:
             }
         };
 
-        auto diagnostics = [this, &graph](Id node, Id pin)
+        auto diagnostics = [this, &document, &graph](Id node, Id pin)
         {
             for (auto& problem : m_Problems.Problems())
             {
@@ -1484,7 +1584,7 @@ private:
                 auto  link = diagnostic.m_Link ? graph.FindLink(diagnostic.m_Link) : nullptr;
                 auto  here = pin ? diagnostic.m_Pin == pin || (link && link->m_To == pin) : problem.m_Node == node;
                 if (here)
-                    ImGui::TextColored(ImColor(ProblemColor(diagnostic.m_Severity)), "%s", ProblemList::Text(graph, problem).c_str());
+                    ImGui::TextColored(ImColor(ProblemColor(diagnostic.m_Severity)), "%s", ProblemList::Text(document.GetBlueprint(), problem).c_str());
             }
         };
 
@@ -1551,9 +1651,8 @@ private:
 
         LOGI("[File] New");
 
-        CreateDocumentEditor();
-
         m_Document = std::make_unique<Document>(ExampleRegistry(), ExampleTypes());
+        MakeDocumentCurrent();
         m_Document->m_DocumentState = m_Document->BuildDocumentState();
     }
 
@@ -1580,9 +1679,8 @@ private:
 
         document->SetPath(path);
 
-        CreateDocumentEditor();
-
         m_Document = std::move(document);
+        MakeDocumentCurrent();
 
         UpdateTitle();
 
@@ -1669,7 +1767,8 @@ private:
         m_ProblemIndex = SIZE_MAX;
         m_Document = nullptr;
 
-        DestroyDocumentEditor();
+        ed::SetCurrentEditor(nullptr);
+        DestroyEditors();
 
         UpdateTitle();
 
@@ -1683,7 +1782,7 @@ private:
 
         // Closing the window saves outside OnFrame(), where no editor is current.
         auto previousEditor = ed::GetCurrentEditor();
-        ed::SetCurrentEditor(m_Editor);
+        ed::SetCurrentEditor(EditorFor(m_Document->GetGraph().GetId()));
         m_Document->CaptureView();
         const auto saved = m_Document->Save(path);
         ed::SetCurrentEditor(previousEditor);
@@ -1777,10 +1876,56 @@ private:
 
     void View_NavigateBackward()
     {
+        if (m_HistoryIndex == 0)
+            return;
+        m_PendingGraph    = m_History[--m_HistoryIndex];
+        m_PendingRemember = false;
     }
 
     void View_NavigateForward()
     {
+        if (m_HistoryIndex + 1 >= m_History.size())
+            return;
+        m_PendingGraph    = m_History[++m_HistoryIndex];
+        m_PendingRemember = false;
+    }
+
+    // A function of a free name, with its entry linked to a return, shown in its tab: one undo step.
+    void Blueprint_AddFunction()
+    {
+        auto& blueprint = m_Document->GetBlueprint();
+        std::string name;
+        for (int i = 1; name.empty(); ++i)
+        {
+            name = "Function" + std::to_string(i);
+            for (auto& graph : blueprint.Graphs())
+                if (graph->GetName() == name)
+                    name.clear();
+        }
+
+        auto transaction = m_Document->BeginUndoTransaction("Add Function");
+        auto added = blueprint.AddFunction(name, {});
+        if (!added)
+        {
+            auto message = added.GetError().Message();
+            LOGE("[AddFunction] %.*s", static_cast<int>(message.size()), message.data());
+            transaction->Discard();
+            return;
+        }
+        auto& body  = *added.GetValue();
+        auto  entry = body.AddNode("entry:" + name), ret = body.AddNode("return:" + name);
+        auto  pin   = [&body](const Result<Id>& node, const char* key) { return body.FindNode(node.ValueOr(0))->FindPin(key)->m_Id; };
+        if (!entry || !ret || !body.Connect(pin(entry, "then"), pin(ret, "enter")))
+            LOGE("[AddFunction] %s has no entry linked to a return", name.c_str());
+
+        ShowGraph(body.GetId());
+        if (entry && ret)
+        {
+            ed::SetNodePosition(entry.GetValue(), ImVec2(40.0f, 40.0f));
+            ed::SetNodePosition(ret.GetValue(), ImVec2(360.0f, 40.0f));
+        }
+        LOGV("[AddFunction] %s", name.c_str());
+        transaction->AddAction("%s added", name.c_str());
     }
 
     void Blueprint_Start()
@@ -1820,6 +1965,14 @@ private:
     std::string                 m_Title;
 
     std::unique_ptr<Document> m_Document;
+    std::map<Id, ed::EditorContext*> m_Editors;
+    std::vector<Id>           m_History;               // the graphs shown, for navigating back and forward
+    size_t                    m_HistoryIndex    = 0;
+    Id                        m_TabRequest      = 0;     // a graph shown by other means than its tab, whose tab to select
+    Id                        m_PendingGraph    = 0;     // to show once the frame begins, before the editor does
+    bool                      m_PendingRemember = true;
+    Id                        m_PendingNode     = 0;     // to go to once its graph shows
+    Id                        m_FollowedNode    = 0;     // the run's next node, as its graph last showed for it
     Debugger                  m_Debugger;
     ProblemList               m_Problems;
     std::unordered_set<Id>    m_Bubbles;    // nodes whose problems show
@@ -1858,6 +2011,7 @@ private:
     Action m_Blueprint_Step  = { "Step",         [this] { Blueprint_Step();  } };
     Action m_Blueprint_Stop  = { "Stop",         [this] { Blueprint_Stop();  } };
     Action m_Blueprint_Run   = { "Run",          [this] { Blueprint_Run();   } };
+    Action m_Blueprint_AddFunction = { "Add Function", [this] { Blueprint_AddFunction(); } };
 };
 
 

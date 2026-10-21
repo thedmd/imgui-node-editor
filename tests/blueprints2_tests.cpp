@@ -686,7 +686,7 @@ TEST_CASE(ProblemLists, "blueprints2.problems_are_listed_by_their_nodes", nullpt
         problems.Count(Severity::Error, sum), problems.Count(Severity::Error, print));
     for (auto& problem : problems.Problems())
         if (problem.m_Node == print)
-            test::Check(blueprint_editor_utilities::ProblemList::Text(graph, problem).starts_with("text: "), "and names the input: %s", blueprint_editor_utilities::ProblemList::Text(graph, problem).c_str());
+            test::Check(blueprint_editor_utilities::ProblemList::Text(document.GetBlueprint(), problem).starts_with("text: "), "and names the input: %s", blueprint_editor_utilities::ProblemList::Text(document.GetBlueprint(), problem).c_str());
 }
 
 TEST_CASE(RunProblems, "blueprints2.a_runs_error_is_listed_until_the_run_goes", nullptr, test::TestFlags_None)
@@ -807,4 +807,59 @@ TEST_CASE(NewDocuments, "blueprints2.a_new_document_has_an_empty_graph", nullptr
     Document document(ExampleRegistry(), std::make_shared<TypeTable>());
     test::Check(document.GetBlueprint().Graphs().size() == 1 && document.GetGraph().Nodes().empty() && document.GetGraph().GetName() == "Event Graph", "one graph, of no nodes");
     test::Check(!document.m_IsModified && document.m_Undo.empty() && document.m_Redo.empty(), "and no changes to undo");
+}
+
+TEST_CASE(GraphLayouts, "blueprints2.each_graph_keeps_its_layout_and_view_while_another_shows", nullptr, test::TestFlags_None)
+{
+    // The example, with its layout an undo step, and then a function, as an edit not done yet, whose
+    // graph shows in an editor of its own.
+    test::Session session(UnnamedConfig());
+    OverlayLog    log;
+    Example       example(session);
+    auto& document = example.m_Document;
+    auto  loop     = example.Node("crude.ForLoop");
+    ImVec2 loopBefore;
+    session.Use([&]
+    {
+        loopBefore = ed::GetNodePosition(loop);
+        auto transaction = document.BeginUndoTransaction("Edit");
+        transaction->AddAction("Layout");
+    });
+    auto function = document.GetBlueprint().AddFunction("Lerp", {});
+    auto entry    = function ? function.GetValue()->AddNode("entry:Lerp") : Result<Id>(BlueprintError::NotFound);
+    if (!entry)
+        return test::Check(false, "the function's entry is added");
+    const auto main = document.GetGraph().GetId(), lerp = function.GetValue()->GetId();
+
+    auto position = [](const Document::DocumentState& state, Id node)
+    {
+        for (auto& saved : state.m_NodesState)
+            if (saved.Id.Get() == node)
+                return saved.Position;
+        return ImVec2(-1.0f, -1.0f);
+    };
+
+    auto config = UnnamedConfig();
+    auto other  = ed::CreateEditor(&config);
+    Document::DocumentState shown;
+    ed::SetCurrentEditor(session.Editor);
+    document.CaptureView();
+    document.m_ShownGraph = lerp;
+    ed::SetCurrentEditor(other);
+    document.OnMakeCurrent();
+    ed::SetNodePosition(entry.GetValue(), ImVec2(100.0f, 50.0f));
+    ed::SetViewState({ ImVec2(10.0f, 20.0f), ImVec2(810.0f, 620.0f) });
+    document.CaptureView();
+    shown = document.BuildDocumentState();
+    auto saved = document.Serialize();
+    ed::SetCurrentEditor(nullptr);
+    test::Check(document.GetGraph().GetId() == lerp && position(shown, entry.GetValue()) == ImVec2(100.0f, 50.0f), "the function's graph shows, the edit that made it kept, its entry where its editor has it");
+    test::Check(position(shown, loop) == loopBefore, "and the event graph's For Loop keeps the place it had");
+
+    Document loaded(ExampleRegistry(), std::make_shared<TypeTable>());
+    auto read  = loaded.Deserialize(saved);
+    auto views = loaded.m_NavigationState.m_Views;
+    test::Check(read && views.contains(main) && views.contains(lerp) && views[lerp].VisibleMin == ImVec2(10.0f, 20.0f), "a document saves each graph's view, and loads them back");
+    test::Check(loaded.GetGraph().GetId() == main, "and shows its first graph once loaded");
+    ed::DestroyEditor(other);
 }

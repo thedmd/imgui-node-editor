@@ -933,6 +933,8 @@ public:
     // Every graph takes the function's new pins: links to the pins it no longer has go disabled.
     Result<void>    SetSignature(Id graph, Signature signature);
     const Function* FindFunction(Id graph) const;
+    // The function a node type of the blueprint's is the entry, a return or the call of.
+    const Function* FunctionOf(const NodeType& type) const;
 
     std::span<const std::unique_ptr<Graph>> Graphs() const { return m_Graphs; }
 

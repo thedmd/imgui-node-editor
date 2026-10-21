@@ -2257,6 +2257,12 @@ const crude_blueprint::Function* crude_blueprint::Blueprint::FindFunction(Id gra
     return nullptr;
 }
 
+const crude_blueprint::Function* crude_blueprint::Blueprint::FunctionOf(const NodeType& type) const
+{
+    auto role = Cast<FunctionNodeType>(&type);
+    return role ? FindFunction(role->m_Function->m_Graph) : nullptr;
+}
+
 crude_blueprint::Result<void> crude_blueprint::Blueprint::CheckFunction(std::string_view name, const Signature& signature) const
 {
     if (name.empty() || !std::all_of(name.begin(), name.end(), IsNameCharacter))
