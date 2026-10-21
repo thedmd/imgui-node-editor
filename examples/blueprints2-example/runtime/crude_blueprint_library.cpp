@@ -16,20 +16,17 @@ struct StartNode final : NodeType
 {
     StartNode(): NodeType("crude.Start", "Start", "Events") {}
 
-    void Declare(NodeDeclaration& declaration, const NodeConfig&, const Bindings&) const override
-    {
-        declaration.FlowOutput("then");
-    }
-
     Result<Exit> Execute(ExecContext&, std::string_view) const override
     {
-        return Exit::To("then");
+        return Exit::To(m_Then);
     }
 
     std::string EventName(const NodeConfig&) const override
     {
         return "Start";
     }
+
+    const FlowPin m_Then = FlowOutput("then");
 };
 
 // An event of the name its config holds, else Event, whose outputs are its parameters: each of a
@@ -65,21 +62,18 @@ struct PrintNode final : NodeType
 {
     PrintNode(): NodeType("crude.Print", "Print", "Debugging") {}
 
-    void Declare(NodeDeclaration& declaration, const NodeConfig&, const Bindings&) const override
-    {
-        declaration.FlowInput("enter");
-        declaration.Input("text", "Text", StringType());
-        declaration.FlowOutput("then");
-    }
-
     Result<Exit> Execute(ExecContext& context, std::string_view) const override
     {
-        auto text = context.Get<std::string>("text");
+        auto text = context.Get(m_Text);
         if (!text)
             return text.GetError();
         context.Log(text.GetValue());
-        return Exit::To("then");
+        return Exit::To(m_Then);
     }
+
+    const FlowPin               m_Enter = FlowInput("enter");
+    const InputPin<std::string> m_Text  = Input<std::string>("text", "Text");
+    const FlowPin               m_Then  = FlowOutput("then");
 };
 
 // Of whatever type links or the user decide. A value of another type, kept while the type was
@@ -400,17 +394,14 @@ struct RandomNode final : NodeType
 {
     RandomNode(): NodeType("crude.Random", "Random", "Math") {}
 
-    void Declare(NodeDeclaration& declaration, const NodeConfig&, const Bindings&) const override
-    {
-        declaration.Output("value", "Value", FloatType());
-    }
-
     Result<void> Evaluate(EvalContext& context) const override
     {
         auto& engine = context.State<std::mt19937>();
-        context.Set("value", Value::Float(std::uniform_real_distribution<float>(0.0f, 1.0f)(engine)));
+        context.Set(m_Value, std::uniform_real_distribution<float>(0.0f, 1.0f)(engine));
         return {};
     }
+
+    const OutputPin<float> m_Value = Output<float>("value", "Value");
 };
 
 // a and b of any type T, by their type's own equality.
@@ -515,44 +506,38 @@ struct NotNode final : NodeType
 {
     NotNode(): NodeType("crude.Not", "Not", "Logic") {}
 
-    void Declare(NodeDeclaration& declaration, const NodeConfig&, const Bindings&) const override
-    {
-        declaration.Input("value", "Value", BoolType());
-        declaration.Output("result", "Result", BoolType());
-    }
-
     Result<void> Evaluate(EvalContext& context) const override
     {
-        auto value = context.Get<bool>("value");
+        auto value = context.Get(m_Value);
         if (!value)
             return value.GetError();
-        context.Set("result", Value::Bool(!value.GetValue()));
+        context.Set(m_Result, !value.GetValue());
         return {};
     }
+
+    const InputPin<bool>  m_Value  = Input<bool>("value", "Value");
+    const OutputPin<bool> m_Result = Output<bool>("result", "Result");
 };
 
 struct XorNode final : NodeType
 {
     XorNode(): NodeType("crude.Xor", "Xor", "Logic") {}
 
-    void Declare(NodeDeclaration& declaration, const NodeConfig&, const Bindings&) const override
-    {
-        declaration.Input("a", "A", BoolType());
-        declaration.Input("b", "B", BoolType());
-        declaration.Output("result", "Result", BoolType());
-    }
-
     Result<void> Evaluate(EvalContext& context) const override
     {
-        auto a = context.Get<bool>("a");
+        auto a = context.Get(m_A);
         if (!a)
             return a.GetError();
-        auto b = context.Get<bool>("b");
+        auto b = context.Get(m_B);
         if (!b)
             return b.GetError();
-        context.Set("result", Value::Bool(a.GetValue() != b.GetValue()));
+        context.Set(m_Result, a.GetValue() != b.GetValue());
         return {};
     }
+
+    const InputPin<bool>  m_A      = Input<bool>("a", "A");
+    const InputPin<bool>  m_B      = Input<bool>("b", "B");
+    const OutputPin<bool> m_Result = Output<bool>("result", "Result");
 };
 
 // A or B: only the one it picks is computed.
@@ -1002,63 +987,47 @@ struct AssertNode final : NodeType
 {
     AssertNode(): NodeType("crude.Assert", "Assert", "Debugging") {}
 
-    void Declare(NodeDeclaration& declaration, const NodeConfig&, const Bindings&) const override
-    {
-        declaration.FlowInput("enter");
-        declaration.Input("condition", "Condition", BoolType());
-        declaration.Input("message", "Message", StringType());
-        declaration.FlowOutput("then");
-    }
-
     Result<Exit> Execute(ExecContext& context, std::string_view) const override
     {
-        auto condition = context.Get<bool>("condition");
+        auto condition = context.Get(m_Condition);
         if (!condition)
             return condition.GetError();
         if (condition.GetValue())
-            return Exit::To("then");
-        auto message = context.Get<std::string>("message");
+            return Exit::To(m_Then);
+        auto message = context.Get(m_Message);
         if (!message)
             return message.GetError();
         return Error(LibraryError::AssertFailed, message.GetValue().empty() ? std::string("an assertion failed") : "assertion failed: " + message.GetValue());
     }
+
+    const FlowPin               m_Enter     = FlowInput("enter");
+    const InputPin<bool>        m_Condition = Input<bool>("condition", "Condition");
+    const InputPin<std::string> m_Message   = Input<std::string>("message", "Message");
+    const FlowPin               m_Then      = FlowOutput("then");
 };
 
 struct BranchNode final : NodeType
 {
     BranchNode(): NodeType("crude.Branch", "Branch", "Flow") {}
 
-    void Declare(NodeDeclaration& declaration, const NodeConfig&, const Bindings&) const override
-    {
-        declaration.FlowInput("enter");
-        declaration.Input("condition", "Condition", BoolType());
-        declaration.FlowOutput("true", "True");
-        declaration.FlowOutput("false", "False");
-    }
-
     Result<Exit> Execute(ExecContext& context, std::string_view) const override
     {
-        auto condition = context.Get<bool>("condition");
+        auto condition = context.Get(m_Condition);
         if (!condition)
             return condition.GetError();
-        return Exit::To(condition.GetValue() ? "true" : "false");
+        return Exit::To(condition.GetValue() ? m_True : m_False);
     }
+
+    const FlowPin        m_Enter     = FlowInput("enter");
+    const InputPin<bool> m_Condition = Input<bool>("condition", "Condition");
+    const FlowPin        m_True      = FlowOutput("true", "True");
+    const FlowPin        m_False     = FlowOutput("false", "False");
 };
 
 // Unreal's: from the first index to the last, inclusive, reading the last again before each round.
 struct ForLoopNode final : NodeType
 {
     ForLoopNode(): NodeType("crude.ForLoop", "For Loop", "Flow") {}
-
-    void Declare(NodeDeclaration& declaration, const NodeConfig&, const Bindings&) const override
-    {
-        declaration.FlowInput("enter");
-        declaration.Input("first", "First Index", Int32Type());
-        declaration.Input("last", "Last Index", Int32Type(), { .m_Default = Value::Int32(10) });
-        declaration.FlowOutput("body", "Loop Body");
-        declaration.Output("index", "Index", Int32Type());
-        declaration.FlowOutput("completed", "Completed");
-    }
 
     Result<Exit> Execute(ExecContext& context, std::string_view) const override
     {
@@ -1068,19 +1037,26 @@ struct ForLoopNode final : NodeType
             ++index;
         else
         {
-            auto first = context.Get<int32_t>("first");
+            auto first = context.Get(m_First);
             if (!first)
                 return first.GetError();
             index = first.GetValue();
         }
-        auto last = context.Get<int32_t>("last");
+        auto last = context.Get(m_Last);
         if (!last)
             return last.GetError();
         if (index > last.GetValue())
-            return Exit::To("completed");
-        context.Set("index", Value::Int32(static_cast<int32_t>(index)));
-        return Exit::Loop("body");
+            return Exit::To(m_Completed);
+        context.Set(m_Index, static_cast<int32_t>(index));
+        return Exit::Loop(m_Body);
     }
+
+    const FlowPin            m_Enter     = FlowInput("enter");
+    const InputPin<int32_t>  m_First     = Input<int32_t>("first", "First Index");
+    const InputPin<int32_t>  m_Last      = Input<int32_t>("last", "Last Index", { .m_Default = Value::Int32(10) });
+    const FlowPin            m_Body      = FlowOutput("body", "Loop Body");
+    const OutputPin<int32_t> m_Index     = Output<int32_t>("index", "Index");
+    const FlowPin            m_Completed = FlowOutput("completed", "Completed");
 };
 
 // Each output of its group in turn, once the branch from the one before has ended.
@@ -1210,21 +1186,18 @@ struct WhileLoopNode final : NodeType
 {
     WhileLoopNode(): NodeType("crude.WhileLoop", "While Loop", "Flow") {}
 
-    void Declare(NodeDeclaration& declaration, const NodeConfig&, const Bindings&) const override
-    {
-        declaration.FlowInput("enter");
-        declaration.Input("condition", "Condition", BoolType());
-        declaration.FlowOutput("body", "Loop Body");
-        declaration.FlowOutput("completed", "Completed");
-    }
-
     Result<Exit> Execute(ExecContext& context, std::string_view) const override
     {
-        auto condition = context.Get<bool>("condition");
+        auto condition = context.Get(m_Condition);
         if (!condition)
             return condition.GetError();
-        return condition.GetValue() ? Exit::Loop("body") : Exit::To("completed");
+        return condition.GetValue() ? Exit::Loop(m_Body) : Exit::To(m_Completed);
     }
+
+    const FlowPin        m_Enter     = FlowInput("enter");
+    const InputPin<bool> m_Condition = Input<bool>("condition", "Condition");
+    const FlowPin        m_Body      = FlowOutput("body", "Loop Body");
+    const FlowPin        m_Completed = FlowOutput("completed", "Completed");
 };
 
 // Goes on once, until it's reset.
@@ -1232,17 +1205,10 @@ struct DoOnceNode final : NodeType
 {
     DoOnceNode(): NodeType("crude.DoOnce", "Do Once", "Flow") {}
 
-    void Declare(NodeDeclaration& declaration, const NodeConfig&, const Bindings&) const override
-    {
-        declaration.FlowInput("enter");
-        declaration.FlowInput("reset", "Reset");
-        declaration.FlowOutput("completed", "Completed");
-    }
-
     Result<Exit> Execute(ExecContext& context, std::string_view entry) const override
     {
         auto& done = context.State<bool>();
-        if (entry == "reset")
+        if (m_Reset == entry)
         {
             done = false;
             return Exit::None();
@@ -1250,8 +1216,12 @@ struct DoOnceNode final : NodeType
         if (done)
             return Exit::None();
         done = true;
-        return Exit::To("completed");
+        return Exit::To(m_Completed);
     }
+
+    const FlowPin m_Enter     = FlowInput("enter");
+    const FlowPin m_Reset     = FlowInput("reset", "Reset");
+    const FlowPin m_Completed = FlowOutput("completed", "Completed");
 };
 
 // Unreal's: goes on N times, counting them from 1, until it's reset.
@@ -1259,31 +1229,28 @@ struct DoNNode final : NodeType
 {
     DoNNode(): NodeType("crude.DoN", "Do N", "Flow") {}
 
-    void Declare(NodeDeclaration& declaration, const NodeConfig&, const Bindings&) const override
-    {
-        declaration.FlowInput("enter");
-        declaration.Input("n", "N", Int32Type(), { .m_Default = Value::Int32(1) });
-        declaration.FlowInput("reset", "Reset");
-        declaration.FlowOutput("exit", "Exit");
-        declaration.Output("counter", "Counter", Int32Type());
-    }
-
     Result<Exit> Execute(ExecContext& context, std::string_view entry) const override
     {
         auto& counter = context.State<int32_t>();
-        if (entry == "reset")
+        if (m_Reset == entry)
         {
             counter = 0;
             return Exit::None();
         }
-        auto n = context.Get<int32_t>("n");
+        auto n = context.Get(m_N);
         if (!n)
             return n.GetError();
         if (counter >= n.GetValue())
             return Exit::None();
-        context.Set("counter", Value::Int32(++counter));
-        return Exit::To("exit");
+        context.Set(m_Counter, ++counter);
+        return Exit::To(m_Exit);
     }
+
+    const FlowPin            m_Enter   = FlowInput("enter");
+    const InputPin<int32_t>  m_N       = Input<int32_t>("n", "N", { .m_Default = Value::Int32(1) });
+    const FlowPin            m_Reset   = FlowInput("reset", "Reset");
+    const FlowPin            m_Exit    = FlowOutput("exit", "Exit");
+    const OutputPin<int32_t> m_Counter = Output<int32_t>("counter", "Counter");
 };
 
 // Lets the flow through while it's open; it starts as Start Closed says, on the first entry.
@@ -1291,36 +1258,33 @@ struct GateNode final : NodeType
 {
     GateNode(): NodeType("crude.Gate", "Gate", "Flow") {}
 
-    void Declare(NodeDeclaration& declaration, const NodeConfig&, const Bindings&) const override
-    {
-        declaration.FlowInput("enter");
-        declaration.FlowInput("open", "Open");
-        declaration.FlowInput("close", "Close");
-        declaration.FlowInput("toggle", "Toggle");
-        declaration.Input("startClosed", "Start Closed", BoolType(), { .m_Default = Value::Bool(true) });
-        declaration.FlowOutput("exit", "Exit");
-    }
-
     Result<Exit> Execute(ExecContext& context, std::string_view entry) const override
     {
         auto& open = context.State<std::optional<bool>>();
         if (!open)
         {
-            auto closed = context.Get<bool>("startClosed");
+            auto closed = context.Get(m_StartClosed);
             if (!closed)
                 return closed.GetError();
             open = !closed.GetValue();
         }
-        if (entry == "open")
+        if (m_Open == entry)
             open = true;
-        else if (entry == "close")
+        else if (m_Close == entry)
             open = false;
-        else if (entry == "toggle")
+        else if (m_Toggle == entry)
             open = !*open;
         else if (*open)
-            return Exit::To("exit");
+            return Exit::To(m_Exit);
         return Exit::None();
     }
+
+    const FlowPin        m_Enter       = FlowInput("enter");
+    const FlowPin        m_Open        = FlowInput("open", "Open");
+    const FlowPin        m_Close       = FlowInput("close", "Close");
+    const FlowPin        m_Toggle      = FlowInput("toggle", "Toggle");
+    const InputPin<bool> m_StartClosed = Input<bool>("startClosed", "Start Closed", { .m_Default = Value::Bool(true) });
+    const FlowPin        m_Exit        = FlowOutput("exit", "Exit");
 };
 
 // A, then B, then A again.
@@ -1328,21 +1292,18 @@ struct FlipFlopNode final : NodeType
 {
     FlipFlopNode(): NodeType("crude.FlipFlop", "Flip Flop", "Flow") {}
 
-    void Declare(NodeDeclaration& declaration, const NodeConfig&, const Bindings&) const override
-    {
-        declaration.FlowInput("enter");
-        declaration.FlowOutput("a", "A");
-        declaration.FlowOutput("b", "B");
-        declaration.Output("isA", "Is A", BoolType());
-    }
-
     Result<Exit> Execute(ExecContext& context, std::string_view) const override
     {
         auto& isA = context.State<bool>();
         isA = !isA;
-        context.Set("isA", Value::Bool(isA));
-        return Exit::To(isA ? "a" : "b");
+        context.Set(m_IsA, isA);
+        return Exit::To(isA ? m_A : m_B);
     }
+
+    const FlowPin         m_Enter = FlowInput("enter");
+    const FlowPin         m_A     = FlowOutput("a", "A");
+    const FlowPin         m_B     = FlowOutput("b", "B");
+    const OutputPin<bool> m_IsA   = Output<bool>("isA", "Is A");
 };
 
 // Unreal's: goes on once the duration passed on the context's clock. Entered while it counts down,
@@ -1351,13 +1312,6 @@ struct DelayNode final : NodeType
 {
     DelayNode(): NodeType("crude.Delay", "Delay", "Coroutines") {}
 
-    void Declare(NodeDeclaration& declaration, const NodeConfig&, const Bindings&) const override
-    {
-        declaration.FlowInput("enter");
-        declaration.Input("duration", "Duration", FloatType(), { .m_Default = Value::Float(0.2f) });
-        declaration.FlowOutput("completed", "Completed");
-    }
-
     bool IsLatent() const override
     {
         return true;
@@ -1366,16 +1320,20 @@ struct DelayNode final : NodeType
     Result<Exit> Execute(ExecContext& context, std::string_view) const override
     {
         if (context.IsResumed())
-            return Exit::To("completed");
+            return Exit::To(m_Completed);
         auto& until = context.State<double>();
         if (context.Time() < until)
             return Exit::None();
-        auto duration = context.Get<float>("duration");
+        auto duration = context.Get(m_Duration);
         if (!duration)
             return duration.GetError();
         until = context.Time() + std::max(0.0f, duration.GetValue());
         return Exit::Suspend(Wake::At(until));
     }
+
+    const FlowPin         m_Enter     = FlowInput("enter");
+    const InputPin<float> m_Duration  = Input<float>("duration", "Duration", { .m_Default = Value::Float(0.2f) });
+    const FlowPin         m_Completed = FlowOutput("completed", "Completed");
 };
 
 // Goes on once the host sends the signal it's given.
@@ -1383,13 +1341,6 @@ struct WaitSignalNode final : NodeType
 {
     WaitSignalNode(): NodeType("crude.WaitSignal", "Wait Signal", "Coroutines") {}
 
-    void Declare(NodeDeclaration& declaration, const NodeConfig&, const Bindings&) const override
-    {
-        declaration.FlowInput("enter");
-        declaration.Input("signal", "Signal", StringType());
-        declaration.FlowOutput("then");
-    }
-
     bool IsLatent() const override
     {
         return true;
@@ -1398,12 +1349,16 @@ struct WaitSignalNode final : NodeType
     Result<Exit> Execute(ExecContext& context, std::string_view) const override
     {
         if (context.IsResumed())
-            return Exit::To("then");
-        auto signal = context.Get<std::string>("signal");
+            return Exit::To(m_Then);
+        auto signal = context.Get(m_Signal);
         if (!signal)
             return signal.GetError();
         return Exit::Suspend(Wake::OnSignal(signal.GetValue()));
     }
+
+    const FlowPin               m_Enter  = FlowInput("enter");
+    const InputPin<std::string> m_Signal = Input<std::string>("signal", "Signal");
+    const FlowPin               m_Then   = FlowOutput("then");
 };
 
 // A struct's name without its namespace: "Vector2" of "example.Vector2".
