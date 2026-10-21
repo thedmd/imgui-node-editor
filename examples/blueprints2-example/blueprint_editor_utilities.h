@@ -132,8 +132,13 @@ struct Debugger
     bool IsRunning() const { return IsActive() && m_Running; }
     bool IsAtBreakpoint() const;
 
+    // A pin's value: the run's while there is one, else as a run that hasn't started computes it,
+    // until the document changes. An error for a blueprint with errors.
+    Result<Watch> Evaluate(const Document& document, Id pin);
+
     const Context* GetContext() const { return m_Context.get(); }
     Context*       GetContext()       { return m_Context.get(); }
+    uint64_t       StepCount() const  { return m_Context ? m_Context->StepCount() : 0; }
     Id             CurrentNode() const; // the node the last step ran
     Id             NextNode() const;
     Id             TakenLink() const;   // the flow link the last step took
@@ -154,6 +159,8 @@ private:
     uint64_t                 m_Revision = 0;
     bool                     m_Running  = false;
     bool                     m_Reported = false;
+    std::unique_ptr<Context> m_Preview;
+    uint64_t                 m_PreviewRevision = UINT64_MAX;
 };
 
 // What's wrong with a document's blueprint: its graphs' problems and compiling's, for its revision,
@@ -182,25 +189,12 @@ private:
     std::vector<Problem> m_Problems;
 };
 
-// While a run is paused: values beside pins, and the link the step took flowing.
-struct DebugOverlay
-{
-    explicit DebugOverlay(Debugger& debugger);
+// While a run is paused, the link its last step took flows. After the links are submitted.
+void FlowTakenLink(const Debugger& debugger);
 
-    void Begin();
-    void End();
-
-    void DrawInputPin(const Pin& pin, bool linked);
-    void DrawOutputPin(const Pin& pin);
-
-private:
-    Context*           m_Context = nullptr;
-    Id                 m_Current = 0;
-    Id                 m_Next    = 0;
-    Id                 m_Link    = 0;
-    ImDrawList*        m_DrawList = nullptr;
-    ImDrawListSplitter m_Splitter;
-};
+// When a run wrote a value, as the debugger shows it: "this step", "step 12", "not run yet"; empty
+// for one computed before any step.
+std::string WhenWritten(const Watch& watch, uint64_t step);
 
 // Wrapper over flat API for item construction
 struct ItemBuilder

@@ -597,9 +597,6 @@ private:
         // An edit made with a node's widgets, done once the nodes are drawn.
         std::function<void()> edit;
 
-        DebugOverlay debugOverlay(m_Debugger);
-        debugOverlay.Begin();
-
         // A paused run's next node has a blue border, and the node its last step ran an orange one.
         const auto current = m_Debugger.IsActive() ? m_Debugger.CurrentNode() : 0;
         const auto next    = m_Debugger.IsActive() ? m_Debugger.NextNode() : 0;
@@ -763,9 +760,6 @@ private:
 
                 ed::EndPin();
 
-                // [Debug Overlay] Show value of the pin if node is currently executed
-                debugOverlay.DrawInputPin(pin, isLinked);
-
                 layout.NextRow();
                 groupButtonsAfter(pin);
             }
@@ -831,9 +825,6 @@ private:
 
                 ed::EndPin();
 
-                // [Debug Overlay] Show value of the pin if node is currently executed
-                debugOverlay.DrawOutputPin(pin);
-
                 layout.NextRow();
                 groupButtonsAfter(pin);
             }
@@ -863,7 +854,7 @@ private:
                 ed::Link(link.m_Id, link.m_From, link.m_To, ImVec4(0.5f, 0.5f, 0.5f, 0.4f), 1.0f);
         }
 
-        debugOverlay.End();
+        FlowTakenLink(m_Debugger);
 
         if (edit)
             edit();
@@ -1308,7 +1299,7 @@ private:
         if (!hoveredNode && hoveredPin)
             hoveredNode = graph.NodeOf(hoveredPin->m_Id);
 
-        auto pinTooltip = [&graph](const char* label, const Pin& pin, bool showNode)
+        auto pinTooltip = [this, &document, &graph](const char* label, const Pin& pin, bool showNode)
         {
             ImGui::TextUnformatted(label);
             ImGui::Bullet(); ImGui::Text("ID: %u", static_cast<unsigned>(pin.m_Id));
@@ -1324,6 +1315,24 @@ private:
             ImGui::Bullet(); ImGui::Text("Type: %s", pin.m_Flow ? "flow" : graph.TypeText(pin.m_Id).c_str());
             ImGui::Bullet(); ImGui::Text("%s%s", pin.m_Direction == Direction::Input ? "input" : "output",
                 pin.m_Requirement == Requirement::Required ? ", required" : pin.m_Requirement == Requirement::Recommended ? ", recommended" : "");
+            if (pin.m_Flow)
+                return;
+
+            // A constant, typed in or declared, is the pin's own: no step wrote it.
+            ImGui::Bullet(); ImGui::TextUnformatted("Value:"); ImGui::SameLine();
+            auto watch = m_Debugger.Evaluate(document, pin.m_Id);
+            if (!watch)
+            {
+                ImGui::TextDisabled("%s", Text(watch.GetError().Message()).c_str());
+                return;
+            }
+            DrawValue(watch.GetValue().m_Value);
+            const auto constant = pin.m_Direction == Direction::Input && !HasLinks(graph, pin.m_Id);
+            if (auto when = constant ? std::string() : WhenWritten(watch.GetValue(), m_Debugger.StepCount()); !when.empty())
+            {
+                ImGui::SameLine();
+                ImGui::TextDisabled("(%s)", when.c_str());
+            }
         };
 
         auto diagnostics = [this, &graph](Id node, Id pin)

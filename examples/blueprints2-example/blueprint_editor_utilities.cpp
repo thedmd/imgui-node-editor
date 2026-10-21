@@ -671,6 +671,21 @@ blueprint_editor_utilities::Id blueprint_editor_utilities::Debugger::TakenLink()
     return fiber ? fiber->m_Link : 0;
 }
 
+blueprint_editor_utilities::Result<blueprint_editor_utilities::Watch> blueprint_editor_utilities::Debugger::Evaluate(const Document& document, Id pin)
+{
+    if (m_Context)
+        return m_Context->Evaluate(pin);
+    if (m_PreviewRevision != document.m_Revision)
+    {
+        m_PreviewRevision = document.m_Revision;
+        auto compiled = Compile(document.GetBlueprint());
+        m_Preview = compiled.m_Program ? std::make_unique<Context>(compiled.m_Program) : nullptr;
+    }
+    if (!m_Preview)
+        return Error(BlueprintError::Unsupported, "the blueprint has errors");
+    return m_Preview->Evaluate(pin);
+}
+
 std::optional<blueprint_editor_utilities::FiberInfo> blueprint_editor_utilities::Debugger::Fiber() const
 {
     if (m_Context)
@@ -744,114 +759,24 @@ bool blueprint_editor_utilities::ProblemList::BlocksRun() const
     return std::any_of(m_Compiled.begin(), m_Compiled.end(), [](const Problem& problem) { return problem.m_Diagnostic.m_Severity == Severity::Error; });
 }
 
-blueprint_editor_utilities::DebugOverlay::DebugOverlay(Debugger& debugger)
+void blueprint_editor_utilities::FlowTakenLink(const Debugger& debugger)
 {
-    if (!debugger.IsActive())
+    if (!debugger.IsActive() || !debugger.TakenLink())
         return;
-    m_Context = debugger.GetContext();
-    m_Current = debugger.CurrentNode();
-    m_Next    = debugger.NextNode();
-    m_Link    = debugger.TakenLink();
+    ax::NodeEditor::PushStyleVar(ax::NodeEditor::StyleVar_FlowDuration, 0.5f);
+    ax::NodeEditor::Flow(debugger.TakenLink());
+    ax::NodeEditor::PopStyleVar();
 }
 
-void blueprint_editor_utilities::DebugOverlay::Begin()
+std::string blueprint_editor_utilities::WhenWritten(const Watch& watch, uint64_t step)
 {
-    if (!m_Context)
-        return;
-
-    // Use splitter to draw pin values on top of nodes
-    m_DrawList = ImGui::GetWindowDrawList();
-    m_Splitter.Split(m_DrawList, 2);
-}
-
-void blueprint_editor_utilities::DebugOverlay::End()
-{
-    if (!m_Context)
-        return;
-
-    m_Splitter.Merge(m_DrawList);
-
-    // The link the step took fades out once a step leaves it behind.
-    if (m_Link)
-    {
-        ax::NodeEditor::PushStyleVar(ax::NodeEditor::StyleVar_FlowDuration, 0.5f);
-        ax::NodeEditor::Flow(m_Link);
-        ax::NodeEditor::PopStyleVar();
-    }
-}
-
-void blueprint_editor_utilities::DebugOverlay::DrawInputPin(const Pin& pin, bool linked)
-{
-    if (!m_Context || !linked || pin.m_Flow)
-        return;
-    auto watch = m_Context->Evaluate(pin.m_Id);
-    if (!watch)
-        return;
-
-    // Draw to layer over nodes
-    m_Splitter.SetCurrentChannel(m_DrawList, 1);
-
-    // Save current layout to avoid conflicts with node measurements
-    ImEx::ScopedSuspendLayout suspendLayout;
-
-    // Put cursor on the left side of the Pin
-    auto itemRectMin = ImGui::GetItemRectMin();
-    ImGui::SetCursorScreenPos(ImVec2(itemRectMin.x, itemRectMin.y)
-        - ImVec2(1.75f * ImGui::GetStyle().ItemSpacing.x, 0.0f));
-
-    // Remember current vertex, later we will patch generated mesh so drawn value
-    // will be aligned to the right side of the pin.
-    auto vertexStartIdx = m_DrawList->_CmdHeader.VtxOffset + m_DrawList->_VtxCurrentIdx;
-
-    auto isCurrentNode = m_Current == pin.m_Node;
-    auto color = ImGui::GetStyleColorVec4(isCurrentNode ? ImGuiCol_PlotHistogram : ImGuiCol_NavCursor);
-
-    // Actual drawing
-    PinValueBackgroundRenderer bg(color, 0.5f);
-    if (!DrawValue(watch.GetValue().m_Value))
-        bg.Discard();
-    bg.Commit();
-
-    // Move generated mesh to the left
-    auto itemWidth = ImGui::GetItemRectSize().x;
-    auto vertexEndIdx = m_DrawList->_CmdHeader.VtxOffset + m_DrawList->_VtxCurrentIdx;
-    for (auto vertexIdx = vertexStartIdx; vertexIdx < vertexEndIdx; ++vertexIdx)
-        m_DrawList->VtxBuffer[vertexIdx].pos.x -= itemWidth;
-
-    // Switch back to normal layer
-    m_Splitter.SetCurrentChannel(m_DrawList, 0);
-}
-
-void blueprint_editor_utilities::DebugOverlay::DrawOutputPin(const Pin& pin)
-{
-    if (!m_Context || pin.m_Flow)
-        return;
-    auto watch = m_Context->Evaluate(pin.m_Id);
-    if (!watch)
-        return;
-
-    // Draw to layer over nodes
-    m_Splitter.SetCurrentChannel(m_DrawList, 1);
-
-    ImEx::ScopedSuspendLayout suspendLayout;
-
-    // Put cursor on the right side of the Pin
-    auto itemRectMin = ImGui::GetItemRectMin();
-    auto itemRectMax = ImGui::GetItemRectMax();
-    ImGui::SetCursorScreenPos(ImVec2(itemRectMax.x, itemRectMin.y)
-        + ImVec2(1.75f * ImGui::GetStyle().ItemSpacing.x, 0.0f));
-
-    auto isCurrentNode = m_Current == pin.m_Node;
-    auto color = ImGui::GetStyleColorVec4(isCurrentNode ? ImGuiCol_PlotHistogram : ImGuiCol_NavCursor);
-
-    // Actual drawing
-    PinValueBackgroundRenderer bg(color, 0.5f);
-    if (!DrawValue(watch.GetValue().m_Value))
-        bg.Discard();
-    bg.Commit();
-
-    // Switch back to normal layer
-    m_Splitter.SetCurrentChannel(m_DrawList, 0);
+    if (!watch.m_Step)
+        return "not run yet";
+    if (*watch.m_Step == 0)
+        return {};
+    if (*watch.m_Step == step)
+        return "this step";
+    return "step " + std::to_string(*watch.m_Step);
 }
 
 

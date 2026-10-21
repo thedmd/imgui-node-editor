@@ -20,7 +20,6 @@ using namespace crude_blueprint;
 using blueprint_editor::Document;
 using blueprint_editor::ExampleRegistry;
 using blueprint_editor_utilities::CanvasActions;
-using blueprint_editor_utilities::DebugOverlay;
 using blueprint_editor_utilities::Debugger;
 
 namespace {
@@ -205,77 +204,46 @@ TEST_CASE(Breakpoints, "blueprints2.a_run_pauses_at_breakpoints_which_stay_for_l
     test::Check(!debugger.IsActive() && !debugger.HasBreakpoint(print), "until it's cleared");
 }
 
-TEST_CASE(DebugOverlayLayout, "blueprints2.debug_overlay_leaves_the_layout_alone", nullptr, test::TestFlags_None)
+TEST_CASE(LiveValues, "blueprints2.values_show_from_the_run_else_as_an_unstarted_run_computes_them", nullptr, test::TestFlags_None)
 {
-    // While a run is paused, the overlay draws values beside pins: after an output pin, before an
-    // input pin. Each pin's cell in the node's layout is a group that ends after the overlay, and
-    // has to end with the pin.
+    // The example's Add sums For Loop's Index and the Constant's 10.
     test::Session session(UnnamedConfig());
     OverlayLog    log;
     Example       example(session);
-    auto& graph = example.m_Document.GetGraph();
-    auto  loop  = example.Node("crude.ForLoop"), done = example.Node("crude.Print", 1);
-
-    // A value much wider than its pin, linked into Done's Print.
-    NodeConfig wide;
-    wide.m_Types["T"]     = &StringType();
-    wide.m_Data["value"] = Value::String("a value much wider than its pin");
-    auto constant = graph.AddNode("crude.Constant", wide);
-    if (!constant || !graph.Connect(example.Pin(constant.GetValue(), "value"), example.Pin(done, "text")))
-        return test::Check(false, "the wide value is linked");
+    auto& document = example.m_Document;
+    auto  add      = example.Node("crude.Add"), loop = example.Node("crude.ForLoop"), ten = example.Node("crude.Constant");
+    using blueprint_editor_utilities::WhenWritten;
 
     Debugger debugger;
-    debugger.Start(example.m_Document, false);
-    debugger.Step();
-    debugger.Step();
+    auto read = [&](Id node, const char* key) { auto watch = debugger.Evaluate(document, example.Pin(node, key)); return watch ? watch.GetValue() : Watch(); };
+    auto sum  = read(add, "result");
+    auto index = read(loop, "index");
+    test::Check(sum.m_Value == Value::Int32(10) && WhenWritten(sum, debugger.StepCount()).empty(), "with no run, Add's result is what it computes, 10 from 0 and 10, before any step");
+    test::Check(index.m_Value == Value::Int32(0) && WhenWritten(index, debugger.StepCount()) == "not run yet", "and For Loop's Index, which no step wrote, reads its default");
 
-    struct Cell
+    session.Use([&]
     {
-        float PinEnd  = 0.0f;
-        float CellEnd = 0.0f;
-    };
-    Cell index, body, text;
-
-    session.Frame([&](int)
-    {
-        DebugOverlay overlay(debugger);
-        auto cell = [&overlay, &graph](Id id, ed::PinKind kind, Cell& result)
-        {
-            auto& pin = *graph.FindPin(id);
-            ImGui::BeginGroup();
-            ed::BeginPin(id, kind);
-            ImGui::TextUnformatted("Pin");
-            ed::EndPin();
-            result.PinEnd = ImGui::GetItemRectMax().x;
-            if (kind == ed::PinKind::Output)
-                overlay.DrawOutputPin(pin);
-            else
-                overlay.DrawInputPin(pin, true);
-            ImGui::EndGroup();
-            result.CellEnd = ImGui::GetItemRectMax().x;
-        };
-
-        overlay.Begin();
-        ed::BeginNode(loop);
-        cell(example.Pin(loop, "index"), ed::PinKind::Output, index);
-        cell(example.Pin(loop, "body"), ed::PinKind::Output, body);
-        ed::EndNode();
-        ed::BeginNode(done);
-        cell(example.Pin(done, "text"), ed::PinKind::Input, text);
-        ed::EndNode();
-        overlay.End();
+        NodeConfig twenty = document.GetGraph().FindNode(ten)->m_Config;
+        twenty.m_Data["value"] = Value::Int32(20);
+        auto transaction = document.BeginUndoTransaction("Edit Value");
+        if (document.GetGraph().SetConfig(ten, twenty))
+            transaction->AddAction("Constant changed");
     });
+    test::Check(read(add, "result").m_Value == Value::Int32(20), "a change to the document computes it again");
 
-    test::Check(test::AssertCount() == 0, "the groups end without an IM_ASSERT: %d", test::AssertCount());
-    test::Check(index.CellEnd == index.PinEnd, "For Loop's Index ends its cell, with 0 after it: at %g, the pin at %g", index.CellEnd, index.PinEnd);
-    test::Check(body.CellEnd == body.PinEnd, "so does its Loop Body, with no value: at %g, the pin at %g", body.CellEnd, body.PinEnd);
-    test::Check(text.CellEnd == text.PinEnd, "and Done's Text, with a value wider than it before it: at %g, the pin at %g", text.CellEnd, text.PinEnd);
+    debugger.Start(document, false);
+    for (int i = 0; i < 4; ++i)
+        debugger.Step();
+    auto stepped = read(loop, "index");
+    test::Check(stepped.m_Value == Value::Int32(1) && WhenWritten(stepped, debugger.StepCount()) == "this step", "during a run, the run's values: For Loop wrote 1 this step");
+    debugger.Step();
+    test::Check(WhenWritten(read(loop, "index"), debugger.StepCount()) == "step 4", "and a step later, it was step 4's");
 }
 
-TEST_CASE(DebugOverlayFlow, "blueprints2.debug_overlay_flows_only_the_link_the_step_took", nullptr, test::TestFlags_None)
+TEST_CASE(TakenLinkFlows, "blueprints2.only_the_link_the_last_step_took_flows", nullptr, test::TestFlags_None)
 {
     // A run paused after For Loop, which took its Loop Body to Print. Every node shows its pins in
-    // two rows, with the overlay's values beside them.
+    // two rows.
     test::Session session(UnnamedConfig());
     OverlayLog    log;
     Example       example(session);
@@ -298,8 +266,6 @@ TEST_CASE(DebugOverlayFlow, "blueprints2.debug_overlay_flows_only_the_link_the_s
             style.Colors[ed::StyleColor_FlowMarker] = ImColor(flowColor);
         }
 
-        DebugOverlay overlay(debugger);
-        overlay.Begin();
         for (auto& node : graph.Nodes())
         {
             ed::BeginNode(node.m_Id);
@@ -321,10 +287,6 @@ TEST_CASE(DebugOverlayFlow, "blueprints2.debug_overlay_flows_only_the_link_the_s
                         body = center;
                     if (pin.m_Id == example.Pin(print, "enter"))
                         enter = center;
-                    if (direction == Direction::Input)
-                        overlay.DrawInputPin(pin, true);
-                    else
-                        overlay.DrawOutputPin(pin);
                 }
                 ImGui::EndGroup();
             }
@@ -332,7 +294,7 @@ TEST_CASE(DebugOverlayFlow, "blueprints2.debug_overlay_flows_only_the_link_the_s
         }
         for (auto& link : graph.Links())
             ed::Link(link.m_Id, link.m_From, link.m_To);
-        overlay.End();
+        blueprint_editor_utilities::FlowTakenLink(debugger);
     };
 
     int inside = 0, outside = 0;
