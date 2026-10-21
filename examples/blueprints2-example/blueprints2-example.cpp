@@ -49,7 +49,7 @@ static bool HasStart(const Blueprint& blueprint)
 {
     for (auto& graph : blueprint.Graphs())
         for (auto& node : graph->Nodes())
-            if (!node.m_Type->EventName(node.m_Config).empty())
+            if (node.m_Type->EventName(node.m_Config) == "Start")
                 return true;
     return false;
 }
@@ -706,7 +706,9 @@ private:
             // | +---------------+   +-----------+ |
             // +-----------------------------------+
 
-            auto& title = node.m_Type->m_Title;
+            // An event's node is titled by the event's name.
+            const auto event = node.m_Type->EventName(node.m_Config);
+            const auto title = event.empty() ? node.m_Type->m_Title : event;
             {
                 auto id = node.m_Id;
                 auto headerBackgroundRenderer = ImEx::ItemBackgroundRenderer([id](ImDrawList* drawList)

@@ -78,6 +78,7 @@ void AddSignaturePin(Document& document, Id graph, bool input); // of a key of i
 // A type parameter that a pin's type has can't go.
 void RemoveTypeParameter(Document& document, Id graph, int index);
 void RenameFunction(Document& document, Id graph, std::string name);
+void RenameEvent(Document& document, Id node, std::string name); // a Custom Event's
 
 // Edits of the blueprint's variables, one undo step each. One the blueprint refuses is logged.
 void AddVariable(Document& document); // an Int32, named Variable1, or of the first number free
@@ -151,8 +152,9 @@ private:
 // on only while it runs.
 struct Debugger
 {
-    // A blueprint with an error doesn't start: its diagnostics are logged.
-    bool Start(const Document& document, bool running);
+    // A blueprint with an error doesn't start: its diagnostics are logged. The event's parameters
+    // get their types' defaults.
+    bool Start(const Document& document, bool running, std::string_view event = "Start");
     void Continue(); // a paused run runs on
     void Step();     // a fiber that waits for its time skips the wait
     void Stop();
@@ -337,14 +339,20 @@ private:
 };
 
 // For a node, or for the selection when the node is in it. A function's entry has its function's
-// type parameters, and whether it's pure.
+// type parameters, and whether it's pure. An event's node runs the event, and a Custom Event's
+// renames it.
 struct NodeContextMenu
 {
     void Open(Id node = 0);
     void Show(Document& document, Debugger& debugger);
 
 private:
-    Id m_Node = 0;
+    void ShowRename(Document& document);
+
+    Id   m_Node          = 0;
+    Id   m_RenamedEvent  = 0; // the Custom Event whose name the rename popup edits
+    bool m_Renaming      = false;
+    char m_EventName[64] = {};
 };
 
 // For a pin of a type variable, its type: chosen, or reset to what links decide.

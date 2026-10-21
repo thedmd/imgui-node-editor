@@ -291,6 +291,26 @@ void blueprint_editor_utilities::RenameFunction(Document& document, Id graph, st
     transaction->AddAction("%s renamed %s", old.c_str(), name.c_str());
 }
 
+void blueprint_editor_utilities::RenameEvent(Document& document, Id node, std::string name)
+{
+    auto& graph = document.GetGraph();
+    auto  found = graph.FindNode(node);
+    if (!found || found->m_Type->EventName(found->m_Config) == name)
+        return;
+    auto config = found->m_Config;
+    config.m_Data["event"] = Value::String(name);
+    const auto old = found->m_Type->EventName(found->m_Config);
+    auto transaction = document.BeginUndoTransaction("Rename Event");
+    if (auto set = graph.SetConfig(node, std::move(config)); !set)
+    {
+        auto message = set.GetError().Message();
+        LOGW("[Event] %s: %.*s", old.c_str(), static_cast<int>(message.size()), message.data());
+        transaction->Discard();
+        return;
+    }
+    transaction->AddAction("%s renamed %s", old.c_str(), name.c_str());
+}
+
 void blueprint_editor_utilities::AddVariable(Document& document)
 {
     auto&       blueprint = document.GetBlueprint();
@@ -739,7 +759,7 @@ void blueprint_editor_utilities::Debugger::Monitor::OnLog(const Context& context
     LOGI("[Print] %s: \"%.*s\"", name.c_str(), static_cast<int>(text.size()), text.data());
 }
 
-bool blueprint_editor_utilities::Debugger::Start(const Document& document, bool running)
+bool blueprint_editor_utilities::Debugger::Start(const Document& document, bool running, std::string_view event)
 {
     m_Context.reset();
     m_Running  = false;
@@ -764,7 +784,12 @@ bool blueprint_editor_utilities::Debugger::Start(const Document& document, bool 
     m_Context->SetMonitor(&m_Monitor);
     for (auto node : m_Breakpoints)
         m_Context->SetBreakpoint(node, true);
-    auto fiber = m_Context->Start("Start");
+    std::vector<Value> arguments;
+    if (auto node = compiled.m_Program->FindEvent(event); node >= 0)
+        for (auto& pin : compiled.m_Program->Nodes()[static_cast<size_t>(node)].m_Pins)
+            if (!pin.m_Flow && pin.m_Direction == Direction::Output)
+                arguments.push_back(pin.m_Type->m_Head->Default(*pin.m_Type));
+    auto fiber = m_Context->Start(event, arguments);
     if (!fiber)
     {
         auto message = fiber.GetError().Message();
@@ -773,7 +798,10 @@ bool blueprint_editor_utilities::Debugger::Start(const Document& document, bool 
         return false;
     }
 
-    LOGI("Execution: %s", running ? "Run" : "Start");
+    if (event == "Start")
+        LOGI("Execution: %s", running ? "Run" : "Start");
+    else
+        LOGI("Execution: %s %.*s", running ? "Run" : "Start", static_cast<int>(event.size()), event.data());
     m_Fiber    = fiber.GetValue();
     m_Revision = document.m_Revision;
     m_Running  = running;
@@ -1264,11 +1292,14 @@ void blueprint_editor_utilities::CreateNodeDialog::Update(Document& document)
     if (m_FromPin && !graph.FindPin(m_FromPin))
         m_FromPin = 0;
 
-    // A function's entry and returns go only in its own graph, which has one entry at most.
+    // A function's entry and returns go only in its own graph, which has one entry at most, and events
+    // only in event graphs.
     auto& blueprint = document.GetBlueprint();
     auto  types     = blueprint.NodeTypes();
     std::erase_if(types, [&blueprint, &graph](const NodeType* type)
     {
+        if (blueprint.FindFunction(graph.GetId()) && !type->EventName({}).empty())
+            return true;
         auto function = blueprint.FunctionOf(*type);
         if (!function || type->m_Name.starts_with("call:"))
             return false;
@@ -1365,6 +1396,7 @@ void blueprint_editor_utilities::NodeContextMenu::Open(Id node)
 
 void blueprint_editor_utilities::NodeContextMenu::Show(Document& document, Debugger& debugger)
 {
+    ShowRename(document);
     if (!ImGui::IsPopupOpen("##node-context-menu"))
         return;
 
@@ -1380,6 +1412,18 @@ void blueprint_editor_utilities::NodeContextMenu::Show(Document& document, Debug
             else
                 for (auto selected : GetSelectedNodes())
                     debugger.SetBreakpoint(selected, enabled);
+        }
+
+        if (auto event = node ? node->m_Type->EventName(node->m_Config) : std::string(); !event.empty())
+        {
+            if (ImGui::MenuItem("Run Event"))
+                debugger.Start(document, true, event);
+            if (node->m_Type->m_Name == "crude.CustomEvent" && ImGui::MenuItem("Rename Event..."))
+            {
+                m_RenamedEvent = node->m_Id;
+                m_Renaming     = true;
+                std::snprintf(m_EventName, sizeof(m_EventName), "%s", event.c_str());
+            }
         }
 
         // The change is made once the menu is drawn.
@@ -1471,6 +1515,12 @@ void blueprint_editor_utilities::NodeContextMenu::Show(Document& document, Debug
 
 
 
+
+void blueprint_editor_utilities::NodeContextMenu::ShowRename(Document& document)
+{
+    if (auto name = NamePopup("##rename-event", m_Renaming, m_EventName, document.GetGraph().FindNode(m_RenamedEvent) != nullptr))
+        RenameEvent(document, m_RenamedEvent, *name);
+}
 
 void blueprint_editor_utilities::PinContextMenu::Open(Id pin)
 {

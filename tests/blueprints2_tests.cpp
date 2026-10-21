@@ -1063,3 +1063,38 @@ TEST_CASE(FunctionNames, "blueprints2.a_function_is_renamed_in_one_undo_step", n
     auto undone = document.GetBlueprint().FindFunction(graph);
     test::Check(undone && undone->m_Name == "Function1", "and undoing it gives the old name back");
 }
+
+TEST_CASE(CustomEventRuns, "blueprints2.a_custom_event_runs_with_its_parameters_defaults_and_is_renamed_in_one_step", nullptr, test::TestFlags_None)
+{
+    // A Custom Event of an Int32, which Print prints.
+    test::Session session(UnnamedConfig());
+    OverlayLog    log;
+    Example       example(session);
+    auto& document = example.m_Document;
+    auto& graph    = document.GetGraph();
+    NodeConfig config;
+    config.m_Groups["param"] = 1;
+    config.m_Types["T0"]     = &Int32Type();
+    auto event = Id(0);
+    session.Use([&]
+    {
+        auto transaction = document.BeginUndoTransaction("Add Event");
+        auto added = graph.AddNode("crude.CustomEvent", config), print = graph.AddNode("crude.Print");
+        if (added && print && graph.Connect(example.Pin(added.GetValue(), "then"), example.Pin(print.GetValue(), "enter")))
+            transaction->AddAction("Event added");
+        event = added.ValueOr(0);
+    });
+
+    Debugger debugger;
+    auto started = debugger.Start(document, false, "Event");
+    auto value   = started ? debugger.GetContext()->Evaluate(example.Pin(event, "param.0")) : Result<Watch>(BlueprintError::NotFound);
+    test::Check(started && debugger.NextNode() == event && value && value.GetValue().m_Value == Value::Int32(0), "a run of the event starts at its node, its parameter of its type's default");
+
+    session.Use([&]
+    {
+        blueprint_editor_utilities::RenameEvent(document, event, "Spawn");
+        blueprint_editor_utilities::RenameEvent(document, event, "Spawn");
+    });
+    test::Check(document.GetGraph().FindNode(event)->m_Type->EventName(document.GetGraph().FindNode(event)->m_Config) == "Spawn" && document.m_Undo.size() == 2, "renamed, the event is one undo step, and its own name makes none");
+    test::Check(debugger.Start(document, false, "Spawn") && !debugger.Start(document, false, "Event"), "and runs by its new name only");
+}
