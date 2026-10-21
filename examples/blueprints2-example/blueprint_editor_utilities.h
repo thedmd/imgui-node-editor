@@ -332,7 +332,7 @@ struct CreateNodeDialog
 
 private:
     void Update(Document& document);
-    bool ShowType(const NewNodeFit& entry);
+    bool ShowType(const NewNodeFit& entry, bool selected);
     void Create(Document& document, const NewNodeFit& entry, ImVec2 position);
 
     Id                      m_FromPin     = 0;
@@ -341,6 +341,9 @@ private:
     bool                    m_Focus       = false;
     char                    m_Search[64]  = {};
     std::vector<NewNodeFit> m_Entries;    // by category and title; those that need a cast last, by title
+    int                     m_Selected    = 0;     // of the entries shown, which Up and Down move over and Enter makes
+    int                     m_Shown       = 0;     // in the last frame
+    bool                    m_Scroll      = false; // to the selected one
 };
 
 // For a node, or for the selection when the node is in it. A function's entry runs its function,

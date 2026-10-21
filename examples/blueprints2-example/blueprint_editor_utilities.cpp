@@ -1261,6 +1261,7 @@ void blueprint_editor_utilities::CreateNodeDialog::Open(Id fromPin)
     m_Revision  = std::nullopt;
     m_Focus     = true;
     m_Search[0] = 0;
+    m_Selected  = 0;
     ImGui::OpenPopup("##create_node");
 }
 
@@ -1285,10 +1286,29 @@ void blueprint_editor_utilities::CreateNodeDialog::Show(Document& document)
     }
     ImGui::SetNextItemWidth(width);
     const auto enter = ImGui::InputTextWithHint("##search", "Search", m_Search, sizeof(m_Search), ImGuiInputTextFlags_EnterReturnsTrue);
+    if (ImGui::IsItemEdited())
+        m_Selected = 0;
     if (auto from = m_FromPin ? graph.FindPin(m_FromPin) : nullptr)
         ImGui::TextDisabled("From %s pin", from->m_Flow ? "flow" : graph.TypeText(from->m_Id).c_str());
 
+    const auto move = (ImGui::IsKeyPressed(ImGuiKey_DownArrow) ? 1 : 0) - (ImGui::IsKeyPressed(ImGuiKey_UpArrow) ? 1 : 0);
+    if (move != 0)
+    {
+        m_Selected = std::clamp(m_Selected + move, 0, std::max(m_Shown - 1, 0));
+        m_Scroll   = true;
+    }
+
+    // The entries in the order shown, Enter making the selected one.
     const NewNodeFit* chosen = nullptr;
+    auto shown = 0;
+    auto show  = [&](const NewNodeFit& entry)
+    {
+        const auto selected = shown++ == m_Selected;
+        if (ShowType(entry, selected) || (enter && selected))
+            chosen = &entry;
+        if (selected && std::exchange(m_Scroll, false))
+            ImGui::SetScrollHereY();
+    };
     ImGui::BeginChild("##types", ImVec2(width, ImGui::GetTextLineHeightWithSpacing() * 16.0f));
     if (m_Entries.empty())
         ImGui::TextDisabled("No node takes a link with it");
@@ -1311,8 +1331,7 @@ void blueprint_editor_utilities::CreateNodeDialog::Show(Document& document)
             auto entry = matches[i].second;
             if (!entry->m_Cast.empty() && (i == 0 || matches[i - 1].second->m_Cast.empty()))
                 ImGui::SeparatorText("With cast");
-            if (ShowType(*entry) || (enter && i == 0))
-                chosen = entry;
+            show(*entry);
         }
         if (matches.empty())
             ImGui::TextDisabled("No node matches");
@@ -1333,14 +1352,16 @@ void blueprint_editor_utilities::CreateNodeDialog::Show(Document& document)
                 group = label;
                 open  = ImGui::TreeNodeEx(label, flags);
             }
-            if (open && ShowType(entry))
-                chosen = &entry;
+            if (open)
+                show(entry);
         }
         if (open)
             ImGui::TreePop();
         ImGui::PopID();
     }
     ImGui::EndChild();
+    m_Shown  = shown;
+    m_Scroll = false;
 
     if (chosen)
     {
@@ -1394,10 +1415,10 @@ void blueprint_editor_utilities::CreateNodeDialog::Update(Document& document)
     std::stable_sort(m_Entries.begin(), m_Entries.end(), [&order](const NewNodeFit& lhs, const NewNodeFit& rhs) { return order(lhs) < order(rhs); });
 }
 
-bool blueprint_editor_utilities::CreateNodeDialog::ShowType(const NewNodeFit& entry)
+bool blueprint_editor_utilities::CreateNodeDialog::ShowType(const NewNodeFit& entry, bool selected)
 {
     ImGui::PushID(entry.m_Type);
-    const auto chosen = ImGui::Selectable(entry.m_Type->m_Title.c_str());
+    const auto chosen = ImGui::Selectable(entry.m_Type->m_Title.c_str(), selected);
     if (ImGui::IsItemHovered() && (!entry.m_Type->m_Category.empty() || !entry.m_Pin.empty()))
     {
         ImGui::BeginTooltip();

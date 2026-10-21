@@ -797,9 +797,25 @@ TEST_CASE(CreateNodeDialogs, "blueprints2.the_create_node_dialog_makes_what_its_
     auto made = graph.FindNode(dialog.GetCreatedNode());
     test::Check(count() == nodes + 3 && made && made->m_Type->m_Name == "crude.Or", "a title that begins with the search comes first: %s", made ? made->m_Type->m_Name.c_str() : "none");
 
+    // "loop" is in For Loop, then in While Loop: Down picks the second, and stays there.
+    open = [&] { dialog.Open(); };
+    session.Run(2);
+    for (auto c : std::string_view("loop"))
+        ImGui::GetIO().AddInputCharacter(c);
+    session.Run(2);
+    for (auto key : { ImGuiKey_DownArrow, ImGuiKey_DownArrow, ImGuiKey_Enter })
+    {
+        test::Key(key, true);
+        session.Run(1);
+        test::Key(key, false);
+        session.Run(2);
+    }
+    made = graph.FindNode(dialog.GetCreatedNode());
+    test::Check(count() == nodes + 4 && made && made->m_Type->m_Name == "crude.WhileLoop", "Down selects the next match, which Enter makes: %s", made ? made->m_Type->m_Name.c_str() : "none");
+
     open = [&] { dialog.Open(); };
     type("or", ImGuiKey_Escape);
-    test::Check(count() == nodes + 3 && !shown, "Esc closes the dialog, making nothing");
+    test::Check(count() == nodes + 4 && !shown, "Esc closes the dialog, making nothing");
 }
 
 TEST_CASE(NewDocuments, "blueprints2.a_new_document_has_an_empty_graph", nullptr, test::TestFlags_None)
