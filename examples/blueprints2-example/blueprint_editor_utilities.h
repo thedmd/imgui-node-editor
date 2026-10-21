@@ -128,6 +128,11 @@ struct Debugger
     bool HasBreakpoint(Id node) const { return m_Breakpoints.contains(node); }
     void ClearBreakpoints();
 
+    // The pins whose values the debugger lists, in the order they were added.
+    void                SetWatched(Id pin, bool watched);
+    bool                IsWatched(Id pin) const;
+    std::span<const Id> Watched() const { return m_Watched; }
+
     bool IsActive() const; // a fiber that's ready
     bool IsRunning() const { return IsActive() && m_Running; }
     bool IsAtBreakpoint() const;
@@ -155,6 +160,7 @@ private:
     std::unique_ptr<Context> m_Context;
     Monitor                  m_Monitor;
     std::set<Id>             m_Breakpoints;
+    std::vector<Id>          m_Watched;
     FiberId                  m_Fiber    = 0;
     uint64_t                 m_Revision = 0;
     bool                     m_Running  = false;
@@ -302,7 +308,7 @@ private:
 struct PinContextMenu
 {
     void Open(Id pin = 0);
-    void Show(Document& document);
+    void Show(Document& document, Debugger& debugger);
 
 private:
     Id m_Pin = 0;

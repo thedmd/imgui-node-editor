@@ -633,6 +633,21 @@ void blueprint_editor_utilities::Debugger::SetBreakpoint(Id node, bool enabled)
         m_Context->SetBreakpoint(node, enabled);
 }
 
+void blueprint_editor_utilities::Debugger::SetWatched(Id pin, bool watched)
+{
+    if (watched == IsWatched(pin))
+        return;
+    if (watched)
+        m_Watched.push_back(pin);
+    else
+        std::erase(m_Watched, pin);
+}
+
+bool blueprint_editor_utilities::Debugger::IsWatched(Id pin) const
+{
+    return std::find(m_Watched.begin(), m_Watched.end(), pin) != m_Watched.end();
+}
+
 void blueprint_editor_utilities::Debugger::ClearBreakpoints()
 {
     if (m_Context)
@@ -1141,7 +1156,7 @@ void blueprint_editor_utilities::PinContextMenu::Open(Id pin)
     ImGui::OpenPopup("##pin-context-menu");
 }
 
-void blueprint_editor_utilities::PinContextMenu::Show(Document& document)
+void blueprint_editor_utilities::PinContextMenu::Show(Document& document, Debugger& debugger)
 {
     if (!ImGui::IsPopupOpen("##pin-context-menu"))
         return;
@@ -1152,6 +1167,9 @@ void blueprint_editor_utilities::PinContextMenu::Show(Document& document)
 
     if (ImGui::BeginPopup("##pin-context-menu"))
     {
+        if (ImGui::MenuItem("Watch", "Ctrl+Click", debugger.IsWatched(m_Pin), pin != nullptr && !pin->m_Flow))
+            debugger.SetWatched(m_Pin, !debugger.IsWatched(m_Pin));
+
         if (ImGui::MenuItem("Break Links", nullptr, nullptr, pin != nullptr && ax::NodeEditor::HasAnyLinks(ax::NodeEditor::PinId(m_Pin))))
             ax::NodeEditor::BreakLinks(ax::NodeEditor::PinId(m_Pin));
 

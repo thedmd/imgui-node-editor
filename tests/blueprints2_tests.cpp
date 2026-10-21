@@ -240,6 +240,20 @@ TEST_CASE(LiveValues, "blueprints2.values_show_from_the_run_else_as_an_unstarted
     test::Check(WhenWritten(read(loop, "index"), debugger.StepCount()) == "step 4", "and a step later, it was step 4's");
 }
 
+TEST_CASE(WatchedPins, "blueprints2.watched_pins_keep_the_order_they_were_added_in", nullptr, test::TestFlags_None)
+{
+    Debugger debugger;
+    debugger.SetWatched(5, true);
+    debugger.SetWatched(3, true);
+    debugger.SetWatched(5, true);
+    auto watched = std::vector<Id>(debugger.Watched().begin(), debugger.Watched().end());
+    test::Check(watched == std::vector<Id>{ 5, 3 } && debugger.IsWatched(3), "pins are watched once each, in the order they were added");
+    debugger.SetWatched(5, false);
+    debugger.SetWatched(7, false);
+    watched.assign(debugger.Watched().begin(), debugger.Watched().end());
+    test::Check(watched == std::vector<Id>{ 3 } && !debugger.IsWatched(5), "and unwatched, others keep their places");
+}
+
 TEST_CASE(TakenLinkFlows, "blueprints2.only_the_link_the_last_step_took_flows", nullptr, test::TestFlags_None)
 {
     // A run paused after For Loop, which took its Loop Body to Print. Every node shows its pins in

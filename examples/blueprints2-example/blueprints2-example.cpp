@@ -322,8 +322,8 @@ struct BlueprintEditorExample
         if (m_Document)
         {
             auto& style  = ImGui::GetStyle();
-            auto  strip  = m_ShowProblems ? ImGui::GetTextLineHeightWithSpacing() * 5.0f + style.WindowPadding.y * 2.0f : 0.0f;
-            auto  canvas = ImGui::GetContentRegionAvail().y - (m_ShowProblems ? strip + style.ItemSpacing.y : 0.0f);
+            auto  strip  = m_ShowPanels ? ImGui::GetTextLineHeightWithSpacing() * 5.0f + ImGui::GetFrameHeightWithSpacing() + style.WindowPadding.y * 2.0f : 0.0f;
+            auto  canvas = ImGui::GetContentRegionAvail().y - (m_ShowPanels ? strip + style.ItemSpacing.y : 0.0f);
             ed::Begin("###main_editor", ImVec2(0.0f, ImMax(canvas, 1.0f)));
 
             CommitBlueprintNodes(*m_Document);
@@ -343,8 +343,8 @@ struct BlueprintEditorExample
             ShowBreakpoints(*m_Document, canvasMin, canvasMax);
             ShowBubbles(*m_Document, canvasMin, canvasMax);
             DeclareActions(*m_Document, canvasMin, canvasMax);
-            if (m_ShowProblems)
-                ShowProblems(*m_Document, ImVec2(canvasMin.x, canvasMax.y + style.ItemSpacing.y), ImVec2(canvasMax.x - canvasMin.x, strip));
+            if (m_ShowPanels)
+                ShowPanels(*m_Document, ImVec2(canvasMin.x, canvasMax.y + style.ItemSpacing.y), ImVec2(canvasMax.x - canvasMin.x, strip));
 
             RecordEdits(*m_Document);
         }
@@ -493,7 +493,7 @@ private:
                 menuAction(m_View_NavigateForward);
                 ImGui::Separator();
                 ImGui::MenuItem("Show Actions", nullptr, &m_ShowActions);
-                ImGui::MenuItem("Show Problems", nullptr, &m_ShowProblems);
+                ImGui::MenuItem("Show Panels", nullptr, &m_ShowPanels);
                 if (ImGui::MenuItem("Show or Hide All Problems", "Ctrl+Shift+D", false, File_IsOpen() && !m_Problems.Problems().empty()))
                     ToggleBubbles();
 
@@ -927,36 +927,141 @@ private:
         drawList->PopClipRect();
     }
 
-    // A row for each problem; choosing one goes to it.
-    void ShowProblems(const Document& document, ImVec2 position, ImVec2 size)
+    // Tabs for the problems, the watches and the fibers of a run.
+    void ShowPanels(Document& document, ImVec2 position, ImVec2 size)
     {
         ImGui::SetCursorScreenPos(position);
-        if (ImGui::BeginChild("##problems", size, ImGuiChildFlags_Borders))
+        if (ImGui::BeginChild("##panels", size, ImGuiChildFlags_Borders) && ImGui::BeginTabBar("##panels"))
         {
-            auto& graph    = document.GetGraph();
-            auto  problems = m_Problems.Problems();
-            auto  line     = ImGui::GetTextLineHeight();
-            if (problems.empty())
-                ImGui::TextDisabled("No problems");
-            for (size_t i = 0; i < problems.size(); ++i)
+            auto tab = [](const char* name, size_t count, auto&& show)
             {
-                auto& problem = problems[i];
-                auto  node    = graph.FindNode(problem.m_Node);
-                auto  at      = ImGui::GetCursorScreenPos();
-                ImGui::Dummy(ImVec2(line, line));
-                ProblemSign(ImGui::GetWindowDrawList(), at + ImVec2(line, line) * 0.5f, line * 0.3f, problem.m_Diagnostic.m_Severity);
-                ImGui::SameLine();
-
-                auto label = ProblemList::Text(graph, problem) + (problem.m_Run ? ", in the run" : "");
-                if (node && !label.starts_with(node->Name()))
-                    label = node->Name() + ": " + label;
-                ImGui::PushID(static_cast<int>(i));
-                if (ImGui::Selectable(label.c_str(), m_ProblemIndex == i))
-                    GoToProblem(i);
-                ImGui::PopID();
-            }
+                auto label = std::string(name) + (count ? " (" + std::to_string(count) + ")" : std::string()) + "###" + name;
+                if (!ImGui::BeginTabItem(label.c_str()))
+                    return;
+                if (ImGui::BeginChild("##list"))
+                    show();
+                ImGui::EndChild();
+                ImGui::EndTabItem();
+            };
+            auto fibers = m_Debugger.GetContext() ? m_Debugger.GetContext()->Fibers() : std::vector<FiberInfo>();
+            tab("Problems", m_Problems.Problems().size(), [&] { ShowProblems(document); });
+            tab("Watches", m_Debugger.Watched().size(), [&] { ShowWatches(document); });
+            tab("Fibers", fibers.size(), [&] { ShowFibers(document, fibers); });
+            ImGui::EndTabBar();
         }
         ImGui::EndChild();
+    }
+
+    // A row for each problem; choosing one goes to it.
+    void ShowProblems(const Document& document)
+    {
+        auto& graph    = document.GetGraph();
+        auto  problems = m_Problems.Problems();
+        auto  line     = ImGui::GetTextLineHeight();
+        if (problems.empty())
+            ImGui::TextDisabled("No problems");
+        for (size_t i = 0; i < problems.size(); ++i)
+        {
+            auto& problem = problems[i];
+            auto  node    = graph.FindNode(problem.m_Node);
+            auto  at      = ImGui::GetCursorScreenPos();
+            ImGui::Dummy(ImVec2(line, line));
+            ProblemSign(ImGui::GetWindowDrawList(), at + ImVec2(line, line) * 0.5f, line * 0.3f, problem.m_Diagnostic.m_Severity);
+            ImGui::SameLine();
+
+            auto label = ProblemList::Text(graph, problem) + (problem.m_Run ? ", in the run" : "");
+            if (node && !label.starts_with(node->Name()))
+                label = node->Name() + ": " + label;
+            ImGui::PushID(static_cast<int>(i));
+            if (ImGui::Selectable(label.c_str(), m_ProblemIndex == i))
+                GoToProblem(i);
+            ImGui::PopID();
+        }
+    }
+
+    // A row for each watched pin: its value, and the step that wrote it. Choosing one goes to its node.
+    void ShowWatches(Document& document)
+    {
+        auto& graph   = document.GetGraph();
+        auto  watched = m_Debugger.Watched();
+        if (watched.empty())
+        {
+            ImGui::TextDisabled("No watches: Ctrl+Click a pin, or use its menu");
+            return;
+        }
+        if (!ImGui::BeginTable("##watches", 4, ImGuiTableFlags_SizingFixedFit))
+            return;
+        ImGui::TableSetupColumn("Pin");
+        ImGui::TableSetupColumn("Value");
+        ImGui::TableSetupColumn("Written");
+        ImGui::TableSetupColumn("Remove");
+        std::optional<Id> removed;
+        for (auto id : watched)
+        {
+            ImGui::PushID(static_cast<int>(id));
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            if (auto pin = graph.FindPin(id))
+            {
+                auto node = graph.NodeOf(id);
+                if (ImGui::Selectable((node->Name() + "." + pin->m_Key).c_str()))
+                    GoToNode(node->m_Id);
+                ImGui::TableNextColumn();
+                auto watch = m_Debugger.Evaluate(document, id);
+                if (!watch)
+                    ImGui::TextDisabled("%s", Text(watch.GetError().Message()).c_str());
+                else
+                {
+                    DrawValue(watch.GetValue().m_Value);
+                    ImGui::TableNextColumn();
+                    if (pin->m_Direction == Direction::Output || HasLinks(graph, id))
+                        ImGui::TextDisabled("%s", WhenWritten(watch.GetValue(), m_Debugger.StepCount()).c_str());
+                }
+            }
+            else
+                ImGui::TextDisabled("pin %u, gone", static_cast<unsigned>(id));
+            ImGui::TableSetColumnIndex(3);
+            if (ImGui::SmallButton("x"))
+                removed = id;
+            ImGui::PopID();
+        }
+        ImGui::EndTable();
+        if (removed)
+            m_Debugger.SetWatched(*removed, false);
+    }
+
+    // A row for each fiber of the run: its state, and the node it's at. Choosing one goes to the node.
+    void ShowFibers(const Document& document, std::span<const FiberInfo> fibers)
+    {
+        if (fibers.empty())
+        {
+            ImGui::TextDisabled("No run");
+            return;
+        }
+        if (!ImGui::BeginTable("##fibers", 3, ImGuiTableFlags_SizingFixedFit))
+            return;
+        for (auto& fiber : fibers)
+        {
+            const char* state = "";
+            switch (fiber.m_State)
+            {
+                case FiberState::Ready:   state = fiber.m_AtBreakpoint ? "paused at a breakpoint" : m_Debugger.IsRunning() ? "running" : "paused"; break;
+                case FiberState::Done:    state = "done";    break;
+                case FiberState::Failed:  state = "failed";  break;
+                case FiberState::Stopped: state = "stopped"; break;
+            }
+            ImGui::PushID(static_cast<int>(fiber.m_Id));
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::Text("#%u", static_cast<unsigned>(fiber.m_Id));
+            ImGui::TableNextColumn();
+            ImGui::TextUnformatted(state);
+            ImGui::TableNextColumn();
+            if (auto node = document.GetGraph().FindNode(fiber.m_Node); node && ImGui::Selectable(node->Name().c_str()))
+                GoToNode(node->m_Id);
+            ImGui::PopID();
+        }
+        ImGui::EndTable();
     }
 
     // Selects the problem's node, and brings it into view.
@@ -967,10 +1072,13 @@ private:
             return;
         m_ProblemIndex = index;
         if (auto node = problems[index].m_Node)
-        {
-            ed::SelectNode(node);
-            ed::NavigateToSelection();
-        }
+            GoToNode(node);
+    }
+
+    void GoToNode(Id node)
+    {
+        ed::SelectNode(node);
+        ed::NavigateToSelection();
     }
 
     // Each node's bubble opens, unless all are open already: then all close.
@@ -1229,6 +1337,8 @@ private:
         actions.Gesture("Create Linked Node", "Drag Pin to Canvas", pin != nullptr);
         if (actions.Press("Break Pin's Links", ImGuiMod_Alt | ImGuiKey_MouseLeft, pinLinked))
             ed::BreakLinks(ed::PinId(pin->m_Id));
+        if (actions.Press("Watch Pin", ImGuiMod_Ctrl | ImGuiKey_MouseLeft, pin && !pin->m_Flow))
+            m_Debugger.SetWatched(pin->m_Id, !m_Debugger.IsWatched(pin->m_Id));
         actions.Gesture("Break Link", "Alt+Click", link != nullptr);
         actions.Gesture("Delete Selection", "Delete", ed::GetSelectedObjectCount() > 0);
         actions.Gesture("Edit Value", "Click", pinValue);
@@ -1281,7 +1391,7 @@ private:
 
         m_CreateNodeDialog.Show(document);
         m_NodeContextMenu.Show(document, m_Debugger);
-        m_PinContextMenu.Show(document);
+        m_PinContextMenu.Show(document, m_Debugger);
         m_LinkContextMenu.Show(document);
         m_LinkDropMenu.Show(document);
 
@@ -1685,7 +1795,7 @@ private:
     std::unordered_set<Id>    m_RunBubbles; // nodes whose bubble a run's error opened
     std::optional<LinkQuery>  m_LinkQuery;
     bool                      m_ShowActions  = true;
-    bool                      m_ShowProblems = true;
+    bool                      m_ShowPanels   = true;
     size_t                    m_ProblemIndex = SIZE_MAX; // the problem chosen last
 
     CreateNodeDialog m_CreateNodeDialog;
