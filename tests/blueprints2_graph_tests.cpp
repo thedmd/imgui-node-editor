@@ -5,6 +5,7 @@
 # include <algorithm>
 # include <array>
 # include <functional>
+# include <limits>
 # include <memory>
 # include <string>
 # include <vector>
@@ -947,6 +948,16 @@ TEST_CASE(TypedValues, "graph.typed_values_stay_until_their_type_changes", nullp
     auto again   = f.m_Graph.SetValue(in1, Value::Float(2.5f));
     auto cleared = f.m_Graph.SetValue(in1, Value());
     test::Check(again && cleared && !f.m_Graph.FindValue(in1), "no value clears it");
+
+    // A file can't hold them, so the next save would lose them.
+    auto nan      = f.m_Graph.SetValue(in1, Value::Float(std::numeric_limits<float>::quiet_NaN()));
+    auto infinity = f.m_Graph.SetValue(in1, Value::Float(std::numeric_limits<float>::infinity()));
+    test::Check(!nan && !infinity && !f.m_Graph.FindValue(in1), "a value files can't hold is refused: %s", Message(nan).c_str());
+    NodeConfig held;
+    held.m_Data["value"] = Value::Float(std::numeric_limits<float>::quiet_NaN());
+    auto added = f.m_Graph.AddNode("test.Add", held);
+    auto forced = f.m_Graph.SetConfig(add, held, true);
+    test::Check(!added && !forced, "and so is a config that holds one, even forced: %s", Message(forced).c_str());
 
     auto grown = f.m_Graph.AddGroupPin(add, "in");
     auto in2   = f.Pin(add, "in.2");

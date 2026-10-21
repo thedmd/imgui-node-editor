@@ -1185,6 +1185,24 @@ TypeTerm Offset(const TypeTerm& term, int base)
     return result;
 }
 
+// As a file would give it back.
+Result<void> Savable(const Value& value, const std::string& what)
+{
+    auto type   = value.GetType();
+    auto loaded = type->m_Head->Load(*type, type->m_Head->Save(value));
+    if (!loaded)
+        return Error(loaded.GetError().m_Category, loaded.GetError().m_Code, what + " can't hold " + type->m_Head->Format(value) + ", which no file holds: " + std::string(loaded.GetError().Message()));
+    return {};
+}
+
+Result<void> Savable(const NodeConfig& config, const std::string& node)
+{
+    for (auto& [key, value] : config.m_Data)
+        if (auto savable = Savable(value, node + "'s " + key); !savable)
+            return savable;
+    return {};
+}
+
 // The index of a group's pin key: 2 for "in.2", and for "in.2.x" of a split pin; -1 for others.
 int GroupIndex(std::string_view key, std::string_view prefix, std::string_view* rest = nullptr)
 {
@@ -1294,6 +1312,9 @@ crude_blueprint::Result<crude_blueprint::Id> crude_blueprint::Graph::AddNode(std
     if (!nodeType)
         return Error(BlueprintError::UnknownType, "no node type is named " + std::string(type));
 
+    if (auto savable = Savable(config, nodeType->m_Title); !savable)
+        return savable.GetError();
+
     Graph trial = *this;
     auto& node = trial.m_Nodes.emplace_back();
     node.m_Id     = m_Blueprint->NewId();
@@ -1390,6 +1411,8 @@ crude_blueprint::Result<void> crude_blueprint::Graph::SetConfig(Id node, NodeCon
         return Error(BlueprintError::NotFound, "no node " + std::to_string(node) + " in " + m_Name);
     if (auto editable = Editable(*FindNode(node)); !editable)
         return editable;
+    if (auto savable = Savable(config, FindNode(node)->Name()); !savable)
+        return savable;
     Graph trial = *this;
     trial.MutableNode(node)->m_Config = std::move(config);
     trial.Update();
@@ -1506,6 +1529,8 @@ crude_blueprint::Result<void> crude_blueprint::Graph::SetValue(Id pin, Value val
         return Error(BlueprintError::Undecided, PinName(*found) + " has no type decided for its value");
     if (value.GetType() != found->m_DecidedType)
         return Error(BlueprintError::WrongType, PinName(*found) + " takes " + found->m_DecidedType->m_Name + ", not " + value.GetType()->m_Name);
+    if (auto savable = Savable(value, PinName(*found)); !savable)
+        return savable;
     values[pin] = std::move(value);
     return {};
 }

@@ -774,7 +774,8 @@ public:
     // A struct pin gives way to a pin per field, "pos" to "pos.x" and "pos.y", and its links are
     // disabled until it's recombined. Recombining a pin recombines its split fields too.
     Result<void> SplitPin(Id node, std::string_view key, bool split);
-    // For a data input of a decided type, a value of that type; no value clears it.
+    // For a data input of a decided type, a value of that type; no value clears it. Values in pins
+    // and in configs are those a file can hold, such as finite Floats.
     Result<void> SetValue(Id pin, Value value);
 
     std::span<const Node>       Nodes() const       { return m_Nodes; }
