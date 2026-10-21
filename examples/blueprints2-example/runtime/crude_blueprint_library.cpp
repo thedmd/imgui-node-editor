@@ -1140,6 +1140,42 @@ struct ForEachNode final : NodeType
     }
 };
 
+// Of a map it reads again before each round, in the order of its keys.
+struct ForEachEntryNode final : NodeType
+{
+    ForEachEntryNode(): NodeType("crude.ForEachEntry", "For Each Entry", "Flow") {}
+
+    void Declare(NodeDeclaration& declaration, const NodeConfig&, const Bindings&) const override
+    {
+        auto K = Keys(declaration);
+        auto V = declaration.Variable("V");
+        declaration.FlowInput("enter");
+        declaration.Input("map", "Map", MapOf(K, V));
+        declaration.FlowOutput("body", "Loop Body");
+        declaration.Output("key", "Key", K);
+        declaration.Output("value", "Value", V);
+        declaration.FlowOutput("completed", "Completed");
+    }
+
+    Result<Exit> Execute(ExecContext& context, std::string_view) const override
+    {
+        auto& index = context.State<size_t>();
+        if (context.IsAgain())
+            ++index;
+        else
+            index = 0;
+        auto map = context.Get("map");
+        if (!map)
+            return map.GetError();
+        auto entries = map.GetValue().AsMap();
+        if (index >= entries.size())
+            return Exit::To("completed");
+        context.Set("key", entries[index].first);
+        context.Set("value", entries[index].second);
+        return Exit::Loop("body");
+    }
+};
+
 // Reads its condition again before each round.
 struct WhileLoopNode final : NodeType
 {
@@ -1403,6 +1439,7 @@ crude_blueprint::Result<void> crude_blueprint::RegisterLibrary(Registry& registr
         std::make_unique<SequenceNode>(),
         std::make_unique<SwitchOnIntNode>(),
         std::make_unique<ForEachNode>(),
+        std::make_unique<ForEachEntryNode>(),
         std::make_unique<WhileLoopNode>(),
         std::make_unique<DoOnceNode>(),
         std::make_unique<DoNNode>(),

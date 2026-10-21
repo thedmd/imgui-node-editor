@@ -456,6 +456,22 @@ TEST_CASE(ForEachItems, "library.for_each_gives_each_item_and_its_index", nullpt
     test::Check(printed == "0 10 1 20 2 30 done" && f.Type(loop, "element") == "Int32", "each index and item of [10, 20, 30], then done: %s", printed.c_str());
 }
 
+TEST_CASE(ForEachEntries, "library.for_each_entry_gives_each_key_and_value_in_order", nullptr, test::TestFlags_None)
+{
+    Fixture f;
+    auto  start = f.Add("Start"), loop = f.Add("ForEachEntry"), key = f.Add("Print"), value = f.Add("Print"), done = f.Printer("done");
+    auto& type  = *f.m_Blueprint.GetTypes().Get(MapValueType(), std::vector<const Type*>{ &Int32Type(), &StringType() });
+    f.Link(start, "then", loop, "enter");
+    f.Link(f.Constant(Value::Map(type, { { Value::Int32(2), Value::String("b") }, { Value::Int32(1), Value::String("a") } })), "value", loop, "map");
+    f.Link(loop, "body", key, "enter");
+    f.Link(key, "then", value, "enter");
+    f.Link(loop, "key", key, "text", LinkMode::Cast);
+    f.Link(loop, "value", value, "text");
+    f.Link(loop, "completed", done, "enter");
+    auto printed = f.Run();
+    test::Check(printed == "1 a 2 b done", "each entry of {2: b, 1: a}, by key, then done: %s", printed.c_str());
+}
+
 TEST_CASE(WhileLoopRounds, "library.a_while_loop_reads_its_condition_before_each_round", nullptr, test::TestFlags_None)
 {
     // The condition is that Flip Flop isn't at A: true until the body enters it once.
