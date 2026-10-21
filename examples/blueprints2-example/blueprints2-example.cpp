@@ -1142,10 +1142,11 @@ private:
             const char* state = "";
             switch (fiber.m_State)
             {
-                case FiberState::Ready:   state = fiber.m_AtBreakpoint ? "paused at a breakpoint" : m_Debugger.IsRunning() ? "running" : "paused"; break;
-                case FiberState::Done:    state = "done";    break;
-                case FiberState::Failed:  state = "failed";  break;
-                case FiberState::Stopped: state = "stopped"; break;
+                case FiberState::Ready:     state = fiber.m_AtBreakpoint ? "paused at a breakpoint" : m_Debugger.IsRunning() ? "running" : "paused"; break;
+                case FiberState::Suspended: state = "suspended"; break;
+                case FiberState::Done:      state = "done";      break;
+                case FiberState::Failed:    state = "failed";    break;
+                case FiberState::Stopped:   state = "stopped";   break;
             }
             ImGui::PushID(static_cast<int>(fiber.m_Id));
             ImGui::TableNextRow();

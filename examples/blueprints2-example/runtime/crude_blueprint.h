@@ -626,22 +626,45 @@ private:
 class EvalContext;
 class ExecContext;
 
+// What a suspended fiber waits for: the context's clock to reach a time, or a signal its host sends.
+struct Wake
+{
+    enum class Kind : uint8_t
+    {
+        Time,
+        Signal,
+    };
+
+    Kind        m_Kind = Kind::Time;
+    double      m_Time = 0.0;
+    std::string m_Signal;
+
+    static Wake At(double time)              { return { Kind::Time, time, {} }; }
+    static Wake OnSignal(std::string signal) { return { Kind::Signal, 0.0, std::move(signal) }; }
+
+    bool operator==(const Wake& other) const = default;
+};
+
 // Where a fiber goes once a node ran.
 struct Exit
 {
     enum class Kind : uint8_t
     {
-        None, // the branch ends
-        To,   // on at a flow output
-        Loop, // the branch from a flow output, then this node again, at the same flow input
+        None,    // the branch ends
+        To,      // on at a flow output
+        Loop,    // the branch from a flow output, then this node again, at the same flow input
+        Suspend, // the fiber waits for the wake, then enters this node again, at the same flow input
     };
 
     Kind        m_Kind = Kind::None;
     std::string m_Pin;
+    Wake        m_Wake;
 
     static Exit None()                { return {}; }
-    static Exit To(std::string pin)   { return { Kind::To, std::move(pin) }; }
-    static Exit Loop(std::string pin) { return { Kind::Loop, std::move(pin) }; }
+    static Exit To(std::string pin)   { return { Kind::To, std::move(pin), {} }; }
+    static Exit Loop(std::string pin) { return { Kind::Loop, std::move(pin), {} }; }
+    // For a latent node only.
+    static Exit Suspend(Wake wake)    { return { Kind::Suspend, {}, std::move(wake) }; }
 };
 
 // One registered type can be many node types: Make for each struct, a call for each function.
@@ -668,6 +691,9 @@ struct NodeType
 
     // An event starts fibers, by its name: "Start". Other nodes have none.
     virtual std::string EventName(const NodeConfig& config) const;
+
+    // A latent node may suspend its fiber. Other nodes can't.
+    virtual bool IsLatent() const;
 
     // Makes a node that an older version of this node type saved, as a file holds it, one this
     // version reads. Unsupported unless the node type has it.
@@ -935,6 +961,9 @@ public:
     const Function* FindFunction(Id graph) const;
     // The function a node type of the blueprint's is the entry, a return or the call of.
     const Function* FunctionOf(const NodeType& type) const;
+    // A latent node type's nodes may suspend their fibers, and so may the calls of a function that
+    // holds one, or calls one that may.
+    bool            MaySuspend(const NodeType& type) const;
 
     std::span<const std::unique_ptr<Graph>> Graphs() const { return m_Graphs; }
 
@@ -1082,9 +1111,10 @@ using FiberId = uint32_t;
 
 enum class FiberState : uint8_t
 {
-    Ready,   // with a node to run next
+    Ready,     // with a node to run next
+    Suspended, // at the node that suspended it, until its wake
     Done,
-    Failed,  // a run-time error stopped it
+    Failed,    // a run-time error stopped it
     Stopped,
 };
 
@@ -1097,15 +1127,17 @@ struct FiberInfo
     Id         m_Ran          = 0;     // the node its last step ran
     Id         m_Link         = 0;     // the flow link its last step took; 0 for none, as into a loop's node again
     bool       m_AtBreakpoint = false; // Run() stopped it before its next node, which has a breakpoint
+    Wake       m_Wake;                 // what it waits for, while it's suspended
     std::vector<Id> m_Calls;           // the call nodes it's in, the outermost first
 };
 
 // Why Run() returned.
 enum class RunState : uint8_t
 {
-    Idle,       // no fiber is ready
+    Idle,       // no fiber is ready or suspended
     Running,    // the time is up, and fibers are ready
     Breakpoint, // a fiber is before a node with a breakpoint
+    Suspended,  // no fiber is ready, and some wait for their wakes
 };
 
 // A flow link a step took.
@@ -1160,6 +1192,7 @@ public:
     bool              HasPin(std::string_view pin) const; // as a group's, which the config decides
     const NodeConfig& Config() const;
     void              Log(std::string_view text);
+    double            Time() const; // the context's clock
 
     // The node's own, in this context: made on first use, and kept until the context goes.
     template <typename T>
@@ -1186,13 +1219,16 @@ public:
 class ExecContext final : public NodeContext
 {
 public:
-    ExecContext(Context& context, int node, CallFrame& frame, bool again): NodeContext(context, node, frame), m_Again(again) {}
+    ExecContext(Context& context, int node, CallFrame& frame, bool again, bool resumed): NodeContext(context, node, frame), m_Again(again), m_Resumed(resumed) {}
 
     // Entered again after the branch of its Exit::Loop.
-    bool IsAgain() const { return m_Again; }
+    bool IsAgain() const   { return m_Again; }
+    // Entered again once the wake of its Exit::Suspend came.
+    bool IsResumed() const { return m_Resumed; }
 
 private:
     bool m_Again;
+    bool m_Resumed;
 };
 
 // One run of a program: its fibers, the values of its slots, the state of its nodes, and the errors
@@ -1208,9 +1244,14 @@ public:
     // Runs the fiber's next node, breakpoint or not.
     Result<FiberState> Step(FiberId fiber);
     // Steps the ready fibers in turn until none is ready, the time is up, or a fiber is before a
-    // node with a breakpoint. Run again, that fiber runs the node.
+    // node with a breakpoint. Run again, that fiber runs the node. A fiber that resumes at a node
+    // with a breakpoint doesn't stop there again.
     RunState           Run(std::chrono::microseconds budget);
     void               Stop(FiberId fiber);
+    // Moves the clock on, in seconds; only the host does. The fibers whose time came are ready again.
+    void               Advance(double seconds);
+    // Readies the fibers that wait for the signal; one that none waits for is lost.
+    void               Signal(std::string_view signal);
     // Of a node with flow pins; a pure node's never stops a run.
     void               SetBreakpoint(Id node, bool enabled);
     // Goes on with a program compiled from the same blueprint with other values: typed into inputs,
@@ -1219,6 +1260,7 @@ public:
 
     std::vector<FiberInfo>      Fibers() const;
     uint64_t                    StepCount() const   { return m_Step; }
+    double                      Time() const        { return m_Time; }
     // The flow links the last steps took, up to c_TraceLength, the oldest first.
     std::span<const TraceEntry> Trace() const       { return m_Trace; }
     std::span<const Diagnostic> Diagnostics() const { return m_Diagnostics; }
@@ -1235,9 +1277,10 @@ private:
     struct Fiber
     {
         FiberInfo              m_Info;
-        int                    m_Node  = -1;
-        int                    m_Entry = -1;
-        bool                   m_Again = false;
+        int                    m_Node    = -1;
+        int                    m_Entry   = -1;
+        bool                   m_Again   = false;
+        bool                   m_Resumed = false;
         std::vector<CallFrame> m_Frames; // the event graphs' first
     };
 
@@ -1262,6 +1305,7 @@ private:
     void          Take(Fiber& fiber, const ProgramPin& output);
     void          Settle(Fiber& fiber);
     FiberState    Fail(Fiber& fiber, Error error, int node);
+    void          Resume(Fiber& fiber);
     Fiber*        FindFiber(FiberId fiber);
 
     std::shared_ptr<const Program>       m_Program;
@@ -1276,6 +1320,7 @@ private:
     std::vector<TraceEntry>              m_Trace;
     ContextMonitor*                      m_Monitor    = nullptr;
     uint64_t                             m_Step       = 0;
+    double                               m_Time       = 0.0;
     // Up when a step starts and when a node with flow pins writes an output, so a pure output
     // is computed at most once for what it reads.
     uint64_t                             m_Generation = 1;

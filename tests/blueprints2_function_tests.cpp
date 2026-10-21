@@ -20,12 +20,18 @@ TestNodeType s_Tick("Tick", [](NodeDeclaration& d, const NodeConfig&, const Bind
     return {};
 });
 
+// Waits a second on the context's clock.
+TestNodeType s_Wait("Wait", [](NodeDeclaration& d, const NodeConfig&, const Bindings&) { d.FlowInput("enter"); d.FlowOutput("then"); }, [](ExecContext& context, std::string_view) -> Result<Exit>
+{
+    return context.IsResumed() ? Exit::To("then") : Exit::Suspend(Wake::At(context.Time() + 1.0));
+}, {}, {}, true);
+
 std::shared_ptr<const Registry> FunctionRegistry()
 {
     static const std::shared_ptr<const Registry> registry = []
     {
         auto made = std::make_shared<Registry>();
-        if (!RegisterBuiltins(*made) || !RegisterLibrary(*made) || !made->AddNodeType(s_Tick))
+        if (!RegisterBuiltins(*made) || !RegisterLibrary(*made) || !made->AddNodeType(s_Tick) || !made->AddNodeType(s_Wait))
             test::Check(false, "the library is registered");
         return made;
     }();
@@ -545,4 +551,61 @@ TEST_CASE(CompilingFunctions, "function.compiling_checks_entries_returns_and_pur
     twice.In(both, "return:Lerp");
     twice.In(both, "return:Lerp");
     test::Check(compiled(twice).find("two returns") != std::string::npos, "and a pure one has one return at most: %s", compiled(twice).c_str());
+}
+
+TEST_CASE(SuspendingCalls, "function.a_call_suspends_with_its_frame_and_goes_on_once_resumed", nullptr, test::TestFlags_None)
+{
+    // Later(x: Int32) -> y: Int32 waits a second, then returns x + x. Start calls it with 4, then
+    // prints y.
+    Fixture f;
+    Signature later;
+    later.m_Inputs  = { { "x", "X", Int32Type() } };
+    later.m_Outputs = { { "y", "Y", Int32Type() } };
+    auto& body  = f.Function("Later", later);
+    auto  entry = f.In(body, "entry:Later"), wait = f.In(body, "test.Wait"), add = f.In(body, "crude.Add"), ret = f.In(body, "return:Later");
+    f.Wire(body, entry, "then", wait, "enter");
+    f.Wire(body, wait, "then", ret, "enter");
+    f.Wire(body, entry, "x", add, "in.0");
+    f.Wire(body, entry, "x", add, "in.1");
+    f.Wire(body, add, "result", ret, "y");
+    auto start = f.Add("Start"), call = f.Call("Later"), print = f.Add("Print");
+    f.Link(start, "then", call, "enter");
+    f.Link(call, "then", print, "enter");
+    f.Link(call, "y", print, "text", LinkMode::Cast);
+    f.Assign(f.m_Graph, call, "x", Value::Int32(4));
+    auto compiled = Compile(f.m_Blueprint);
+    if (!compiled.m_Program)
+        return test::Check(false, "the blueprint compiles");
+
+    Context context(compiled.m_Program);
+    Logs    logs;
+    context.SetMonitor(&logs);
+    auto started   = context.Start("Start").IsOk();
+    auto suspended = context.Run(std::chrono::seconds(1));
+    auto info      = context.Fibers()[0];
+    auto x         = context.Evaluate(f.PinOf(body, entry, "x"));
+    test::Check(started && suspended == RunState::Suspended && info.m_Node == wait && info.m_Calls == std::vector<Id>{ call } && x && x.GetValue().m_Value == Value::Int32(4), "the fiber suspends in the call, whose x the debugger reads");
+    context.Advance(1.0);
+    auto end = context.Run(std::chrono::seconds(1));
+    test::Check(end == RunState::Idle && logs.m_Text == "8" && context.Fibers()[0].m_State == FiberState::Done, "resumed, the call returns, and Start prints 8: %s", logs.m_Text.c_str());
+}
+
+TEST_CASE(LatentCalls, "function.a_call_may_suspend_when_its_function_holds_a_latent_node", nullptr, test::TestFlags_None)
+{
+    // Later holds a Wait, and Outer calls Later. Plain prints, and Self calls itself and Plain.
+    Fixture f;
+    auto& later = f.Function("Later", {});
+    auto& outer = f.Function("Outer", {});
+    auto& plain = f.Function("Plain", {});
+    auto& self  = f.Function("Self", {});
+    for (auto [graph, type] : { std::pair(&later, "test.Wait"), std::pair(&outer, "call:Later"), std::pair(&plain, "crude.Print"), std::pair(&self, "call:Self"), std::pair(&self, "call:Plain") })
+        f.In(*graph, type);
+    auto may = [&f](const char* type)
+    {
+        auto found = f.m_Blueprint.FindNodeType(type);
+        return found && f.m_Blueprint.MaySuspend(*found);
+    };
+    test::Check(may("test.Wait") && !may("crude.Print"), "a latent node type's nodes may suspend, and others' not");
+    test::Check(may("call:Later") && may("call:Outer"), "so may a call of a function that holds one, or of one that calls it");
+    test::Check(!may("call:Plain") && !may("call:Self") && !may("entry:Later") && !may("return:Later"), "a call of a function that doesn't, through itself or not, may not, nor may its entry and returns");
 }

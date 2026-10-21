@@ -15,18 +15,20 @@ namespace blueprints2_tests {
 using namespace crude_blueprint;
 
 // Runs only with the functions it's given. An event takes its name from the node's "event" data, if any.
+// A latent one may suspend its fiber.
 struct TestNodeType final : NodeType
 {
     using Declaration = std::function<void(NodeDeclaration&, const NodeConfig&, const Bindings&)>;
     using Execution   = std::function<Result<Exit>(ExecContext&, std::string_view)>;
     using Evaluation  = std::function<Result<void>(EvalContext&)>;
 
-    TestNodeType(std::string title, Declaration declare, Execution execute = {}, Evaluation evaluate = {}, std::string event = {})
+    TestNodeType(std::string title, Declaration declare, Execution execute = {}, Evaluation evaluate = {}, std::string event = {}, bool latent = false)
         : NodeType("test." + title, title)
         , m_Declare(std::move(declare))
         , m_Execute(std::move(execute))
         , m_Evaluate(std::move(evaluate))
         , m_Event(std::move(event))
+        , m_Latent(latent)
     {
     }
 
@@ -53,10 +55,16 @@ struct TestNodeType final : NodeType
         return name != config.m_Data.end() && name->second.GetType() == &StringType() ? std::string(name->second.AsString()) : m_Event;
     }
 
+    bool IsLatent() const override
+    {
+        return m_Latent;
+    }
+
     const Declaration m_Declare;
     const Execution   m_Execute;
     const Evaluation  m_Evaluate;
     const std::string m_Event;
+    const bool        m_Latent;
 };
 
 // A blueprint with one graph. Its helpers fail the test when a step it needs isn't done.

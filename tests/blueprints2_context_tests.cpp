@@ -217,6 +217,42 @@ TestNodeType s_Fail("Fail", FlowThrough, [](ExecContext&, std::string_view) -> R
 TestNodeType s_Throw("Throw", FlowThrough, [](ExecContext&, std::string_view) -> Result<Exit> { throw std::runtime_error("boom"); });
 TestNodeType s_Lost("Lost", FlowThrough, [](ExecContext&, std::string_view) -> Result<Exit> { return Exit::To("elsewhere"); });
 TestNodeType s_Idle("Idle", FlowThrough);
+// Suspends as a latent node does, but isn't one.
+TestNodeType s_Pretend("Pretend", FlowThrough, [](ExecContext&, std::string_view) -> Result<Exit> { return Exit::Suspend(Wake::At(0.0)); });
+
+// Waits so many seconds on the context's clock.
+TestNodeType s_Sleep("Sleep", [](NodeDeclaration& d, const NodeConfig&, const Bindings&)
+{
+    d.FlowInput("enter");
+    d.Input("seconds", "Seconds", FloatType(), { .m_Default = Value::Float(1.0f) });
+    d.FlowOutput("then");
+},
+[](ExecContext& context, std::string_view) -> Result<Exit>
+{
+    if (context.IsResumed())
+        return Exit::To("then");
+    auto seconds = context.Get<float>("seconds");
+    if (!seconds)
+        return Failed(seconds);
+    return Exit::Suspend(Wake::At(context.Time() + seconds.GetValue()));
+}, {}, {}, true);
+
+// Waits for the signal it's given.
+TestNodeType s_Await("Await", [](NodeDeclaration& d, const NodeConfig&, const Bindings&)
+{
+    d.FlowInput("enter");
+    d.Input("signal", "Signal", StringType());
+    d.FlowOutput("then");
+},
+[](ExecContext& context, std::string_view) -> Result<Exit>
+{
+    if (context.IsResumed())
+        return Exit::To("then");
+    auto signal = context.Get<std::string>("signal");
+    if (!signal)
+        return Failed(signal);
+    return Exit::Suspend(Wake::OnSignal(signal.GetValue()));
+}, {}, {}, true);
 
 TestNodeType s_Broken("Broken", [](NodeDeclaration& d, const NodeConfig&, const Bindings&) { d.Output("text", "Text", StringType()); },
     {}, [](EvalContext&) -> Result<void> { return Error(BlueprintError::NotFinite, "it can't compute"); });
@@ -291,7 +327,7 @@ std::shared_ptr<const Registry> ContextRegistry()
         auto made = std::make_shared<Registry>();
         auto ok = RegisterBuiltins(*made).IsOk();
         for (auto type : { &s_Start, &s_Log, &s_Twice, &s_Count, &s_Plus, &s_Text, &s_Number, &s_Word, &s_Repeat, &s_Fail, &s_Throw, &s_Lost, &s_Idle,
-                           &s_Broken, &s_Pass, &s_Need, &s_Hint, &s_Probe, &s_Tick, &s_Shift, &s_Show })
+                           &s_Pretend, &s_Sleep, &s_Await, &s_Broken, &s_Pass, &s_Need, &s_Hint, &s_Probe, &s_Tick, &s_Shift, &s_Show })
             ok = made->AddNodeType(*type).IsOk() && ok;
         if (!ok)
             test::Check(false, "the test registry is made");
@@ -937,7 +973,7 @@ TEST_CASE(NodeState, "context.state_belongs_to_a_node_in_a_context", nullptr, te
 
 TEST_CASE(NodesThatCantRun, "context.a_node_that_cant_run_fails_its_fiber", nullptr, test::TestFlags_None)
 {
-    for (auto type : { "Lost", "Idle" })
+    for (auto type : { "Lost", "Idle", "Pretend" })
     {
         Fixture f;
         auto start = f.Add("Start"), node = f.Add(type);
@@ -950,4 +986,108 @@ TEST_CASE(NodesThatCantRun, "context.a_node_that_cant_run_fails_its_fiber", null
             test::Check(end == FiberState::Failed && diagnostics.size() == 1 && diagnostics[0].m_Node == node, "%s fails: %s", type, Messages(diagnostics).c_str());
         }
     }
+}
+
+TEST_CASE(Suspending, "context.a_fiber_suspends_until_its_time_and_its_node_resumes", nullptr, test::TestFlags_None)
+{
+    // Start, then a Repeat of three rounds, whose body Sleeps for a second, then logs the index.
+    Fixture f;
+    auto start = f.Add("Start"), repeat = f.Add("Repeat"), sleep = f.Add("Sleep"), log = f.Add("Log"), text = f.Add("Text");
+    f.Link(start, "then", repeat, "enter");
+    f.Link(repeat, "body", sleep, "enter");
+    f.Link(sleep, "then", log, "enter");
+    f.Link(repeat, "index", text, "number");
+    f.Link(text, "text", log, "text");
+    auto program = f.Compiled();
+    if (!program)
+        return;
+    Context context(program);
+    Logs    logs;
+    context.SetMonitor(&logs);
+    auto fiber = context.Start("Start").ValueOr(0);
+
+    auto first = context.Run(std::chrono::seconds(1));
+    auto info  = context.Fibers()[0];
+    test::Check(first == RunState::Suspended && info.m_State == FiberState::Suspended && info.m_Node == sleep && info.m_Wake == Wake::At(1.0) && logs.m_Text.empty(), "the fiber suspends at Sleep, until the clock reaches 1");
+    auto refused = context.Step(fiber);
+    test::Check(!refused && refused.GetError().Is(BlueprintError::Unsupported), "and takes no step: %s", Message(refused).c_str());
+
+    context.Advance(0.5);
+    context.Signal("");
+    auto early = context.Run(std::chrono::seconds(1));
+    test::Check(early == RunState::Suspended && logs.m_Text.empty(), "half a second on, and after a signal of no name, it still waits");
+    context.Advance(0.5);
+    auto woken  = context.Fibers()[0].m_State;
+    auto second = context.Run(std::chrono::seconds(1));
+    test::Check(woken == FiberState::Ready && second == RunState::Suspended && logs.m_Text == "0" && context.Fibers()[0].m_Wake == Wake::At(2.0), "at 1, Sleep goes on, and the next round sleeps until 2: %s", logs.m_Text.c_str());
+
+    context.Advance(5.0);
+    auto third = context.Run(std::chrono::seconds(1));
+    test::Check(third == RunState::Suspended && logs.m_Text == "0 1" && context.Fibers()[0].m_Wake == Wake::At(7.0), "the clock moves on by as much as it's told, and the last round sleeps from there");
+    context.Advance(1.0);
+    auto end = context.Run(std::chrono::seconds(1));
+    test::Check(end == RunState::Idle && logs.m_Text == "0 1 2" && context.Fibers()[0].m_State == FiberState::Done && context.Time() == 7.0, "then the loop ends: %s", logs.m_Text.c_str());
+}
+
+TEST_CASE(Signals, "context.a_signal_wakes_the_fibers_waiting_for_it_and_is_lost_without_one", nullptr, test::TestFlags_None)
+{
+    // Events One and Two wait for "go", and Three for "stop"; each logs its name.
+    Fixture f;
+    std::vector<Id> waits;
+    for (auto name : { "One", "Two", "Three" })
+    {
+        auto event = f.Add("Start", Event(name)), wait = f.Add("Await"), log = f.Add("Log");
+        f.Link(event, "then", wait, "enter");
+        f.Link(wait, "then", log, "enter");
+        f.SetValue(wait, "signal", Value::String(name == std::string("Three") ? "stop" : "go"));
+        f.SetValue(log, "text", Value::String(name));
+        waits.push_back(wait);
+    }
+    auto program = f.Compiled();
+    if (!program)
+        return;
+    Context context(program);
+    Logs    logs;
+    context.SetMonitor(&logs);
+    auto started = context.Start("One").IsOk() && context.Start("Two").IsOk();
+    context.Signal("go");
+    auto waiting = context.Run(std::chrono::seconds(1));
+    auto fibers  = context.Fibers();
+    test::Check(started && waiting == RunState::Suspended && fibers[0].m_Wake == Wake::OnSignal("go") && fibers[1].m_Node == waits[1] && logs.m_Text.empty(), "a signal sent before they wait is lost on them");
+
+    context.Signal("stop");
+    auto still = context.Run(std::chrono::seconds(1));
+    test::Check(still == RunState::Suspended && logs.m_Text.empty(), "nor does another signal wake them");
+    context.Signal("go");
+    auto went = context.Run(std::chrono::seconds(1));
+    test::Check(went == RunState::Idle && logs.m_Text == "One Two", "theirs wakes both: %s", logs.m_Text.c_str());
+
+    auto third = context.Start("Three").ValueOr(0);
+    auto stopping = context.Run(std::chrono::seconds(1));
+    context.Stop(third);
+    context.Signal("stop");
+    auto stopped = context.Run(std::chrono::seconds(1));
+    test::Check(stopping == RunState::Suspended && stopped == RunState::Idle && context.Fibers()[2].m_State == FiberState::Stopped && logs.m_Text == "One Two", "a suspended fiber stops, and its signal doesn't wake it");
+}
+
+TEST_CASE(ResumedBreakpoints, "context.a_fiber_resumed_at_a_breakpoint_doesnt_stop_there_again", nullptr, test::TestFlags_None)
+{
+    Fixture f;
+    auto start = f.Add("Start"), sleep = f.Add("Sleep"), log = f.Add("Log");
+    f.Link(start, "then", sleep, "enter");
+    f.Link(sleep, "then", log, "enter");
+    f.SetValue(log, "text", Value::String("woke"));
+    auto program = f.Compiled();
+    if (!program)
+        return;
+    Context context(program);
+    Logs    logs;
+    context.SetMonitor(&logs);
+    auto started = context.Start("Start").IsOk();
+    context.SetBreakpoint(sleep, true);
+    auto before    = context.Run(std::chrono::seconds(1));
+    auto suspended = context.Run(std::chrono::seconds(1));
+    context.Advance(1.0);
+    auto end = context.Run(std::chrono::seconds(1));
+    test::Check(started && before == RunState::Breakpoint && suspended == RunState::Suspended && end == RunState::Idle && logs.m_Text == "woke", "Run stops before Sleep once, and Sleep resumes without stopping");
 }

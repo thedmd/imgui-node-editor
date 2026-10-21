@@ -2263,6 +2263,22 @@ const crude_blueprint::Function* crude_blueprint::Blueprint::FunctionOf(const No
     return role ? FindFunction(role->m_Function->m_Graph) : nullptr;
 }
 
+bool crude_blueprint::Blueprint::MaySuspend(const NodeType& type) const
+{
+    std::set<Id> seen;
+    std::function<bool(const NodeType&)> suspends = [&](const NodeType& of)
+    {
+        if (of.IsLatent())
+            return true;
+        auto role = Cast<FunctionNodeType>(&of);
+        if (!role || role->m_Role != FunctionNodeType::Role::Call || !seen.insert(role->m_Function->m_Graph).second)
+            return false;
+        auto graph = FindGraph(role->m_Function->m_Graph);
+        return graph && std::any_of(graph->Nodes().begin(), graph->Nodes().end(), [&suspends](const Node& node) { return suspends(*node.m_Type); });
+    };
+    return suspends(type);
+}
+
 crude_blueprint::Result<void> crude_blueprint::Blueprint::CheckFunction(std::string_view name, const Signature& signature) const
 {
     if (name.empty() || !std::all_of(name.begin(), name.end(), IsNameCharacter))
@@ -2391,6 +2407,11 @@ crude_blueprint::Result<void> crude_blueprint::NodeType::Evaluate(EvalContext&) 
 std::string crude_blueprint::NodeType::EventName(const NodeConfig&) const
 {
     return {};
+}
+
+bool crude_blueprint::NodeType::IsLatent() const
+{
+    return false;
 }
 
 int crude_blueprint::Program::FindNode(Id node) const
@@ -2731,6 +2752,11 @@ void crude_blueprint::NodeContext::Log(std::string_view text)
         m_Context.m_Monitor->OnLog(m_Context, m_Context.m_Program->m_Nodes[m_Node].m_Id, text);
 }
 
+double crude_blueprint::NodeContext::Time() const
+{
+    return m_Context.m_Time;
+}
+
 std::any& crude_blueprint::NodeContext::StateSlot()
 {
     return m_Context.m_States[m_Node];
@@ -2771,7 +2797,7 @@ crude_blueprint::Result<crude_blueprint::FiberState> crude_blueprint::Context::S
     if (!fiber)
         return Error(BlueprintError::NotFound, "no fiber " + std::to_string(id));
     if (fiber->m_Info.m_State != FiberState::Ready)
-        return Error(BlueprintError::Unsupported, "fiber " + std::to_string(id) + " has ended");
+        return Error(BlueprintError::Unsupported, "fiber " + std::to_string(id) + (fiber->m_Info.m_State == FiberState::Suspended ? " is suspended" : " has ended"));
 
     ++m_Step;
     ++m_Generation;
@@ -2793,15 +2819,24 @@ crude_blueprint::Result<crude_blueprint::FiberState> crude_blueprint::Context::S
     }
 
     auto&       frame = fiber->m_Frames.back();
-    ExecContext context(*this, index, frame, fiber->m_Again);
+    ExecContext context(*this, index, frame, fiber->m_Again, fiber->m_Resumed);
     auto        exit  = Contained([&] { return node.m_Type->Execute(context, entry >= 0 ? std::string_view(node.m_Pins[entry].m_Key) : std::string_view()); });
     if (!exit)
         return Fail(*fiber, exit.GetError(), index);
 
+    fiber->m_Again   = false;
+    fiber->m_Resumed = false;
+    auto& taken = exit.GetValue();
+    if (taken.m_Kind == Exit::Kind::Suspend)
+    {
+        if (!node.m_Type->IsLatent())
+            return Fail(*fiber, Error(BlueprintError::Unsupported, node.m_Name + " suspends, but isn't latent"), index);
+        fiber->m_Info.m_State = FiberState::Suspended;
+        fiber->m_Info.m_Wake  = taken.m_Wake;
+        return fiber->m_Info.m_State;
+    }
     fiber->m_Node  = -1;
     fiber->m_Entry = -1;
-    fiber->m_Again = false;
-    auto& taken = exit.GetValue();
     if (taken.m_Kind != Exit::Kind::None)
     {
         auto pin = FindPinByKey(node, taken.m_Pin);
@@ -2826,7 +2861,7 @@ crude_blueprint::RunState crude_blueprint::Context::Run(std::chrono::microsecond
             auto& fiber = m_Fibers[i];
             if (fiber.m_Info.m_State != FiberState::Ready)
                 continue;
-            if (m_Breakpoints[fiber.m_Node] && !fiber.m_Info.m_AtBreakpoint)
+            if (m_Breakpoints[fiber.m_Node] && !fiber.m_Info.m_AtBreakpoint && !fiber.m_Resumed)
             {
                 fiber.m_Info.m_AtBreakpoint = true;
                 return RunState::Breakpoint;
@@ -2834,24 +2869,39 @@ crude_blueprint::RunState crude_blueprint::Context::Run(std::chrono::microsecond
             ready = true;
             [[maybe_unused]] auto state = Step(fiber.m_Info.m_Id);
         }
-        if (!ready)
-            return RunState::Idle;
-        if (std::chrono::steady_clock::now() >= deadline)
+        if (!ready || std::chrono::steady_clock::now() >= deadline)
         {
-            auto any = std::any_of(m_Fibers.begin(), m_Fibers.end(), [](const Fiber& fiber) { return fiber.m_Info.m_State == FiberState::Ready; });
-            return any ? RunState::Running : RunState::Idle;
+            auto any = [this](FiberState state) { return std::any_of(m_Fibers.begin(), m_Fibers.end(), [state](const Fiber& fiber) { return fiber.m_Info.m_State == state; }); };
+            return any(FiberState::Ready) ? RunState::Running : any(FiberState::Suspended) ? RunState::Suspended : RunState::Idle;
         }
     }
 }
 
 void crude_blueprint::Context::Stop(FiberId id)
 {
-    if (auto fiber = FindFiber(id); fiber && fiber->m_Info.m_State == FiberState::Ready)
+    if (auto fiber = FindFiber(id); fiber && (fiber->m_Info.m_State == FiberState::Ready || fiber->m_Info.m_State == FiberState::Suspended))
     {
         fiber->m_Info.m_State        = FiberState::Stopped;
         fiber->m_Info.m_Node         = 0;
         fiber->m_Info.m_AtBreakpoint = false;
+        fiber->m_Info.m_Wake         = {};
     }
+}
+
+void crude_blueprint::Context::Advance(double seconds)
+{
+    if (seconds > 0.0)
+        m_Time += seconds;
+    for (auto& fiber : m_Fibers)
+        if (fiber.m_Info.m_State == FiberState::Suspended && fiber.m_Info.m_Wake.m_Kind == Wake::Kind::Time && fiber.m_Info.m_Wake.m_Time <= m_Time)
+            Resume(fiber);
+}
+
+void crude_blueprint::Context::Signal(std::string_view signal)
+{
+    for (auto& fiber : m_Fibers)
+        if (fiber.m_Info.m_State == FiberState::Suspended && fiber.m_Info.m_Wake.m_Kind == Wake::Kind::Signal && fiber.m_Info.m_Wake.m_Signal == signal)
+            Resume(fiber);
 }
 
 void crude_blueprint::Context::SetBreakpoint(Id node, bool enabled)
@@ -3225,6 +3275,13 @@ crude_blueprint::FiberState crude_blueprint::Context::Fail(Fiber& fiber, Error e
     m_Diagnostics.push_back({ std::move(error), Severity::Error, at.m_Graph, at.m_Id, 0, m_ErrorLink });
     fiber.m_Info.m_State = FiberState::Failed;
     return fiber.m_Info.m_State;
+}
+
+void crude_blueprint::Context::Resume(Fiber& fiber)
+{
+    fiber.m_Info.m_State = FiberState::Ready;
+    fiber.m_Info.m_Wake  = {};
+    fiber.m_Resumed      = true;
 }
 
 crude_blueprint::Context::Fiber* crude_blueprint::Context::FindFiber(FiberId id)
