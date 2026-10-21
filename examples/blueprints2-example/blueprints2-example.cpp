@@ -391,6 +391,7 @@ struct BlueprintEditorExample
             canvasMax = ImGui::GetItemRectMax();
 
             ShowBreakpoints(*m_Document, canvasMin, canvasMax);
+            ShowPendingLink(*m_Document, canvasMin, canvasMax);
             ShowRunOverlay(*m_Document, canvasMin, canvasMax);
             ShowBubbles(*m_Document, canvasMin, canvasMax);
             DeclareActions(*m_Document, canvasMin, canvasMax);
@@ -997,6 +998,26 @@ private:
 
         if (edit)
             edit();
+    }
+
+    // While the Create Node dialog is open for a link dragged from a pin, the link, from the pin to
+    // where it was dropped, curved as the editor curves links.
+    void ShowPendingLink(const Document& document, ImVec2 canvasMin, ImVec2 canvasMax)
+    {
+        const auto from = m_CreateNodeDialog.IsOpen() ? m_CreateNodeDialog.GetFromPin() : 0;
+        const auto pin  = from ? document.GetGraph().FindPin(from) : nullptr;
+        const auto icon = m_PinIcons.find(from);
+        if (!pin || icon == m_PinIcons.end())
+            return;
+        const auto scale     = ed::CanvasToScreen(ImVec2(1.0f, 0.0f)).x - ed::CanvasToScreen(ImVec2(0.0f, 0.0f)).x;
+        const auto output    = pin->m_Direction == Direction::Output;
+        const auto start     = ed::CanvasToScreen(ImVec2(output ? icon->second.Max.x : icon->second.Min.x, icon->second.GetCenter().y));
+        const auto end       = ed::CanvasToScreen(m_CreateNodeDialog.GetDropPoint());
+        const auto direction = ImVec2(output ? 1.0f : -1.0f, 0.0f) * ed::GetStyle().LinkStrength * scale;
+        auto drawList = ImGui::GetWindowDrawList();
+        drawList->PushClipRect(canvasMin, canvasMax, true);
+        drawList->AddBezierCubic(start, start + direction, end - direction, end, ImColor(PinColor(*pin)), (pin->m_Flow ? 2.5f : 1.5f) * scale);
+        drawList->PopClipRect();
     }
 
     // A red disc over the top-left corner of each node with a breakpoint.

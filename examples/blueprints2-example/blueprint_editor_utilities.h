@@ -327,10 +327,13 @@ private:
 // new node to it.
 struct CreateNodeDialog
 {
-    void Open(Id fromPin = 0);
+    void Open(Id fromPin = 0); // in the editor, suspended
     void Show(Document& document);
 
-    Id GetCreatedNode() const { return m_CreatedNode; }
+    Id     GetCreatedNode() const { return m_CreatedNode; }
+    bool   IsOpen() const         { return m_Open; }    // as it last showed
+    Id     GetFromPin() const     { return m_FromPin; }
+    ImVec2 GetDropPoint() const   { return m_DropPoint; } // on the canvas, where it opened
 
 private:
     void Update(Document& document);
@@ -343,6 +346,8 @@ private:
     bool                    m_Focus       = false;
     char                    m_Search[64]  = {};
     std::vector<NewNodeFit> m_Entries;    // by category and title; those that need a cast last, by title
+    ImVec2                  m_DropPoint;
+    bool                    m_Open        = false;
     int                     m_Selected    = 0;     // of the entries shown, which Up and Down move over and Enter makes
     int                     m_Shown       = 0;     // in the last frame
     bool                    m_Scroll      = false; // to the selected one

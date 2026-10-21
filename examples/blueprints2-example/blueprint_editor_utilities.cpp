@@ -1274,6 +1274,7 @@ void blueprint_editor_utilities::ItemDeleter::NodeDeleter::Reject()
 void blueprint_editor_utilities::CreateNodeDialog::Open(Id fromPin)
 {
     m_FromPin   = fromPin;
+    m_DropPoint = ax::NodeEditor::ScreenToCanvas(ImGui::GetMousePos());
     m_Revision  = std::nullopt;
     m_Focus     = true;
     m_Search[0] = 0;
@@ -1283,7 +1284,8 @@ void blueprint_editor_utilities::CreateNodeDialog::Open(Id fromPin)
 
 void blueprint_editor_utilities::CreateNodeDialog::Show(Document& document)
 {
-    if (!ImGui::IsPopupOpen("##create_node"))
+    m_Open = ImGui::IsPopupOpen("##create_node");
+    if (!m_Open)
         return;
 
     if (!ImGui::BeginPopup("##create_node"))
