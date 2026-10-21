@@ -1334,21 +1334,10 @@ private:
         ShowRenameFunction(document);
     }
 
-    // A new name for a function, taken on Enter.
     void ShowRenameFunction(Document& document)
     {
-        if (m_RenameFocus)
-            ImGui::OpenPopup("##rename-function");
-        if (!ImGui::BeginPopup("##rename-function"))
-            return;
-        if (std::exchange(m_RenameFocus, false))
-            ImGui::SetKeyboardFocusHere();
-        const auto done = ImGui::InputText("##name", m_RenameText, sizeof(m_RenameText), ImGuiInputTextFlags_EnterReturnsTrue);
-        if (done)
-            RenameFunction(document, m_RenamedFunction, m_RenameText);
-        if (done || ImGui::IsKeyPressed(ImGuiKey_Escape, false) || !document.GetBlueprint().FindFunction(m_RenamedFunction))
-            ImGui::CloseCurrentPopup();
-        ImGui::EndPopup();
+        if (auto name = NamePopup("##rename-function", m_RenameFocus, m_RenameText, document.GetBlueprint().FindFunction(m_RenamedFunction) != nullptr))
+            RenameFunction(document, m_RenamedFunction, *name);
     }
 
     // Selects the node, and brings it into view, in its graph.

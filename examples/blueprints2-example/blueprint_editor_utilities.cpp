@@ -1617,36 +1617,39 @@ void blueprint_editor_utilities::PinContextMenu::ShowSignatureItems(Document& do
         });
 }
 
-// A new name, taken on Enter.
 void blueprint_editor_utilities::PinContextMenu::ShowRename(Document& document)
 {
-    if (m_Renamed)
-    {
-        ImGui::OpenPopup("##rename-pin");
-        m_Pin = std::exchange(m_Renamed, 0);
-    }
-    if (!ImGui::BeginPopup("##rename-pin"))
-        return;
-    if (std::exchange(m_Focus, false))
-        ImGui::SetKeyboardFocusHere();
-    const auto done = ImGui::InputText("##name", m_Name, sizeof(m_Name), ImGuiInputTextFlags_EnterReturnsTrue);
     auto& graph = document.GetGraph();
-    auto  pin   = graph.FindPin(m_Pin);
-    auto  node  = pin ? graph.NodeOf(m_Pin) : nullptr;
+    auto  pin   = graph.FindPin(m_Renamed);
+    auto  node  = pin ? graph.NodeOf(m_Renamed) : nullptr;
     auto  owner = node ? SignatureNodeOf(document.GetBlueprint(), *node) : SignatureNode();
-    if (done && owner.m_Function)
+    auto  name  = NamePopup("##rename-pin", m_Focus, m_Name, owner.m_Function != nullptr);
+    if (!name)
+        return;
+    ChangeSignature(document, owner.m_Function->m_Graph, "Rename", [input = owner.m_Entry, key = pin->m_Key, name = *name](Signature& changed)
     {
-        std::string key = pin->m_Key, name = m_Name;
-        ChangeSignature(document, owner.m_Function->m_Graph, "Rename", [input = owner.m_Entry, key, name](Signature& changed)
-        {
-            for (auto& changing : input ? changed.m_Inputs : changed.m_Outputs)
-                if (changing.m_Key == key)
-                    changing.m_Name = name;
-        });
-    }
-    if (done || ImGui::IsKeyPressed(ImGuiKey_Escape, false) || !owner.m_Function)
+        for (auto& changing : input ? changed.m_Inputs : changed.m_Outputs)
+            if (changing.m_Key == key)
+                changing.m_Name = name;
+    });
+}
+
+std::optional<std::string> blueprint_editor_utilities::NamePopup(const char* id, bool& open, std::span<char> name, bool exists)
+{
+    const auto opening = std::exchange(open, false);
+    if (opening)
+        ImGui::OpenPopup(id);
+    if (!ImGui::BeginPopup(id))
+        return std::nullopt;
+    if (opening)
+        ImGui::SetKeyboardFocusHere();
+    const auto done = ImGui::InputText("##name", name.data(), name.size(), ImGuiInputTextFlags_EnterReturnsTrue);
+    if (done || ImGui::IsKeyPressed(ImGuiKey_Escape, false) || !exists)
         ImGui::CloseCurrentPopup();
     ImGui::EndPopup();
+    if (!done || !exists)
+        return std::nullopt;
+    return std::string(name.data());
 }
 
 

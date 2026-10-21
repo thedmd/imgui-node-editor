@@ -96,6 +96,10 @@ bool DrawValue(const Value& value);        // Draws a value; false for none.
 bool EditValue(Value& value);              // Shows an editor for a value; true once the edit is done.
 bool DrawValueWithEditor(Id id, Value& value); // Draws a value, or its editor once clicked; true when an edit changed it.
 
+// A popup of a name's field, which opens while 'open' is set, its field focused, and clears it.
+// Enter gives the name typed. Escape closes it, and so does losing what the name is of.
+std::optional<std::string> NamePopup(const char* id, bool& open, std::span<char> name, bool exists);
+
 std::vector<Id> GetSelectedNodes();
 std::vector<Id> GetSelectedLinks();
 
