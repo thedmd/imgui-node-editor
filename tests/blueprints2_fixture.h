@@ -62,15 +62,17 @@ struct TestNodeType final : NodeType
 // A blueprint with one graph. Its helpers fail the test when a step it needs isn't done.
 struct BlueprintFixture
 {
-    explicit BlueprintFixture(std::shared_ptr<const Registry> registry)
+    // Add() names node types after the prefix.
+    explicit BlueprintFixture(std::shared_ptr<const Registry> registry, std::string prefix = "test.")
         : m_Blueprint(std::move(registry), std::make_shared<TypeTable>())
         , m_Graph(m_Blueprint.AddGraph("Main"))
+        , m_Prefix(std::move(prefix))
     {
     }
 
     Id Add(const char* type, NodeConfig config = {})
     {
-        auto node = m_Graph.AddNode(std::string("test.") + type, std::move(config));
+        auto node = m_Graph.AddNode(m_Prefix + type, std::move(config));
         if (!node)
             test::Check(false, "%s is added: %s", type, std::string(node.GetError().Message()).c_str());
         return node.ValueOr(0);
@@ -136,8 +138,9 @@ struct BlueprintFixture
         return keys;
     }
 
-    Blueprint m_Blueprint;
-    Graph&    m_Graph;
+    Blueprint   m_Blueprint;
+    Graph&      m_Graph;
+    std::string m_Prefix;
 };
 
 template <typename T>
