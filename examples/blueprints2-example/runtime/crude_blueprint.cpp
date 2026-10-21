@@ -642,10 +642,11 @@ void crude_blueprint::NodeDeclaration::AddPin(PinDeclaration pin)
     m_Pins.push_back(std::move(pin));
 }
 
-crude_blueprint::NodeType::NodeType(std::string name, std::string title, std::string category)
+crude_blueprint::NodeType::NodeType(std::string name, std::string title, std::string category, uint32_t version)
     : m_Name(std::move(name))
     , m_Title(std::move(title))
     , m_Category(std::move(category))
+    , m_Version(version)
 {
 }
 
@@ -1113,6 +1114,46 @@ private:
 
 namespace crude_blueprint { namespace {
 
+// A node a file holds that this runtime can't use: its pins as the file lists them, of types of
+// their own, and the node as the file has it, which is what's saved.
+struct PlaceholderNodeType final : NodeType
+{
+    CRUDE_BP_RTTI(PlaceholderNodeType, NodeType)
+
+    PlaceholderNodeType(std::string name, crude_json::value saved, Error reason)
+        : NodeType(name, name)
+        , m_Saved(std::move(saved))
+        , m_Reason(std::move(reason))
+    {
+    }
+
+    void Declare(NodeDeclaration& declaration, const NodeConfig&, const Bindings&) const override
+    {
+        auto pins = m_Saved.find("pins");
+        if (!pins || !pins->is_object())
+            return;
+        for (auto& [key, pin] : pins->get<crude_json::object>())
+        {
+            auto direction = pin.find("dir");
+            if (!direction || !direction->is_string())
+                continue;
+            auto input = direction->get<crude_json::string>() == "in";
+            auto flow  = pin["flow"].is_boolean() && pin["flow"].get<crude_json::boolean>();
+            if (flow && input)
+                declaration.FlowInput(key, key);
+            else if (flow)
+                declaration.FlowOutput(key, key);
+            else if (input)
+                declaration.Input(key, key, declaration.Variable(key));
+            else
+                declaration.Output(key, key, declaration.Variable(key));
+        }
+    }
+
+    const crude_json::value m_Saved;
+    const Error             m_Reason;
+};
+
 // A node's term in the graph: its variables numbered from the node's first.
 TypeTerm Offset(const TypeTerm& term, int base)
 {
@@ -1327,6 +1368,8 @@ crude_blueprint::Result<void> crude_blueprint::Graph::SetConfig(Id node, NodeCon
 {
     if (!FindNode(node))
         return Error(BlueprintError::NotFound, "no node " + std::to_string(node) + " in " + m_Name);
+    if (auto editable = Editable(*FindNode(node)); !editable)
+        return editable;
     Graph trial = *this;
     trial.MutableNode(node)->m_Config = std::move(config);
     trial.Update();
@@ -1341,6 +1384,8 @@ crude_blueprint::Result<void> crude_blueprint::Graph::AddGroupPin(Id node, std::
     auto changed = MutableNode(node);
     if (!changed)
         return Error(BlueprintError::NotFound, "no node " + std::to_string(node) + " in " + m_Name);
+    if (auto editable = Editable(*changed); !editable)
+        return editable;
     auto declared = std::find_if(changed->m_Groups.begin(), changed->m_Groups.end(), [group](const GroupDeclaration& other) { return other.m_Name == group; });
     if (declared == changed->m_Groups.end())
         return Error(BlueprintError::NotFound, changed->Name() + " has no group " + std::string(group));
@@ -1358,6 +1403,8 @@ crude_blueprint::Result<void> crude_blueprint::Graph::RemoveGroupPin(Id node, st
     auto changed = MutableNode(node);
     if (!changed)
         return Error(BlueprintError::NotFound, "no node " + std::to_string(node) + " in " + m_Name);
+    if (auto editable = Editable(*changed); !editable)
+        return editable;
     auto declared = std::find_if(changed->m_Groups.begin(), changed->m_Groups.end(), [group](const GroupDeclaration& other) { return other.m_Name == group; });
     if (declared == changed->m_Groups.end())
         return Error(BlueprintError::NotFound, changed->Name() + " has no group " + std::string(group));
@@ -1396,6 +1443,8 @@ crude_blueprint::Result<void> crude_blueprint::Graph::SplitPin(Id node, std::str
     auto changed = MutableNode(node);
     if (!changed)
         return Error(BlueprintError::NotFound, "no node " + std::to_string(node) + " in " + m_Name);
+    if (auto editable = Editable(*changed); !editable)
+        return editable;
     auto& list   = changed->m_Config.m_Split;
     auto  listed = std::find(list.begin(), list.end(), key) != list.end();
     if (split)
@@ -1425,6 +1474,8 @@ crude_blueprint::Result<void> crude_blueprint::Graph::SetValue(Id pin, Value val
     auto found = FindPin(pin);
     if (!found)
         return Error(BlueprintError::NotFound, "no pin " + std::to_string(pin) + " in " + m_Name);
+    if (auto editable = Editable(*NodeOf(pin)); !editable)
+        return editable;
     if (found->m_Flow || found->m_Direction != Direction::Input)
         return Error(BlueprintError::WrongType, PinName(*found) + " takes no value");
     auto& values = MutableNode(found->m_Node)->m_Values;
@@ -1518,6 +1569,13 @@ crude_blueprint::Result<void> crude_blueprint::Graph::CheckLink(const Pin& from,
         return Error(BlueprintError::BadLink, "a flow pin links only to a flow pin");
     if (from.m_Node == to.m_Node)
         return Error(BlueprintError::BadLink, "a link joins two nodes");
+    return {};
+}
+
+crude_blueprint::Result<void> crude_blueprint::Graph::Editable(const Node& node) const
+{
+    if (IsA<PlaceholderNodeType>(node.m_Type))
+        return Error(BlueprintError::Unsupported, node.Name() + " stands in for a node this blueprint can't use, and stays as its file had it");
     return {};
 }
 
@@ -1644,6 +1702,8 @@ std::vector<int> crude_blueprint::Graph::Resolve(TypeResolution& resolution)
     for (size_t i = 0; i < m_Nodes.size(); ++i)
     {
         auto& node = m_Nodes[i];
+        if (auto placeholder = Cast<PlaceholderNodeType>(node.m_Type))
+            m_Problems.push_back({ node.m_Id, placeholder->m_Reason });
         bases[i] = resolution.Size();
         for (auto& variable : node.m_Variables)
             resolution.AddVariable(node.Name() + "." + variable.m_Name, variable.m_Allowed);
@@ -1691,6 +1751,12 @@ std::vector<int> crude_blueprint::Graph::Resolve(TypeResolution& resolution)
         if (auto check = CheckLink(*from, *to); !check)
         {
             disable(link, check.GetError());
+            continue;
+        }
+        auto placeholder = IsA<PlaceholderNodeType>(NodeOf(from->m_Id)->m_Type) ? NodeOf(from->m_Id) : IsA<PlaceholderNodeType>(NodeOf(to->m_Id)->m_Type) ? NodeOf(to->m_Id) : nullptr;
+        if (placeholder)
+        {
+            disable(link, Error(BlueprintError::Unsupported, "it links to " + placeholder->Name() + ", which stands in for a node this blueprint can't use"));
             continue;
         }
         if (from->m_Flow || !link.m_Cast.empty())
@@ -2312,4 +2378,460 @@ crude_blueprint::Context::Fiber* crude_blueprint::Context::FindFiber(FiberId id)
         if (fiber.m_Info.m_Id == id)
             return &fiber;
     return nullptr;
+}
+
+
+//
+// -------[ Files ]-------
+//
+
+namespace crude_blueprint { namespace {
+
+const char* const c_Format  = "crude_blueprint";
+const int         c_Version = 2;
+
+crude_json::value SaveValue(const Value& value)
+{
+    crude_json::object saved;
+    saved["type"] = value.GetType()->m_Name;
+    saved["data"] = value.GetType()->m_Head->Save(value);
+    return saved;
+}
+
+crude_json::object SaveConfig(const NodeConfig& config)
+{
+    crude_json::object saved;
+    if (!config.m_Groups.empty())
+    {
+        crude_json::object groups;
+        for (auto& [name, count] : config.m_Groups)
+            groups[name] = count;
+        saved["groups"] = std::move(groups);
+    }
+    if (!config.m_Types.empty())
+    {
+        crude_json::object types;
+        for (auto& [name, type] : config.m_Types)
+            types[name] = type->m_Name;
+        saved["types"] = std::move(types);
+    }
+    if (!config.m_Split.empty())
+    {
+        crude_json::array split;
+        for (auto& key : config.m_Split)
+            split.push_back(key);
+        saved["split"] = std::move(split);
+    }
+    if (!config.m_Data.empty())
+    {
+        crude_json::object data;
+        for (auto& [key, value] : config.m_Data)
+            data[key] = SaveValue(value);
+        saved["data"] = std::move(data);
+    }
+    return saved;
+}
+
+} } // namespace crude_blueprint { namespace {
+
+// Messages name where a problem is: "graphs[0].nodes[2].pins.in.1".
+struct crude_blueprint::FileLoader
+{
+    Blueprint&             m_Blueprint;
+    TypeTable&             m_Types;
+    const Registry&        m_Registry;
+    std::unordered_set<Id> m_Ids;
+    Id                     m_MaxId = 0;
+
+    static Error Bad(const std::string& where, const std::string& what)
+    {
+        return Error(BlueprintError::BadFile, where + " " + what);
+    }
+
+    Result<Id> ReadId(const crude_json::value& object, const char* key, const std::string& where, bool unique = true)
+    {
+        auto member = object.find(key);
+        if (!member)
+            return Bad(where, std::string("has no ") + key);
+        auto number = member->is_number() ? member->get<crude_json::number>() : 0.0;
+        if (!(number >= 1.0 && number <= 4294967295.0) || number != std::trunc(number))
+            return Bad(where + "." + key, "isn't an ID");
+        auto id = static_cast<Id>(number);
+        if (!unique)
+            return id;
+        if (!m_Ids.insert(id).second)
+            return Bad(where + "." + key, "is " + std::to_string(id) + ", which another part has too");
+        m_MaxId = std::max(m_MaxId, id);
+        return id;
+    }
+
+    static Result<std::string> ReadString(const crude_json::value& object, const char* key, const std::string& where)
+    {
+        auto member = object.find(key);
+        if (!member || !member->is_string())
+            return Bad(where, std::string("has no ") + key + " text");
+        return member->get<crude_json::string>();
+    }
+
+    static Result<int> ReadCount(const crude_json::value& json, const std::string& where)
+    {
+        auto number = json.is_number() ? json.get<crude_json::number>() : -1.0;
+        if (!(number >= 0.0 && number <= 2147483647.0) || number != std::trunc(number))
+            return Error(BlueprintError::BadFile, where + " isn't a count");
+        return static_cast<int>(number);
+    }
+
+    Result<Value> ReadValue(const crude_json::value& json, const std::string& where)
+    {
+        auto typeText = ReadString(json, "type", where);
+        if (!typeText)
+            return typeText.GetError();
+        auto type = m_Types.Parse(m_Registry, typeText.GetValue());
+        if (!type)
+            return Error(type.GetError().m_Category, type.GetError().m_Code, where + ": " + std::string(type.GetError().Message()));
+        auto data = json.find("data");
+        if (!data)
+            return Bad(where, "has no data");
+        auto value = type.GetValue()->m_Head->Load(*type.GetValue(), *data);
+        if (!value)
+            return Error(value.GetError().m_Category, value.GetError().m_Code, where + ".data: " + std::string(value.GetError().Message()));
+        return value;
+    }
+
+    // What the node type reads; a problem here makes the node a placeholder.
+    Result<void> ReadConfig(const crude_json::value& json, const std::string& where, NodeConfig& config)
+    {
+        if (auto groups = json.find("groups"))
+        {
+            if (!groups->is_object())
+                return Bad(where + ".groups", "isn't an object");
+            for (auto& [name, count] : groups->get<crude_json::object>())
+            {
+                auto read = ReadCount(count, where + ".groups." + name);
+                if (!read)
+                    return read.GetError();
+                config.m_Groups[name] = read.GetValue();
+            }
+        }
+        if (auto types = json.find("types"))
+        {
+            if (!types->is_object())
+                return Bad(where + ".types", "isn't an object");
+            for (auto& [name, text] : types->get<crude_json::object>())
+            {
+                auto type = text.is_string() ? m_Types.Parse(m_Registry, text.get<crude_json::string>()) : Result<const Type*>(Bad(where + ".types." + name, "isn't type text"));
+                if (!type)
+                    return Error(type.GetError().m_Category, type.GetError().m_Code, where + ".types." + name + ": " + std::string(type.GetError().Message()));
+                config.m_Types[name] = type.GetValue();
+            }
+        }
+        if (auto split = json.find("split"))
+        {
+            if (!split->is_array())
+                return Bad(where + ".split", "isn't an array");
+            for (auto& key : split->get<crude_json::array>())
+            {
+                if (!key.is_string())
+                    return Bad(where + ".split", "holds what isn't a key");
+                config.m_Split.push_back(key.get<crude_json::string>());
+            }
+        }
+        if (auto data = json.find("data"))
+        {
+            if (!data->is_object())
+                return Bad(where + ".data", "isn't an object");
+            for (auto& [key, saved] : data->get<crude_json::object>())
+            {
+                auto value = ReadValue(saved, where + ".data." + key);
+                if (!value)
+                    return value.GetError();
+                config.m_Data[key] = std::move(value).GetValue();
+            }
+        }
+        return {};
+    }
+
+    // Its pins' IDs are read first, as a placeholder keeps them too.
+    Result<void> ReadNode(Graph& graph, const crude_json::value& json, const std::string& where)
+    {
+        if (!json.is_object())
+            return Bad(where, "isn't an object");
+        auto& node = graph.m_Nodes.emplace_back();
+        auto  id   = ReadId(json, "id", where);
+        auto  name = ReadString(json, "type", where);
+        if (!id || !name)
+            return !id ? id.GetError() : name.GetError();
+        node.m_Id = id.GetValue();
+
+        auto pins = json.find("pins");
+        if (pins && !pins->is_object())
+            return Bad(where + ".pins", "isn't an object");
+        if (pins)
+        {
+            for (auto& [key, pin] : pins->get<crude_json::object>())
+            {
+                if (!pin.is_object())
+                    return Bad(where + ".pins." + key, "isn't an object");
+                auto pinId = ReadId(pin, "id", where + ".pins." + key);
+                if (!pinId)
+                    return pinId.GetError();
+                node.m_KeyIds[key] = pinId.GetValue();
+            }
+        }
+        auto version = json.find("type_version");
+        if (version && !version->is_number())
+            return Bad(where + ".type_version", "isn't a number");
+
+        auto understood = Understand(node, json, where, version ? static_cast<uint32_t>(std::clamp(version->get<crude_json::number>(), 0.0, 4294967295.0)) : 1u, name.GetValue());
+        if (!understood)
+        {
+            auto& placeholder = m_Blueprint.m_Placeholders.emplace_back(std::make_unique<PlaceholderNodeType>(name.GetValue(), json, understood.GetError()));
+            node.m_Type   = placeholder.get();
+            node.m_Config = {};
+            node.m_Values.clear();
+        }
+        return {};
+    }
+
+    Result<void> Understand(Node& node, const crude_json::value& saved, const std::string& where, uint32_t version, const std::string& name)
+    {
+        auto type = m_Registry.FindNodeType(name);
+        if (!type)
+            return Error(BlueprintError::UnknownType, "no node type is named " + name);
+        if (version > type->m_Version)
+            return Error(BlueprintError::Unsupported, name + " is at version " + std::to_string(type->m_Version) + ", and the file holds version " + std::to_string(version) + " of its node");
+
+        auto json = saved;
+        if (version < type->m_Version)
+        {
+            if (auto upgraded = type->Upgrade(json, version); !upgraded)
+                return upgraded;
+
+            // An upgrade may rename keys, but the pins keep their IDs.
+            std::map<std::string, Id, std::less<>> keyIds;
+            if (auto pins = json.find("pins"); pins && pins->is_object())
+            {
+                for (auto& [key, pin] : pins->get<crude_json::object>())
+                {
+                    auto id = pin.is_object() ? ReadId(pin, "id", where + ".pins." + key, false) : Result<Id>(Bad(where + ".pins." + key, "isn't an object"));
+                    if (!id)
+                        return id.GetError();
+                    auto had = std::any_of(node.m_KeyIds.begin(), node.m_KeyIds.end(), [&id](const auto& entry) { return entry.second == id.GetValue(); });
+                    if (!had)
+                        return Error(BlueprintError::Unsupported, name + "'s upgrade gave pin " + key + " an ID the node didn't have");
+                    keyIds[key] = id.GetValue();
+                }
+            }
+            node.m_KeyIds = std::move(keyIds);
+        }
+
+        if (auto config = json.find("config"))
+        {
+            if (!config->is_object())
+                return Bad(where + ".config", "isn't an object");
+            if (auto read = ReadConfig(*config, where + ".config", node.m_Config); !read)
+                return read;
+        }
+        if (auto pins = json.find("pins"); pins && pins->is_object())
+        {
+            for (auto& [key, pin] : pins->get<crude_json::object>())
+            {
+                auto value = pin.find("value");
+                if (!value)
+                    continue;
+                auto id = node.m_KeyIds.find(key);
+                if (id == node.m_KeyIds.end())
+                    return Bad(where + ".pins." + key, "isn't a pin the node had");
+                auto read = ReadValue(*value, where + ".pins." + key + ".value");
+                if (!read)
+                    return read.GetError();
+                node.m_Values[id->second] = std::move(read).GetValue();
+            }
+        }
+        node.m_Type = type;
+        return {};
+    }
+
+    Result<void> ReadLink(Graph& graph, const std::unordered_set<Id>& pins, const crude_json::value& json, const std::string& where)
+    {
+        if (!json.is_object())
+            return Bad(where, "isn't an object");
+        auto& link = graph.m_Links.emplace_back();
+        auto  id   = ReadId(json, "id", where);
+        auto  from = ReadId(json, "from", where, false);
+        auto  to   = ReadId(json, "to", where, false);
+        if (!id || !from || !to)
+            return !id ? id.GetError() : !from ? from.GetError() : to.GetError();
+        for (auto end : { from.GetValue(), to.GetValue() })
+            if (!pins.count(end))
+                return Bad(where, "joins pin " + std::to_string(end) + ", which no node of its graph has");
+        link.m_Id   = id.GetValue();
+        link.m_From = from.GetValue();
+        link.m_To   = to.GetValue();
+        if (auto forced = json.find("forced"))
+        {
+            auto order = ReadCount(*forced, where + ".forced");
+            if (!order)
+                return order.GetError();
+            link.m_Forced      = order.GetValue();
+            graph.m_LastForced = std::max(graph.m_LastForced, link.m_Forced);
+        }
+        if (auto cast = json.find("cast"))
+        {
+            if (!cast->is_string())
+                return Bad(where + ".cast", "isn't the name of a cast");
+            link.m_Cast = cast->get<crude_json::string>();
+        }
+        return {};
+    }
+
+    Result<void> ReadGraph(const crude_json::value& json, const std::string& where)
+    {
+        if (!json.is_object())
+            return Bad(where, "isn't an object");
+        auto id   = ReadId(json, "id", where);
+        auto name = ReadString(json, "name", where);
+        auto kind = ReadString(json, "kind", where);
+        if (!id || !name || !kind)
+            return !id ? id.GetError() : !name ? name.GetError() : kind.GetError();
+        if (kind.GetValue() != "event")
+            return Bad(where + ".kind", "is " + kind.GetValue() + ", which this runtime doesn't know");
+        auto& graph = *m_Blueprint.m_Graphs.emplace_back(std::make_unique<Graph>(m_Blueprint, id.GetValue(), name.GetValue()));
+
+        auto nodes = json.find("nodes");
+        auto links = json.find("links");
+        if (!nodes || !nodes->is_array() || !links || !links->is_array())
+            return Bad(where, std::string("has no ") + (!nodes || !nodes->is_array() ? "array of nodes" : "array of links"));
+        auto& nodeList = nodes->get<crude_json::array>();
+        for (size_t i = 0; i < nodeList.size(); ++i)
+            if (auto read = ReadNode(graph, nodeList[i], where + ".nodes[" + std::to_string(i) + "]"); !read)
+                return read;
+
+        std::unordered_set<Id> pins;
+        for (auto& node : graph.m_Nodes)
+            for (auto& [key, pin] : node.m_KeyIds)
+                pins.insert(pin);
+        auto& linkList = links->get<crude_json::array>();
+        for (size_t i = 0; i < linkList.size(); ++i)
+            if (auto read = ReadLink(graph, pins, linkList[i], where + ".links[" + std::to_string(i) + "]"); !read)
+                return read;
+        return {};
+    }
+
+    Result<void> ReadFile(const crude_json::value& file)
+    {
+        if (!file.is_object())
+            return Error(BlueprintError::BadFile, "a blueprint is an object");
+        auto format  = file.find("format");
+        auto version = file.find("version");
+        if (!format || !format->is_string() || format->get<crude_json::string>() != c_Format)
+            return Error(BlueprintError::BadFile, std::string("it isn't a ") + c_Format + " file");
+        if (!version || !version->is_number() || version->get<crude_json::number>() != c_Version)
+            return Error(BlueprintError::BadFile, "its version is " + (version ? version->dump() : std::string("missing")) + ", and this runtime reads version " + std::to_string(c_Version));
+        auto nextId = ReadId(file, "next_id", "the file", false);
+        if (!nextId)
+            return nextId.GetError();
+        auto graphs = file.find("graphs");
+        if (!graphs || !graphs->is_array())
+            return Error(BlueprintError::BadFile, "the file has no array of graphs");
+        auto& graphList = graphs->get<crude_json::array>();
+        for (size_t i = 0; i < graphList.size(); ++i)
+            if (auto read = ReadGraph(graphList[i], "graphs[" + std::to_string(i) + "]"); !read)
+                return read;
+
+        // A file can say less than its IDs need.
+        m_Blueprint.m_NextId = std::max(nextId.GetValue(), m_MaxId + 1);
+        for (auto& graph : m_Blueprint.m_Graphs)
+            graph->Update();
+        return {};
+    }
+};
+
+crude_blueprint::Result<void> crude_blueprint::NodeType::Upgrade(crude_json::value&, uint32_t version) const
+{
+    return Error(BlueprintError::Unsupported, m_Name + " can't read version " + std::to_string(version) + " of its nodes");
+}
+
+crude_json::value crude_blueprint::Save(const Blueprint& blueprint)
+{
+    crude_json::array graphs;
+    for (auto& graph : blueprint.m_Graphs)
+    {
+        crude_json::array nodes;
+        for (auto& node : graph->Nodes())
+        {
+            if (auto placeholder = Cast<PlaceholderNodeType>(node.m_Type))
+            {
+                nodes.push_back(placeholder->m_Saved);
+                continue;
+            }
+            crude_json::object saved;
+            saved["id"]           = node.m_Id;
+            saved["type"]         = node.m_Type->m_Name;
+            saved["type_version"] = node.m_Type->m_Version;
+            if (auto config = SaveConfig(node.m_Config); !config.empty())
+                saved["config"] = std::move(config);
+            crude_json::object pins;
+            for (auto& [key, id] : node.m_KeyIds)
+            {
+                crude_json::object pin;
+                pin["id"] = id;
+                if (auto declared = node.FindPin(key))
+                {
+                    pin["dir"] = declared->m_Direction == Direction::Input ? "in" : "out";
+                    if (declared->m_Flow)
+                        pin["flow"] = true;
+                }
+                if (auto value = node.m_Values.find(id); value != node.m_Values.end())
+                    pin["value"] = SaveValue(value->second);
+                pins[key] = std::move(pin);
+            }
+            saved["pins"] = std::move(pins);
+            nodes.push_back(std::move(saved));
+        }
+
+        crude_json::array links;
+        for (auto& link : graph->Links())
+        {
+            crude_json::object saved;
+            saved["id"]   = link.m_Id;
+            saved["from"] = link.m_From;
+            saved["to"]   = link.m_To;
+            if (link.m_Forced > 0)
+                saved["forced"] = link.m_Forced;
+            if (!link.m_Cast.empty())
+                saved["cast"] = link.m_Cast;
+            links.push_back(std::move(saved));
+        }
+
+        crude_json::object saved;
+        saved["id"]    = graph->GetId();
+        saved["kind"]  = "event";
+        saved["name"]  = graph->GetName();
+        saved["nodes"] = std::move(nodes);
+        saved["links"] = std::move(links);
+        graphs.push_back(std::move(saved));
+    }
+
+    crude_json::object file;
+    file["format"]  = c_Format;
+    file["version"] = c_Version;
+    file["next_id"] = blueprint.m_NextId;
+    file["graphs"]  = std::move(graphs);
+    return file;
+}
+
+crude_blueprint::Result<void> crude_blueprint::Load(Blueprint& blueprint, const crude_json::value& file)
+{
+    if (!blueprint.m_Graphs.empty())
+        return Error(BlueprintError::Unsupported, "a blueprint loads only while it's empty");
+    FileLoader loader{ blueprint, blueprint.GetTypes(), blueprint.GetRegistry(), {}, 0 };
+    auto read = loader.ReadFile(file);
+    if (!read)
+    {
+        blueprint.m_Graphs.clear();
+        blueprint.m_Placeholders.clear();
+        blueprint.m_NextId = 1;
+    }
+    return read;
 }

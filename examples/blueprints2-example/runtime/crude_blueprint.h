@@ -208,6 +208,7 @@ enum class BlueprintError : uint16_t
     NeedsLink,      // a required or recommended pin without a link
     Loop,           // a link that closes a loop of pure nodes
     Unsupported,    // what a node or a fiber can't do now, such as a node type that doesn't run
+    BadFile,        // a file that isn't a blueprint this runtime reads
 };
 
 constexpr ErrorCategory CategoryOf(BlueprintError) { return ErrorCategory::Blueprint; }
@@ -618,7 +619,7 @@ struct NodeType
 {
     CRUDE_BP_RTTI_ROOT(NodeType)
 
-    NodeType(std::string name, std::string title, std::string category = {});
+    NodeType(std::string name, std::string title, std::string category = {}, uint32_t version = 1);
     NodeType(const NodeType&) = delete;
     NodeType& operator=(const NodeType&) = delete;
     virtual ~NodeType() = default;
@@ -626,6 +627,7 @@ struct NodeType
     const std::string m_Name;     // registered and saved: "crude.Add"
     const std::string m_Title;    // shown: "Add"
     const std::string m_Category; // "Math"
+    const uint32_t    m_Version;  // of what files save of its nodes; see Upgrade()
 
     virtual void Declare(NodeDeclaration& declaration, const NodeConfig& config, const Bindings& bindings) const = 0;
 
@@ -636,6 +638,10 @@ struct NodeType
 
     // An event starts fibers, by its name: "Start". Other nodes have none.
     virtual std::string EventName(const NodeConfig& config) const;
+
+    // Makes a node that an older version of this node type saved, as a file holds it, one this
+    // version reads. Unsupported unless the node type has it.
+    virtual Result<void> Upgrade(crude_json::value& node, uint32_t version) const;
 };
 
 
@@ -679,6 +685,7 @@ Result<void> RegisterBuiltins(Registry& registry);
 
 class Blueprint;
 class TypeResolution;
+struct FileLoader;
 
 enum class LinkMode : uint8_t
 {
@@ -779,6 +786,8 @@ public:
     std::string TypeText(Id pin) const;
 
 private:
+    friend struct FileLoader;
+
     struct Problem
     {
         Id    m_Node = 0;
@@ -791,6 +800,7 @@ private:
     void             Diagnose();
     Result<void>     Disruption(const Graph& before, bool forced) const;
     Result<void>     CheckLink(const Pin& from, const Pin& to) const;
+    Result<void>     Editable(const Node& node) const;
     bool             ClosesPureLoop(const Pin& from, const Pin& to) const;
     Node*            MutableNode(Id node);
     std::string      PinName(const Pin& pin) const;
@@ -836,11 +846,30 @@ public:
     Id NewId() { return m_NextId++; }
 
 private:
-    std::shared_ptr<const Registry>     m_Registry;
-    std::shared_ptr<TypeTable>          m_Types;
-    Id                                  m_NextId = 1;
-    std::vector<std::unique_ptr<Graph>> m_Graphs;
+    friend struct FileLoader;
+    friend crude_json::value Save(const Blueprint& blueprint);
+    friend Result<void>      Load(Blueprint& blueprint, const crude_json::value& file);
+
+    std::shared_ptr<const Registry>        m_Registry;
+    std::shared_ptr<TypeTable>             m_Types;
+    Id                                     m_NextId = 1;
+    std::vector<std::unique_ptr<Graph>>    m_Graphs;
+    std::vector<std::unique_ptr<NodeType>> m_Placeholders; // for the nodes of types the registry lacks
 };
+
+
+//
+// -------[ Files ]-------
+//
+
+// Format 2: "format": "crude_blueprint", "version": 2. Values are saved with their types, and of
+// the values in inputs, only those the user typed. Types are text: "Array<Int32>".
+crude_json::value Save(const Blueprint& blueprint);
+
+// Into an empty blueprint, which a file it can't read leaves empty. Links that don't fit load
+// disabled. A node it can't understand, such as one of a node type the registry lacks, loads as a
+// placeholder: its links disabled, an error on it, and saved back unchanged.
+Result<void> Load(Blueprint& blueprint, const crude_json::value& file);
 
 
 //

@@ -170,6 +170,7 @@ if (IMGUI_NODE_EDITOR_TESTS_BLUEPRINTS2)
     set(_RuntimeTestSources
         blueprints2_context_tests.cpp
         blueprints2_core_tests.cpp
+        blueprints2_file_tests.cpp
         blueprints2_graph_tests.cpp
         blueprints2_library_tests.cpp
     )
