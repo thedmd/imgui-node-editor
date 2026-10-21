@@ -32,6 +32,35 @@ struct StartNode final : NodeType
     }
 };
 
+// An event of the name its config holds, else Event, whose outputs are its parameters: each of a
+// type variable of its own, which links or the user decide.
+struct CustomEventNode final : NodeType
+{
+    CustomEventNode(): NodeType("crude.CustomEvent", "Custom Event", "Events") {}
+
+    void Declare(NodeDeclaration& declaration, const NodeConfig&, const Bindings&) const override
+    {
+        declaration.FlowOutput("then");
+        auto count = declaration.Group("param", 0, 8);
+        for (int i = 0; i < count; ++i)
+        {
+            auto index = std::to_string(i);
+            declaration.Output("param." + index, "Param " + index, declaration.Variable("T" + index));
+        }
+    }
+
+    Result<Exit> Execute(ExecContext&, std::string_view) const override
+    {
+        return Exit::To("then");
+    }
+
+    std::string EventName(const NodeConfig& config) const override
+    {
+        auto name = config.m_Data.find("event");
+        return name != config.m_Data.end() && name->second.GetType() == &StringType() ? std::string(name->second.AsString()) : "Event";
+    }
+};
+
 struct PrintNode final : NodeType
 {
     PrintNode(): NodeType("crude.Print", "Print", "Debugging") {}
@@ -1456,6 +1485,7 @@ crude_blueprint::Result<void> crude_blueprint::RegisterLibrary(Registry& registr
     std::unique_ptr<NodeType> types[] =
     {
         std::make_unique<StartNode>(),
+        std::make_unique<CustomEventNode>(),
         std::make_unique<PrintNode>(),
         std::make_unique<ConstantNode>(),
         std::make_unique<AddNode>(),

@@ -2706,7 +2706,9 @@ crude_blueprint::CompileResult crude_blueprint::Compile(const Blueprint& bluepri
             }
 
             auto event = node.m_Type->EventName(node.m_Config);
-            if (!event.empty() && !program->m_Events.emplace(event, index).second)
+            if (!event.empty() && function >= 0)
+                error(Error(BlueprintError::Unsupported, node.Name() + " starts " + event + ", which only an event graph's node can"), graph->GetId(), node.m_Id, 0);
+            else if (!event.empty() && !program->m_Events.emplace(event, index).second)
                 error(Error(BlueprintError::Duplicate, node.Name() + " starts " + event + ", as another node does"), graph->GetId(), node.m_Id, 0);
 
             record.m_Function = function;
@@ -2990,16 +2992,32 @@ crude_blueprint::Context::Context(std::shared_ptr<const Program> program)
         m_Variables.push_back(variable.m_Default);
 }
 
-crude_blueprint::Result<crude_blueprint::FiberId> crude_blueprint::Context::Start(std::string_view event)
+crude_blueprint::Result<crude_blueprint::FiberId> crude_blueprint::Context::Start(std::string_view event, std::span<const Value> arguments)
 {
     auto node = m_Program->FindEvent(event);
     if (node < 0)
         return Error(BlueprintError::NotFound, "no node starts " + std::string(event));
+    auto& record = m_Program->m_Nodes[node];
+    std::vector<int> parameters;
+    for (size_t i = 0; i < record.m_Pins.size(); ++i)
+        if (!record.m_Pins[i].m_Flow && record.m_Pins[i].m_Direction == Direction::Output)
+            parameters.push_back(static_cast<int>(i));
+    if (arguments.size() != parameters.size())
+        return Error(BlueprintError::OutOfRange, std::string(event) + " takes " + std::to_string(parameters.size()) + " arguments, not " + std::to_string(arguments.size()));
+    for (size_t i = 0; i < parameters.size(); ++i)
+    {
+        auto& pin = record.m_Pins[parameters[i]];
+        if (arguments[i].GetType() != pin.m_Type)
+            return Error(BlueprintError::WrongType, std::string(event) + "'s " + pin.m_Key + " is of " + pin.m_Type->m_Name + ", not " + (arguments[i].GetType() ? arguments[i].GetType()->m_Name : std::string("no type")));
+    }
+
     auto& fiber = m_Fibers.emplace_back();
     fiber.m_Info.m_Id   = m_NextFiber++;
-    fiber.m_Info.m_Node = m_Program->m_Nodes[node].m_Id;
+    fiber.m_Info.m_Node = record.m_Id;
     fiber.m_Node        = node;
     fiber.m_Frames.push_back(Frame(-1, -1, {}));
+    for (size_t i = 0; i < parameters.size(); ++i)
+        Write(fiber.m_Frames.back(), node, parameters[i], arguments[i]);
     return fiber.m_Info.m_Id;
 }
 

@@ -860,3 +860,37 @@ TEST_CASE(WaitSignalWaits, "library.wait_signal_goes_on_once_its_signal_comes", 
     auto went = context.Run(std::chrono::seconds(1));
     test::Check(waiting == RunState::Suspended && went == RunState::Idle && logs.m_Text == "went", "however long it waits, until go comes: %s", logs.m_Text.c_str());
 }
+
+TEST_CASE(CustomEvents, "library.a_custom_event_starts_with_the_arguments_it_is_given", nullptr, test::TestFlags_None)
+{
+    // Greet, of a String and an Int32, prints its String, then its Int32; another Custom Event has
+    // no name of its own.
+    Fixture f;
+    NodeConfig config;
+    config.m_Data["event"]   = Value::String("Greet");
+    config.m_Groups["param"] = 2;
+    config.m_Types["T1"]     = &Int32Type();
+    auto greet = f.Add("CustomEvent", config), first = f.Add("Print"), second = f.Add("Print"), unnamed = f.Add("CustomEvent");
+    f.Link(greet, "then", first, "enter");
+    f.Link(first, "then", second, "enter");
+    f.Link(greet, "param.0", first, "text");
+    f.Link(greet, "param.1", second, "text", LinkMode::Cast);
+    auto compiled = Compile(f.m_Blueprint);
+    if (!compiled.m_Program)
+        return test::Check(false, "the blueprint compiles: %s", compiled.m_Diagnostics.empty() ? "" : std::string(compiled.m_Diagnostics[0].m_Error.Message()).c_str());
+    test::Check(f.Type(greet, "param.0") == "String" && compiled.m_Program->FindEvent("Event") == compiled.m_Program->FindNode(unnamed), "a parameter takes its type from its link, and an event of no name is Event");
+
+    Context context(compiled.m_Program);
+    Logs    logs;
+    context.SetMonitor(&logs);
+    const Value arguments[] = { Value::String("hi"), Value::Int32(3) };
+    auto started = context.Start("Greet", arguments);
+    context.Run(std::chrono::seconds(1));
+    test::Check(started && logs.m_Text == "hi 3", "started with its arguments, it prints them: %s", logs.m_Text.c_str());
+
+    const Value few[]   = { Value::String("hi") };
+    const Value wrong[] = { Value::Int32(1), Value::Int32(3) };
+    auto fewer  = context.Start("Greet", few);
+    auto typed  = context.Start("Greet", wrong);
+    test::Check(!fewer && fewer.GetError().Is(BlueprintError::OutOfRange) && !typed && typed.GetError().Is(BlueprintError::WrongType) && context.Fibers().size() == 1, "too few arguments, or one of another type, start none: %s", Message(typed).c_str());
+}

@@ -1266,7 +1266,8 @@ public:
 
     explicit Context(std::shared_ptr<const Program> program);
 
-    Result<FiberId>    Start(std::string_view event);
+    // The arguments go to the event node's data outputs, in order: one for each, of its type.
+    Result<FiberId>    Start(std::string_view event, std::span<const Value> arguments = {});
     // Runs the fiber's next node, breakpoint or not.
     Result<FiberState> Step(FiberId fiber);
     // Steps the ready fibers in turn until none is ready, the time is up, or a fiber is before a

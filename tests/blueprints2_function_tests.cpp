@@ -4,6 +4,7 @@
 //------------------------------------------------------------------------------
 # include "blueprints2_fixture.h"
 # include "crude_blueprint_library.h"
+# include <algorithm>
 # include <chrono>
 # include <memory>
 # include <string>
@@ -684,4 +685,14 @@ TEST_CASE(RenamedFunctions, "function.a_renamed_functions_graph_and_nodes_take_i
     auto missing = f.m_Blueprint.RenameFunction(f.m_Graph.GetId(), "Main");
     auto same    = f.m_Blueprint.RenameFunction(body.GetId(), "Mix");
     test::Check(!taken && taken.GetError().Is(BlueprintError::Duplicate) && !bad && !missing && missing.GetError().Is(BlueprintError::NotFound) && same, "another function's name, a bad one, and an event graph's are refused: %s", Message(taken).c_str());
+}
+
+TEST_CASE(EventsInFunctions, "function.an_event_in_a_function_graph_is_refused", nullptr, test::TestFlags_None)
+{
+    Fixture f;
+    auto& body  = f.Function("Spawn", {});
+    auto  entry = f.In(body, "entry:Spawn"), start = f.In(body, "crude.Start");
+    auto compiled = Compile(f.m_Blueprint);
+    auto refused  = !compiled.m_Program && std::any_of(compiled.m_Diagnostics.begin(), compiled.m_Diagnostics.end(), [start](const Diagnostic& diagnostic) { return diagnostic.m_Node == start && diagnostic.m_Error.Is(BlueprintError::Unsupported); });
+    test::Check(entry && refused, "a function's graph can't hold a Start: %s", compiled.m_Diagnostics.empty() ? "" : std::string(compiled.m_Diagnostics[0].m_Error.Message()).c_str());
 }
