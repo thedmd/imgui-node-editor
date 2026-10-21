@@ -546,6 +546,8 @@ struct NodeConfig;
 
 // The config's count of indices, within the group's bounds; without one, the minimum.
 int GroupCount(const GroupDeclaration& group, const NodeConfig& config);
+// The group's index a key is of: 2 for "in.2", and for "in.2.x", a field of it split; -1 for none.
+int GroupIndex(const GroupDeclaration& group, std::string_view key);
 
 // What a node instance's pins depend on, besides its type variables: saved, and changed by edits.
 struct NodeConfig

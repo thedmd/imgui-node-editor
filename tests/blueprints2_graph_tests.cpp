@@ -427,6 +427,16 @@ TEST_CASE(VariadicPins, "graph.group_pins_are_added_and_removed", nullptr, test:
     test::Check(!none && none.GetError().Is(BlueprintError::NotFound), "and has no group out");
 }
 
+TEST_CASE(GroupIndices, "graph.a_key_tells_its_index_in_a_group", nullptr, test::TestFlags_None)
+{
+    // A group of two prefixes, as a map's keys and values could have.
+    const GroupDeclaration group{ "entries", { "key", "value" }, 0, 8 };
+    test::Check(GroupIndex(group, "key.0") == 0 && GroupIndex(group, "value.12") == 12, "key.0 is at 0, and value.12 at 12");
+    test::Check(GroupIndex(group, "value.3.x") == 3, "a field of a split pin is at its pin's index");
+    for (auto key : { "key", "key.", "key.x", "key.2x", "key.-1", "keys.1", "in.1", "entries.1" })
+        test::Check(GroupIndex(group, key) == -1, "%s is at none", key);
+}
+
 TEST_CASE(ArrayElementTypes, "graph.arrays_pass_element_types_both_ways", nullptr, test::TestFlags_None)
 {
     Fixture f;

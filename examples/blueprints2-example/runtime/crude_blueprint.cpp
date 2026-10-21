@@ -1286,6 +1286,14 @@ void Split(std::vector<PinDeclaration>& pins, std::span<const std::string> split
 
 } } // namespace crude_blueprint { namespace {
 
+int crude_blueprint::GroupIndex(const GroupDeclaration& group, std::string_view key)
+{
+    for (auto& prefix : group.m_Prefixes)
+        if (auto index = GroupIndex(key, prefix); index >= 0)
+            return index;
+    return -1;
+}
+
 const crude_blueprint::Pin* crude_blueprint::Node::FindPin(std::string_view key) const
 {
     for (auto& pin : m_Pins)
