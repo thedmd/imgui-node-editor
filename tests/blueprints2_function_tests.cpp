@@ -26,12 +26,20 @@ TestNodeType s_Wait("Wait", [](NodeDeclaration& d, const NodeConfig&, const Bind
     return context.IsResumed() ? Exit::To("then") : Exit::Suspend(Wake::At(context.Time() + 1.0));
 }, {}, {}, true);
 
+// Has an output only while its input's type is decided.
+TestNodeType s_Pick("Pick", [](NodeDeclaration& d, const NodeConfig&, const Bindings& bindings)
+{
+    d.Input("in", "In", d.Variable("T"));
+    if (bindings.Get("T"))
+        d.Output("out", "Out", Int32Type());
+});
+
 std::shared_ptr<const Registry> FunctionRegistry()
 {
     static const std::shared_ptr<const Registry> registry = []
     {
         auto made = std::make_shared<Registry>();
-        if (!RegisterBuiltins(*made) || !RegisterLibrary(*made) || !made->AddNodeType(s_Tick) || !made->AddNodeType(s_Wait))
+        if (!RegisterBuiltins(*made) || !RegisterLibrary(*made) || !made->AddNodeType(s_Tick) || !made->AddNodeType(s_Wait) || !made->AddNodeType(s_Pick))
             test::Check(false, "the library is registered");
         return made;
     }();
@@ -283,11 +291,10 @@ TEST_CASE(SignatureChanges, "function.call_nodes_follow_their_functions_signatur
     auto shrunk = Lerp();
     shrunk.m_Inputs.pop_back();
     set = f.m_Blueprint.SetSignature(lerp.GetId(), shrunk);
-    auto disabled = f.m_Graph.FindLink(link);
-    test::Check(set && disabled && !disabled->m_Active && disabled->m_Reason.Is(BlueprintError::NoPin) && f.m_Graph.IsBroken(), "and the link to a removed one stays, disabled: %s", disabled ? std::string(disabled->m_Reason.Message()).c_str() : "gone");
+    test::Check(set && f.Keys(call) == "enter then a b value" && !f.m_Graph.FindLink(link) && !f.m_Graph.IsBroken(), "and the link of a removed one goes with it");
 
     set = f.m_Blueprint.SetSignature(lerp.GetId(), Lerp());
-    test::Check(set && IsActive(f.m_Graph, link) && !f.m_Graph.IsBroken(), "it's active again once the pin comes back");
+    test::Check(set && f.Keys(call) == "enter then a b t value" && f.m_Graph.Links().empty(), "the pin comes back without it");
     auto missing = f.m_Blueprint.SetSignature(f.m_Graph.GetId(), Lerp());
     test::Check(!missing && missing.GetError().Is(BlueprintError::NotFound), "an event graph has no signature: %s", Message(missing).c_str());
 }
@@ -608,4 +615,33 @@ TEST_CASE(LatentCalls, "function.a_call_may_suspend_when_its_function_holds_a_la
     test::Check(may("test.Wait") && !may("crude.Print"), "a latent node type's nodes may suspend, and others' not");
     test::Check(may("call:Later") && may("call:Outer"), "so may a call of a function that holds one, or of one that calls it");
     test::Check(!may("call:Plain") && !may("call:Self") && !may("entry:Later") && !may("return:Later"), "a call of a function that doesn't, through itself or not, may not, nor may its entry and returns");
+}
+
+TEST_CASE(PureSignatures, "function.made_pure_a_function_drops_the_links_of_its_flow_pins", nullptr, test::TestFlags_None)
+{
+    // Echo(x: Int32) -> y: Int32, its entry linked to its return, and x to y; Start calls it.
+    Fixture f;
+    Signature echo;
+    echo.m_Inputs  = { { "x", "X", Int32Type() } };
+    echo.m_Outputs = { { "y", "Y", Int32Type() } };
+    auto& body  = f.Function("Echo", echo);
+    auto  entry = f.In(body, "entry:Echo"), ret = f.In(body, "return:Echo");
+    f.Wire(body, entry, "then", ret, "enter");
+    f.Wire(body, entry, "x", ret, "y");
+    auto start = f.Add("Start"), call = f.Call("Echo");
+    f.Link(start, "then", call, "enter");
+
+    // A Pick's output, linked, then gone as its input's type goes undecided.
+    auto pick   = f.In(f.m_Graph, "test.Pick"), typing = f.Link(f.Constant(Int32Type()), "value", pick, "in");
+    auto other  = f.Link(pick, "out", f.Add("Print"), "text", LinkMode::Cast);
+    f.Unlink(typing);
+    auto shrunk = !f.m_Graph.FindLink(other)->m_Active;
+
+    echo.m_Pure = true;
+    auto pure = f.m_Blueprint.SetSignature(body.GetId(), echo);
+    auto data = body.Links().size() == 1 && body.Links()[0].m_Active;
+    test::Check(shrunk && pure && data && !body.IsBroken() && f.m_Graph.Links().size() == 1 && f.m_Graph.FindLink(other), "the flow links of its entry, its return and its calls go, its data link stays, and so does another's disabled link");
+    f.Remove(pick);
+    auto compiled = Compile(f.m_Blueprint);
+    test::Check(compiled.m_Program != nullptr, "and it compiles: %s", compiled.m_Diagnostics.empty() ? "" : std::string(compiled.m_Diagnostics[0].m_Error.Message()).c_str());
 }

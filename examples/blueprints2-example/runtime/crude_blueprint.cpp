@@ -2293,10 +2293,21 @@ crude_blueprint::Result<void> crude_blueprint::Blueprint::SetSignature(Id graph,
         return Error(BlueprintError::NotFound, "graph " + std::to_string(graph) + " isn't a function's");
     if (auto check = CheckSignature(signature); !check)
         return check;
+    std::set<Id> before;
+    for (auto& other : m_Graphs)
+        for (auto& node : other->Nodes())
+            if (auto role = Cast<FunctionNodeType>(node.m_Type); role && role->m_Function == *function)
+                for (auto& pin : node.m_Pins)
+                    before.insert(pin.m_Id);
     (*function)->m_Signature = std::move(signature);
     SetParameters(**function);
     for (auto& other : m_Graphs)
+    {
         other->Update();
+        auto gone = [&before, &other](Id pin) { return before.contains(pin) && !other->FindPin(pin); };
+        if (std::erase_if(other->m_Links, [&gone](const Link& link) { return gone(link.m_From) || gone(link.m_To); }) > 0)
+            other->Update();
+    }
     return {};
 }
 
