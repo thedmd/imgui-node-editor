@@ -1174,3 +1174,40 @@ TEST_CASE(FunctionDeletes, "blueprints2.a_function_goes_with_the_calls_of_it_in_
     session.Use([&] { document.Undo(); });
     test::Check(document.GetBlueprint().FindFunction(graph) && document.GetGraph().FindNode(call), "and undoing it brings both back");
 }
+
+TEST_CASE(EventParameterRenames, "blueprints2.a_custom_events_parameter_is_renamed_in_one_undo_step", nullptr, test::TestFlags_None)
+{
+    // A Custom Event of two parameters.
+    test::Session session(UnnamedConfig());
+    OverlayLog    log;
+    Example       example(session);
+    auto& document = example.m_Document;
+    NodeConfig config;
+    config.m_Groups["param"] = 2;
+    auto event = Id(0);
+    session.Use([&]
+    {
+        auto transaction = document.BeginUndoTransaction("Add Event");
+        auto added = document.GetGraph().AddNode("crude.CustomEvent", config);
+        if (added)
+            transaction->AddAction("Event added");
+        event = added.ValueOr(0);
+    });
+    const auto pin  = example.Pin(event, "param.1");
+    auto       name = [&document, pin] { auto found = document.GetGraph().FindPin(pin); return found ? found->m_Name : std::string(); };
+
+    session.Use([&]
+    {
+        blueprint_editor_utilities::RenamePin(document, pin, "Count");
+        blueprint_editor_utilities::RenamePin(document, pin, "Count");
+    });
+    test::Check(name() == "Count" && document.m_Undo.size() == 2, "renamed, a parameter is one undo step, and its own name makes none: %s", name().c_str());
+
+    session.Use([&] { blueprint_editor_utilities::RenamePin(document, pin, ""); });
+    test::Check(name() == "Param 1" && document.m_Undo.size() == 3 && document.GetGraph().FindNode(event)->m_Config.m_Names.empty(), "an empty name gives back the declared one: %s", name().c_str());
+    session.Use([&] { blueprint_editor_utilities::RenamePin(document, pin, ""); });
+    test::Check(document.m_Undo.size() == 3, "and again makes no step");
+
+    session.Use([&] { document.Undo(); });
+    test::Check(name() == "Count", "undone, it has its name again: %s", name().c_str());
+}

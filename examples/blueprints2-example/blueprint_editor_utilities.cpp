@@ -118,6 +118,11 @@ bool blueprint_editor_utilities::IsConstant(const Node& node)
     return node.m_Type->m_Name == "crude.Constant";
 }
 
+bool blueprint_editor_utilities::IsCustomEvent(const Node& node)
+{
+    return node.m_Type->m_Name == "crude.CustomEvent";
+}
+
 blueprint_editor_utilities::Value blueprint_editor_utilities::ConstantValue(const Node& node, const Pin& pin)
 {
     auto type = pin.m_DecidedType;
@@ -360,6 +365,32 @@ void blueprint_editor_utilities::RenameEvent(Document& document, Id node, std::s
         return;
     }
     transaction->AddAction("%s renamed %s", old.c_str(), name.c_str());
+}
+
+void blueprint_editor_utilities::RenamePin(Document& document, Id pin, std::string name)
+{
+    auto& graph = document.GetGraph();
+    auto  found = graph.FindPin(pin);
+    auto  node  = found ? graph.NodeOf(pin) : nullptr;
+    if (!node || found->m_Name == name)
+        return;
+    auto config = node->m_Config;
+    if (name.empty())
+        config.m_Names.erase(found->m_Key);
+    else
+        config.m_Names[found->m_Key] = name;
+    if (config == node->m_Config)
+        return;
+    const auto old = found->m_Name;
+    auto transaction = document.BeginUndoTransaction("Rename Pin");
+    if (auto set = graph.SetConfig(node->m_Id, std::move(config)); !set)
+    {
+        auto message = set.GetError().Message();
+        LOGW("[Pin] %s: %.*s", old.c_str(), static_cast<int>(message.size()), message.data());
+        transaction->Discard();
+        return;
+    }
+    transaction->AddAction("%s renamed %s", old.c_str(), graph.FindPin(pin)->m_Name.c_str());
 }
 
 void blueprint_editor_utilities::AddVariable(Document& document)
@@ -1575,7 +1606,7 @@ void blueprint_editor_utilities::NodeContextMenu::Show(Document& document, Debug
         {
             if (ImGui::MenuItem("Run Event"))
                 debugger.Start(document, true, event);
-            if (node->m_Type->m_Name == "crude.CustomEvent" && ImGui::MenuItem("Rename Event..."))
+            if (IsCustomEvent(*node) && ImGui::MenuItem("Rename Event..."))
             {
                 m_RenamedEvent = node->m_Id;
                 m_Renaming     = true;
@@ -1739,6 +1770,11 @@ void blueprint_editor_utilities::PinContextMenu::Show(Document& document, Debugg
 
         if (pin && node)
             ShowSignatureItems(document, *node, *pin);
+        if (pin && node && IsCustomEvent(*node) && !pin->m_Flow)
+        {
+            ImGui::Separator();
+            ShowRenameItem(*pin);
+        }
 
         if (choice)
         {
@@ -1783,12 +1819,7 @@ void blueprint_editor_utilities::PinContextMenu::ShowSignatureItems(Document& do
     const auto index = static_cast<size_t>(at - pins.begin());
 
     ImGui::Separator();
-    if (ImGui::MenuItem("Rename..."))
-    {
-        m_Renamed = pin.m_Id;
-        m_Focus   = true;
-        std::snprintf(m_Name, sizeof(m_Name), "%s", at->m_Name.c_str());
-    }
+    ShowRenameItem(pin);
 
     std::optional<TypeTerm> chosen;
     auto choice = [&chosen, &at](const std::string& label, TypeTerm term)
@@ -1826,15 +1857,26 @@ void blueprint_editor_utilities::PinContextMenu::ShowSignatureItems(Document& do
         });
 }
 
+void blueprint_editor_utilities::PinContextMenu::ShowRenameItem(const Pin& pin)
+{
+    if (!ImGui::MenuItem("Rename..."))
+        return;
+    m_Renamed = pin.m_Id;
+    m_Focus   = true;
+    std::snprintf(m_Name, sizeof(m_Name), "%s", pin.m_Name.c_str());
+}
+
 void blueprint_editor_utilities::PinContextMenu::ShowRename(Document& document)
 {
     auto& graph = document.GetGraph();
     auto  pin   = graph.FindPin(m_Renamed);
     auto  node  = pin ? graph.NodeOf(m_Renamed) : nullptr;
     auto  owner = node ? SignatureNodeOf(document.GetBlueprint(), *node) : SignatureNode();
-    auto  name  = NamePopup("##rename-pin", m_Focus, m_Name, owner.m_Function != nullptr);
+    auto  name  = NamePopup("##rename-pin", m_Focus, m_Name, pin != nullptr);
     if (!name)
         return;
+    if (!owner.m_Function)
+        return RenamePin(document, m_Renamed, *name);
     ChangeSignature(document, owner.m_Function->m_Graph, "Rename", [input = owner.m_Entry, key = pin->m_Key, name = *name](Signature& changed)
     {
         for (auto& changing : input ? changed.m_Inputs : changed.m_Outputs)

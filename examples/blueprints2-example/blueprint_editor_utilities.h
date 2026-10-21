@@ -41,6 +41,8 @@ Value KeptValue(const Graph& graph, const Pin& pin);
 // A Constant holds its value in its config.
 bool  IsConstant(const Node& node);
 Value ConstantValue(const Node& node, const Pin& pin);
+// A Custom Event's config holds its event's name, and the names of its parameters.
+bool  IsCustomEvent(const Node& node);
 
 bool HasLinks(const Graph& graph, Id pin);              // active or disabled
 bool HasValueEditor(const Graph& graph, const Pin& pin); // an input without an active link, or a Constant's output; of a decided type
@@ -85,6 +87,7 @@ void RemoveTypeParameter(Document& document, Id graph, int index);
 void RenameFunction(Document& document, Id graph, std::string name);
 void RemoveFunction(Document& document, Id graph); // with the calls of it in other graphs
 void RenameEvent(Document& document, Id node, std::string name); // a Custom Event's
+void RenamePin(Document& document, Id pin, std::string name);    // in its node's config; an empty name gives back the declared one
 
 // Edits of the blueprint's variables, one undo step each. One the blueprint refuses is logged.
 void AddVariable(Document& document); // an Int32, named Variable1, or of the first number free
@@ -377,7 +380,7 @@ private:
 
 // For a pin of a type variable, its type: chosen, or reset to what links decide.
 // For a pin of a function's entry or return, the input or output of its signature it is: its name,
-// its type, and whether it's there.
+// its type, and whether it's there. For a Custom Event's parameter, its name.
 struct PinContextMenu
 {
     void Open(Id pin = 0);
@@ -385,6 +388,7 @@ struct PinContextMenu
 
 private:
     void ShowSignatureItems(Document& document, const Node& node, const Pin& pin);
+    void ShowRenameItem(const Pin& pin); // opens the rename popup
     void ShowRename(Document& document);
 
     Id   m_Pin       = 0;
