@@ -2041,6 +2041,7 @@ crude_blueprint::CompileResult crude_blueprint::Compile(const Blueprint& bluepri
             {
                 from.m_Target    = toNode;
                 from.m_TargetPin = toPin;
+                from.m_Link      = link.m_Id;
                 continue;
             }
             to.m_Source = from.m_Slot;
@@ -2236,9 +2237,10 @@ crude_blueprint::Result<crude_blueprint::FiberState> crude_blueprint::Context::S
     if (!exit)
         return Fail(*fiber, exit.GetError(), index);
 
-    fiber->m_Node  = -1;
-    fiber->m_Entry = -1;
-    fiber->m_Again = false;
+    fiber->m_Node        = -1;
+    fiber->m_Entry       = -1;
+    fiber->m_Again       = false;
+    fiber->m_Info.m_Link = 0;
     auto& taken = exit.GetValue();
     if (taken.m_Kind != Exit::Kind::None)
     {
@@ -2247,8 +2249,9 @@ crude_blueprint::Result<crude_blueprint::FiberState> crude_blueprint::Context::S
             return Fail(*fiber, Error(BlueprintError::NotFound, node.m_Name + " has no flow output " + taken.m_Pin), index);
         if (taken.m_Kind == Exit::Kind::Loop)
             fiber->m_Loops.emplace_back(index, entry);
-        fiber->m_Node  = node.m_Pins[pin].m_Target;
-        fiber->m_Entry = node.m_Pins[pin].m_TargetPin;
+        fiber->m_Node        = node.m_Pins[pin].m_Target;
+        fiber->m_Entry       = node.m_Pins[pin].m_TargetPin;
+        fiber->m_Info.m_Link = node.m_Pins[pin].m_Link;
     }
     Settle(*fiber);
     return fiber->m_Info.m_State;

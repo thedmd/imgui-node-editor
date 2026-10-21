@@ -299,7 +299,7 @@ TEST_CASE(FiberRuns, "context.a_fiber_runs_from_its_event_along_flow_links", nul
 {
     Fixture f;
     auto start = f.Add("Start"), hello = f.Add("Log"), world = f.Add("Log");
-    f.Link(start, "then", hello, "enter");
+    auto first = f.Link(start, "then", hello, "enter");
     f.Link(hello, "then", world, "enter");
     f.SetValue(hello, "text", Value::String("hello"));
     f.SetValue(world, "text", Value::String("world"));
@@ -312,11 +312,12 @@ TEST_CASE(FiberRuns, "context.a_fiber_runs_from_its_event_along_flow_links", nul
     context.SetMonitor(&logs);
     auto fiber = context.Start("Start");
     test::Check(fiber && context.Fibers().size() == 1 && context.Fibers()[0].m_Node == start, "a fiber starts at its event");
-    auto first = context.Step(fiber.ValueOr(0));
-    test::Check(first && first.GetValue() == FiberState::Ready && context.Fibers()[0].m_Node == hello && logs.m_Text.empty(), "a step runs the event, and the fiber's next node follows its flow link");
+    auto stepped = context.Step(fiber.ValueOr(0));
+    test::Check(stepped && stepped.GetValue() == FiberState::Ready && context.Fibers()[0].m_Node == hello && logs.m_Text.empty(), "a step runs the event, and the fiber's next node follows its flow link");
+    test::Check(context.Fibers()[0].m_Link == first, "which the fiber says it took");
     auto end = Finish(context, fiber.ValueOr(0));
     test::Check(end == FiberState::Done && logs.m_Text == "hello world" && context.StepCount() == 3, "it runs to the end: %s, %d steps", logs.m_Text.c_str(), static_cast<int>(context.StepCount()));
-    test::Check(logs.m_Nodes == std::vector<Id>{ hello, world } && context.Fibers()[0].m_Node == 0, "each log names its node, and a fiber that's done has no next node");
+    test::Check(logs.m_Nodes == std::vector<Id>{ hello, world } && context.Fibers()[0].m_Node == 0 && context.Fibers()[0].m_Link == 0, "each log names its node, and a fiber that's done has no next node, through no link");
     auto after   = context.Step(fiber.ValueOr(0));
     auto unknown = context.Start("Stop");
     test::Check(!after && after.GetError().Is(BlueprintError::Unsupported) && !unknown && unknown.GetError().Is(BlueprintError::NotFound), "a fiber that's done takes no step, and no node starts Stop: %s", Message(unknown).c_str());

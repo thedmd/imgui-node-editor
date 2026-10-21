@@ -899,7 +899,7 @@ struct ProgramPin
     // the value the user typed, else the declared default, else its type's.
     int             m_Source = -1;
     const CastInfo* m_Cast   = nullptr;
-    Id              m_Link   = 0;
+    Id              m_Link   = 0; // a data input's, or a flow output's
     Value           m_Constant;
 
     int m_Slot      = -1; // a data output's
@@ -967,6 +967,7 @@ struct FiberInfo
     FiberId    m_Id    = 0;
     FiberState m_State = FiberState::Ready;
     Id         m_Node  = 0; // the node it runs next
+    Id         m_Link  = 0; // the flow link its last step took; 0 for none, as into a loop's node again
 };
 
 // A value as the debugger shows it.
