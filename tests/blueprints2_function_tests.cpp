@@ -696,3 +696,100 @@ TEST_CASE(EventsInFunctions, "function.an_event_in_a_function_graph_is_refused",
     auto refused  = !compiled.m_Program && std::any_of(compiled.m_Diagnostics.begin(), compiled.m_Diagnostics.end(), [start](const Diagnostic& diagnostic) { return diagnostic.m_Node == start && diagnostic.m_Error.Is(BlueprintError::Unsupported); });
     test::Check(entry && refused, "a function's graph can't hold a Start: %s", compiled.m_Diagnostics.empty() ? "" : std::string(compiled.m_Diagnostics[0].m_Error.Message()).c_str());
 }
+
+TEST_CASE(HostCalls, "function.the_host_calls_a_function_and_reads_its_results", nullptr, test::TestFlags_None)
+{
+    // Twice(x: Int32) -> y: Int32 prints x, and returns x + x. Lerp<T> returns its a. Maybe(given:
+    // Bool) -> y: Int32 returns 5 when given, and else ends. Later(x) -> y waits a second, then
+    // returns x. Halve is pure.
+    Fixture f;
+    Signature twice;
+    twice.m_Inputs  = { { "x", "X", Int32Type() } };
+    twice.m_Outputs = { { "y", "Y", Int32Type() } };
+    auto& doubling = f.Function("Twice", twice);
+    auto  entry    = f.In(doubling, "entry:Twice"), shown = f.In(doubling, "crude.Print"), add = f.In(doubling, "crude.Add"), ret = f.In(doubling, "return:Twice");
+    f.Wire(doubling, entry, "then", shown, "enter");
+    f.Wire(doubling, shown, "then", ret, "enter");
+    f.Wire(doubling, entry, "x", shown, "text", LinkMode::Cast);
+    f.Wire(doubling, entry, "x", add, "in.0");
+    f.Wire(doubling, entry, "x", add, "in.1");
+    f.Wire(doubling, add, "result", ret, "y");
+
+    auto& lerp      = f.Function("Lerp", Lerp());
+    auto  lerpEntry = f.In(lerp, "entry:Lerp"), lerpReturn = f.In(lerp, "return:Lerp");
+    f.Wire(lerp, lerpEntry, "then", lerpReturn, "enter");
+    f.Wire(lerp, lerpEntry, "a", lerpReturn, "value");
+
+    Signature maybe;
+    maybe.m_Inputs  = { { "given", "Given", BoolType() } };
+    maybe.m_Outputs = { { "y", "Y", Int32Type() } };
+    auto& maybeBody = f.Function("Maybe", maybe);
+    auto  maybeEntry = f.In(maybeBody, "entry:Maybe"), branch = f.In(maybeBody, "crude.Branch"), maybeReturn = f.In(maybeBody, "return:Maybe");
+    f.Wire(maybeBody, maybeEntry, "then", branch, "enter");
+    f.Wire(maybeBody, maybeEntry, "given", branch, "condition");
+    f.Wire(maybeBody, branch, "true", maybeReturn, "enter");
+    f.Assign(maybeBody, maybeReturn, "y", Value::Int32(5));
+
+    auto& later      = f.Function("Later", twice);
+    auto  laterEntry = f.In(later, "entry:Later"), wait = f.In(later, "test.Wait"), laterReturn = f.In(later, "return:Later");
+    f.Wire(later, laterEntry, "then", wait, "enter");
+    f.Wire(later, wait, "then", laterReturn, "enter");
+    f.Wire(later, laterEntry, "x", laterReturn, "y");
+
+    Signature halve;
+    halve.m_Pure = true;
+    f.In(f.Function("Halve", halve), "entry:Halve");
+    Signature make;
+    make.m_Parameters = { { "T", {} } };
+    make.m_Outputs    = { { "v", "V", T() } };
+    f.In(f.Function("Make", make), "entry:Make");
+
+    auto compiled = Compile(f.m_Blueprint);
+    if (!compiled.m_Program)
+        return test::Check(false, "the blueprint compiles: %s", compiled.m_Diagnostics.empty() ? "" : std::string(compiled.m_Diagnostics[0].m_Error.Message()).c_str());
+    Context context(compiled.m_Program);
+    Logs    logs;
+    context.SetMonitor(&logs);
+    auto call = [&context](const char* function, std::vector<Value> arguments) -> std::string
+    {
+        auto fiber = context.Call(function, arguments);
+        if (!fiber)
+            return "refused: " + std::string(fiber.GetError().Message());
+        context.Run(std::chrono::seconds(1));
+        auto info = context.Fibers().back();
+        if (info.m_State != FiberState::Done)
+            return "not done";
+        std::string text;
+        for (auto& result : info.m_Results)
+            text += (text.empty() ? "" : " ") + result.GetType()->m_Name + " " + result.GetType()->m_Head->Format(result);
+        return text;
+    };
+
+    auto doubled = call("Twice", { Value::Int32(21) });
+    test::Check(doubled == "Int32 42" && logs.m_Text == "21", "a call runs the function, which returns its results: %s", doubled.c_str());
+    auto floats = call("Lerp", { Value::Float(1.5f), Value::Float(2.0f), Value::Float(0.5f) });
+    auto ints   = call("Lerp", { Value::Int32(7), Value::Int32(9), Value::Float(0.5f) });
+    test::Check(floats == "Float 1.5" && ints == "Int32 7", "a generic one takes its parameters' types from the arguments: %s; %s", floats.c_str(), ints.c_str());
+    auto given = call("Maybe", { Value::Bool(true) }), ended = call("Maybe", { Value::Bool(false) });
+    test::Check(given == "Int32 5" && ended == "Int32 0", "one that ends without a return gives its outputs' defaults: %s", ended.c_str());
+
+    auto fiber = context.Call("Later", std::vector<Value>{ Value::Int32(3) }).ValueOr(0);
+    auto waits = context.Run(std::chrono::seconds(1)) == RunState::Suspended && context.Fibers().back().m_Calls.empty();
+    context.Advance(1.0);
+    context.Run(std::chrono::seconds(1));
+    auto info = context.Fibers().back();
+    test::Check(fiber && waits && info.m_State == FiberState::Done && info.m_Results == std::vector<Value>{ Value::Int32(3) }, "one that suspends gives its results once it's done");
+
+    const std::pair<std::string, const char*> refusals[] =
+    {
+        { call("Lerp", { Value::Int32(1), Value::Float(2.0f), Value::Float(0.0f) }), "arguments of two types for one parameter" },
+        { call("Lerp", { Value::String("a"), Value::String("b"), Value::Float(0.0f) }), "a type its parameter doesn't allow" },
+        { call("Twice", {}), "too few arguments" },
+        { call("Twice", { Value::Float(1.0f) }), "an argument of another type" },
+        { call("Halve", {}), "a pure function" },
+        { call("Make", {}), "a parameter no argument decides" },
+        { call("Nothing", {}), "a function there isn't" },
+    };
+    for (auto& [result, why] : refusals)
+        test::Check(result.starts_with("refused: "), "%s is refused: %s", why, result.c_str());
+}

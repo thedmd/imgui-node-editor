@@ -1412,6 +1412,22 @@ struct VariableNodeType final : NodeType
     const bool                            m_Set;
 };
 
+// Of a term without variables; null for one with.
+const Type* TypeOfTerm(TypeTable& table, const TypeTerm& term)
+{
+    if (!term.m_Head)
+        return nullptr;
+    std::vector<const Type*> args;
+    for (auto& arg : term.m_Args)
+    {
+        auto type = TypeOfTerm(table, arg);
+        if (!type)
+            return nullptr;
+        args.push_back(type);
+    }
+    return table.Get(*term.m_Head, args);
+}
+
 bool HasParameter(const Type* type)
 {
     return type && (IsA<ParameterType>(type->m_Head) || std::any_of(type->m_Args.begin(), type->m_Args.end(), HasParameter));
@@ -2576,6 +2592,33 @@ int FindPinByKey(const ProgramNode& node, std::string_view key)
     return -1;
 }
 
+// "1 argument", "2 arguments".
+std::string Count(size_t count, const char* thing)
+{
+    return std::to_string(count) + " " + thing + (count != 1 ? "s" : "");
+}
+
+// Whether a value of the type fits a pin of a function's, binding the parameters it gives a type.
+bool Bind(const Type* pin, const Type* type, std::span<const ParameterType* const> parameters, std::vector<const Type*>& types)
+{
+    if (!pin || !type)
+        return false;
+    if (auto parameter = std::find(parameters.begin(), parameters.end(), pin->m_Head); parameter != parameters.end())
+    {
+        auto& bound   = types[static_cast<size_t>(parameter - parameters.begin())];
+        auto& allowed = (*parameter)->m_Allowed;
+        if (!bound && (allowed.empty() || std::find(allowed.begin(), allowed.end(), type->m_Head) != allowed.end()))
+            bound = type;
+        return bound == type;
+    }
+    if (pin->m_Head != type->m_Head || pin->m_Args.size() != type->m_Args.size())
+        return false;
+    for (size_t i = 0; i < pin->m_Args.size(); ++i)
+        if (!Bind(pin->m_Args[i], type->m_Args[i], parameters, types))
+            return false;
+    return true;
+}
+
 const SplitPin* FindSplit(const ProgramNode& node, std::string_view key, Direction direction)
 {
     for (auto& split : node.m_Splits)
@@ -2656,7 +2699,10 @@ crude_blueprint::CompileResult crude_blueprint::Compile(const Blueprint& bluepri
         for (auto& input : function->m_Signature.m_Inputs)
             compiled.m_Inputs.push_back(input.m_Key);
         for (auto& output : function->m_Signature.m_Outputs)
+        {
             compiled.m_Outputs.push_back(output.m_Key);
+            compiled.m_OutputTypes.push_back(TypeOfTerm(*blueprint.m_Types, Substitute(output.m_Type, function->m_Parameters)));
+        }
     }
 
     for (auto& graph : blueprint.Graphs())
@@ -3003,7 +3049,7 @@ crude_blueprint::Result<crude_blueprint::FiberId> crude_blueprint::Context::Star
         if (!record.m_Pins[i].m_Flow && record.m_Pins[i].m_Direction == Direction::Output)
             parameters.push_back(static_cast<int>(i));
     if (arguments.size() != parameters.size())
-        return Error(BlueprintError::OutOfRange, std::string(event) + " takes " + std::to_string(parameters.size()) + " arguments, not " + std::to_string(arguments.size()));
+        return Error(BlueprintError::OutOfRange, std::string(event) + " takes " + Count(parameters.size(), "argument") + ", not " + std::to_string(arguments.size()));
     for (size_t i = 0; i < parameters.size(); ++i)
     {
         auto& pin = record.m_Pins[parameters[i]];
@@ -3018,6 +3064,44 @@ crude_blueprint::Result<crude_blueprint::FiberId> crude_blueprint::Context::Star
     fiber.m_Frames.push_back(Frame(-1, -1, {}));
     for (size_t i = 0; i < parameters.size(); ++i)
         Write(fiber.m_Frames.back(), node, parameters[i], arguments[i]);
+    return fiber.m_Info.m_Id;
+}
+
+crude_blueprint::Result<crude_blueprint::FiberId> crude_blueprint::Context::Call(std::string_view name, std::span<const Value> arguments)
+{
+    auto& functions = m_Program->m_Functions;
+    auto  found     = std::find_if(functions.begin(), functions.end(), [name](const ProgramFunction& function) { return function.m_Name == name; });
+    if (found == functions.end())
+        return Error(BlueprintError::NotFound, "no function is named " + std::string(name));
+    auto& function = *found;
+    if (function.m_Pure)
+        return Error(BlueprintError::Unsupported, function.m_Name + " is pure, which no fiber runs");
+    if (arguments.size() != function.m_Inputs.size())
+        return Error(BlueprintError::OutOfRange, function.m_Name + " takes " + Count(function.m_Inputs.size(), "argument") + ", not " + std::to_string(arguments.size()));
+
+    auto& entry = m_Program->m_Nodes[function.m_Entry];
+    std::vector<const Type*> types(function.m_Parameters.size(), nullptr);
+    std::vector<int>         pins;
+    for (size_t i = 0; i < arguments.size(); ++i)
+    {
+        auto pin  = FindPinByKey(entry, function.m_Inputs[i]);
+        auto type = arguments[i].GetType();
+        if (pin < 0 || !Bind(entry.m_Pins[pin].m_Type, type, function.m_Parameters, types))
+            return Error(BlueprintError::WrongType, function.m_Name + "'s " + function.m_Inputs[i] + " can't take " + (type ? "a value of " + type->m_Name : std::string("no value")));
+        pins.push_back(pin);
+    }
+    for (size_t i = 0; i < types.size(); ++i)
+        if (!types[i])
+            return Error(BlueprintError::Undecided, function.m_Name + "'s arguments don't decide " + function.m_Parameters[i]->m_Name);
+
+    auto& fiber = m_Fibers.emplace_back();
+    fiber.m_Info.m_Id   = m_NextFiber++;
+    fiber.m_Info.m_Node = entry.m_Id;
+    fiber.m_Node        = function.m_Entry;
+    fiber.m_Frames.push_back(Frame(-1, -1, {}));
+    fiber.m_Frames.push_back(Frame(static_cast<int>(found - functions.begin()), -1, std::move(types)));
+    for (size_t i = 0; i < pins.size(); ++i)
+        Write(fiber.m_Frames.back(), function.m_Entry, pins[i], arguments[i]);
     return fiber.m_Info.m_Id;
 }
 
@@ -3189,8 +3273,8 @@ crude_blueprint::Result<void> crude_blueprint::Context::Patch(std::shared_ptr<co
     };
     auto sameFunction = [](const ProgramFunction& a, const ProgramFunction& b)
     {
-        return std::tie(a.m_Graph, a.m_Name, a.m_Entry, a.m_Return, a.m_FirstNode, a.m_NodeCount, a.m_FirstSlot, a.m_SlotCount, a.m_Parameters, a.m_Pure, a.m_Inputs, a.m_Outputs)
-            == std::tie(b.m_Graph, b.m_Name, b.m_Entry, b.m_Return, b.m_FirstNode, b.m_NodeCount, b.m_FirstSlot, b.m_SlotCount, b.m_Parameters, b.m_Pure, b.m_Inputs, b.m_Outputs);
+        return std::tie(a.m_Graph, a.m_Name, a.m_Entry, a.m_Return, a.m_FirstNode, a.m_NodeCount, a.m_FirstSlot, a.m_SlotCount, a.m_Parameters, a.m_Pure, a.m_Inputs, a.m_Outputs, a.m_OutputTypes)
+            == std::tie(b.m_Graph, b.m_Name, b.m_Entry, b.m_Return, b.m_FirstNode, b.m_NodeCount, b.m_FirstSlot, b.m_SlotCount, b.m_Parameters, b.m_Pure, b.m_Inputs, b.m_Outputs, b.m_OutputTypes);
     };
     auto sameVariable = [](const Variable& a, const Variable& b)
     {
@@ -3216,7 +3300,8 @@ std::vector<crude_blueprint::FiberInfo> crude_blueprint::Context::Fibers() const
     {
         auto& info = fibers.emplace_back(fiber.m_Info);
         for (size_t i = 1; i < fiber.m_Frames.size(); ++i)
-            info.m_Calls.push_back(m_Program->m_Nodes[fiber.m_Frames[i].m_Call].m_Id);
+            if (fiber.m_Frames[i].m_Call >= 0)
+                info.m_Calls.push_back(m_Program->m_Nodes[fiber.m_Frames[i].m_Call].m_Id);
     }
     return fibers;
 }
@@ -3467,6 +3552,14 @@ crude_blueprint::Result<void> crude_blueprint::Context::Return(Fiber& fiber, int
     }
     auto call = frame.m_Call;
     fiber.m_Frames.pop_back();
+    if (call < 0)
+    {
+        fiber.m_Info.m_Results = std::move(results);
+        fiber.m_Node  = -1;
+        fiber.m_Entry = -1;
+        fiber.m_Again = false;
+        return {};
+    }
     EvalContext caller(*this, call, fiber.m_Frames.back());
     for (size_t i = 0; i < results.size(); ++i)
         caller.Set(function.m_Outputs[i], std::move(results[i]));
@@ -3519,6 +3612,18 @@ void crude_blueprint::Context::Settle(Fiber& fiber)
         }
         auto& function = m_Program->m_Functions[frame.m_Function];
         auto  call     = frame.m_Call;
+        if (call < 0)
+        {
+            std::vector<Value> results;
+            for (auto type : function.m_OutputTypes)
+            {
+                auto resolved = Resolve(frame, type);
+                results.push_back(resolved->m_Head->Default(*resolved));
+            }
+            fiber.m_Frames.pop_back();
+            fiber.m_Info.m_Results = std::move(results);
+            continue;
+        }
         fiber.m_Frames.pop_back();
         EvalContext caller(*this, call, fiber.m_Frames.back());
         for (auto& key : function.m_Outputs)

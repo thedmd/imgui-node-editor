@@ -1088,6 +1088,7 @@ struct ProgramFunction
     std::vector<const ParameterType*> m_Parameters;
     std::vector<std::string>          m_Inputs;         // its signature's keys
     std::vector<std::string>          m_Outputs;
+    std::vector<const Type*>          m_OutputTypes;    // of its type parameters, where it's generic
     bool                              m_Pure      = false;
 };
 
@@ -1152,6 +1153,7 @@ struct FiberInfo
     bool       m_AtBreakpoint = false; // Run() stopped it before its next node, which has a breakpoint
     Wake       m_Wake;                 // what it waits for, while it's suspended
     std::vector<Id> m_Calls;           // the call nodes it's in, the outermost first
+    std::vector<Value> m_Results;      // of a function the host called, once it returned: its outputs, in order
 };
 
 // Why Run() returned.
@@ -1268,6 +1270,10 @@ public:
 
     // The arguments go to the event node's data outputs, in order: one for each, of its type.
     Result<FiberId>    Start(std::string_view event, std::span<const Value> arguments = {});
+    // A fiber of an impure function, which runs from its entry: the arguments are its inputs, in
+    // order, and give a generic one's parameters their types. Once it returns, its fiber is done,
+    // with the outputs as results.
+    Result<FiberId>    Call(std::string_view function, std::span<const Value> arguments = {});
     // Runs the fiber's next node, breakpoint or not.
     Result<FiberState> Step(FiberId fiber);
     // Steps the ready fibers in turn until none is ready, the time is up, or a fiber is before a
