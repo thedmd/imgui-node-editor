@@ -1092,6 +1092,8 @@ crude_blueprint::Blueprint& crude_blueprint::Blueprint::operator=(Blueprint&& ot
     if (this == &other)
         return *this;
 
+    Clear();
+
     m_NodeRegistry = std::move(other.m_NodeRegistry);
     m_Generator    = std::move(other.m_Generator);
     m_Nodes        = std::move(other.m_Nodes);

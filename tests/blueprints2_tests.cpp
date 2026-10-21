@@ -48,6 +48,19 @@ std::string Printed()
     return printed;
 }
 
+// A node type that counts its nodes.
+struct CountedNode final : Node
+{
+    CRUDE_BP_NODE(CountedNode, "Counted")
+
+    CountedNode(Blueprint& blueprint): Node(blueprint) { ++s_Alive; }
+    ~CountedNode() override { --s_Alive; }
+
+    static int s_Alive;
+};
+
+int CountedNode::s_Alive = 0;
+
 ed::Config UnnamedConfig()
 {
     ed::Config config;
@@ -719,4 +732,22 @@ TEST_CASE(DeleteBreaksLinks, "blueprints2.deleting_a_node_breaks_its_links", "CB
     test::Check(typed, "To String took Int32 from the constant");
     test::Check(valueUnlinked, "deleting the constant unlinks To String, which takes any type again");
     test::Check(stringUnlinked, "deleting To String unlinks Print");
+}
+
+TEST_CASE(MoveDeletesNodes, "blueprints2.a_blueprint_moved_over_deletes_its_nodes", "CBP-9", test::TestFlags_None)
+{
+    auto registry = std::make_shared<NodeRegistry>();
+    registry->RegisterNodeType("CountedNode", CountedNode::GetStaticTypeInfo().m_Factory);
+    const auto alive = CountedNode::s_Alive;
+    int afterMove = 0;
+    {
+        Blueprint target(registry);
+        target.CreateNode<CountedNode>();
+        Blueprint source(registry);
+        target = std::move(source);
+        afterMove = CountedNode::s_Alive - alive;
+    }
+
+    test::Check(afterMove == 0, "moving another blueprint over one deletes its node: %d alive", afterMove);
+    test::Check(CountedNode::s_Alive == alive, "and none is left when both go: %d alive", CountedNode::s_Alive - alive);
 }
