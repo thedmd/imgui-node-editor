@@ -793,3 +793,31 @@ TEST_CASE(HostCalls, "function.the_host_calls_a_function_and_reads_its_results",
     for (auto& [result, why] : refusals)
         test::Check(result.starts_with("refused: "), "%s is refused: %s", why, result.c_str());
 }
+
+TEST_CASE(RemovedFunctions, "function.a_function_goes_with_its_graph_once_no_other_graph_calls_it", nullptr, test::TestFlags_None)
+{
+    // Countdown calls itself; Start calls it, and prints after.
+    Fixture f;
+    auto& body  = f.Function("Countdown", {});
+    auto  entry = f.In(body, "entry:Countdown"), self = f.In(body, "call:Countdown");
+    f.Wire(body, entry, "then", self, "enter");
+    auto start = f.Add("Start"), call = f.Call("Countdown"), print = f.Add("Print");
+    f.Link(start, "then", print, "enter");
+    auto before = Compile(f.m_Blueprint).m_Program;
+    auto refused = f.m_Blueprint.RemoveFunction(body.GetId());
+    test::Check(!refused && refused.GetError().Is(BlueprintError::Unsupported) && f.m_Blueprint.FindFunction(body.GetId()), "it stays while another graph calls it: %s", Message(refused).c_str());
+
+    f.Remove(call);
+    const auto graph   = body.GetId();
+    auto       removed = f.m_Blueprint.RemoveFunction(graph);
+    test::Check(removed && !f.m_Blueprint.FindFunction(graph) && !f.m_Blueprint.FindGraph(graph) && !f.m_Blueprint.FindNodeType("call:Countdown") && !f.m_Blueprint.FindNodeType("entry:Countdown"), "then it goes, its own call and all, with its graph and node types");
+
+    auto missing = f.m_Blueprint.RemoveFunction(f.m_Graph.GetId());
+    test::Check(!missing && missing.GetError().Is(BlueprintError::NotFound), "an event graph isn't a function's: %s", Message(missing).c_str());
+
+    if (!before)
+        return test::Check(false, "the blueprint compiled before");
+    Context old(before);
+    auto ran = old.Start("Start").IsOk() && old.Run(std::chrono::seconds(1)) == RunState::Idle;
+    test::Check(ran && old.Fibers()[0].m_State == FiberState::Done, "and a program compiled before runs as it was");
+}

@@ -2397,6 +2397,25 @@ crude_blueprint::Result<void> crude_blueprint::Blueprint::RenameFunction(Id grap
     return {};
 }
 
+crude_blueprint::Result<void> crude_blueprint::Blueprint::RemoveFunction(Id graph)
+{
+    auto function = std::find_if(m_Functions.begin(), m_Functions.end(), [graph](const auto& other) { return other->m_Graph == graph; });
+    if (function == m_Functions.end())
+        return Error(BlueprintError::NotFound, "graph " + std::to_string(graph) + " isn't a function's");
+    const auto name = (*function)->m_Name;
+    const auto call = m_Scope.at(FunctionNodeType::Prefix(FunctionNodeType::Role::Call) + name).get();
+    for (auto& other : m_Graphs)
+        if (other->GetId() != graph)
+            for (auto& node : other->Nodes())
+                if (node.m_Type == call)
+                    return Error(BlueprintError::Unsupported, node.Name() + " in " + other->GetName() + " calls " + name);
+    for (auto role : { FunctionNodeType::Role::Entry, FunctionNodeType::Role::Return, FunctionNodeType::Role::Call })
+        m_Scope.erase(FunctionNodeType::Prefix(role) + name);
+    std::erase_if(m_Graphs, [graph](const auto& other) { return other->GetId() == graph; });
+    m_Functions.erase(function);
+    return {};
+}
+
 const crude_blueprint::Function* crude_blueprint::Blueprint::FindFunction(Id graph) const
 {
     for (auto& function : m_Functions)

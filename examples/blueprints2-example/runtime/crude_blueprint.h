@@ -1012,6 +1012,8 @@ public:
     Result<void>    SetSignature(Id graph, Signature signature);
     // Its graph, its nodes' types and its type parameters take the new name.
     Result<void>    RenameFunction(Id graph, std::string name);
+    // With its graph; refused while another graph calls it.
+    Result<void>    RemoveFunction(Id graph);
     const Function* FindFunction(Id graph) const;
     // The function a node type of the blueprint's is the entry, a return or the call of.
     const Function* FunctionOf(const NodeType& type) const;
