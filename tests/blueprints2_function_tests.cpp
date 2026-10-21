@@ -645,3 +645,43 @@ TEST_CASE(PureSignatures, "function.made_pure_a_function_drops_the_links_of_its_
     auto compiled = Compile(f.m_Blueprint);
     test::Check(compiled.m_Program != nullptr, "and it compiles: %s", compiled.m_Diagnostics.empty() ? "" : std::string(compiled.m_Diagnostics[0].m_Error.Message()).c_str());
 }
+
+TEST_CASE(RenamedFunctions, "function.a_renamed_functions_graph_and_nodes_take_its_name", nullptr, test::TestFlags_None)
+{
+    // Lerp<T> returns a, called from Start with Int32s, the result printed. Renamed Mix.
+    Fixture f;
+    auto& body  = f.Function("Lerp", Lerp());
+    auto  entry = f.In(body, "entry:Lerp"), ret = f.In(body, "return:Lerp");
+    f.Wire(body, entry, "then", ret, "enter");
+    f.Wire(body, entry, "a", ret, "value");
+    auto start = f.Add("Start"), call = f.Call("Lerp"), print = f.Add("Print");
+    f.Link(start, "then", call, "enter");
+    f.Link(call, "then", print, "enter");
+    f.Link(f.Constant(Int32Type()), "value", call, "a");
+    f.Link(call, "value", print, "text", LinkMode::Cast);
+    f.In(f.Function("Other", {}), "entry:Other");
+    auto before = Compile(f.m_Blueprint).m_Program;
+    if (!before)
+        return test::Check(false, "the blueprint compiles");
+
+    auto renamed = f.m_Blueprint.RenameFunction(body.GetId(), "Mix");
+    auto node    = f.m_Graph.FindNode(call);
+    test::Check(renamed && body.GetName() == "Mix" && f.m_Blueprint.FindFunction(body.GetId())->m_Name == "Mix", "renamed, a function's graph has its name");
+    test::Check(node && node->m_Type->m_Name == "call:Mix" && node->Name() == "Mix#" + std::to_string(call) && body.FindNode(entry)->m_Type->m_Name == "entry:Mix" && !f.m_Blueprint.FindNodeType("call:Lerp"), "and its nodes take node types of the new name, keeping their IDs");
+    test::Check(f.TypeIn(body, entry, "a") == "Mix.T" && !body.IsBroken() && !f.m_Graph.IsBroken(), "its type parameters are named after it: %s", f.TypeIn(body, entry, "a").c_str());
+
+    auto end     = FiberState::Ready;
+    auto printed = f.Run(&end);
+    test::Check(printed == "0" && end == FiberState::Done, "it runs as it did: %s", printed.c_str());
+    Context old(before);
+    Logs    logs;
+    old.SetMonitor(&logs);
+    auto ran = old.Start("Start").IsOk() && old.Run(std::chrono::seconds(1)) == RunState::Idle;
+    test::Check(ran && logs.m_Text == "0", "and so does a program compiled before: %s", logs.m_Text.c_str());
+
+    auto taken   = f.m_Blueprint.RenameFunction(body.GetId(), "Other");
+    auto bad     = f.m_Blueprint.RenameFunction(body.GetId(), "two words");
+    auto missing = f.m_Blueprint.RenameFunction(f.m_Graph.GetId(), "Main");
+    auto same    = f.m_Blueprint.RenameFunction(body.GetId(), "Mix");
+    test::Check(!taken && taken.GetError().Is(BlueprintError::Duplicate) && !bad && !missing && missing.GetError().Is(BlueprintError::NotFound) && same, "another function's name, a bad one, and an event graph's are refused: %s", Message(taken).c_str());
+}

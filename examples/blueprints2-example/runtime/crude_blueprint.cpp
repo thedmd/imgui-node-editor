@@ -2311,6 +2311,45 @@ crude_blueprint::Result<void> crude_blueprint::Blueprint::SetSignature(Id graph,
     return {};
 }
 
+// The function keeps its object, which its node types share, and gets node types of the new name:
+// those of the old one stay with the programs compiled before.
+crude_blueprint::Result<void> crude_blueprint::Blueprint::RenameFunction(Id graph, std::string name)
+{
+    auto function = std::find_if(m_Functions.begin(), m_Functions.end(), [graph](const auto& other) { return other->m_Graph == graph; });
+    if (function == m_Functions.end())
+        return Error(BlueprintError::NotFound, "graph " + std::to_string(graph) + " isn't a function's");
+    if ((*function)->m_Name == name)
+        return {};
+    if (auto check = CheckFunction(name, (*function)->m_Signature); !check)
+        return check;
+
+    const FunctionNodeType::Role roles[] = { FunctionNodeType::Role::Entry, FunctionNodeType::Role::Return, FunctionNodeType::Role::Call };
+    std::map<const NodeType*, const NodeType*> renamed;
+    std::vector<std::shared_ptr<const NodeType>> old;
+    for (auto role : roles)
+    {
+        auto key = FunctionNodeType::Prefix(role) + (*function)->m_Name;
+        old.push_back(m_Scope.at(key));
+        m_Scope.erase(key);
+    }
+    (*function)->m_Name = name;
+    FindGraph(graph)->m_Name = std::move(name);
+    SetParameters(**function);
+    for (size_t i = 0; i < old.size(); ++i)
+    {
+        auto type = std::make_shared<FunctionNodeType>(*function, roles[i]);
+        renamed[old[i].get()] = type.get();
+        m_Scope.emplace(type->m_Name, std::move(type));
+    }
+    for (auto& other : m_Graphs)
+        for (auto& node : other->m_Nodes)
+            if (auto to = renamed.find(node.m_Type); to != renamed.end())
+                node.m_Type = to->second;
+    for (auto& other : m_Graphs)
+        other->Update();
+    return {};
+}
+
 const crude_blueprint::Function* crude_blueprint::Blueprint::FindFunction(Id graph) const
 {
     for (auto& function : m_Functions)

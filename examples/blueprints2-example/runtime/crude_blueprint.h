@@ -966,6 +966,8 @@ public:
     Result<Graph*>  AddFunction(std::string name, Signature signature);
     // Every graph takes the function's new pins, and the links of the pins it no longer has go.
     Result<void>    SetSignature(Id graph, Signature signature);
+    // Its graph, its nodes' types and its type parameters take the new name.
+    Result<void>    RenameFunction(Id graph, std::string name);
     const Function* FindFunction(Id graph) const;
     // The function a node type of the blueprint's is the entry, a return or the call of.
     const Function* FunctionOf(const NodeType& type) const;
