@@ -2406,6 +2406,36 @@ crude_blueprint::Result<void> crude_blueprint::Blueprint::RenameFunction(Id grap
     return {};
 }
 
+crude_blueprint::Result<void> crude_blueprint::Blueprint::RenameTypeParameter(Id graph, size_t index, std::string name)
+{
+    auto function = std::find_if(m_Functions.begin(), m_Functions.end(), [graph](const auto& other) { return other->m_Graph == graph; });
+    if (function == m_Functions.end())
+        return Error(BlueprintError::NotFound, "graph " + std::to_string(graph) + " isn't a function's");
+    auto signature = (*function)->m_Signature;
+    if (index >= signature.m_Parameters.size())
+        return Error(BlueprintError::OutOfRange, (*function)->m_Name + " has no type parameter " + std::to_string(index));
+    const auto old = std::exchange(signature.m_Parameters[index].m_Name, name);
+    if (old == name)
+        return {};
+    if (auto check = CheckSignature(signature); !check)
+        return check;
+    const auto call = m_Scope.at(FunctionNodeType::Prefix(FunctionNodeType::Role::Call) + (*function)->m_Name).get();
+    for (auto& other : m_Graphs)
+    {
+        for (auto& node : other->m_Nodes)
+        {
+            if (node.m_Type != call)
+                continue;
+            if (auto chosen = node.m_Config.m_Types.extract(old))
+            {
+                chosen.key() = name;
+                node.m_Config.m_Types.insert(std::move(chosen));
+            }
+        }
+    }
+    return SetSignature(graph, std::move(signature));
+}
+
 crude_blueprint::Result<void> crude_blueprint::Blueprint::RemoveFunction(Id graph)
 {
     auto function = std::find_if(m_Functions.begin(), m_Functions.end(), [graph](const auto& other) { return other->m_Graph == graph; });
@@ -2466,10 +2496,15 @@ crude_blueprint::Result<void> crude_blueprint::Blueprint::CheckFunction(std::str
 
 crude_blueprint::Result<void> crude_blueprint::Blueprint::CheckSignature(const Signature& signature) const
 {
+    // Type text reads a type parameter's name before a value type's.
     std::set<std::string_view> names;
     for (auto& parameter : signature.m_Parameters)
+    {
         if (parameter.m_Name.empty() || !std::all_of(parameter.m_Name.begin(), parameter.m_Name.end(), IsNameCharacter) || !names.insert(parameter.m_Name).second)
             return Error(BlueprintError::Duplicate, "type parameter " + Quote(parameter.m_Name) + " has no name of its own");
+        if (GetRegistry().FindValueType(parameter.m_Name))
+            return Error(BlueprintError::Duplicate, "type parameter " + Quote(parameter.m_Name) + " has a value type's name");
+    }
     std::set<std::string_view> keys = { "enter", "then" };
     for (auto pins : { &signature.m_Inputs, &signature.m_Outputs })
     {

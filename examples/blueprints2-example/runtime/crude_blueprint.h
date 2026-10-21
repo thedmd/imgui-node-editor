@@ -1013,6 +1013,8 @@ public:
     Result<void>    SetSignature(Id graph, Signature signature);
     // Its graph, its nodes' types and its type parameters take the new name.
     Result<void>    RenameFunction(Id graph, std::string name);
+    // Its calls keep the types chosen for it, under the new name.
+    Result<void>    RenameTypeParameter(Id graph, size_t index, std::string name);
     // With its graph; refused while another graph calls it.
     Result<void>    RemoveFunction(Id graph);
     const Function* FindFunction(Id graph) const;

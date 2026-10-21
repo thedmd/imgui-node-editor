@@ -4,6 +4,7 @@
 //------------------------------------------------------------------------------
 # include "blueprints2_fixture.h"
 # include "crude_blueprint_library.h"
+# include <crude_json.h>
 # include <algorithm>
 # include <chrono>
 # include <memory>
@@ -820,4 +821,46 @@ TEST_CASE(RemovedFunctions, "function.a_function_goes_with_its_graph_once_no_oth
     Context old(before);
     auto ran = old.Start("Start").IsOk() && old.Run(std::chrono::seconds(1)) == RunState::Idle;
     test::Check(ran && old.Fibers()[0].m_State == FiberState::Done, "and a program compiled before runs as it was");
+}
+
+TEST_CASE(RenamedTypeParameters, "function.a_renamed_type_parameter_keeps_the_types_its_calls_chose", nullptr, test::TestFlags_None)
+{
+    // Lerp<T> returns a; Start calls it with T chosen Float, the result printed. Pair<T, U> has two.
+    Fixture f;
+    auto& body  = f.Function("Lerp", Lerp());
+    auto  entry = f.In(body, "entry:Lerp"), ret = f.In(body, "return:Lerp");
+    f.Wire(body, entry, "then", ret, "enter");
+    f.Wire(body, entry, "a", ret, "value");
+    auto start = f.Add("Start"), call = f.In(f.m_Graph, "call:Lerp", Chosen("T", FloatType())), print = f.Add("Print");
+    f.Link(start, "then", call, "enter");
+    f.Link(call, "then", print, "enter");
+    f.Link(call, "value", print, "text", LinkMode::Cast);
+    Signature pair;
+    pair.m_Parameters = { { "T", {} }, { "U", {} } };
+    auto& other = f.Function("Pair", pair);
+    f.In(other, "entry:Pair");
+
+    auto renamed = f.m_Blueprint.RenameTypeParameter(body.GetId(), 0, "Item");
+    auto chosen  = f.m_Graph.FindNode(call)->m_Config.m_Types;
+    test::Check(renamed && f.m_Blueprint.FindFunction(body.GetId())->m_Signature.m_Parameters[0].m_Name == "Item" && f.TypeIn(body, entry, "a") == "Lerp.Item", "renamed, a type parameter has its new name in the body: %s", f.TypeIn(body, entry, "a").c_str());
+    test::Check(chosen.size() == 1 && chosen["Item"] == &FloatType() && f.TypeIn(f.m_Graph, call, "a") == "Float" && !f.m_Graph.IsBroken(), "and a call keeps the type chosen for it, under the new name: %s", f.TypeIn(f.m_Graph, call, "a").c_str());
+    auto end     = FiberState::Ready;
+    auto printed = f.Run(&end);
+    test::Check(printed == "0" && end == FiberState::Done, "it runs as it did: %s", printed.c_str());
+
+    Blueprint loaded(FunctionRegistry(), std::make_shared<TypeTable>());
+    auto read  = Load(loaded, Save(f.m_Blueprint));
+    auto again = read ? loaded.FindFunction(body.GetId()) : nullptr;
+    auto node  = read ? loaded.FindGraph(f.m_Graph.GetId())->FindNode(call) : nullptr;
+    test::Check(again && again->m_Signature.m_Parameters[0].m_Name == "Item" && node && node->m_Config.m_Types.contains("Item"), "a file keeps the new name: %s", Message(read).c_str());
+
+    auto typeName = f.m_Blueprint.RenameTypeParameter(body.GetId(), 0, "Int32");
+    auto taken    = f.m_Blueprint.RenameTypeParameter(other.GetId(), 1, "T");
+    auto bad      = f.m_Blueprint.RenameTypeParameter(body.GetId(), 0, "two words");
+    auto none     = f.m_Blueprint.RenameTypeParameter(body.GetId(), 1, "U");
+    auto missing  = f.m_Blueprint.RenameTypeParameter(f.m_Graph.GetId(), 0, "U");
+    auto same     = f.m_Blueprint.RenameTypeParameter(body.GetId(), 0, "Item");
+    test::Check(!typeName && typeName.GetError().Is(BlueprintError::Duplicate) && !taken && taken.GetError().Is(BlueprintError::Duplicate) && !bad, "a value type's name, another parameter's, and a bad one are refused: %s", Message(typeName).c_str());
+    test::Check(!none && none.GetError().Is(BlueprintError::OutOfRange) && !missing && missing.GetError().Is(BlueprintError::NotFound) && same, "as are a parameter there isn't and an event graph; its own name changes nothing");
+    test::Check(f.m_Graph.FindNode(call)->m_Config.m_Types.contains("Item") && f.m_Blueprint.FindFunction(body.GetId())->m_Signature.m_Parameters[0].m_Name == "Item", "a refused rename leaves the parameter and its calls as they were");
 }
