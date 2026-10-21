@@ -1149,3 +1149,28 @@ TEST_CASE(FunctionRuns, "blueprints2.a_function_runs_from_its_entry_and_gives_it
     test::Check(called && !debugger.IsActive() && fibers.size() == 1 && fibers[0].m_State == FiberState::Done && fibers[0].m_Results == std::vector<Value>{ Value::Int32(0) }, "called with its input's default, Echo gives it back");
     test::Check(!debugger.Call(document, true, "Lerp") && !debugger.GetContext(), "a generic function doesn't run");
 }
+
+TEST_CASE(FunctionDeletes, "blueprints2.a_function_goes_with_the_calls_of_it_in_one_undo_step", nullptr, test::TestFlags_None)
+{
+    // Clamp, called from the example's graph.
+    test::Session session(UnnamedConfig());
+    OverlayLog    log;
+    Example       example(session);
+    auto& document = example.m_Document;
+    auto  graph    = Id(0), call = Id(0);
+    session.Use([&]
+    {
+        auto transaction = document.BeginUndoTransaction("Add Function");
+        auto added = document.GetBlueprint().AddFunction("Clamp", {});
+        auto made  = added ? document.GetGraph().AddNode("call:Clamp") : Result<Id>(BlueprintError::NotFound);
+        if (made && added.GetValue()->AddNode("entry:Clamp"))
+            transaction->AddAction("Clamp added, and called");
+        graph = added ? added.GetValue()->GetId() : 0;
+        call  = made.ValueOr(0);
+    });
+
+    session.Use([&] { blueprint_editor_utilities::RemoveFunction(document, graph); });
+    test::Check(!document.GetBlueprint().FindGraph(graph) && !document.GetGraph().FindNode(call) && document.m_Undo.size() == 2, "deleted, a function takes the calls of it along, in one step");
+    session.Use([&] { document.Undo(); });
+    test::Check(document.GetBlueprint().FindFunction(graph) && document.GetGraph().FindNode(call), "and undoing it brings both back");
+}

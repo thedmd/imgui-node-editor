@@ -311,6 +311,37 @@ void blueprint_editor_utilities::RenameFunction(Document& document, Id graph, st
     transaction->AddAction("%s renamed %s", old.c_str(), name.c_str());
 }
 
+void blueprint_editor_utilities::RemoveFunction(Document& document, Id graph)
+{
+    auto& blueprint = document.GetBlueprint();
+    auto  function  = blueprint.FindFunction(graph);
+    if (!function)
+        return;
+    const auto name  = function->m_Name;
+    const auto call  = blueprint.FindNodeType("call:" + name);
+    auto transaction = document.BeginUndoTransaction("Delete Function");
+    auto calls       = 0;
+    for (auto& other : blueprint.Graphs())
+    {
+        if (other->GetId() == graph)
+            continue;
+        std::vector<Id> found;
+        for (auto& node : other->Nodes())
+            if (node.m_Type == call)
+                found.push_back(node.m_Id);
+        for (auto node : found)
+            calls += other->RemoveNode(node).IsOk() ? 1 : 0;
+    }
+    if (auto removed = blueprint.RemoveFunction(graph); !removed)
+    {
+        auto message = removed.GetError().Message();
+        LOGW("[Function] %s: %.*s", name.c_str(), static_cast<int>(message.size()), message.data());
+        transaction->Discard();
+        return;
+    }
+    transaction->AddAction("%s deleted, with %d call%s", name.c_str(), calls, calls != 1 ? "s" : "");
+}
+
 void blueprint_editor_utilities::RenameEvent(Document& document, Id node, std::string name)
 {
     auto& graph = document.GetGraph();

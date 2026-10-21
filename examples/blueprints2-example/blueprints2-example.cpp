@@ -222,6 +222,29 @@ struct BlueprintEditorExample
         m_HistoryIndex = 0;
     }
 
+    // Before the editor begins, the shown graph's editor current. When the function's graph showed,
+    // the first graph shows. Then the function's graph's editor goes.
+    void DeleteFunction(Id graph)
+    {
+        auto& document = *m_Document;
+        const auto shown = document.GetGraph().GetId() == graph;
+        RemoveFunction(document, graph);
+        if (document.GetBlueprint().FindGraph(graph))
+            return;
+        if (shown)
+        {
+            document.m_ShownGraph = document.GetBlueprint().Graphs().front()->GetId();
+            ed::SetCurrentEditor(EditorFor(document.m_ShownGraph));
+            document.OnMakeCurrent();
+            m_TabRequest = document.m_ShownGraph;
+        }
+        if (auto editor = m_Editors.find(graph); editor != m_Editors.end())
+        {
+            ed::DestroyEditor(editor->second);
+            m_Editors.erase(editor);
+        }
+    }
+
     // Before the editor begins: the graph's editor becomes current, with the graph's layout and view.
     void ShowGraph(Id graph, bool remember = true)
     {
@@ -325,6 +348,8 @@ struct BlueprintEditorExample
     void OnFrame(float deltaTime) override
     {
         ed::SetCurrentEditor(m_Document ? EditorFor(m_Document->GetGraph().GetId()) : nullptr);
+        if (auto graph = std::exchange(m_PendingDelete, 0); graph && m_Document)
+            DeleteFunction(graph);
 
         if (m_Document)
         {
@@ -1403,7 +1428,7 @@ private:
     }
 
     // A tab for each graph, a function's with "()", and one to add a function. A function's tab,
-    // double-clicked or from its menu, renames it.
+    // double-clicked or from its menu, renames it, and its menu deletes it.
     void ShowGraphTabs(Document& document)
     {
         if (!ImGui::BeginTabBar("##graphs", ImGuiTabBarFlags_FittingPolicyScroll))
@@ -1418,6 +1443,8 @@ private:
             if (function && ImGui::BeginPopupContextItem())
             {
                 rename = ImGui::MenuItem("Rename...");
+                if (ImGui::MenuItem("Delete"))
+                    m_PendingDelete = id;
                 ImGui::EndPopup();
             }
             if (rename)
@@ -2238,6 +2265,7 @@ private:
     Id                        m_PendingGraph    = 0;     // to show once the frame begins, before the editor does
     bool                      m_PendingRemember = true;
     Id                        m_PendingNode     = 0;     // to go to once its graph shows
+    Id                        m_PendingDelete   = 0;     // a function's graph, to delete as the next frame begins
     Id                        m_FollowedNode    = 0;     // the run's next node, as its graph last showed for it
     std::unordered_map<Id, ImRect> m_PinIcons;           // where the shown graph's pins' icons are, as its nodes last drew
     Id                        m_RenamedFunction = 0;     // its graph's ID

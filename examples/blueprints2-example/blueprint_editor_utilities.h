@@ -83,6 +83,7 @@ void AddSignaturePin(Document& document, Id graph, bool input); // of a key of i
 // A type parameter that a pin's type has can't go.
 void RemoveTypeParameter(Document& document, Id graph, int index);
 void RenameFunction(Document& document, Id graph, std::string name);
+void RemoveFunction(Document& document, Id graph); // with the calls of it in other graphs
 void RenameEvent(Document& document, Id node, std::string name); // a Custom Event's
 
 // Edits of the blueprint's variables, one undo step each. One the blueprint refuses is logged.
