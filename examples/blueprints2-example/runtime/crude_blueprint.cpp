@@ -1398,10 +1398,28 @@ crude_blueprint::Result<crude_blueprint::Id> crude_blueprint::Graph::Connect(Id 
 
 crude_blueprint::Result<void> crude_blueprint::Graph::CanConnect(Id from, Id to, LinkMode mode) const
 {
+    const auto next = m_Blueprint->m_NextId;
     Graph trial = *this;
-    if (auto result = trial.Connect(from, to, mode); !result)
+    auto result = trial.Connect(from, to, mode);
+    m_Blueprint->m_NextId = next;
+    if (!result)
         return result.GetError();
     return {};
+}
+
+crude_blueprint::Result<std::vector<crude_blueprint::Id>> crude_blueprint::Graph::ForceDisables(Id from, Id to) const
+{
+    const auto next = m_Blueprint->m_NextId;
+    Graph trial = *this;
+    auto result = trial.Connect(from, to, LinkMode::Force);
+    m_Blueprint->m_NextId = next;
+    if (!result)
+        return result.GetError();
+    std::vector<Id> disabled;
+    for (auto& link : m_Links)
+        if (auto after = trial.FindLink(link.m_Id); link.m_Active && after && !after->m_Active)
+            disabled.push_back(link.m_Id);
+    return disabled;
 }
 
 crude_blueprint::Result<void> crude_blueprint::Graph::Disconnect(Id link)

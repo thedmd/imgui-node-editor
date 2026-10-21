@@ -767,6 +767,8 @@ public:
     // A data input takes one link, as a flow output does; a new link replaces the one it has.
     Result<Id>   Connect(Id from, Id to, LinkMode mode = LinkMode::Plain);
     Result<void> CanConnect(Id from, Id to, LinkMode mode = LinkMode::Plain) const;
+    // The active links that forcing a link from 'from' to 'to' would disable, or why it can't be.
+    Result<std::vector<Id>> ForceDisables(Id from, Id to) const;
     Result<void> Disconnect(Id link);
     // A forced config may disable links, but a type the user chose must fit its variable even then.
     Result<void> SetConfig(Id node, NodeConfig config, bool force = false);
@@ -857,6 +859,7 @@ public:
     Id NewId() { return m_NextId++; }
 
 private:
+    friend class Graph;
     friend struct FileLoader;
     friend crude_json::value Save(const Blueprint& blueprint);
     friend Result<void>      Load(Blueprint& blueprint, const crude_json::value& file);

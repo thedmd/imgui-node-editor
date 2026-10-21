@@ -741,6 +741,27 @@ TEST_CASE(CanConnectChangesNothing, "graph.asking_whether_a_link_fits_changes_no
     auto forcing = f.m_Graph.CanConnect(f.Pin(floats, "value"), f.Pin(add, "in.1"), LinkMode::Force);
     test::Check(fits && !doesnt && doesnt.GetError().Is(BlueprintError::TypeMismatch) && forcing, "Int32 fits, Float doesn't, and Float forced does: %s", Message(doesnt).c_str());
     test::Check(f.m_Graph.Links().size() == 1 && f.Type(add, "out") == "Int32" && !f.m_Graph.IsBroken(), "and the graph is as it was");
+
+    // The IDs the links tried take are given back.
+    auto before = f.m_Blueprint.NewId();
+    auto asked  = f.m_Graph.CanConnect(f.Pin(ints, "value"), f.Pin(add, "in.1")).IsOk() && f.m_Graph.ForceDisables(f.Pin(floats, "value"), f.Pin(add, "in.1")).IsOk();
+    auto after  = f.m_Blueprint.NewId();
+    test::Check(asked && after == before + 1, "and so are the blueprint's IDs: %d after %d", static_cast<int>(after), static_cast<int>(before));
+}
+
+TEST_CASE(ForceDisablesTells, "graph.asking_about_forcing_tells_the_links_it_would_disable", nullptr, test::TestFlags_None)
+{
+    Fixture f;
+    auto ints = f.Add("ConstInt32"), floats = f.Add("ConstFloat"), add = f.Add("Add"), print = f.Add("Print");
+    auto plain    = f.Connect(ints, "value", add, "in.0");
+    auto disables = f.m_Graph.ForceDisables(f.Pin(floats, "value"), f.Pin(add, "in.1"));
+    test::Check(disables && disables.GetValue() == std::vector<Id>{ plain.ValueOr(0) }, "forcing Const Float -> Add.in.1 would disable Const Int32 -> Add.in.0");
+    test::Check(f.m_Graph.Links().size() == 1 && IsActive(f.m_Graph, plain) && f.Type(add, "out") == "Int32", "and asking changes nothing");
+
+    auto fits = f.m_Graph.ForceDisables(f.Pin(ints, "value"), f.Pin(add, "in.1"));
+    test::Check(fits && fits.GetValue().empty(), "a link that fits disables none");
+    auto refused = f.m_Graph.ForceDisables(f.Pin(ints, "value"), f.Pin(print, "text"));
+    test::Check(!refused && refused.GetError().Is(BlueprintError::TypeMismatch), "Int32 into Print's String input can't be forced, as no link decides String: %s", Message(refused).c_str());
 }
 
 TEST_CASE(RemovingNodes, "graph.removing_a_node_removes_its_links", nullptr, test::TestFlags_None)
