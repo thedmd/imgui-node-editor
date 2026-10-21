@@ -5,6 +5,7 @@
 # include <cmath>
 # include <iterator>
 # include <limits>
+# include <unordered_set>
 
 
 //
@@ -1264,6 +1265,8 @@ crude_blueprint::Result<crude_blueprint::Id> crude_blueprint::Graph::Connect(Id 
         return Error(BlueprintError::NotFound, "no pin " + std::to_string(fromPin ? to : from) + " in " + m_Name);
     if (auto check = CheckLink(*fromPin, *toPin); !check)
         return check.GetError();
+    if (mode != LinkMode::Keep && ClosesPureLoop(*fromPin, *toPin))
+        return Error(BlueprintError::Loop, LinkName(*fromPin, *toPin) + " closes a loop of pure nodes");
 
     Link link;
     link.m_Id   = m_Blueprint->NewId();
@@ -1380,6 +1383,8 @@ crude_blueprint::Result<void> crude_blueprint::Graph::RemoveGroupPin(Id node, st
     changed->m_Config.m_Split = std::move(split);
     changed->m_Config.m_Groups[declared->m_Name] = count - 1;
     std::erase_if(m_Links, [&removed](const Link& link) { return std::find(removed.begin(), removed.end(), link.m_From) != removed.end() || std::find(removed.begin(), removed.end(), link.m_To) != removed.end(); });
+    for (auto id : removed)
+        changed->m_Values.erase(id);
     Update();
     return {};
 }
@@ -1410,6 +1415,27 @@ crude_blueprint::Result<void> crude_blueprint::Graph::SplitPin(Id node, std::str
         std::erase_if(list, [key, &prefix](const std::string& other) { return other == key || other.starts_with(prefix); });
     }
     Update();
+    return {};
+}
+
+crude_blueprint::Result<void> crude_blueprint::Graph::SetValue(Id pin, Value value)
+{
+    auto found = FindPin(pin);
+    if (!found)
+        return Error(BlueprintError::NotFound, "no pin " + std::to_string(pin) + " in " + m_Name);
+    if (found->m_Flow || found->m_Direction != Direction::Input)
+        return Error(BlueprintError::WrongType, PinName(*found) + " takes no value");
+    auto& values = MutableNode(found->m_Node)->m_Values;
+    if (!value.IsValid())
+    {
+        values.erase(pin);
+        return {};
+    }
+    if (!found->m_DecidedType)
+        return Error(BlueprintError::Undecided, PinName(*found) + " has no type decided for its value");
+    if (value.GetType() != found->m_DecidedType)
+        return Error(BlueprintError::WrongType, PinName(*found) + " takes " + found->m_DecidedType->m_Name + ", not " + value.GetType()->m_Name);
+    values[pin] = std::move(value);
     return {};
 }
 
@@ -1450,6 +1476,15 @@ const crude_blueprint::Link* crude_blueprint::Graph::FindLink(Id link) const
     return nullptr;
 }
 
+const crude_blueprint::Value* crude_blueprint::Graph::FindValue(Id pin) const
+{
+    auto node = NodeOf(pin);
+    if (!node)
+        return nullptr;
+    auto it = node->m_Values.find(pin);
+    return it != node->m_Values.end() ? &it->second : nullptr;
+}
+
 std::string crude_blueprint::Graph::TypeText(Id pin) const
 {
     auto found = FindPin(pin);
@@ -1465,7 +1500,12 @@ std::string crude_blueprint::Graph::PinName(const Pin& pin) const
 
 std::string crude_blueprint::Graph::LinkName(const Link& link) const
 {
-    return PinName(*FindPin(link.m_From)) + " -> " + PinName(*FindPin(link.m_To));
+    return LinkName(*FindPin(link.m_From), *FindPin(link.m_To));
+}
+
+std::string crude_blueprint::Graph::LinkName(const Pin& from, const Pin& to) const
+{
+    return PinName(from) + " -> " + PinName(to);
 }
 
 crude_blueprint::Result<void> crude_blueprint::Graph::CheckLink(const Pin& from, const Pin& to) const
@@ -1477,6 +1517,42 @@ crude_blueprint::Result<void> crude_blueprint::Graph::CheckLink(const Pin& from,
     if (from.m_Node == to.m_Node)
         return Error(BlueprintError::BadLink, "a link joins two nodes");
     return {};
+}
+
+// When the input's node already feeds the output's, through active data links of pure nodes.
+bool crude_blueprint::Graph::ClosesPureLoop(const Pin& from, const Pin& to) const
+{
+    auto isPure = [](const Node& node) { return std::none_of(node.m_Pins.begin(), node.m_Pins.end(), [](const Pin& pin) { return pin.m_Flow; }); };
+    auto source = NodeOf(from.m_Id);
+    auto target = NodeOf(to.m_Id);
+    if (from.m_Flow || !isPure(*source) || !isPure(*target))
+        return false;
+
+    std::unordered_map<Id, std::vector<Id>> feeds;
+    for (auto& link : m_Links)
+    {
+        auto output = link.m_Active ? FindPin(link.m_From) : nullptr;
+        if (!output || output->m_Flow)
+            continue;
+        auto fed = NodeOf(link.m_To);
+        if (isPure(*NodeOf(output->m_Id)) && isPure(*fed))
+            feeds[output->m_Node].push_back(fed->m_Id);
+    }
+
+    std::vector<Id>        stack = { target->m_Id };
+    std::unordered_set<Id> seen;
+    while (!stack.empty())
+    {
+        auto node = stack.back();
+        stack.pop_back();
+        if (node == source->m_Id)
+            return true;
+        if (!seen.insert(node).second)
+            continue;
+        if (auto it = feeds.find(node); it != feeds.end())
+            stack.insert(stack.end(), it->second.begin(), it->second.end());
+    }
+    return false;
 }
 
 // Pins that depend on types repeat the two steps until the pins settle: nodes declare their pins
@@ -1513,6 +1589,15 @@ void crude_blueprint::Graph::Update()
                 m_Problems.push_back({ node->m_Id, Error(BlueprintError::Unsettled, "the types of " + node->Name() + " don't settle") });
             break;
         }
+    }
+
+    for (auto& node : m_Nodes)
+    {
+        std::erase_if(node.m_Values, [this](const auto& entry)
+        {
+            auto pin = FindPin(entry.first);
+            return pin && pin->m_DecidedType && pin->m_DecidedType != entry.second.GetType();
+        });
     }
     Diagnose();
 }
@@ -1661,6 +1746,26 @@ void crude_blueprint::Graph::Diagnose()
     for (auto& link : m_Links)
         if (!link.m_Active)
             m_Diagnostics.push_back({ link.m_Reason, Severity::Error, m_Id, 0, 0, link.m_Id });
+
+    std::unordered_set<Id> linked;
+    for (auto& link : m_Links)
+    {
+        if (!link.m_Active)
+            continue;
+        linked.insert(link.m_From);
+        linked.insert(link.m_To);
+    }
+    for (auto& node : m_Nodes)
+    {
+        for (auto& pin : node.m_Pins)
+        {
+            if (pin.m_Requirement == Requirement::Optional || linked.count(pin.m_Id))
+                continue;
+            auto what     = pin.m_Direction == Direction::Input ? " needs a link" : pin.m_Flow ? " leads nowhere" : "'s result isn't used";
+            auto severity = pin.m_Requirement == Requirement::Required ? Severity::Error : Severity::Warning;
+            m_Diagnostics.push_back({ Error(BlueprintError::NeedsLink, PinName(pin) + what), severity, m_Id, node.m_Id, pin.m_Id, 0 });
+        }
+    }
 }
 
 // What an edit broke that wasn't broken before: a link it disabled, a node whose types it unsettled,

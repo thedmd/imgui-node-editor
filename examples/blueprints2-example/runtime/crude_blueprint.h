@@ -203,6 +203,8 @@ enum class BlueprintError : uint16_t
     NoCast,         // a cast that the registry doesn't have
     NoPin,          // a link to a pin that isn't on its node now
     Unsettled,      // types that keep changing a node's pins
+    NeedsLink,      // a required or recommended pin without a link
+    Loop,           // a link that closes a loop of pure nodes
 };
 
 constexpr ErrorCategory CategoryOf(BlueprintError) { return ErrorCategory::Blueprint; }
@@ -670,6 +672,10 @@ struct Node
     // Every key the node has had: a pin that goes and comes back keeps its ID, and so its links.
     std::map<std::string, Id, std::less<>> m_KeyIds;
 
+    // What the user typed into inputs, by pin. A value stays while its pin's type is undecided,
+    // and is reset once the type is decided as another.
+    std::map<Id, Value> m_Values;
+
     // From the last update.
     std::vector<VariableDeclaration> m_Variables;
     std::vector<GroupDeclaration>    m_Groups;
@@ -720,6 +726,8 @@ public:
     // A struct pin gives way to a pin per field, "pos" to "pos.x" and "pos.y", and its links are
     // disabled until it's recombined. Recombining a pin recombines its split fields too.
     Result<void> SplitPin(Id node, std::string_view key, bool split);
+    // For a data input of a decided type, a value of that type; no value clears it.
+    Result<void> SetValue(Id pin, Value value);
 
     std::span<const Node>       Nodes() const       { return m_Nodes; }
     std::span<const Link>       Links() const       { return m_Links; }
@@ -732,6 +740,7 @@ public:
     const Pin*  FindPin(Id pin) const;
     const Node* NodeOf(Id pin) const;
     const Link* FindLink(Id link) const;
+    const Value* FindValue(Id pin) const;
 
     // "Int32", or an undecided type: "?{Int32|Float|String}", "Array<?>".
     std::string TypeText(Id pin) const;
@@ -749,9 +758,11 @@ private:
     void             Diagnose();
     Result<void>     Disruption(const Graph& before, bool forced) const;
     Result<void>     CheckLink(const Pin& from, const Pin& to) const;
+    bool             ClosesPureLoop(const Pin& from, const Pin& to) const;
     Node*            MutableNode(Id node);
     std::string      PinName(const Pin& pin) const;
     std::string      LinkName(const Link& link) const; // of an active link, whose pins are on their nodes
+    std::string      LinkName(const Pin& from, const Pin& to) const;
 
     Blueprint*                                         m_Blueprint;
     Id                                                 m_Id;

@@ -202,12 +202,33 @@ TestNodeType s_Points("Points", [](NodeDeclaration& d, const NodeConfig&, const 
         d.Input("point." + std::to_string(i), "Point", s_Vector2.AsType());
 });
 
-// Its output's type flips with its input's, so types linked back to it never settle.
+TestNodeType s_Verify("Verify", [](NodeDeclaration& d, const NodeConfig&, const Bindings&)
+{
+    d.FlowInput("enter");
+    d.Input("condition", "Condition", BoolType(), { .m_Requirement = Requirement::Required });
+    d.Input("message", "Message", StringType(), { .m_Requirement = Requirement::Recommended });
+    d.FlowOutput("exit", "", { .m_Requirement = Requirement::Recommended });
+    d.Output("passed", "Passed", BoolType(), { .m_Requirement = Requirement::Required });
+});
+
+// Its output's type flips with its input's, so types linked back to it never settle. With flow
+// pins, as a link back to a pure node closes a loop.
 TestNodeType s_Flipper("Flipper", [](NodeDeclaration& d, const NodeConfig&, const Bindings& bindings)
 {
     auto T = d.Variable("T");
+    d.FlowInput("enter");
     d.Input("value", "Value", T);
+    d.FlowOutput("exit");
     d.Output("out", "Out", bindings.Get("T") == &Int32Type() ? FloatType() : Int32Type());
+});
+
+// One output into both inputs makes T an Array<T>.
+TestNodeType s_Wrap("Wrap", [](NodeDeclaration& d, const NodeConfig&, const Bindings&)
+{
+    auto T = d.Variable("T");
+    d.Input("item", "Item", T);
+    d.Input("list", "List", TypeTerm(ArrayValueType(), { T }));
+    d.Output("out", "Out", TypeTerm(ArrayValueType(), { T }));
 });
 
 std::shared_ptr<const Registry> TestRegistry()
@@ -218,7 +239,7 @@ std::shared_ptr<const Registry> TestRegistry()
         auto ok = RegisterBuiltins(*made).IsOk() && made->AddValueType(s_Vector2).IsOk() && made->AddValueType(s_Rect).IsOk();
         for (auto type : { &s_Add, &s_MakeMap, &s_BreakAny, &s_ForLoop, &s_ConstBool, &s_ConstInt32, &s_ConstFloat, &s_ConstString, &s_ToString, &s_Print,
                            &s_Pass, &s_Pair, &s_MakeArray, &s_Get, &s_Length, &s_Concat, &s_Find, &s_MakeVector2, &s_BreakVector2, &s_Flipper,
-                           &s_MakeRect, &s_MoveBy, &s_Points })
+                           &s_MakeRect, &s_MoveBy, &s_Points, &s_Verify, &s_Wrap })
             ok = made->AddNodeType(*type).IsOk() && ok;
         if (!ok)
             test::Check(false, "the test registry is made");
@@ -543,16 +564,17 @@ TEST_CASE(ArrayElementTypes, "graph.arrays_pass_element_types_both_ways", nullpt
 TEST_CASE(SelfContainingTypes, "graph.a_type_that_would_contain_itself_is_refused", nullptr, test::TestFlags_None)
 {
     Fixture f;
-    auto first = f.Add("MakeArray"), second = f.Add("MakeArray");
-    f.Link(first, "array", second, "in.0");
-    auto refused = f.Connect(second, "array", first, "in.0");
-    test::Check(!refused && Message(refused).find("which contains it") != std::string::npos, "Make Array 2 -> Make Array 1 is refused: %s", Message(refused).c_str());
+    auto pass = f.Add("Pass"), wrap = f.Add("Wrap");
+    f.Link(pass, "out", wrap, "item");
+    auto refused = f.Connect(pass, "out", wrap, "list");
+    test::Check(!refused && refused.GetError().Is(BlueprintError::TypeMismatch) && Message(refused).find("which contains it") != std::string::npos, "one output into Wrap's T and Array<T> is refused, through Pass's merged variable: %s", Message(refused).c_str());
 
+    // As a file could list them: a loop of pure nodes, which no edit makes.
     Fixture g;
-    auto pass = g.Add("Pass"), make = g.Add("MakeArray");
-    g.Link(pass, "out", make, "in.0");
-    auto merged = g.Connect(make, "array", pass, "in");
-    test::Check(!merged, "so is Make Array -> Pass, which feeds it, through a merged variable: %s", Message(merged).c_str());
+    auto first = g.Add("MakeArray"), second = g.Add("MakeArray");
+    g.Link(first, "array", second, "in.0");
+    auto kept = g.Connect(second, "array", first, "in.0", LinkMode::Keep);
+    test::Check(kept && !IsActive(g.m_Graph, kept) && Reason(g.m_Graph, kept).find("which contains it") != std::string::npos, "Make Array 2 -> Make Array 1, kept, is disabled: %s", Reason(g.m_Graph, kept).c_str());
 }
 
 TEST_CASE(StructPins, "graph.make_and_break_pins_come_from_the_struct", nullptr, test::TestFlags_None)
@@ -995,4 +1017,81 @@ TEST_CASE(SplitPinsInGroups, "graph.a_split_pin_in_a_group_moves_with_its_index"
     test::Check(f.Pin(points, "point.1.x") == x && IsActive(f.m_Graph, link) && node && node->m_Config.m_Split == std::vector<std::string>{ "point.1" }, "its fields keep their IDs and links");
     auto gone = f.m_Graph.RemoveGroupPin(points, "point", 1);
     test::Check(gone && f.Keys(points) == "point.0" && f.m_Graph.Links().empty() && node && f.m_Graph.FindNode(points)->m_Config.m_Split.empty(), "removing it takes its fields, their links and its split: %s", f.Keys(points).c_str());
+}
+
+TEST_CASE(Requirements, "graph.pins_that_need_links_are_diagnosed", nullptr, test::TestFlags_None)
+{
+    Fixture f;
+    auto verify = f.Add("Verify");
+    auto list = [&f]
+    {
+        std::string text;
+        for (auto& d : f.m_Graph.Diagnostics())
+            text += std::string(text.empty() ? "" : "; ") + (d.m_Severity == Severity::Error ? "error " : "warning ") + std::string(d.m_Error.Message());
+        return text;
+    };
+    auto name = f.Name(verify);
+    auto expected = "error " + name + ".condition needs a link; warning " + name + ".message needs a link; warning " + name + ".exit leads nowhere; error " + name + ".passed's result isn't used";
+    test::Check(list() == expected && f.m_Graph.IsBroken(), "required pins give errors, recommended ones warnings: %s", list().c_str());
+    auto diagnostics = f.m_Graph.Diagnostics();
+    test::Check(!diagnostics.empty() && diagnostics[0].m_Node == verify && diagnostics[0].m_Pin == f.Pin(verify, "condition") && diagnostics[0].m_Error.Is(BlueprintError::NeedsLink), "each names its node and pin");
+
+    auto bools = f.Add("ConstBool"), text = f.Add("ToString");
+    f.Link(bools, "value", verify, "condition");
+    f.Link(verify, "passed", text, "value");
+    test::Check(!f.m_Graph.IsBroken() && f.m_Graph.Diagnostics().size() == 2, "linked, only the warnings stay, and they don't break the graph: %s", list().c_str());
+}
+
+TEST_CASE(TypedValues, "graph.typed_values_stay_until_their_type_changes", nullptr, test::TestFlags_None)
+{
+    Fixture f;
+    auto ints = f.Add("ConstInt32"), floats = f.Add("ConstFloat"), add = f.Add("Add");
+    auto in1 = f.Pin(add, "in.1");
+    auto undecided = f.m_Graph.SetValue(in1, Value::Int32(5));
+    test::Check(!undecided && undecided.GetError().Is(BlueprintError::Undecided), "a wildcard input takes no value: %s", Message(undecided).c_str());
+
+    auto typing = f.Link(ints, "value", add, "in.0");
+    auto set    = f.m_Graph.SetValue(in1, Value::Int32(5));
+    auto wrong  = f.m_Graph.SetValue(in1, Value::Float(5.0f));
+    auto output = f.m_Graph.SetValue(f.Pin(add, "out"), Value::Int32(5));
+    test::Check(set && f.m_Graph.FindValue(in1) && *f.m_Graph.FindValue(in1) == Value::Int32(5), "once it's Int32, it takes an Int32");
+    test::Check(!wrong && wrong.GetError().Is(BlueprintError::WrongType) && !output, "not a Float, and an output takes none: %s", Message(wrong).c_str());
+
+    f.Unlink(typing);
+    test::Check(f.Type(add, "in.1") != "Int32" && f.m_Graph.FindValue(in1) && *f.m_Graph.FindValue(in1) == Value::Int32(5), "undecided again, the input keeps its Int32");
+    f.Link(floats, "value", add, "in.0");
+    test::Check(f.Type(add, "in.1") == "Float" && !f.m_Graph.FindValue(in1), "decided as Float, the Int32 is reset");
+
+    auto again   = f.m_Graph.SetValue(in1, Value::Float(2.5f));
+    auto cleared = f.m_Graph.SetValue(in1, Value());
+    test::Check(again && cleared && !f.m_Graph.FindValue(in1), "no value clears it");
+
+    auto grown = f.m_Graph.AddGroupPin(add, "in");
+    auto in2   = f.Pin(add, "in.2");
+    auto kept  = f.m_Graph.SetValue(in2, Value::Float(7.0f)) && f.m_Graph.SetValue(in1, Value::Float(1.0f));
+    auto gone  = f.m_Graph.RemoveGroupPin(add, "in", 1);
+    test::Check(grown && kept && gone && f.Pin(add, "in.1") == in2 && f.m_Graph.FindValue(in2) && *f.m_Graph.FindValue(in2) == Value::Float(7.0f), "a removed pin's value goes, and later ones move with their pins");
+    test::Check(f.m_Graph.FindNode(add)->m_Values.size() == 1, "and only theirs stay");
+}
+
+TEST_CASE(PureLoops, "graph.a_loop_of_pure_nodes_is_refused", nullptr, test::TestFlags_None)
+{
+    Fixture f;
+    auto add1 = f.Add("Add"), add2 = f.Add("Add"), pass1 = f.Add("Pass"), pass2 = f.Add("Pass"), pass3 = f.Add("Pass");
+    f.Link(add1, "out", add2, "in.0");
+    auto loop   = f.Connect(add2, "out", add1, "in.0");
+    auto forced = f.Connect(add2, "out", add1, "in.0", LinkMode::Force);
+    test::Check(!loop && loop.GetError().Is(BlueprintError::Loop) && !forced, "Add -> Add -> back is refused, even forced: %s", Message(loop).c_str());
+    f.Link(pass1, "out", pass2, "in");
+    f.Link(pass2, "out", pass3, "in");
+    auto longer = f.Connect(pass3, "out", pass1, "in");
+    test::Check(!longer && longer.GetError().Is(BlueprintError::Loop), "and so is a longer loop: %s", Message(longer).c_str());
+    auto kept = f.Connect(pass3, "out", pass1, "in", LinkMode::Keep);
+    test::Check(kept.IsOk(), "a kept link, as files list them, is kept; compiling finds the loop");
+
+    Fixture g;
+    auto loop2 = g.Add("ForLoop"), add = g.Add("Add");
+    g.Link(loop2, "index", add, "in.0");
+    auto feedback = g.Connect(add, "out", loop2, "last");
+    test::Check(feedback.IsOk(), "feedback through a node with flow pins is fine: it reads what that node stored: %s", Message(feedback).c_str());
 }
