@@ -751,3 +751,26 @@ TEST_CASE(MoveDeletesNodes, "blueprints2.a_blueprint_moved_over_deletes_its_node
     test::Check(afterMove == 0, "moving another blueprint over one deletes its node: %d alive", afterMove);
     test::Check(CountedNode::s_Alive == alive, "and none is left when both go: %d alive", CountedNode::s_Alive - alive);
 }
+
+TEST_CASE(Int32AddWraps, "blueprints2.int32_add_wraps_around", "CBP-13", test::TestFlags_None)
+{
+    // A sum out of Int32's range is undefined in C++; UndefinedBehaviorSanitizer reports it.
+    Blueprint blueprint;
+    auto constant = blueprint.CreateNode<ConstInt32Node>();
+    auto add      = blueprint.CreateNode<AddNode>();
+    add->m_A.LinkTo(constant->m_Int32);
+    auto sum = [&](int32_t a, int32_t b)
+    {
+        constant->m_Int32.SetValue(a);
+        add->m_B.SetValue(b);
+        const auto value = blueprint.GetContext().GetPinValue(add->m_Result);
+        return value.GetType() == PinType::Int32 ? value.As<int32_t>() : 0;
+    };
+    const auto up   = sum(INT32_MAX, 1);
+    const auto down = sum(INT32_MIN, -1);
+    const auto far  = sum(INT32_MAX, INT32_MAX);
+
+    test::Check(up == INT32_MIN, "INT32_MAX + 1 is INT32_MIN: %d", up);
+    test::Check(down == INT32_MAX, "INT32_MIN - 1 is INT32_MAX: %d", down);
+    test::Check(far == -2, "INT32_MAX + INT32_MAX is -2: %d", far);
+}
