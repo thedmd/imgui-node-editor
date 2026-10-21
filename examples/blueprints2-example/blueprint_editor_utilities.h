@@ -4,11 +4,13 @@
 #include "crude_blueprint.h"
 #include "blueprint_editor_icons.h"
 #include <chrono>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <set>
 #include <span>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace blueprint_editor {
@@ -60,6 +62,21 @@ void CreateLink(Document& document, Id from, Id to, LinkMode mode = LinkMode::Pl
 void AddGroupPin(Document& document, Id node, std::string group);
 void RemoveGroupPin(Document& document, Id node, std::string group, int index);
 void SplitStructPin(Document& document, Id node, std::string key, bool split);
+
+// A function's entry, which gives its inputs, or a return, which takes its outputs; no function
+// for other nodes.
+struct SignatureNode
+{
+    const Function* m_Function = nullptr;
+    bool            m_Entry    = false;
+};
+SignatureNode SignatureNodeOf(const Blueprint& blueprint, const Node& node);
+
+// Edits of a function's signature, each one undo step. One the blueprint refuses is logged.
+void ChangeSignature(Document& document, Id graph, std::string_view what, const std::function<void(Signature&)>& change);
+void AddSignaturePin(Document& document, Id graph, bool input); // of a key of its own, an Int32
+// A type parameter that a pin's type has can't go.
+void RemoveTypeParameter(Document& document, Id graph, int index);
 
 ImU32 ProblemColor(Severity severity);
 bool  ProblemPills(int errors, int warnings); // a red disc and a yellow triangle, with their counts; true when clicked
@@ -298,7 +315,8 @@ private:
     std::vector<NewNodeFit> m_Entries;    // by category and title; those that need a cast last, by title
 };
 
-// For a node, or for the selection when the node is in it.
+// For a node, or for the selection when the node is in it. A function's entry has its function's
+// type parameters, and whether it's pure.
 struct NodeContextMenu
 {
     void Open(Id node = 0);
@@ -309,13 +327,21 @@ private:
 };
 
 // For a pin of a type variable, its type: chosen, or reset to what links decide.
+// For a pin of a function's entry or return, the input or output of its signature it is: its name,
+// its type, and whether it's there.
 struct PinContextMenu
 {
     void Open(Id pin = 0);
     void Show(Document& document, Debugger& debugger);
 
 private:
-    Id m_Pin = 0;
+    void ShowSignatureItems(Document& document, const Node& node, const Pin& pin);
+    void ShowRename(Document& document);
+
+    Id   m_Pin       = 0;
+    Id   m_Renamed   = 0;  // the pin whose name the rename popup edits
+    bool m_Focus     = false;
+    char m_Name[64]  = {};
 };
 
 struct LinkContextMenu

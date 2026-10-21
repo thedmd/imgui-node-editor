@@ -6,6 +6,7 @@
 # include "imgui_extras.h"
 # include <algorithm>
 # include <cmath>
+# include <cstdio>
 # include <optional>
 # include <tuple>
 # include <utility>
@@ -175,6 +176,102 @@ void blueprint_editor_utilities::SplitStructPin(Document& document, Id node, std
         return;
     }
     transaction->AddAction("%s: %s %s", name.c_str(), key.c_str(), split ? "split" : "recombined");
+}
+
+blueprint_editor_utilities::SignatureNode blueprint_editor_utilities::SignatureNodeOf(const Blueprint& blueprint, const Node& node)
+{
+    auto& name = node.m_Type->m_Name;
+    if (!name.starts_with("entry:") && !name.starts_with("return:"))
+        return {};
+    return { blueprint.FunctionOf(*node.m_Type), name.starts_with("entry:") };
+}
+
+void blueprint_editor_utilities::ChangeSignature(Document& document, Id graph, std::string_view what, const std::function<void(Signature&)>& change)
+{
+    auto function = document.GetBlueprint().FindFunction(graph);
+    if (!function)
+        return;
+    auto signature = function->m_Signature;
+    change(signature);
+    const auto name = function->m_Name;
+    auto transaction = document.BeginUndoTransaction(what);
+    if (auto set = document.GetBlueprint().SetSignature(graph, std::move(signature)); !set)
+    {
+        auto message = set.GetError().Message();
+        LOGW("[Signature] %s: %.*s", name.c_str(), static_cast<int>(message.size()), message.data());
+        transaction->Discard();
+        return;
+    }
+    transaction->AddAction("%s: %.*s", name.c_str(), static_cast<int>(what.size()), what.data());
+}
+
+void blueprint_editor_utilities::AddSignaturePin(Document& document, Id graph, bool input)
+{
+    ChangeSignature(document, graph, input ? "Add Input" : "Add Output", [input](Signature& signature)
+    {
+        auto taken = [&signature](const std::string& key)
+        {
+            auto has = [&key](const SignaturePin& pin) { return pin.m_Key == key; };
+            return key == "enter" || key == "then" || std::any_of(signature.m_Inputs.begin(), signature.m_Inputs.end(), has) || std::any_of(signature.m_Outputs.begin(), signature.m_Outputs.end(), has);
+        };
+        const std::string base = input ? "in" : "out", name = input ? "In" : "Out";
+        int number = 0;
+        while (taken(number ? base + std::to_string(number) : base))
+            ++number;
+        auto& pins = input ? signature.m_Inputs : signature.m_Outputs;
+        pins.push_back({ number ? base + std::to_string(number) : base, number ? name + " " + std::to_string(number) : name, Int32Type() });
+    });
+}
+
+namespace blueprint_editor_utilities { namespace {
+
+bool HasVariable(const TypeTerm& term, int variable)
+{
+    if (!term.m_Head)
+        return term.m_Variable == variable;
+    return std::any_of(term.m_Args.begin(), term.m_Args.end(), [variable](const TypeTerm& arg) { return HasVariable(arg, variable); });
+}
+
+// The variables after one that went move down.
+void Renumber(TypeTerm& term, int removed)
+{
+    if (!term.m_Head && term.m_Variable > removed)
+        --term.m_Variable;
+    for (auto& arg : term.m_Args)
+        Renumber(arg, removed);
+}
+
+bool SameTerm(const TypeTerm& a, const TypeTerm& b)
+{
+    return a.m_Head == b.m_Head && a.m_Variable == b.m_Variable && std::equal(a.m_Args.begin(), a.m_Args.end(), b.m_Args.begin(), b.m_Args.end(), SameTerm);
+}
+
+} } // namespace blueprint_editor_utilities { namespace {
+
+void blueprint_editor_utilities::RemoveTypeParameter(Document& document, Id graph, int index)
+{
+    auto function = document.GetBlueprint().FindFunction(graph);
+    if (!function || index < 0 || static_cast<size_t>(index) >= function->m_Signature.m_Parameters.size())
+        return;
+    auto& signature = function->m_Signature;
+    for (auto pins : { &signature.m_Inputs, &signature.m_Outputs })
+    {
+        for (auto& pin : *pins)
+        {
+            if (HasVariable(pin.m_Type, index))
+            {
+                LOGW("[Signature] %s: %s is %s's type", function->m_Name.c_str(), signature.m_Parameters[index].m_Name.c_str(), pin.m_Key.c_str());
+                return;
+            }
+        }
+    }
+    ChangeSignature(document, graph, "Remove Type Parameter", [index](Signature& changed)
+    {
+        changed.m_Parameters.erase(changed.m_Parameters.begin() + index);
+        for (auto pins : { &changed.m_Inputs, &changed.m_Outputs })
+            for (auto& pin : *pins)
+                Renumber(pin.m_Type, index);
+    });
 }
 
 const blueprint_editor_utilities::Graph* blueprint_editor_utilities::GraphOf(const Blueprint& blueprint, Id node)
@@ -1147,6 +1244,64 @@ void blueprint_editor_utilities::NodeContextMenu::Show(Document& document, Debug
                     debugger.SetBreakpoint(selected, enabled);
         }
 
+        // The change is made once the menu is drawn.
+        std::function<void()> change;
+        auto signature = node ? SignatureNodeOf(document.GetBlueprint(), *node) : SignatureNode();
+        if (signature.m_Function && signature.m_Entry)
+        {
+            const auto  graph    = signature.m_Function->m_Graph;
+            const auto& declared = signature.m_Function->m_Signature;
+            ImGui::Separator();
+            if (ImGui::MenuItem("Pure", nullptr, declared.m_Pure))
+                change = [&document, graph, pure = declared.m_Pure] { ChangeSignature(document, graph, pure ? "Make Impure" : "Make Pure", [](Signature& changed) { changed.m_Pure = !changed.m_Pure; }); };
+            if (ImGui::BeginMenu("Type Parameters"))
+            {
+                for (size_t i = 0; i < declared.m_Parameters.size(); ++i)
+                {
+                    auto& parameter = declared.m_Parameters[i];
+                    if (!ImGui::BeginMenu(parameter.m_Name.c_str()))
+                        continue;
+                    ImGui::PushItemFlag(ImGuiItemFlags_AutoClosePopups, false);
+                    for (auto head : document.GetBlueprint().GetRegistry().ValueTypes())
+                    {
+                        auto allowed = std::find(parameter.m_Allowed.begin(), parameter.m_Allowed.end(), head) != parameter.m_Allowed.end();
+                        if (ImGui::MenuItem(head->m_Name.c_str(), nullptr, allowed))
+                            change = [&document, graph, i, head, allowed]
+                            {
+                                ChangeSignature(document, graph, allowed ? "Disallow Type" : "Allow Type", [i, head, allowed](Signature& changed)
+                                {
+                                    auto& set = changed.m_Parameters[i].m_Allowed;
+                                    if (allowed)
+                                        std::erase(set, head);
+                                    else
+                                        set.push_back(head);
+                                });
+                            };
+                    }
+                    ImGui::PopItemFlag();
+                    ImGui::Separator();
+                    ImGui::TextDisabled("Allows %s", parameter.m_Allowed.empty() ? "any type" : "the types checked");
+                    if (ImGui::MenuItem("Remove"))
+                        change = [&document, graph, i] { RemoveTypeParameter(document, graph, static_cast<int>(i)); };
+                    ImGui::EndMenu();
+                }
+                if (ImGui::MenuItem("Add"))
+                    change = [&document, graph]
+                    {
+                        ChangeSignature(document, graph, "Add Type Parameter", [](Signature& changed)
+                        {
+                            for (auto letter : std::string("TUVWXYZABCDEFGHIJKLMNOPQRS"))
+                            {
+                                auto name = std::string(1, letter);
+                                if (std::none_of(changed.m_Parameters.begin(), changed.m_Parameters.end(), [&name](const VariableDeclaration& other) { return other.m_Name == name; }))
+                                    return changed.m_Parameters.push_back({ name, {} });
+                            }
+                        });
+                    };
+                ImGui::EndMenu();
+            }
+        }
+
         ImGui::Separator();
 
         if (ImGui::MenuItem("Break Links", nullptr, nullptr, node != nullptr && ax::NodeEditor::HasAnyLinks(ax::NodeEditor::NodeId(m_Node))))
@@ -1170,6 +1325,9 @@ void blueprint_editor_utilities::NodeContextMenu::Show(Document& document, Debug
         }
 
         ImGui::EndPopup();
+
+        if (change)
+            change();
     }
 }
 
@@ -1184,6 +1342,7 @@ void blueprint_editor_utilities::PinContextMenu::Open(Id pin)
 
 void blueprint_editor_utilities::PinContextMenu::Show(Document& document, Debugger& debugger)
 {
+    ShowRename(document);
     if (!ImGui::IsPopupOpen("##pin-context-menu"))
         return;
 
@@ -1231,6 +1390,9 @@ void blueprint_editor_utilities::PinContextMenu::Show(Document& document, Debugg
                 choice = nullptr;
         }
 
+        if (pin && node)
+            ShowSignatureItems(document, *node, *pin);
+
         if (choice)
         {
             auto config = node->m_Config;
@@ -1257,6 +1419,96 @@ void blueprint_editor_utilities::PinContextMenu::Show(Document& document, Debugg
 
         ImGui::EndPopup();
     }
+}
+
+void blueprint_editor_utilities::PinContextMenu::ShowSignatureItems(Document& document, const Node& node, const Pin& pin)
+{
+    auto signature = SignatureNodeOf(document.GetBlueprint(), node);
+    if (!signature.m_Function || pin.m_Flow)
+        return;
+    const auto  graph    = signature.m_Function->m_Graph;
+    const auto  input    = signature.m_Entry;
+    const auto& declared = signature.m_Function->m_Signature;
+    const auto& pins     = input ? declared.m_Inputs : declared.m_Outputs;
+    auto at = std::find_if(pins.begin(), pins.end(), [&pin](const SignaturePin& other) { return other.m_Key == pin.m_Key; });
+    if (at == pins.end())
+        return;
+    const auto index = static_cast<size_t>(at - pins.begin());
+
+    ImGui::Separator();
+    if (ImGui::MenuItem("Rename..."))
+    {
+        m_Renamed = pin.m_Id;
+        m_Focus   = true;
+        std::snprintf(m_Name, sizeof(m_Name), "%s", at->m_Name.c_str());
+    }
+
+    std::optional<TypeTerm> chosen;
+    auto choice = [&chosen, &at](const std::string& label, TypeTerm term)
+    {
+        if (ImGui::MenuItem(label.c_str(), nullptr, SameTerm(at->m_Type, term)))
+            chosen = std::move(term);
+    };
+    auto choices = [&](bool array)
+    {
+        auto wrap = [array](TypeTerm term) { return array ? TypeTerm(ArrayValueType(), { std::move(term) }) : term; };
+        for (auto head : document.GetBlueprint().GetRegistry().ValueTypes())
+            if (head->m_Arity == 0)
+                choice(head->m_Name, wrap(head->AsType()));
+        for (size_t i = 0; i < declared.m_Parameters.size(); ++i)
+            choice(declared.m_Parameters[i].m_Name, wrap(TypeVariable{ static_cast<int>(i) }));
+    };
+    if (ImGui::BeginMenu("Type"))
+    {
+        choices(false);
+        if (ImGui::BeginMenu("Array"))
+        {
+            choices(true);
+            ImGui::EndMenu();
+        }
+        ImGui::EndMenu();
+    }
+    if (chosen)
+        ChangeSignature(document, graph, "Change Type", [input, index, &chosen](Signature& changed) { (input ? changed.m_Inputs : changed.m_Outputs)[index].m_Type = *chosen; });
+
+    if (ImGui::MenuItem(input ? "Remove Input" : "Remove Output"))
+        ChangeSignature(document, graph, input ? "Remove Input" : "Remove Output", [input, index](Signature& changed)
+        {
+            auto& list = input ? changed.m_Inputs : changed.m_Outputs;
+            list.erase(list.begin() + static_cast<std::ptrdiff_t>(index));
+        });
+}
+
+// A new name, taken on Enter.
+void blueprint_editor_utilities::PinContextMenu::ShowRename(Document& document)
+{
+    if (m_Renamed)
+    {
+        ImGui::OpenPopup("##rename-pin");
+        m_Pin = std::exchange(m_Renamed, 0);
+    }
+    if (!ImGui::BeginPopup("##rename-pin"))
+        return;
+    if (std::exchange(m_Focus, false))
+        ImGui::SetKeyboardFocusHere();
+    const auto done = ImGui::InputText("##name", m_Name, sizeof(m_Name), ImGuiInputTextFlags_EnterReturnsTrue);
+    auto& graph = document.GetGraph();
+    auto  pin   = graph.FindPin(m_Pin);
+    auto  node  = pin ? graph.NodeOf(m_Pin) : nullptr;
+    auto  owner = node ? SignatureNodeOf(document.GetBlueprint(), *node) : SignatureNode();
+    if (done && owner.m_Function)
+    {
+        std::string key = pin->m_Key, name = m_Name;
+        ChangeSignature(document, owner.m_Function->m_Graph, "Rename", [input = owner.m_Entry, key, name](Signature& changed)
+        {
+            for (auto& changing : input ? changed.m_Inputs : changed.m_Outputs)
+                if (changing.m_Key == key)
+                    changing.m_Name = name;
+        });
+    }
+    if (done || ImGui::IsKeyPressed(ImGuiKey_Escape, false) || !owner.m_Function)
+        ImGui::CloseCurrentPopup();
+    ImGui::EndPopup();
 }
 
 

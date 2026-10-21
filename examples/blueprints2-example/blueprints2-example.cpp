@@ -831,6 +831,24 @@ private:
                 if (!lastOfGroup.contains(&group))
                     groupButtons(group);
 
+            // A function's return adds its outputs, and its entry its inputs, with [+] at their end.
+            const auto signature    = SignatureNodeOf(document.GetBlueprint(), node);
+            auto       addPinButton = [&](bool input)
+            {
+                ImGui::Spacing();
+                if (ImGui::SmallButton("+"))
+                    edit = [&document, graph = signature.m_Function->m_Graph, input] { AddSignaturePin(document, graph, input); };
+                if (ImGui::IsItemHovered())
+                {
+                    ed::Suspend();
+                    ImGui::SetTooltip(input ? "Add Input" : "Add Output");
+                    ed::Resume();
+                }
+                layout.NextRow();
+            };
+            if (signature.m_Function && !signature.m_Entry)
+                addPinButton(false);
+
             layout.SetColumnAlignment(1.0f);
             layout.NextColumn();
 
@@ -892,6 +910,8 @@ private:
                 layout.NextRow();
                 groupButtonsAfter(pin);
             }
+            if (signature.m_Function && signature.m_Entry)
+                addPinButton(true);
 
             layout.End();
 

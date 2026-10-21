@@ -863,3 +863,48 @@ TEST_CASE(GraphLayouts, "blueprints2.each_graph_keeps_its_layout_and_view_while_
     test::Check(loaded.GetGraph().GetId() == main, "and shows its first graph once loaded");
     ed::DestroyEditor(other);
 }
+
+TEST_CASE(SignatureEdits, "blueprints2.signatures_change_in_undo_steps", nullptr, test::TestFlags_None)
+{
+    // A function the example gets, whose signature its entry and return change.
+    test::Session session(UnnamedConfig());
+    OverlayLog    log;
+    Example       example(session);
+    auto& document = example.m_Document;
+    auto  added    = document.GetBlueprint().AddFunction("Lerp", {});
+    if (!added)
+        return test::Check(false, "the function is added");
+    const auto lerp = added.GetValue()->GetId();
+    auto signature  = [&]() -> const Signature& { return document.GetBlueprint().FindFunction(lerp)->m_Signature; };
+    auto keys       = [&](bool input) { std::string text; for (auto& pin : input ? signature().m_Inputs : signature().m_Outputs) text += (text.empty() ? "" : " ") + pin.m_Key; return text; };
+    using namespace blueprint_editor_utilities;
+
+    session.Use([&]
+    {
+        AddSignaturePin(document, lerp, true);
+        AddSignaturePin(document, lerp, true);
+        AddSignaturePin(document, lerp, false);
+    });
+    test::Check(keys(true) == "in in1" && keys(false) == "out" && document.m_Undo.size() == 3, "inputs and outputs are added with keys of their own, each an undo step: %s; %s", keys(true).c_str(), keys(false).c_str());
+
+    // T and U, and in1 of type U.
+    session.Use([&]
+    {
+        ChangeSignature(document, lerp, "Add Type Parameters", [](Signature& changed) { changed.m_Parameters = { { "T", {} }, { "U", {} } }; });
+        ChangeSignature(document, lerp, "Change Type", [](Signature& changed) { changed.m_Inputs[1].m_Type = TypeVariable{ 1 }; });
+        RemoveTypeParameter(document, lerp, 1);
+    });
+    test::Check(signature().m_Parameters.size() == 2 && document.m_Undo.size() == 5, "a type parameter a pin's type has stays, and makes no undo step");
+    session.Use([&] { RemoveTypeParameter(document, lerp, 0); });
+    test::Check(signature().m_Parameters.size() == 1 && signature().m_Parameters[0].m_Name == "U" && signature().m_Inputs[1].m_Type.m_Variable == 0, "a type parameter no pin's type has goes, and the variables after it move down");
+
+    auto refused = false;
+    session.Use([&]
+    {
+        auto steps = document.m_Undo.size();
+        ChangeSignature(document, lerp, "Rename", [](Signature& changed) { changed.m_Inputs[1].m_Key = "in"; });
+        refused = document.m_Undo.size() == steps && keys(true) == "in in1";
+        document.Undo();
+    });
+    test::Check(refused && signature().m_Parameters.size() == 2, "a signature the blueprint refuses makes no step, and undo brings the parameter back");
+}
