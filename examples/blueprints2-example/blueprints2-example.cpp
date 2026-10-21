@@ -570,12 +570,16 @@ private:
 
         auto& graph = document.GetGraph();
 
-        // A pin with an active link has a filled icon, and an input with one, no value.
-        std::unordered_set<Id> linked;
+        // A pin with an active link has a filled icon, and an input with one, no value. An input
+        // whose link is disabled has its icon slashed.
+        std::unordered_set<Id> linked, disabled;
         for (auto& link : graph.Links())
         {
             if (!link.m_Active)
+            {
+                disabled.insert(link.m_To);
                 continue;
+            }
             linked.insert(link.m_From);
             linked.insert(link.m_To);
         }
@@ -696,6 +700,11 @@ private:
                 // [1] - Icon
                 const auto isLinked = linked.count(pin.m_Id) > 0;
                 Icon(iconSize, PinIcon(pin), isLinked, PinColor(pin));
+                if (disabled.contains(pin.m_Id))
+                {
+                    auto iconMin = ImGui::GetItemRectMin(), iconMax = ImGui::GetItemRectMax();
+                    ImGui::GetWindowDrawList()->AddLine(ImVec2(iconMin.x + 1.0f, iconMax.y - 1.0f), ImVec2(iconMax.x - 1.0f, iconMin.y + 1.0f), IM_COL32(255, 96, 96, 255), 2.0f);
+                }
 
                 // [2] - Show pin name if it has one
                 if (!pin.m_Name.empty())
