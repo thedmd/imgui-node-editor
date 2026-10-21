@@ -894,3 +894,30 @@ TEST_CASE(CustomEvents, "library.a_custom_event_starts_with_the_arguments_it_is_
     auto typed  = context.Start("Greet", wrong);
     test::Check(!fewer && fewer.GetError().Is(BlueprintError::OutOfRange) && !typed && typed.GetError().Is(BlueprintError::WrongType) && context.Fibers().size() == 1, "too few arguments, or one of another type, start none: %s", Message(typed).c_str());
 }
+
+TEST_CASE(EventParameterNames, "library.a_custom_events_parameters_take_the_names_given_them", nullptr, test::TestFlags_None)
+{
+    // Spawn's three parameters, the first named Who and the last Times.
+    Fixture f;
+    NodeConfig config;
+    config.m_Data["event"]   = Value::String("Spawn");
+    config.m_Groups["param"] = 3;
+    config.m_Names           = { { "param.0", "Who" }, { "param.2", "Times" } };
+    auto event = f.Add("CustomEvent", config);
+    auto names = [&f, event]
+    {
+        std::string text;
+        for (auto& pin : f.m_Graph.FindNode(event)->m_Pins)
+            if (!pin.m_Flow)
+                text += (text.empty() ? "" : ", ") + pin.m_Name;
+        return text;
+    };
+    test::Check(names() == "Who, Param 1, Times", "a named parameter shows its name, the others theirs: %s", names().c_str());
+
+    auto removed = f.m_Graph.RemoveGroupPin(event, "param", 1).IsOk();
+    auto kept    = f.m_Graph.FindNode(event)->m_Config.m_Names;
+    test::Check(removed && names() == "Who, Times" && kept.size() == 2 && kept["param.1"] == "Times", "a name moves with its parameter as one before it goes: %s", names().c_str());
+
+    auto gone = f.m_Graph.RemoveGroupPin(event, "param", 0).IsOk();
+    test::Check(gone && names() == "Times" && f.m_Graph.FindNode(event)->m_Config.m_Names.size() == 1, "and goes with it: %s", names().c_str());
+}

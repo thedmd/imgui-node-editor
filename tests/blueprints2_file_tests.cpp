@@ -135,7 +135,7 @@ std::unique_ptr<Blueprint> Loaded(const std::string& text, std::shared_ptr<const
     return loaded;
 }
 
-// Its pins' types, its links' states and its diagnostics.
+// Its pins' names and types, its links' states and its diagnostics.
 std::string Describe(const Graph& graph)
 {
     std::string text = graph.GetName() + "\n";
@@ -143,7 +143,7 @@ std::string Describe(const Graph& graph)
     {
         text += node.Name() + ":";
         for (auto& pin : node.m_Pins)
-            text += " " + pin.m_Key + "#" + std::to_string(pin.m_Id) + "=" + (pin.m_Flow ? std::string(">") : graph.TypeText(pin.m_Id));
+            text += " " + pin.m_Key + "#" + std::to_string(pin.m_Id) + "'" + pin.m_Name + "'=" + (pin.m_Flow ? std::string(">") : graph.TypeText(pin.m_Id));
         for (auto& [pin, value] : node.m_Values)
             text += " value#" + std::to_string(pin) + "=" + value.GetType()->m_Head->Format(value);
         text += "\n";
@@ -176,7 +176,8 @@ std::string Describe(const Blueprint& blueprint)
 }
 
 // Start -> Print, and what files hold: groups, a typed value, a chosen type, a cast link, a forced
-// link and the one it disabled, a split pin, data in a config, and a pin gone with its link.
+// link and the one it disabled, a split pin, data in a config, a pin's name, and a pin gone with
+// its link.
 struct Rich : Fixture
 {
     Rich()
@@ -194,6 +195,7 @@ struct Rich : Fixture
 
         NodeConfig held = Chosen("T", StringType());
         held.m_Data["value"] = Value::String("Za\xC5\xBC\xC3\xB3\xC5\x82\xC4\x87");
+        held.m_Names["value"] = "Greeting";
         hold = Add("Hold", held);
         Link(hold, "value", print, "text");
 
@@ -244,6 +246,7 @@ TEST_CASE(SavedShape, "file.saved_files_hold_what_the_format_says", nullptr, tes
     test::Check(node["type"].get<crude_json::string>() == "test.Add" && node["type_version"].get<crude_json::number>() == 1 && node["config"]["groups"]["in"].get<crude_json::number>() == 3, "a node, its type, its type's version, and its config: %s", node.dump().c_str());
     test::Check(node["pins"]["in.1"]["value"].dump() == "{\"data\":5,\"type\":\"Int32\"}" && !node["pins"]["in.0"].contains("value") && node["pins"]["in.0"]["dir"].get<crude_json::string>() == "in", "only the values the user typed, each with its type");
     test::Check(sum["config"]["types"]["T"].get<crude_json::string>() == "Float" && hold["config"]["data"]["value"]["type"].get<crude_json::string>() == "String", "chosen types and data as type text: %s", hold.dump().c_str());
+    test::Check(hold["config"]["names"]["value"].get<crude_json::string>() == "Greeting" && !sum["config"].contains("names"), "and the names of the pins the user named");
     test::Check(file["graphs"][0]["nodes"][0]["pins"]["then"]["flow"].get<crude_json::boolean>() && !file["graphs"][0]["nodes"][0].contains("config"), "a flow pin says so, and a node without config has none");
 
     auto& links = file["graphs"][0]["links"].get<crude_json::array>();
@@ -443,6 +446,7 @@ TEST_CASE(Placeholders, "file.a_node_it_cant_use_loads_as_a_placeholder_and_save
         { "a value its type can't load",          [](crude_json::value& node) { node["pins"]["in.1"]["value"]["data"] = "five"; },           "not an Int32"   },
         { "a newer version of its node",          [](crude_json::value& node) { node["type_version"] = 99; },                                "version 99"     },
         { "an older one without an upgrade",      [](crude_json::value& node) { node["type_version"] = 0; },                                 "can't read version 0" },
+        { "a pin's name that isn't text",         [](crude_json::value& node) { node["config"]["names"]["in.0"] = 5; },                      "names.in.0 isn't a name" },
     };
     for (auto& c : cases)
     {

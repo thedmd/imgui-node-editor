@@ -578,6 +578,7 @@ struct NodeConfig
     std::map<std::string, const Type*, std::less<>> m_Types;  // the type variables the user chose
     std::vector<std::string>                        m_Split;  // struct pins split into their fields, by key
     std::map<std::string, Value, std::less<>>       m_Data;   // the node type's own, such as a Constant's value
+    std::map<std::string, std::string, std::less<>> m_Names;  // names the user gave pins, by key
 
     bool operator==(const NodeConfig& other) const = default;
 };

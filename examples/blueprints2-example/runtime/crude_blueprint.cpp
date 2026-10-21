@@ -1848,8 +1848,13 @@ crude_blueprint::Result<void> crude_blueprint::Graph::RemoveGroupPin(Id node, st
     for (auto& key : changed->m_Config.m_Split)
         if (auto moved = AfterRemoval(key, *declared, index))
             split.push_back(std::move(*moved));
+    std::map<std::string, std::string, std::less<>> names;
+    for (auto& [key, name] : changed->m_Config.m_Names)
+        if (auto moved = AfterRemoval(key, *declared, index))
+            names.emplace(std::move(*moved), name);
     changed->m_KeyIds = std::move(keyIds);
     changed->m_Config.m_Split = std::move(split);
+    changed->m_Config.m_Names = std::move(names);
     changed->m_Config.m_Groups[declared->m_Name] = count - 1;
     std::erase_if(m_Links, [&removed](const Link& link) { return std::find(removed.begin(), removed.end(), link.m_From) != removed.end() || std::find(removed.begin(), removed.end(), link.m_To) != removed.end(); });
     for (auto id : removed)
@@ -2084,12 +2089,16 @@ void crude_blueprint::Graph::Update()
     Diagnose();
 }
 
-// A node type's fixed pins first, then those its Declare() adds.
+// A node type's fixed pins first, then those its Declare() adds, each with the name its config
+// gives it; split, a pin's fields take that name too.
 void crude_blueprint::Graph::Declare(const NodeType& type, NodeDeclaration& declaration, const NodeConfig& config, const Bindings& bindings)
 {
     for (auto& fixed : type.FixedPins())
         declaration.AddPin(fixed);
     type.Declare(declaration, config, bindings);
+    for (auto& pin : declaration.m_Pins)
+        if (auto name = config.m_Names.find(pin.m_Key); name != config.m_Names.end())
+            pin.m_Name = name->second;
 }
 
 void crude_blueprint::Graph::Declare()
@@ -3782,6 +3791,13 @@ crude_json::object SaveConfig(const NodeConfig& config)
             data[key] = SaveValue(value);
         saved["data"] = std::move(data);
     }
+    if (!config.m_Names.empty())
+    {
+        crude_json::object names;
+        for (auto& [key, name] : config.m_Names)
+            names[key] = name;
+        saved["names"] = std::move(names);
+    }
     return saved;
 }
 
@@ -3937,6 +3953,17 @@ struct crude_blueprint::FileLoader
                 if (!value)
                     return value.GetError();
                 config.m_Data[key] = std::move(value).GetValue();
+            }
+        }
+        if (auto names = json.find("names"))
+        {
+            if (!names->is_object())
+                return Bad(where + ".names", "isn't an object");
+            for (auto& [key, name] : names->get<crude_json::object>())
+            {
+                if (!name.is_string())
+                    return Bad(where + ".names." + key, "isn't a name");
+                config.m_Names[key] = name.get<crude_json::string>();
             }
         }
         return {};
