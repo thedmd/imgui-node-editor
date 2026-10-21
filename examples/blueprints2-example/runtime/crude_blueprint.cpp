@@ -3,8 +3,10 @@
 # include <algorithm>
 # include <charconv>
 # include <cmath>
+# include <exception>
 # include <iterator>
 # include <limits>
+# include <tuple>
 # include <unordered_set>
 
 
@@ -1828,4 +1830,486 @@ const crude_blueprint::Graph* crude_blueprint::Blueprint::FindGraph(Id graph) co
 const crude_blueprint::NodeType* crude_blueprint::Blueprint::FindNodeType(std::string_view name) const
 {
     return m_Registry->FindNodeType(name);
+}
+
+
+//
+// -------[ Programs ]-------
+//
+
+namespace crude_blueprint { namespace {
+
+// Node code may throw; the run turns that into an error.
+template <typename Function>
+auto Contained(Function&& function) -> decltype(function())
+{
+    try
+    {
+        return function();
+    }
+    catch (const std::exception& exception)
+    {
+        return Error(BlueprintError::Threw, exception.what());
+    }
+    catch (...)
+    {
+        return Error(BlueprintError::Threw, "it threw");
+    }
+}
+
+int FindPinByKey(const ProgramNode& node, std::string_view key)
+{
+    for (size_t i = 0; i < node.m_Pins.size(); ++i)
+        if (node.m_Pins[i].m_Key == key)
+            return static_cast<int>(i);
+    return -1;
+}
+
+} } // namespace crude_blueprint { namespace {
+
+crude_blueprint::Result<crude_blueprint::Exit> crude_blueprint::NodeType::Execute(ExecContext&, std::string_view) const
+{
+    return Error(BlueprintError::Unsupported, m_Name + " doesn't run");
+}
+
+crude_blueprint::Result<void> crude_blueprint::NodeType::Evaluate(EvalContext&) const
+{
+    return Error(BlueprintError::Unsupported, m_Name + " doesn't compute");
+}
+
+std::string crude_blueprint::NodeType::EventName(const NodeConfig&) const
+{
+    return {};
+}
+
+int crude_blueprint::Program::FindNode(Id node) const
+{
+    for (size_t i = 0; i < m_Nodes.size(); ++i)
+        if (m_Nodes[i].m_Id == node)
+            return static_cast<int>(i);
+    return -1;
+}
+
+int crude_blueprint::Program::FindEvent(std::string_view name) const
+{
+    auto it = m_Events.find(name);
+    return it != m_Events.end() ? it->second : -1;
+}
+
+crude_blueprint::CompileResult crude_blueprint::Compile(const Blueprint& blueprint)
+{
+    CompileResult result;
+    auto program = std::make_shared<Program>();
+    auto failed  = false;
+    auto error   = [&result, &failed](Error what, Id graph, Id node, Id pin)
+    {
+        result.m_Diagnostics.push_back({ std::move(what), Severity::Error, graph, node, pin, 0 });
+        failed = true;
+    };
+
+    std::unordered_map<Id, int> records; // each node's, by its ID
+    for (auto& graph : blueprint.Graphs())
+    {
+        for (auto& diagnostic : graph->Diagnostics())
+        {
+            result.m_Diagnostics.push_back(diagnostic);
+            failed = failed || diagnostic.m_Severity == Severity::Error;
+        }
+
+        for (auto& node : graph->Nodes())
+        {
+            const auto index = static_cast<int>(program->m_Nodes.size());
+            records[node.m_Id] = index;
+            auto& record = program->m_Nodes.emplace_back();
+            record.m_Id     = node.m_Id;
+            record.m_Graph  = graph->GetId();
+            record.m_Type   = node.m_Type;
+            record.m_Config = node.m_Config;
+            record.m_Name   = node.Name();
+            record.m_Pure   = std::none_of(node.m_Pins.begin(), node.m_Pins.end(), [](const Pin& pin) { return pin.m_Flow; });
+            for (auto& pin : node.m_Pins)
+            {
+                auto& compiled = record.m_Pins.emplace_back();
+                compiled.m_Id        = pin.m_Id;
+                compiled.m_Key       = pin.m_Key;
+                compiled.m_Direction = pin.m_Direction;
+                compiled.m_Flow      = pin.m_Flow;
+                compiled.m_Type      = pin.m_DecidedType;
+                if (!pin.m_Flow && !pin.m_DecidedType)
+                    error(Error(BlueprintError::Undecided, node.Name() + "." + pin.m_Key + "'s type isn't decided"), graph->GetId(), node.m_Id, pin.m_Id);
+                if (!pin.m_Flow && pin.m_Direction == Direction::Output)
+                {
+                    compiled.m_Slot = static_cast<int>(program->m_Slots.size());
+                    program->m_Slots.emplace_back(index, static_cast<int>(record.m_Pins.size()) - 1);
+                }
+                program->m_Pins[pin.m_Id] = { index, static_cast<int>(record.m_Pins.size()) - 1 };
+            }
+
+            auto event = node.m_Type->EventName(node.m_Config);
+            if (!event.empty() && !program->m_Events.emplace(event, index).second)
+                error(Error(BlueprintError::Duplicate, node.Name() + " starts " + event + ", as another node does"), graph->GetId(), node.m_Id, 0);
+        }
+    }
+
+    for (auto& graph : blueprint.Graphs())
+    {
+        for (auto& link : graph->Links())
+        {
+            if (!link.m_Active)
+                continue;
+            auto [fromNode, fromPin] = program->m_Pins.at(link.m_From);
+            auto [toNode, toPin]     = program->m_Pins.at(link.m_To);
+            auto& from = program->m_Nodes[fromNode].m_Pins[fromPin];
+            auto& to   = program->m_Nodes[toNode].m_Pins[toPin];
+            if (from.m_Flow)
+            {
+                from.m_Target    = toNode;
+                from.m_TargetPin = toPin;
+                continue;
+            }
+            to.m_Source = from.m_Slot;
+            to.m_Link   = link.m_Id;
+            if (!link.m_Cast.empty())
+                to.m_Cast = blueprint.GetRegistry().FindCast(from.m_Type, to.m_Type);
+        }
+
+        // An unlinked input reads the value the user typed, else the declared default, else its type's.
+        for (auto& node : graph->Nodes())
+        {
+            auto& record = program->m_Nodes[records.at(node.m_Id)];
+            for (size_t i = 0; i < node.m_Pins.size(); ++i)
+            {
+                auto& pin      = node.m_Pins[i];
+                auto& compiled = record.m_Pins[i];
+                if (pin.m_Flow || pin.m_Direction != Direction::Input || compiled.m_Source >= 0 || !pin.m_DecidedType)
+                    continue;
+                auto typed = node.m_Values.find(pin.m_Id);
+                if (typed != node.m_Values.end() && typed->second.GetType() == pin.m_DecidedType)
+                    compiled.m_Constant = typed->second;
+                else if (pin.m_Default.IsValid() && pin.m_Default.GetType() == pin.m_DecidedType)
+                    compiled.m_Constant = pin.m_Default;
+                else
+                    compiled.m_Constant = pin.m_DecidedType->m_Head->Default(*pin.m_DecidedType);
+            }
+        }
+    }
+
+    // Kept links can close a loop of pure nodes, which no edit makes. A loop is named by the node
+    // its search came back to, which is on the loop, unlike nodes that only read from it.
+    std::vector<int> state(program->m_Nodes.size(), 0); // 0: unseen, 1: on the search's path, 2: done
+    std::function<int(int)> visit = [&](int node) -> int
+    {
+        state[node] = 1;
+        auto loop = -1;
+        for (auto& pin : program->m_Nodes[node].m_Pins)
+        {
+            if (pin.m_Flow || pin.m_Direction != Direction::Input || pin.m_Source < 0)
+                continue;
+            auto source = program->m_Slots[pin.m_Source].first;
+            if (!program->m_Nodes[source].m_Pure)
+                continue;
+            if (state[source] == 1)
+                loop = source;
+            else if (state[source] == 0)
+                loop = visit(source);
+            if (loop >= 0)
+                break;
+        }
+        state[node] = 2;
+        return loop;
+    };
+    for (size_t i = 0; i < program->m_Nodes.size(); ++i)
+    {
+        if (!program->m_Nodes[i].m_Pure || state[i] != 0)
+            continue;
+        if (auto loop = visit(static_cast<int>(i)); loop >= 0)
+        {
+            auto& node = program->m_Nodes[loop];
+            error(Error(BlueprintError::Loop, node.m_Name + " is in a loop of pure nodes"), node.m_Graph, node.m_Id, 0);
+        }
+    }
+
+    if (!failed)
+        result.m_Program = std::move(program);
+    return result;
+}
+
+
+//
+// -------[ Contexts ]-------
+//
+
+crude_blueprint::Result<crude_blueprint::Value> crude_blueprint::NodeContext::Get(std::string_view input)
+{
+    auto& node = m_Context.m_Program->m_Nodes[m_Node];
+    auto  pin  = FindPinByKey(node, input);
+    CRUDE_BP_ASSERT(pin >= 0 && !node.m_Pins[pin].m_Flow && node.m_Pins[pin].m_Direction == Direction::Input && "no data input of that key");
+    if (pin < 0)
+        return Error(BlueprintError::NotFound, node.m_Name + " has no input " + std::string(input));
+    return m_Context.Read(m_Node, pin);
+}
+
+crude_blueprint::Result<std::vector<crude_blueprint::Value>> crude_blueprint::NodeContext::Inputs(std::string_view prefix)
+{
+    auto& node = m_Context.m_Program->m_Nodes[m_Node];
+    std::vector<Value> values;
+    for (int index = 0;; ++index)
+    {
+        auto pin = FindPinByKey(node, std::string(prefix) + "." + std::to_string(index));
+        if (pin < 0)
+            return values;
+        auto value = m_Context.Read(m_Node, pin);
+        if (!value)
+            return value.GetError();
+        values.push_back(std::move(value).GetValue());
+    }
+}
+
+void crude_blueprint::NodeContext::Set(std::string_view output, Value value)
+{
+    auto& node = m_Context.m_Program->m_Nodes[m_Node];
+    auto  pin  = FindPinByKey(node, output);
+    CRUDE_BP_ASSERT(pin >= 0 && node.m_Pins[pin].m_Slot >= 0 && "no data output of that key");
+    if (pin < 0 || node.m_Pins[pin].m_Slot < 0)
+        return;
+    auto type = node.m_Pins[pin].m_Type;
+    CRUDE_BP_ASSERT(value.GetType() == type && "a value of another type than the output's");
+    if (value.GetType() != type)
+        value = type->m_Head->Default(*type);
+    m_Context.Write(m_Node, pin, std::move(value));
+}
+
+const crude_blueprint::Type* crude_blueprint::NodeContext::TypeOf(std::string_view pin) const
+{
+    auto& node  = m_Context.m_Program->m_Nodes[m_Node];
+    auto  found = FindPinByKey(node, pin);
+    return found >= 0 ? node.m_Pins[found].m_Type : nullptr;
+}
+
+const crude_blueprint::NodeConfig& crude_blueprint::NodeContext::Config() const
+{
+    return m_Context.m_Program->m_Nodes[m_Node].m_Config;
+}
+
+void crude_blueprint::NodeContext::Log(std::string_view text)
+{
+    if (m_Context.m_Monitor)
+        m_Context.m_Monitor->OnLog(m_Context, m_Context.m_Program->m_Nodes[m_Node].m_Id, text);
+}
+
+std::any& crude_blueprint::NodeContext::StateSlot()
+{
+    return m_Context.m_States[m_Node];
+}
+
+crude_blueprint::Error crude_blueprint::NodeContext::NotA(std::string_view input, const Type& type) const
+{
+    return Error(BlueprintError::WrongType, m_Context.m_Program->m_Nodes[m_Node].m_Name + "." + std::string(input) + " isn't " + (std::string_view("AEIOU").find(type.m_Name[0]) != std::string_view::npos ? "an " : "a ") + type.m_Name);
+}
+
+crude_blueprint::Context::Context(std::shared_ptr<const Program> program)
+    : m_Program(std::move(program))
+{
+    CRUDE_BP_ASSERT(m_Program);
+    m_Slots.resize(m_Program->m_Slots.size());
+    m_SlotSteps.resize(m_Program->m_Slots.size(), 0);
+    m_Computed.resize(m_Program->m_Nodes.size(), 0);
+    m_States.resize(m_Program->m_Nodes.size());
+}
+
+crude_blueprint::Result<crude_blueprint::FiberId> crude_blueprint::Context::Start(std::string_view event)
+{
+    auto node = m_Program->FindEvent(event);
+    if (node < 0)
+        return Error(BlueprintError::NotFound, "no node starts " + std::string(event));
+    auto& fiber = m_Fibers.emplace_back();
+    fiber.m_Info.m_Id   = m_NextFiber++;
+    fiber.m_Info.m_Node = m_Program->m_Nodes[node].m_Id;
+    fiber.m_Node        = node;
+    return fiber.m_Info.m_Id;
+}
+
+crude_blueprint::Result<crude_blueprint::FiberState> crude_blueprint::Context::Step(FiberId id)
+{
+    auto fiber = FindFiber(id);
+    if (!fiber)
+        return Error(BlueprintError::NotFound, "no fiber " + std::to_string(id));
+    if (fiber->m_Info.m_State != FiberState::Ready)
+        return Error(BlueprintError::Unsupported, "fiber " + std::to_string(id) + " has ended");
+
+    ++m_Step;
+    ++m_Generation;
+    m_ErrorNode = -1;
+    m_ErrorLink = 0;
+
+    const auto  index = fiber->m_Node;
+    const auto  entry = fiber->m_Entry;
+    auto&       node  = m_Program->m_Nodes[index];
+    ExecContext context(*this, index, fiber->m_Again);
+    auto        exit  = Contained([&] { return node.m_Type->Execute(context, entry >= 0 ? std::string_view(node.m_Pins[entry].m_Key) : std::string_view()); });
+    if (!exit)
+        return Fail(*fiber, exit.GetError(), index);
+
+    fiber->m_Node  = -1;
+    fiber->m_Entry = -1;
+    fiber->m_Again = false;
+    auto& taken = exit.GetValue();
+    if (taken.m_Kind != Exit::Kind::None)
+    {
+        auto pin = FindPinByKey(node, taken.m_Pin);
+        if (pin < 0 || !node.m_Pins[pin].m_Flow || node.m_Pins[pin].m_Direction != Direction::Output)
+            return Fail(*fiber, Error(BlueprintError::NotFound, node.m_Name + " has no flow output " + taken.m_Pin), index);
+        if (taken.m_Kind == Exit::Kind::Loop)
+            fiber->m_Loops.emplace_back(index, entry);
+        fiber->m_Node  = node.m_Pins[pin].m_Target;
+        fiber->m_Entry = node.m_Pins[pin].m_TargetPin;
+    }
+    Settle(*fiber);
+    return fiber->m_Info.m_State;
+}
+
+bool crude_blueprint::Context::Run(std::chrono::microseconds budget)
+{
+    const auto deadline = std::chrono::steady_clock::now() + budget;
+    for (;;)
+    {
+        auto ready = false;
+        for (size_t i = 0; i < m_Fibers.size(); ++i)
+        {
+            if (m_Fibers[i].m_Info.m_State != FiberState::Ready)
+                continue;
+            ready = true;
+            [[maybe_unused]] auto state = Step(m_Fibers[i].m_Info.m_Id);
+        }
+        if (!ready)
+            return false;
+        if (std::chrono::steady_clock::now() >= deadline)
+            return std::any_of(m_Fibers.begin(), m_Fibers.end(), [](const Fiber& fiber) { return fiber.m_Info.m_State == FiberState::Ready; });
+    }
+}
+
+void crude_blueprint::Context::Stop(FiberId id)
+{
+    if (auto fiber = FindFiber(id); fiber && fiber->m_Info.m_State == FiberState::Ready)
+    {
+        fiber->m_Info.m_State = FiberState::Stopped;
+        fiber->m_Info.m_Node  = 0;
+    }
+}
+
+std::vector<crude_blueprint::FiberInfo> crude_blueprint::Context::Fibers() const
+{
+    std::vector<FiberInfo> fibers;
+    for (auto& fiber : m_Fibers)
+        fibers.push_back(fiber.m_Info);
+    return fibers;
+}
+
+crude_blueprint::Result<crude_blueprint::Watch> crude_blueprint::Context::Evaluate(Id pin)
+{
+    auto it = m_Program->m_Pins.find(pin);
+    if (it == m_Program->m_Pins.end())
+        return Error(BlueprintError::NotFound, "no pin " + std::to_string(pin) + " in the program");
+    auto [node, index] = it->second;
+    auto& compiled = m_Program->m_Nodes[node].m_Pins[index];
+    if (compiled.m_Flow)
+        return Error(BlueprintError::WrongType, "a flow pin has no value");
+
+    m_ErrorNode = -1;
+    m_ErrorLink = 0;
+    auto slot  = compiled.m_Direction == Direction::Input ? compiled.m_Source : compiled.m_Slot;
+    auto value = compiled.m_Direction == Direction::Input ? Read(node, index) : ReadSlot(slot);
+    if (!value)
+        return value.GetError();
+    return Watch{ std::move(value).GetValue(), slot >= 0 ? m_SlotSteps[slot] : 0 };
+}
+
+crude_blueprint::Result<crude_blueprint::Value> crude_blueprint::Context::Read(int node, int pin)
+{
+    auto& compiled = m_Program->m_Nodes[node].m_Pins[pin];
+    if (compiled.m_Source < 0)
+        return compiled.m_Constant;
+    auto value = ReadSlot(compiled.m_Source);
+    if (!value || !compiled.m_Cast)
+        return value;
+    auto cast = compiled.m_Cast->m_Function(value.GetValue());
+    if (!cast && m_ErrorNode < 0)
+    {
+        m_ErrorNode = node;
+        m_ErrorLink = compiled.m_Link;
+    }
+    return cast;
+}
+
+// An output that nothing wrote reads as its type's default.
+crude_blueprint::Result<crude_blueprint::Value> crude_blueprint::Context::ReadSlot(int slot)
+{
+    auto [node, pin] = m_Program->m_Slots[slot];
+    if (m_Program->m_Nodes[node].m_Pure && m_Computed[node] != m_Generation)
+        if (auto computed = EvaluateNode(node); !computed)
+            return computed.GetError();
+    if (!m_Slots[slot].IsValid())
+    {
+        auto type = m_Program->m_Nodes[node].m_Pins[pin].m_Type;
+        return type->m_Head->Default(*type);
+    }
+    return m_Slots[slot];
+}
+
+crude_blueprint::Result<void> crude_blueprint::Context::EvaluateNode(int node)
+{
+    auto&       record = m_Program->m_Nodes[node];
+    EvalContext context(*this, node);
+    auto        result = Contained([&] { return record.m_Type->Evaluate(context); });
+    if (!result)
+    {
+        if (m_ErrorNode < 0)
+            m_ErrorNode = node;
+        return result;
+    }
+    m_Computed[node] = m_Generation;
+    return {};
+}
+
+void crude_blueprint::Context::Write(int node, int pin, Value value)
+{
+    auto slot = m_Program->m_Nodes[node].m_Pins[pin].m_Slot;
+    m_Slots[slot]     = std::move(value);
+    m_SlotSteps[slot] = m_Step;
+    if (!m_Program->m_Nodes[node].m_Pure)
+        ++m_Generation;
+}
+
+// A fiber whose branch ended enters its innermost loop again, or is done.
+void crude_blueprint::Context::Settle(Fiber& fiber)
+{
+    if (fiber.m_Node < 0)
+    {
+        if (fiber.m_Loops.empty())
+        {
+            fiber.m_Info.m_State = FiberState::Done;
+            fiber.m_Info.m_Node  = 0;
+            return;
+        }
+        std::tie(fiber.m_Node, fiber.m_Entry) = fiber.m_Loops.back();
+        fiber.m_Loops.pop_back();
+        fiber.m_Again = true;
+    }
+    fiber.m_Info.m_Node = m_Program->m_Nodes[fiber.m_Node].m_Id;
+}
+
+crude_blueprint::FiberState crude_blueprint::Context::Fail(Fiber& fiber, Error error, int node)
+{
+    auto& at = m_Program->m_Nodes[m_ErrorNode >= 0 ? m_ErrorNode : node];
+    m_Diagnostics.push_back({ std::move(error), Severity::Error, at.m_Graph, at.m_Id, 0, m_ErrorLink });
+    fiber.m_Info.m_State = FiberState::Failed;
+    return fiber.m_Info.m_State;
+}
+
+crude_blueprint::Context::Fiber* crude_blueprint::Context::FindFiber(FiberId id)
+{
+    for (auto& fiber : m_Fibers)
+        if (fiber.m_Info.m_Id == id)
+            return &fiber;
+    return nullptr;
 }

@@ -1,0 +1,678 @@
+//------------------------------------------------------------------------------
+// blueprints2-example's runtime: programs compiled from blueprints, and the
+// contexts that run them.
+//------------------------------------------------------------------------------
+# include "blueprints2_fixture.h"
+# include <algorithm>
+# include <chrono>
+# include <functional>
+# include <memory>
+# include <stdexcept>
+# include <string>
+# include <vector>
+
+using namespace blueprints2_tests;
+
+namespace {
+
+// Steps the fiber until it isn't ready, at most so many times.
+FiberState Finish(Context& context, FiberId fiber, int steps = 1000)
+{
+    auto state = FiberState::Ready;
+    for (int i = 0; i < steps && state == FiberState::Ready; ++i)
+    {
+        auto stepped = context.Step(fiber);
+        if (!stepped)
+        {
+            test::Check(false, "fiber %d steps: %s", static_cast<int>(fiber), std::string(stepped.GetError().Message()).c_str());
+            return FiberState::Failed;
+        }
+        state = stepped.GetValue();
+    }
+    return state;
+}
+
+struct Logs final : ContextMonitor
+{
+    void OnLog(const Context&, Id node, std::string_view text) override
+    {
+        m_Text += (m_Text.empty() ? "" : " ") + std::string(text);
+        m_Nodes.push_back(node);
+    }
+
+    std::string     m_Text;
+    std::vector<Id> m_Nodes;
+};
+
+std::string Messages(std::span<const Diagnostic> diagnostics)
+{
+    std::string text;
+    for (auto& diagnostic : diagnostics)
+        text += (text.empty() ? "" : "; ") + std::string(diagnostic.m_Error.Message());
+    return text;
+}
+
+template <typename T>
+Result<Exit> Failed(const Result<T>& result)
+{
+    return result.GetError();
+}
+
+TestNodeType s_Start("Start", [](NodeDeclaration& d, const NodeConfig&, const Bindings&) { d.FlowOutput("then"); },
+    [](ExecContext&, std::string_view) -> Result<Exit> { return Exit::To("then"); }, {}, "Start");
+
+TestNodeType s_Log("Log", [](NodeDeclaration& d, const NodeConfig&, const Bindings&)
+{
+    d.FlowInput("enter");
+    d.Input("text", "Text", StringType());
+    d.FlowOutput("then");
+},
+[](ExecContext& context, std::string_view) -> Result<Exit>
+{
+    auto text = context.Get<std::string>("text");
+    if (!text)
+        return Failed(text);
+    context.Log(text.GetValue());
+    return Exit::To("then");
+});
+
+// Logs "a,b".
+TestNodeType s_Twice("Twice", [](NodeDeclaration& d, const NodeConfig&, const Bindings&)
+{
+    d.FlowInput("enter");
+    d.Input("a", "A", Int32Type());
+    d.Input("b", "B", Int32Type());
+    d.FlowOutput("then");
+},
+[](ExecContext& context, std::string_view) -> Result<Exit>
+{
+    auto a = context.Get<int32_t>("a");
+    auto b = context.Get<int32_t>("b");
+    if (!a || !b)
+        return !a ? Failed(a) : Failed(b);
+    context.Log(std::to_string(a.GetValue()) + "," + std::to_string(b.GetValue()));
+    return Exit::To("then");
+});
+
+// Counts the times it ran, in its state.
+TestNodeType s_Count("Count", [](NodeDeclaration& d, const NodeConfig&, const Bindings&)
+{
+    d.FlowInput("enter");
+    d.FlowOutput("then");
+    d.Output("count", "Count", Int32Type());
+},
+[](ExecContext& context, std::string_view) -> Result<Exit>
+{
+    auto& count = context.State<int32_t>();
+    context.Set("count", Value::Int32(++count));
+    return Exit::To("then");
+});
+
+int s_PlusRuns = 0;
+
+TestNodeType s_Plus("Plus", [](NodeDeclaration& d, const NodeConfig&, const Bindings&)
+{
+    d.Input("a", "A", Int32Type());
+    d.Input("b", "B", Int32Type(), { .m_Default = Value::Int32(1) });
+    d.Output("sum", "Sum", Int32Type());
+},
+{}, [](EvalContext& context) -> Result<void>
+{
+    ++s_PlusRuns;
+    auto a = context.Get<int32_t>("a");
+    auto b = context.Get<int32_t>("b");
+    if (!a || !b)
+        return !a ? a.GetError() : b.GetError();
+    context.Set("sum", Value::Int32(a.GetValue() + b.GetValue()));
+    return {};
+});
+
+TestNodeType s_Text("Text", [](NodeDeclaration& d, const NodeConfig&, const Bindings&)
+{
+    d.Input("number", "Number", Int32Type());
+    d.Output("text", "Text", StringType());
+},
+{}, [](EvalContext& context) -> Result<void>
+{
+    auto number = context.Get<int32_t>("number");
+    if (!number)
+        return number.GetError();
+    context.Set("text", Value::String(std::to_string(number.GetValue())));
+    return {};
+});
+
+// Gives the value its config holds, as a Constant does.
+TestNodeType Holding(const char* title, const Type& (*type)())
+{
+    return TestNodeType(title, [type](NodeDeclaration& d, const NodeConfig&, const Bindings&) { d.Output("value", "Value", type()); }, {}, [type](EvalContext& context) -> Result<void>
+    {
+        auto value = context.Config().m_Data.find("value");
+        context.Set("value", value != context.Config().m_Data.end() ? value->second : type().m_Head->Default(type()));
+        return {};
+    });
+}
+
+TestNodeType s_Number = Holding("Number", Int32Type);
+TestNodeType s_Word   = Holding("Word", StringType);
+
+// Runs its body "times" times, giving the index, then goes on to "done".
+TestNodeType s_Repeat("Repeat", [](NodeDeclaration& d, const NodeConfig&, const Bindings&)
+{
+    d.FlowInput("enter");
+    d.Input("times", "Times", Int32Type(), { .m_Default = Value::Int32(3) });
+    d.FlowOutput("body", "Body");
+    d.Output("index", "Index", Int32Type());
+    d.FlowOutput("done", "Done");
+},
+[](ExecContext& context, std::string_view) -> Result<Exit>
+{
+    auto& index = context.State<int32_t>();
+    index = context.IsAgain() ? index + 1 : 0;
+    auto times = context.Get<int32_t>("times");
+    if (!times)
+        return Failed(times);
+    if (index >= times.GetValue())
+        return Exit::To("done");
+    context.Set("index", Value::Int32(index));
+    return Exit::Loop("body");
+});
+
+// Logs what it reads, writes its output, and logs what it reads again.
+TestNodeType s_Probe("Probe", [](NodeDeclaration& d, const NodeConfig&, const Bindings&)
+{
+    d.FlowInput("enter");
+    d.Input("check", "Check", Int32Type());
+    d.FlowOutput("then");
+    d.Output("value", "Value", Int32Type());
+},
+[](ExecContext& context, std::string_view) -> Result<Exit>
+{
+    auto before = context.Get<int32_t>("check");
+    context.Set("value", Value::Int32(10));
+    auto after = context.Get<int32_t>("check");
+    if (!before || !after)
+        return !before ? Failed(before) : Failed(after);
+    context.Log(std::to_string(before.GetValue()) + "->" + std::to_string(after.GetValue()));
+    return Exit::To("then");
+});
+
+int s_Ticks = 0;
+
+// A new number each time it computes, as Random gives.
+TestNodeType s_Tick("Tick", [](NodeDeclaration& d, const NodeConfig&, const Bindings&) { d.Output("tick", "Tick", Int32Type()); },
+    {}, [](EvalContext& context) -> Result<void>
+{
+    context.Set("tick", Value::Int32(++s_Ticks));
+    return {};
+});
+
+void FlowThrough(NodeDeclaration& d, const NodeConfig&, const Bindings&)
+{
+    d.FlowInput("enter");
+    d.FlowOutput("then");
+}
+
+TestNodeType s_Fail("Fail", FlowThrough, [](ExecContext&, std::string_view) -> Result<Exit> { return Error(BlueprintError::OutOfRange, "it fails"); });
+TestNodeType s_Throw("Throw", FlowThrough, [](ExecContext&, std::string_view) -> Result<Exit> { throw std::runtime_error("boom"); });
+TestNodeType s_Lost("Lost", FlowThrough, [](ExecContext&, std::string_view) -> Result<Exit> { return Exit::To("elsewhere"); });
+TestNodeType s_Idle("Idle", FlowThrough);
+
+TestNodeType s_Broken("Broken", [](NodeDeclaration& d, const NodeConfig&, const Bindings&) { d.Output("text", "Text", StringType()); },
+    {}, [](EvalContext&) -> Result<void> { return Error(BlueprintError::NotFinite, "it can't compute"); });
+
+TestNodeType s_Pass("Pass", [](NodeDeclaration& d, const NodeConfig&, const Bindings&)
+{
+    auto T = d.Variable("T");
+    d.Input("in", "In", T);
+    d.Output("out", "Out", T);
+});
+
+TestNodeType s_Need("Need", [](NodeDeclaration& d, const NodeConfig&, const Bindings&)
+{
+    d.FlowInput("enter");
+    d.Input("text", "Text", StringType(), { .m_Requirement = Requirement::Required });
+    d.FlowOutput("then");
+});
+
+TestNodeType s_Hint("Hint", [](NodeDeclaration& d, const NodeConfig&, const Bindings&)
+{
+    d.FlowInput("enter");
+    d.Input("text", "Text", StringType(), { .m_Requirement = Requirement::Recommended });
+    d.FlowOutput("then");
+},
+[](ExecContext&, std::string_view) -> Result<Exit> { return Exit::To("then"); });
+
+std::shared_ptr<const Registry> ContextRegistry()
+{
+    static const std::shared_ptr<const Registry> registry = []
+    {
+        auto made = std::make_shared<Registry>();
+        auto ok = RegisterBuiltins(*made).IsOk();
+        for (auto type : { &s_Start, &s_Log, &s_Twice, &s_Count, &s_Plus, &s_Text, &s_Number, &s_Word, &s_Repeat, &s_Fail, &s_Throw, &s_Lost, &s_Idle,
+                           &s_Broken, &s_Pass, &s_Need, &s_Hint, &s_Probe, &s_Tick })
+            ok = made->AddNodeType(*type).IsOk() && ok;
+        if (!ok)
+            test::Check(false, "the test registry is made");
+        return made;
+    }();
+    return registry;
+}
+
+struct Fixture : BlueprintFixture
+{
+    Fixture(): BlueprintFixture(ContextRegistry()) {}
+
+    // One that isn't made fails the test.
+    std::shared_ptr<const Program> Compiled() const
+    {
+        auto compiled = Compile(m_Blueprint);
+        if (!compiled.m_Program)
+            test::Check(false, "the blueprint compiles: %s", Messages(compiled.m_Diagnostics).c_str());
+        return compiled.m_Program;
+    }
+
+    void SetValue(Id node, const char* input, Value value)
+    {
+        if (auto set = m_Graph.SetValue(Pin(node, input), std::move(value)); !set)
+            test::Check(false, "%s.%s takes the value: %s", Name(node).c_str(), input, std::string(set.GetError().Message()).c_str());
+    }
+};
+
+NodeConfig Holds(Value value)
+{
+    NodeConfig config;
+    config.m_Data["value"] = std::move(value);
+    return config;
+}
+
+NodeConfig Event(const char* name)
+{
+    NodeConfig config;
+    config.m_Data["event"] = Value::String(name);
+    return config;
+}
+
+} // namespace
+
+TEST_CASE(FiberRuns, "context.a_fiber_runs_from_its_event_along_flow_links", nullptr, test::TestFlags_None)
+{
+    Fixture f;
+    auto start = f.Add("Start"), hello = f.Add("Log"), world = f.Add("Log");
+    f.Link(start, "then", hello, "enter");
+    f.Link(hello, "then", world, "enter");
+    f.SetValue(hello, "text", Value::String("hello"));
+    f.SetValue(world, "text", Value::String("world"));
+    auto program = f.Compiled();
+    if (!program)
+        return;
+
+    Context context(program);
+    Logs    logs;
+    context.SetMonitor(&logs);
+    auto fiber = context.Start("Start");
+    test::Check(fiber && context.Fibers().size() == 1 && context.Fibers()[0].m_Node == start, "a fiber starts at its event");
+    auto first = context.Step(fiber.ValueOr(0));
+    test::Check(first && first.GetValue() == FiberState::Ready && context.Fibers()[0].m_Node == hello && logs.m_Text.empty(), "a step runs the event, and the fiber's next node follows its flow link");
+    auto end = Finish(context, fiber.ValueOr(0));
+    test::Check(end == FiberState::Done && logs.m_Text == "hello world" && context.StepCount() == 3, "it runs to the end: %s, %d steps", logs.m_Text.c_str(), static_cast<int>(context.StepCount()));
+    test::Check(logs.m_Nodes == std::vector<Id>{ hello, world } && context.Fibers()[0].m_Node == 0, "each log names its node, and a fiber that's done has no next node");
+    auto after   = context.Step(fiber.ValueOr(0));
+    auto unknown = context.Start("Stop");
+    test::Check(!after && after.GetError().Is(BlueprintError::Unsupported) && !unknown && unknown.GetError().Is(BlueprintError::NotFound), "a fiber that's done takes no step, and no node starts Stop: %s", Message(unknown).c_str());
+}
+
+TEST_CASE(InputsWithoutLinks, "context.unlinked_inputs_read_typed_values_then_defaults", nullptr, test::TestFlags_None)
+{
+    Fixture f;
+    auto start = f.Add("Start"), typed = f.Add("Log"), plain = f.Add("Log"), sum = f.Add("Log"), plus = f.Add("Plus"), text = f.Add("Text");
+    f.Link(start, "then", typed, "enter");
+    f.Link(typed, "then", plain, "enter");
+    f.Link(plain, "then", sum, "enter");
+    f.Link(plus, "sum", text, "number");
+    f.Link(text, "text", sum, "text");
+    f.SetValue(typed, "text", Value::String("typed"));
+
+    auto run = [&f]
+    {
+        Logs logs;
+        if (auto program = f.Compiled())
+        {
+            Context context(program);
+            context.SetMonitor(&logs);
+            Finish(context, context.Start("Start").ValueOr(0));
+        }
+        return logs.m_Text;
+    };
+    auto before = run();
+    test::Check(before == "typed  1", "a typed value, then the type's default, then a declared one: Plus is 0 + 1: [%s]", before.c_str());
+    f.SetValue(plus, "a", Value::Int32(41));
+    auto after = run();
+    test::Check(after == "typed  42", "a program takes the values typed when it's compiled: [%s]", after.c_str());
+}
+
+TEST_CASE(PureOnce, "context.a_pure_output_is_computed_once_for_what_it_reads", nullptr, test::TestFlags_None)
+{
+    Fixture f;
+    auto start = f.Add("Start"), twice = f.Add("Twice"), plus = f.Add("Plus");
+    f.Link(start, "then", twice, "enter");
+    f.Link(plus, "sum", twice, "a");
+    f.Link(plus, "sum", twice, "b");
+    auto program = f.Compiled();
+    if (!program)
+        return;
+    Context context(program);
+    Logs    logs;
+    context.SetMonitor(&logs);
+    s_PlusRuns = 0;
+    Finish(context, context.Start("Start").ValueOr(0));
+    test::Check(logs.m_Text == "1,1" && s_PlusRuns == 1, "two inputs read Plus, which computes once: %s, %d runs", logs.m_Text.c_str(), s_PlusRuns);
+
+    // A node with flow pins that writes an output makes what reads it compute again.
+    Fixture g;
+    auto start2 = g.Add("Start"), repeat = g.Add("Repeat"), count = g.Add("Count"), twice2 = g.Add("Twice"), plus2 = g.Add("Plus");
+    g.Link(start2, "then", repeat, "enter");
+    g.Link(repeat, "body", count, "enter");
+    g.Link(count, "then", twice2, "enter");
+    g.Link(count, "count", twice2, "a");
+    g.Link(count, "count", plus2, "a");
+    g.Link(plus2, "sum", twice2, "b");
+    g.SetValue(repeat, "times", Value::Int32(2));
+    auto program2 = g.Compiled();
+    if (!program2)
+        return;
+    Context context2(program2);
+    Logs    logs2;
+    context2.SetMonitor(&logs2);
+    s_PlusRuns = 0;
+    Finish(context2, context2.Start("Start").ValueOr(0));
+    test::Check(logs2.m_Text == "1,2 2,3" && s_PlusRuns == 2, "each count gives a new sum: %s, %d runs", logs2.m_Text.c_str(), s_PlusRuns);
+}
+
+TEST_CASE(Generations, "context.pure_outputs_compute_again_after_a_write_or_in_a_new_step", nullptr, test::TestFlags_None)
+{
+    // Probe reads Plus of its own output, before and after writing it.
+    Fixture f;
+    auto start = f.Add("Start"), probe = f.Add("Probe"), plus = f.Add("Plus");
+    f.Link(start, "then", probe, "enter");
+    f.Link(probe, "value", plus, "a");
+    f.Link(plus, "sum", probe, "check");
+    if (auto program = f.Compiled())
+    {
+        Context context(program);
+        Logs    logs;
+        context.SetMonitor(&logs);
+        Finish(context, context.Start("Start").ValueOr(0));
+        test::Check(logs.m_Text == "1->11", "a write in the step makes Plus compute again: %s", logs.m_Text.c_str());
+    }
+
+    // Two steps read one Tick, which has no inputs.
+    Fixture g;
+    auto start2 = g.Add("Start"), first = g.Add("Log"), second = g.Add("Log"), tick = g.Add("Tick"), text = g.Add("Text");
+    g.Link(start2, "then", first, "enter");
+    g.Link(first, "then", second, "enter");
+    g.Link(tick, "tick", text, "number");
+    g.Link(text, "text", first, "text");
+    g.Link(text, "text", second, "text");
+    if (auto program = g.Compiled())
+    {
+        Context context(program);
+        Logs    logs;
+        context.SetMonitor(&logs);
+        s_Ticks = 0;
+        Finish(context, context.Start("Start").ValueOr(0));
+        test::Check(logs.m_Text == "1 2", "each step computes it once: %s", logs.m_Text.c_str());
+    }
+}
+
+TEST_CASE(CastsRun, "context.a_cast_link_converts_and_a_failing_cast_stops_the_fiber", nullptr, test::TestFlags_None)
+{
+    Fixture f;
+    auto start = f.Add("Start"), log = f.Add("Log"), number = f.Add("Number", Holds(Value::Int32(42)));
+    f.Link(start, "then", log, "enter");
+    f.Link(number, "value", log, "text", LinkMode::Cast);
+    if (auto program = f.Compiled())
+    {
+        Context context(program);
+        Logs    logs;
+        context.SetMonitor(&logs);
+        auto end = Finish(context, context.Start("Start").ValueOr(0));
+        test::Check(end == FiberState::Done && logs.m_Text == "42", "Int32 -> String gives the text: %s", logs.m_Text.c_str());
+    }
+
+    Fixture g;
+    auto start2 = g.Add("Start"), repeat = g.Add("Repeat"), word = g.Add("Word", Holds(Value::String("abc")));
+    g.Link(start2, "then", repeat, "enter");
+    auto cast = g.Link(word, "value", repeat, "times", LinkMode::Cast);
+    if (auto program = g.Compiled())
+    {
+        Context context(program);
+        auto end = Finish(context, context.Start("Start").ValueOr(0));
+        auto diagnostics = context.Diagnostics();
+        test::Check(end == FiberState::Failed && diagnostics.size() == 1 && diagnostics[0].m_Error.Is(BlueprintError::CastFailed), "String -> Int32 of \"abc\" fails the fiber: %s", Messages(diagnostics).c_str());
+        test::Check(!diagnostics.empty() && diagnostics[0].m_Link == cast && diagnostics[0].m_Node == repeat, "at the link, on the node that reads it");
+    }
+}
+
+TEST_CASE(ErrorStopsItsFiber, "context.a_run_time_error_stops_only_its_fiber", nullptr, test::TestFlags_None)
+{
+    Fixture f;
+    auto start = f.Add("Start"), fail = f.Add("Fail"), other = f.Add("Start", Event("Other")), log = f.Add("Log");
+    f.Link(start, "then", fail, "enter");
+    f.Link(other, "then", log, "enter");
+    f.SetValue(log, "text", Value::String("still"));
+    auto program = f.Compiled();
+    if (!program)
+        return;
+    Context context(program);
+    Logs    logs;
+    context.SetMonitor(&logs);
+    auto failing = context.Start("Start");
+    auto running = context.Start("Other");
+    auto ready   = context.Run(std::chrono::seconds(1));
+    auto fibers  = context.Fibers();
+    auto diagnostics = context.Diagnostics();
+    test::Check(failing && running && !ready && fibers.size() == 2 && fibers[0].m_State == FiberState::Failed && fibers[1].m_State == FiberState::Done, "one fiber fails, and the other runs to its end");
+    test::Check(logs.m_Text == "still" && diagnostics.size() == 1 && diagnostics[0].m_Node == fail && diagnostics[0].m_Error.Is(BlueprintError::OutOfRange) && diagnostics[0].m_Graph == f.m_Graph.GetId(), "the error is a diagnostic on its node: %s", Messages(diagnostics).c_str());
+    test::Check(fibers[0].m_Node == fail, "and the failed fiber stays at that node");
+}
+
+TEST_CASE(ErrorsLocated, "context.exceptions_and_errors_of_pure_inputs_are_errors_where_they_arose", nullptr, test::TestFlags_None)
+{
+    Fixture f;
+    auto start = f.Add("Start"), thrower = f.Add("Throw");
+    f.Link(start, "then", thrower, "enter");
+    if (auto program = f.Compiled())
+    {
+        Context context(program);
+        auto end = Finish(context, context.Start("Start").ValueOr(0));
+        auto diagnostics = context.Diagnostics();
+        test::Check(end == FiberState::Failed && diagnostics.size() == 1 && diagnostics[0].m_Error.Is(BlueprintError::Threw) && Messages(diagnostics) == "boom" && diagnostics[0].m_Node == thrower, "what node code throws stops its fiber: %s", Messages(diagnostics).c_str());
+    }
+
+    Fixture g;
+    auto start2 = g.Add("Start"), log = g.Add("Log"), broken = g.Add("Broken");
+    g.Link(start2, "then", log, "enter");
+    g.Link(broken, "text", log, "text");
+    if (auto program = g.Compiled())
+    {
+        Context context(program);
+        auto end = Finish(context, context.Start("Start").ValueOr(0));
+        auto diagnostics = context.Diagnostics();
+        test::Check(end == FiberState::Failed && diagnostics.size() == 1 && diagnostics[0].m_Node == broken && diagnostics[0].m_Error.Is(BlueprintError::NotFinite), "a pure node's error is on that node, not on the node that read it: %s", Messages(diagnostics).c_str());
+    }
+}
+
+TEST_CASE(Loops, "context.a_loop_runs_its_branch_then_enters_its_node_again", nullptr, test::TestFlags_None)
+{
+    Fixture f;
+    auto start = f.Add("Start"), repeat = f.Add("Repeat"), log = f.Add("Log"), text = f.Add("Text"), done = f.Add("Log");
+    f.Link(start, "then", repeat, "enter");
+    f.Link(repeat, "body", log, "enter");
+    f.Link(repeat, "index", text, "number");
+    f.Link(text, "text", log, "text");
+    f.Link(repeat, "done", done, "enter");
+    f.SetValue(done, "text", Value::String("done"));
+    if (auto program = f.Compiled())
+    {
+        Context context(program);
+        Logs    logs;
+        context.SetMonitor(&logs);
+        Finish(context, context.Start("Start").ValueOr(0));
+        test::Check(logs.m_Text == "0 1 2 done", "the body runs for each index, then done: %s", logs.m_Text.c_str());
+    }
+
+    Fixture g;
+    auto start2 = g.Add("Start"), outer = g.Add("Repeat"), inner = g.Add("Repeat"), log2 = g.Add("Log"), text2 = g.Add("Text"), bar = g.Add("Log");
+    g.Link(start2, "then", outer, "enter");
+    g.Link(outer, "body", inner, "enter");
+    g.Link(inner, "body", log2, "enter");
+    g.Link(inner, "index", text2, "number");
+    g.Link(text2, "text", log2, "text");
+    g.Link(inner, "done", bar, "enter");
+    g.SetValue(outer, "times", Value::Int32(2));
+    g.SetValue(inner, "times", Value::Int32(2));
+    g.SetValue(bar, "text", Value::String("|"));
+    if (auto program = g.Compiled())
+    {
+        Context context(program);
+        Logs    logs;
+        context.SetMonitor(&logs);
+        auto end = Finish(context, context.Start("Start").ValueOr(0));
+        test::Check(end == FiberState::Done && logs.m_Text == "0 1 | 0 1 |", "loops nest: %s", logs.m_Text.c_str());
+    }
+}
+
+TEST_CASE(CompileRefuses, "context.compiling_refuses_what_cant_run", nullptr, test::TestFlags_None)
+{
+    struct Case
+    {
+        const char*                   what;
+        std::function<void(Fixture&)> build;
+        BlueprintError                code;
+    };
+    const Case cases[] =
+    {
+        { "an undecided type", [](Fixture& f) { f.Add("Pass"); }, BlueprintError::Undecided },
+        { "a required pin without a link", [](Fixture& f) { f.Add("Need"); }, BlueprintError::NeedsLink },
+        { "two nodes that start one event", [](Fixture& f) { f.Add("Start"); f.Add("Start"); }, BlueprintError::Duplicate },
+        { "a disabled link", [](Fixture& f) { auto number = f.Add("Number"), log = f.Add("Log"); f.Link(number, "value", log, "text", LinkMode::Keep); }, BlueprintError::TypeMismatch },
+    };
+    for (auto& c : cases)
+    {
+        Fixture f;
+        c.build(f);
+        auto compiled = Compile(f.m_Blueprint);
+        auto found = std::any_of(compiled.m_Diagnostics.begin(), compiled.m_Diagnostics.end(), [&c](const Diagnostic& d) { return d.m_Error.Is(c.code) && d.m_Severity == Severity::Error; });
+        test::Check(!compiled.m_Program && found, "%s is refused: %s", c.what, Messages(compiled.m_Diagnostics).c_str());
+    }
+
+    // A loop that a file can hold: the error names a node on it, not the reader the search starts at.
+    Fixture f;
+    auto reader = f.Add("Text"), first = f.Add("Plus"), second = f.Add("Plus");
+    f.Link(first, "sum", second, "a");
+    f.Link(second, "sum", first, "a", LinkMode::Keep);
+    f.Link(second, "sum", reader, "number");
+    auto compiled = Compile(f.m_Blueprint);
+    auto loops = std::count_if(compiled.m_Diagnostics.begin(), compiled.m_Diagnostics.end(), [](const Diagnostic& d) { return d.m_Error.Is(BlueprintError::Loop); });
+    auto named = std::any_of(compiled.m_Diagnostics.begin(), compiled.m_Diagnostics.end(), [&](const Diagnostic& d) { return d.m_Error.Is(BlueprintError::Loop) && (d.m_Node == first || d.m_Node == second); });
+    test::Check(!compiled.m_Program && loops == 1 && named, "a kept loop of pure nodes is refused once, on the loop: %s", Messages(compiled.m_Diagnostics).c_str());
+
+    Fixture g;
+    auto start = g.Add("Start"), hint = g.Add("Hint");
+    g.Link(start, "then", hint, "enter");
+    auto warned = Compile(g.m_Blueprint);
+    test::Check(warned.m_Program && warned.m_Diagnostics.size() == 1 && warned.m_Diagnostics[0].m_Severity == Severity::Warning, "warnings alone don't stop it, and come with the program: %s", Messages(warned.m_Diagnostics).c_str());
+}
+
+TEST_CASE(Debugger, "context.the_debugger_reads_any_pin_without_running_a_node", nullptr, test::TestFlags_None)
+{
+    Fixture f;
+    auto start = f.Add("Start"), count = f.Add("Count"), log = f.Add("Log"), plus = f.Add("Plus"), text = f.Add("Text");
+    f.Link(start, "then", count, "enter");
+    f.Link(count, "then", log, "enter");
+    f.Link(count, "count", plus, "a");
+    f.Link(plus, "sum", text, "number");
+    f.Link(text, "text", log, "text");
+    auto program = f.Compiled();
+    if (!program)
+        return;
+    Context context(program);
+
+    s_PlusRuns = 0;
+    auto stored = context.Evaluate(f.Pin(count, "count"));
+    auto sum    = context.Evaluate(f.Pin(plus, "sum"));
+    auto again  = context.Evaluate(f.Pin(plus, "sum"));
+    test::Check(stored && stored.GetValue().m_Value == Value::Int32(0) && stored.GetValue().m_Step == 0, "before a run, an output nothing wrote reads its default");
+    test::Check(sum && sum.GetValue().m_Value == Value::Int32(1) && again && s_PlusRuns == 1 && context.StepCount() == 0, "a pure output is computed once, and nothing runs: %d runs", s_PlusRuns);
+
+    auto fiber = context.Start("Start");
+    auto event = context.Step(fiber.ValueOr(0));
+    auto run   = context.Step(fiber.ValueOr(0));
+    auto counted = context.Evaluate(f.Pin(count, "count"));
+    auto input   = context.Evaluate(f.Pin(log, "text"));
+    auto constant = context.Evaluate(f.Pin(plus, "b"));
+    test::Check(event && run && counted && counted.GetValue().m_Value == Value::Int32(1) && counted.GetValue().m_Step == 2, "an output gives what its node stored, and when");
+    test::Check(input && input.GetValue().m_Value == Value::String("2") && constant && constant.GetValue().m_Value == Value::Int32(1) && constant.GetValue().m_Step == 0, "an input gives what it reads, or its constant");
+
+    auto flow    = context.Evaluate(f.Pin(count, "then"));
+    auto unknown = context.Evaluate(99999);
+    test::Check(!flow && !unknown && unknown.GetError().Is(BlueprintError::NotFound), "a flow pin has no value: %s", Message(flow).c_str());
+}
+
+TEST_CASE(RunAndStop, "context.run_steps_fibers_until_they_end_or_the_time_is_up", nullptr, test::TestFlags_None)
+{
+    Fixture f;
+    auto start = f.Add("Start"), first = f.Add("Count"), second = f.Add("Count");
+    f.Link(start, "then", first, "enter");
+    f.Link(first, "then", second, "enter");
+    f.Link(second, "then", first, "enter");
+    auto program = f.Compiled();
+    if (!program)
+        return;
+    Context context(program);
+    auto fiber   = context.Start("Start");
+    auto running = context.Run(std::chrono::milliseconds(2));
+    test::Check(running && context.StepCount() > 2, "an endless fiber is still ready once the time is up: %d steps", static_cast<int>(context.StepCount()));
+    context.Stop(fiber.ValueOr(0));
+    auto stopped = context.Run(std::chrono::seconds(1));
+    test::Check(!stopped && context.Fibers()[0].m_State == FiberState::Stopped && !context.Step(fiber.ValueOr(0)), "stopped, it takes no more steps");
+}
+
+TEST_CASE(NodeState, "context.state_belongs_to_a_node_in_a_context", nullptr, test::TestFlags_None)
+{
+    Fixture f;
+    auto start = f.Add("Start"), first = f.Add("Count"), second = f.Add("Count"), log = f.Add("Twice");
+    f.Link(start, "then", first, "enter");
+    f.Link(first, "then", second, "enter");
+    f.Link(second, "then", log, "enter");
+    f.Link(first, "count", log, "a");
+    f.Link(second, "count", log, "b");
+    auto program = f.Compiled();
+    if (!program)
+        return;
+    Context one(program), two(program);
+    Logs    logsOne, logsTwo;
+    one.SetMonitor(&logsOne);
+    two.SetMonitor(&logsTwo);
+    Finish(one, one.Start("Start").ValueOr(0));
+    Finish(one, one.Start("Start").ValueOr(0));
+    Finish(two, two.Start("Start").ValueOr(0));
+    test::Check(logsOne.m_Text == "1,1 2,2" && logsTwo.m_Text == "1,1", "each node counts on its own, in each context: %s | %s", logsOne.m_Text.c_str(), logsTwo.m_Text.c_str());
+}
+
+TEST_CASE(NodesThatCantRun, "context.a_node_that_cant_run_fails_its_fiber", nullptr, test::TestFlags_None)
+{
+    for (auto type : { "Lost", "Idle" })
+    {
+        Fixture f;
+        auto start = f.Add("Start"), node = f.Add(type);
+        f.Link(start, "then", node, "enter");
+        if (auto program = f.Compiled())
+        {
+            Context context(program);
+            auto end = Finish(context, context.Start("Start").ValueOr(0));
+            auto diagnostics = context.Diagnostics();
+            test::Check(end == FiberState::Failed && diagnostics.size() == 1 && diagnostics[0].m_Node == node, "%s fails: %s", type, Messages(diagnostics).c_str());
+        }
+    }
+}

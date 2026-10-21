@@ -5,6 +5,8 @@
 // compiled into programs that contexts run, step and inspect.
 //------------------------------------------------------------------------------
 # pragma once
+# include <any>
+# include <chrono>
 # include <concepts>
 # include <cstddef>
 # include <cstdint>
@@ -205,6 +207,7 @@ enum class BlueprintError : uint16_t
     Unsettled,      // types that keep changing a node's pins
     NeedsLink,      // a required or recommended pin without a link
     Loop,           // a link that closes a loop of pure nodes
+    Unsupported,    // what a node or a fiber can't do now, such as a node type that doesn't run
 };
 
 constexpr ErrorCategory CategoryOf(BlueprintError) { return ErrorCategory::Blueprint; }
@@ -543,6 +546,7 @@ struct NodeConfig
     std::map<std::string, int, std::less<>>         m_Groups; // indices per group
     std::map<std::string, const Type*, std::less<>> m_Types;  // the type variables the user chose
     std::vector<std::string>                        m_Split;  // struct pins split into their fields, by key
+    std::map<std::string, Value, std::less<>>       m_Data;   // the node type's own, such as a Constant's value
 
     bool operator==(const NodeConfig& other) const = default;
 };
@@ -588,6 +592,27 @@ private:
     std::vector<GroupDeclaration>    m_Groups;
 };
 
+class EvalContext;
+class ExecContext;
+
+// Where a fiber goes once a node ran.
+struct Exit
+{
+    enum class Kind : uint8_t
+    {
+        None, // the branch ends
+        To,   // on at a flow output
+        Loop, // the branch from a flow output, then this node again, at the same flow input
+    };
+
+    Kind        m_Kind = Kind::None;
+    std::string m_Pin;
+
+    static Exit None()                { return {}; }
+    static Exit To(std::string pin)   { return { Kind::To, std::move(pin) }; }
+    static Exit Loop(std::string pin) { return { Kind::Loop, std::move(pin) }; }
+};
+
 // One registered type can be many node types: Make for each struct, a call for each function.
 struct NodeType
 {
@@ -603,6 +628,14 @@ struct NodeType
     const std::string m_Category; // "Math"
 
     virtual void Declare(NodeDeclaration& declaration, const NodeConfig& config, const Bindings& bindings) const = 0;
+
+    // A node with flow pins runs from the flow input it was entered at, and a pure one computes its
+    // outputs from its inputs. Both give Unsupported unless the node type has them.
+    virtual Result<Exit> Execute(ExecContext& context, std::string_view entry) const;
+    virtual Result<void> Evaluate(EvalContext& context) const;
+
+    // An event starts fibers, by its name: "Start". Other nodes have none.
+    virtual std::string EventName(const NodeConfig& config) const;
 };
 
 
@@ -808,5 +841,249 @@ private:
     Id                                  m_NextId = 1;
     std::vector<std::unique_ptr<Graph>> m_Graphs;
 };
+
+
+//
+// -------[ Programs ]-------
+//
+
+class Context;
+struct CompileResult;
+
+// A pin as a program runs it.
+struct ProgramPin
+{
+    Id          m_Id        = 0;
+    std::string m_Key;
+    Direction   m_Direction = Direction::Input;
+    bool        m_Flow      = false;
+    const Type* m_Type      = nullptr;
+
+    // A data input reads the output of slot m_Source through m_Cast, and without a link, m_Constant:
+    // the value the user typed, else the declared default, else its type's.
+    int             m_Source = -1;
+    const CastInfo* m_Cast   = nullptr;
+    Id              m_Link   = 0;
+    Value           m_Constant;
+
+    int m_Slot      = -1; // a data output's
+    int m_Target    = -1; // a flow output's node, by index, and the flow input there; -1 when unlinked
+    int m_TargetPin = -1;
+};
+
+struct ProgramNode
+{
+    Id                      m_Id    = 0;
+    Id                      m_Graph = 0;
+    const NodeType*         m_Type  = nullptr;
+    NodeConfig              m_Config;
+    std::string             m_Name;          // as messages name it: "Add#7"
+    bool                    m_Pure  = false; // without flow pins
+    std::vector<ProgramPin> m_Pins;
+};
+
+// A blueprint as it was compiled. Contexts share it, so edits never reach a run in progress.
+class Program
+{
+public:
+    std::span<const ProgramNode> Nodes() const { return m_Nodes; }
+
+    int FindNode(Id node) const; // its index, or -1
+    int FindEvent(std::string_view name) const;
+
+private:
+    friend class Context;
+    friend class NodeContext;
+    friend CompileResult Compile(const Blueprint& blueprint);
+
+    std::vector<ProgramNode>                    m_Nodes;
+    std::vector<std::pair<int, int>>            m_Slots; // each slot's node and pin, by index
+    std::map<std::string, int, std::less<>>     m_Events;
+    std::unordered_map<Id, std::pair<int, int>> m_Pins;  // each pin's node and pin, by index
+};
+
+struct CompileResult
+{
+    std::shared_ptr<const Program> m_Program;     // null while any diagnostic is an error
+    std::vector<Diagnostic>        m_Diagnostics; // warnings too
+};
+
+CompileResult Compile(const Blueprint& blueprint);
+
+
+//
+// -------[ Contexts ]-------
+//
+
+using FiberId = uint32_t;
+
+enum class FiberState : uint8_t
+{
+    Ready,   // with a node to run next
+    Done,
+    Failed,  // a run-time error stopped it
+    Stopped,
+};
+
+// A fiber is one line of execution: an event's run.
+struct FiberInfo
+{
+    FiberId    m_Id    = 0;
+    FiberState m_State = FiberState::Ready;
+    Id         m_Node  = 0; // the node it runs next
+};
+
+// A value as the debugger shows it.
+struct Watch
+{
+    Value    m_Value;
+    uint64_t m_Step = 0; // the step that stored or computed it; 0 when it's a default nothing wrote
+};
+
+// What a run tells its host.
+struct ContextMonitor
+{
+    virtual ~ContextMonitor() = default;
+    virtual void OnLog(const Context& context, Id node, std::string_view text) = 0;
+};
+
+class NodeContext
+{
+public:
+    // An input's value: what its link reads, through the link's cast, or else its constant.
+    Result<Value> Get(std::string_view input);
+    template <typename T>
+    Result<T>     Get(std::string_view input); // bool, int32_t, float or std::string
+    // The inputs of a group's prefix, by index: "in" for in.0, in.1 and on.
+    Result<std::vector<Value>> Inputs(std::string_view prefix);
+    // Of the output's decided type.
+    void Set(std::string_view output, Value value);
+
+    const Type*       TypeOf(std::string_view pin) const;
+    const NodeConfig& Config() const;
+    void              Log(std::string_view text);
+
+    // The node's own, in this context: made on first use, and kept until the context goes.
+    template <typename T>
+    T& State();
+
+protected:
+    NodeContext(Context& context, int node): m_Context(context), m_Node(node) {}
+
+    Context& m_Context;
+    int      m_Node;
+
+private:
+    std::any& StateSlot();
+    Error     NotA(std::string_view input, const Type& type) const;
+};
+
+class EvalContext final : public NodeContext
+{
+public:
+    EvalContext(Context& context, int node): NodeContext(context, node) {}
+};
+
+class ExecContext final : public NodeContext
+{
+public:
+    ExecContext(Context& context, int node, bool again): NodeContext(context, node), m_Again(again) {}
+
+    // Entered again after the branch of its Exit::Loop.
+    bool IsAgain() const { return m_Again; }
+
+private:
+    bool m_Again;
+};
+
+// One run of a program: its fibers, the values of its slots, the state of its nodes, and the errors
+// that stopped fibers. An error stops only its fiber.
+class Context
+{
+public:
+    explicit Context(std::shared_ptr<const Program> program);
+
+    Result<FiberId>    Start(std::string_view event);
+    // Runs the fiber's next node.
+    Result<FiberState> Step(FiberId fiber);
+    // Steps the ready fibers in turn until none is ready or the time is up; true while one is.
+    bool               Run(std::chrono::microseconds budget);
+    void               Stop(FiberId fiber);
+
+    std::vector<FiberInfo>      Fibers() const;
+    uint64_t                    StepCount() const   { return m_Step; }
+    std::span<const Diagnostic> Diagnostics() const { return m_Diagnostics; }
+    const Program&              GetProgram() const  { return *m_Program; }
+    void                        SetMonitor(ContextMonitor* monitor) { m_Monitor = monitor; }
+
+    // A pin's value now. A pure output that this step hasn't computed is computed, which changes
+    // nothing else; an input gives what it reads.
+    Result<Watch> Evaluate(Id pin);
+
+private:
+    friend class NodeContext;
+
+    struct Fiber
+    {
+        FiberInfo                        m_Info;
+        int                              m_Node  = -1;
+        int                              m_Entry = -1;
+        bool                             m_Again = false;
+        std::vector<std::pair<int, int>> m_Loops; // nodes to enter again once their branch ends, and where
+    };
+
+    Result<Value> Read(int node, int pin);
+    Result<Value> ReadSlot(int slot);
+    Result<void>  EvaluateNode(int node);
+    void          Write(int node, int pin, Value value);
+    void          Settle(Fiber& fiber);
+    FiberState    Fail(Fiber& fiber, Error error, int node);
+    Fiber*        FindFiber(FiberId fiber);
+
+    std::shared_ptr<const Program> m_Program;
+    std::vector<Value>             m_Slots;
+    std::vector<uint64_t>          m_SlotSteps; // the step that wrote each slot
+    std::vector<uint64_t>          m_Computed;  // per node: the generation of a pure node's outputs
+    std::vector<std::any>          m_States;    // per node
+    std::vector<Fiber>             m_Fibers;
+    std::vector<Diagnostic>        m_Diagnostics;
+    ContextMonitor*                m_Monitor    = nullptr;
+    uint64_t                       m_Step       = 0;
+    // Up when a step starts and when a node with flow pins writes an output, so a pure output
+    // is computed at most once for what it reads.
+    uint64_t                       m_Generation = 1;
+    FiberId                        m_NextFiber  = 1;
+    // Where the error on its way out arose: a pure node or a cast deep in an input.
+    int                            m_ErrorNode  = -1;
+    Id                             m_ErrorLink  = 0;
+};
+
+template <typename T>
+Result<T> NodeContext::Get(std::string_view input)
+{
+    auto read = Get(input);
+    if (!read)
+        return read.GetError();
+    auto& value = read.GetValue();
+    if constexpr (std::is_same_v<T, bool>)
+        return value.GetType() == &BoolType() ? Result<T>(value.AsBool()) : Result<T>(NotA(input, BoolType()));
+    else if constexpr (std::is_same_v<T, int32_t>)
+        return value.GetType() == &Int32Type() ? Result<T>(value.AsInt32()) : Result<T>(NotA(input, Int32Type()));
+    else if constexpr (std::is_same_v<T, float>)
+        return value.GetType() == &FloatType() ? Result<T>(value.AsFloat()) : Result<T>(NotA(input, FloatType()));
+    else if constexpr (std::is_same_v<T, std::string>)
+        return value.GetType() == &StringType() ? Result<T>(std::string(value.AsString())) : Result<T>(NotA(input, StringType()));
+    else
+        static_assert(sizeof(T) == 0, "Get<T>() takes bool, int32_t, float or std::string");
+}
+
+template <typename T>
+T& NodeContext::State()
+{
+    auto& state = StateSlot();
+    if (auto existing = std::any_cast<T>(&state))
+        return *existing;
+    return state.emplace<T>();
+}
 
 } // namespace crude_blueprint

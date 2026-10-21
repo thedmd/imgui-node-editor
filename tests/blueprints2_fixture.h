@@ -14,14 +14,19 @@ namespace blueprints2_tests {
 
 using namespace crude_blueprint;
 
-// A node type that declares its pins with a function.
+// Runs only with the functions it's given. An event takes its name from the node's "event" data, if any.
 struct TestNodeType final : NodeType
 {
     using Declaration = std::function<void(NodeDeclaration&, const NodeConfig&, const Bindings&)>;
+    using Execution   = std::function<Result<Exit>(ExecContext&, std::string_view)>;
+    using Evaluation  = std::function<Result<void>(EvalContext&)>;
 
-    TestNodeType(std::string title, Declaration declare)
+    TestNodeType(std::string title, Declaration declare, Execution execute = {}, Evaluation evaluate = {}, std::string event = {})
         : NodeType("test." + title, title)
         , m_Declare(std::move(declare))
+        , m_Execute(std::move(execute))
+        , m_Evaluate(std::move(evaluate))
+        , m_Event(std::move(event))
     {
     }
 
@@ -30,7 +35,28 @@ struct TestNodeType final : NodeType
         m_Declare(declaration, config, bindings);
     }
 
+    Result<Exit> Execute(ExecContext& context, std::string_view entry) const override
+    {
+        return m_Execute ? m_Execute(context, entry) : NodeType::Execute(context, entry);
+    }
+
+    Result<void> Evaluate(EvalContext& context) const override
+    {
+        return m_Evaluate ? m_Evaluate(context) : NodeType::Evaluate(context);
+    }
+
+    std::string EventName(const NodeConfig& config) const override
+    {
+        if (m_Event.empty())
+            return {};
+        auto name = config.m_Data.find("event");
+        return name != config.m_Data.end() && name->second.GetType() == &StringType() ? std::string(name->second.AsString()) : m_Event;
+    }
+
     const Declaration m_Declare;
+    const Execution   m_Execute;
+    const Evaluation  m_Evaluate;
+    const std::string m_Event;
 };
 
 // A blueprint with one graph. Its helpers fail the test when a step it needs isn't done.
