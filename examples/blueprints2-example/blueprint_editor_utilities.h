@@ -95,7 +95,9 @@ bool LatentMark(std::string_view waiting);
 
 bool SquareButton(const char* label);      // As wide as it's high, a line's height: for a sign such as + or -.
 bool DrawValue(const Value& value);        // Draws a value; false for none.
-bool EditValue(Value& value);              // Shows an editor for a value; true once the edit is done.
+// An editor of a value. A number's - and + change it, the editor staying; Enter ends the edit.
+enum class ValueEdit { None, Changed, Done };
+ValueEdit EditValue(Value& value);
 bool DrawValueWithEditor(Id id, Value& value); // Draws a value, or its editor once clicked; true when an edit changed it.
 
 // A popup of a name's field, which opens while 'open' is set, its field focused, and clears it.

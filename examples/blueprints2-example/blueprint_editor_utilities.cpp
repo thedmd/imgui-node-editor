@@ -6,6 +6,7 @@
 # include "imgui_extras.h"
 # include <algorithm>
 # include <cmath>
+# include <cstdint>
 # include <cstdio>
 # include <optional>
 # include <tuple>
@@ -550,31 +551,61 @@ bool blueprint_editor_utilities::DrawValue(const Value& value)
 }
 
 // Files can't hold NaN or an infinity, so a Float editor takes only finite numbers.
-bool blueprint_editor_utilities::EditValue(Value& value)
+blueprint_editor_utilities::ValueEdit blueprint_editor_utilities::EditValue(Value& value)
 {
     ImEx::ScopedItemWidth scopedItemWidth{120};
+
+    // A number's field, then its - and +, laid out as ImGui::InputScalar() lays out its own.
+    auto number = [](ImGuiDataType type, void* data, const char* format) -> ValueEdit
+    {
+        const auto spacing = ImGui::GetStyle().ItemInnerSpacing.x;
+        const auto button  = ImGui::GetFrameHeight();
+        ImGui::SetNextItemWidth(ImMax(1.0f, ImGui::CalcItemWidth() - (button + spacing) * 2.0f));
+        if (ImGui::InputScalar("##editor", type, data, nullptr, nullptr, format, ImGuiInputTextFlags_EnterReturnsTrue))
+            return ValueEdit::Done;
+        auto step = 0;
+        ImGui::SameLine(0.0f, spacing);
+        if (ImGui::Button("-", ImVec2(button, button)))
+            step = -1;
+        ImGui::SameLine(0.0f, spacing);
+        if (ImGui::Button("+", ImVec2(button, button)))
+            step = 1;
+        if (step == 0)
+            return ValueEdit::None;
+        if (type == ImGuiDataType_S32)
+        {
+            auto& integer = *static_cast<int32_t*>(data);
+            if ((step < 0 && integer == INT32_MIN) || (step > 0 && integer == INT32_MAX))
+                return ValueEdit::None;
+            integer += step;
+        }
+        else
+            *static_cast<float*>(data) += static_cast<float>(step);
+        return ValueEdit::Changed;
+    };
 
     auto type = value.GetType();
     if (type == &BoolType())
     {
         value = Value::Bool(!value.AsBool());
-        return true;
+        return ValueEdit::Done;
     }
     if (type == &Int32Type())
     {
-        auto number = value.AsInt32();
-        if (!ImGui::InputInt("##editor", &number, 1, 100, ImGuiInputTextFlags_EnterReturnsTrue))
-            return false;
-        value = Value::Int32(number);
-        return true;
+        auto integer = value.AsInt32();
+        auto edit    = number(ImGuiDataType_S32, &integer, "%d");
+        if (edit != ValueEdit::None)
+            value = Value::Int32(integer);
+        return edit;
     }
     if (type == &FloatType())
     {
-        auto number = value.AsFloat();
-        if (!ImGui::InputFloat("##editor", &number, 1, 100, "%.3f", ImGuiInputTextFlags_EnterReturnsTrue) || !std::isfinite(number))
-            return false;
-        value = Value::Float(number);
-        return true;
+        auto real = value.AsFloat();
+        auto edit = number(ImGuiDataType_Float, &real, "%.3f");
+        if (edit == ValueEdit::None || !std::isfinite(real))
+            return ValueEdit::None;
+        value = Value::Float(real);
+        return edit;
     }
     if (type == &StringType())
     {
@@ -591,14 +622,14 @@ bool blueprint_editor_utilities::EditValue(Value& value)
             return 0;
         };
         if (!ImGui::InputText("##editor", text.data(), text.size() + 1, ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_CallbackResize, resize, &text))
-            return false;
+            return ValueEdit::None;
         text.resize(strlen(text.c_str()));
         value = Value::String(std::move(text));
-        return true;
+        return ValueEdit::Done;
     }
 
     // Values of other types have no editor yet.
-    return true;
+    return ValueEdit::Done;
 }
 
 bool blueprint_editor_utilities::DrawValueWithEditor(Id id, Value& value)
@@ -610,11 +641,10 @@ bool blueprint_editor_utilities::DrawValueWithEditor(Id id, Value& value)
     if (activeId == id)
     {
         const auto before = value;
-        if (EditValue(value))
-        {
+        const auto edit   = EditValue(value);
+        if (edit == ValueEdit::Done)
             activeId = 0;
-            changed  = !(value == before);
-        }
+        changed = edit != ValueEdit::None && !(value == before);
     }
     else
     {
