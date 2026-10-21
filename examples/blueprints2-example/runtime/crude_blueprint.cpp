@@ -404,12 +404,19 @@ struct MapTypeImpl final : ValueType
 
     Value Default(const Type& type) const override { return Value::Map(type, {}); }
 
+    Result<void> CheckArgs(std::span<const Type* const> args) const override
+    {
+        if (!args[0]->m_Head->IsKey())
+            return Error(BlueprintError::WrongType, args[0]->m_Name + " can't be a key");
+        return {};
+    }
+
     Result<Value> Load(const Type& type, const crude_json::value& json) const override
     {
         auto& keyType   = *type.m_Args[0];
         auto& valueType = *type.m_Args[1];
-        if (!keyType.m_Head->IsKey())
-            return Error(BlueprintError::WrongType, keyType.m_Name + " can't be a key");
+        if (auto check = CheckArgs(type.m_Args); !check)
+            return check.GetError();
         if (!json.is_array())
             return Error(BlueprintError::WrongType, "not an array of pairs");
         std::vector<std::pair<Value, Value>> entries;
@@ -464,6 +471,11 @@ crude_blueprint::ValueType::ValueType(std::string name, int arity)
     , m_Arity(arity)
     , m_Self{ this, {}, m_Name }
 {
+}
+
+crude_blueprint::Result<void> crude_blueprint::ValueType::CheckArgs(std::span<const Type* const>) const
+{
+    return {};
 }
 
 int crude_blueprint::ValueType::Compare(const Value&, const Value&) const
@@ -543,4 +555,218 @@ bool crude_blueprint::StructType::Equal(const Value& a, const Value& b) const
 {
     auto x = a.AsStruct(), y = b.AsStruct();
     return std::equal(x.begin(), x.end(), y.begin(), y.end());
+}
+
+
+//
+// -------[ Registry ]-------
+//
+
+namespace crude_blueprint { namespace {
+
+bool IsNameCharacter(char c)
+{
+    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '.' || c == ':';
+}
+
+} } // namespace crude_blueprint { namespace {
+
+crude_blueprint::Result<void> crude_blueprint::Registry::AddValueType(const ValueType& type)
+{
+    if (type.m_Name.empty() || !std::all_of(type.m_Name.begin(), type.m_Name.end(), IsNameCharacter))
+        return Error(BlueprintError::BadTypeText, Quote(type.m_Name) + " can't name a type");
+    if (!m_ValueTypes.emplace(type.m_Name, &type).second)
+        return Error(BlueprintError::Duplicate, "a value type named " + type.m_Name + " is already registered");
+    return {};
+}
+
+crude_blueprint::Result<void> crude_blueprint::Registry::AddValueType(std::unique_ptr<ValueType> type)
+{
+    CRUDE_BP_ASSERT(type);
+    if (auto result = AddValueType(*type); !result)
+        return result;
+    m_OwnedValueTypes.push_back(std::move(type));
+    return {};
+}
+
+crude_blueprint::Result<void> crude_blueprint::Registry::AddCast(CastInfo cast)
+{
+    CRUDE_BP_ASSERT(cast.m_From && cast.m_To && cast.m_From != cast.m_To && cast.m_Function);
+    if (FindCast(cast.m_From, cast.m_To))
+        return Error(BlueprintError::Duplicate, "a cast " + cast.Name() + " is already registered");
+    auto& owned = m_Casts.emplace_back(std::make_unique<CastInfo>(std::move(cast)));
+    m_CastsFrom[owned->m_From].push_back(owned.get());
+    return {};
+}
+
+const crude_blueprint::ValueType* crude_blueprint::Registry::FindValueType(std::string_view name) const
+{
+    auto it = m_ValueTypes.find(name);
+    return it != m_ValueTypes.end() ? it->second : nullptr;
+}
+
+const crude_blueprint::CastInfo* crude_blueprint::Registry::FindCast(const Type* from, const Type* to) const
+{
+    for (auto cast : CastsFrom(from))
+        if (cast->m_To == to)
+            return cast;
+    return nullptr;
+}
+
+std::span<const crude_blueprint::CastInfo* const> crude_blueprint::Registry::CastsFrom(const Type* from) const
+{
+    auto it = m_CastsFrom.find(from);
+    if (it == m_CastsFrom.end())
+        return {};
+    return it->second;
+}
+
+crude_blueprint::Result<void> crude_blueprint::RegisterBuiltins(Registry& registry)
+{
+    for (auto type : { &BoolValueType(), &Int32ValueType(), &FloatValueType(), &StringValueType(), &ArrayValueType(), &MapValueType() })
+        if (auto result = registry.AddValueType(*type); !result)
+            return result;
+
+    auto toString = [](const Value& value) -> Result<Value> { return Value::String(value.GetType()->m_Head->Format(value)); };
+
+    const CastInfo casts[] =
+    {
+        { &Int32Type(), &FloatType(), false, [](const Value& value) -> Result<Value> { return Value::Float(static_cast<float>(value.AsInt32())); } },
+        // Toward zero, as C++ converts.
+        { &FloatType(), &Int32Type(), true, [](const Value& value) -> Result<Value>
+        {
+            auto number = value.AsFloat();
+            if (!(number >= -2147483648.0f && number < 2147483648.0f))
+                return Error(BlueprintError::CastFailed, FloatValueType().Format(value) + " doesn't fit Int32");
+            return Value::Int32(static_cast<int32_t>(number));
+        } },
+        { &BoolType(),  &Int32Type(),  false, [](const Value& value) -> Result<Value> { return Value::Int32(value.AsBool() ? 1 : 0); } },
+        { &Int32Type(), &BoolType(),   false, [](const Value& value) -> Result<Value> { return Value::Bool(value.AsInt32() != 0); } },
+        { &BoolType(),  &StringType(), false, toString },
+        { &Int32Type(), &StringType(), false, toString },
+        { &FloatType(), &StringType(), false, toString },
+        { &StringType(), &Int32Type(), true, [](const Value& value) -> Result<Value>
+        {
+            auto text = value.AsString();
+            int32_t number = 0;
+            auto [end, error] = std::from_chars(text.data(), text.data() + text.size(), number);
+            if (error == std::errc::result_out_of_range)
+                return Error(BlueprintError::CastFailed, Quote(text) + " doesn't fit Int32");
+            if (error != std::errc() || end != text.data() + text.size())
+                return Error(BlueprintError::CastFailed, Quote(text) + " isn't a whole number");
+            return Value::Int32(number);
+        } },
+        // As files hold numbers: no locale, no spaces, no NaN.
+        { &StringType(), &FloatType(), true, [](const Value& value) -> Result<Value>
+        {
+            auto text = value.AsString();
+            auto json = text.find_first_not_of("+-.0123456789Ee") == std::string_view::npos ? crude_json::value::parse(std::string(text)) : crude_json::value();
+            if (!json.is_number())
+                return Error(BlueprintError::CastFailed, Quote(text) + " isn't a number");
+            auto number = json.get<crude_json::number>();
+            if (std::abs(number) > std::numeric_limits<float>::max())
+                return Error(BlueprintError::CastFailed, Quote(text) + " doesn't fit Float");
+            return Value::Float(static_cast<float>(number));
+        } },
+    };
+    for (auto& cast : casts)
+        if (auto result = registry.AddCast(cast); !result)
+            return result;
+    return {};
+}
+
+
+//
+// -------[ Type text ]-------
+//
+
+namespace crude_blueprint { namespace {
+
+// type := name [ '<' type { ',' type } '>' ]
+struct TypeParser
+{
+    static const int c_MaxDepth = 32;
+
+    TypeTable&       m_Table;
+    const Registry&  m_Registry;
+    std::string_view m_Text;
+    size_t           m_At    = 0;
+    int              m_Depth = 0;
+
+    void SkipSpaces()
+    {
+        while (m_At < m_Text.size() && (m_Text[m_At] == ' ' || m_Text[m_At] == '\t'))
+            ++m_At;
+    }
+
+    bool Take(char c)
+    {
+        SkipSpaces();
+        if (m_At < m_Text.size() && m_Text[m_At] == c)
+        {
+            ++m_At;
+            return true;
+        }
+        return false;
+    }
+
+    Error Unexpected() const
+    {
+        if (m_At >= m_Text.size())
+            return Error(BlueprintError::BadTypeText, Quote(m_Text) + " ends too soon");
+        return Error(BlueprintError::BadTypeText, Quote(m_Text) + " has '" + m_Text[m_At] + "' at " + std::to_string(m_At));
+    }
+
+    Result<const Type*> Parse()
+    {
+        SkipSpaces();
+        const auto start = m_At;
+        while (m_At < m_Text.size() && IsNameCharacter(m_Text[m_At]))
+            ++m_At;
+        if (m_At == start)
+            return Unexpected();
+
+        const auto name = m_Text.substr(start, m_At - start);
+        auto head = m_Registry.FindValueType(name);
+        if (!head)
+            return Error(BlueprintError::UnknownType, "no value type is named " + std::string(name));
+
+        std::vector<const Type*> args;
+        if (Take('<'))
+        {
+            if (++m_Depth > c_MaxDepth)
+                return Error(BlueprintError::BadTypeText, "types nest deeper than " + std::to_string(c_MaxDepth));
+            do
+            {
+                auto arg = Parse();
+                if (!arg)
+                    return arg;
+                args.push_back(arg.GetValue());
+            }
+            while (Take(','));
+            if (!Take('>'))
+                return Unexpected();
+            --m_Depth;
+        }
+
+        if (static_cast<int>(args.size()) != head->m_Arity)
+            return Error(BlueprintError::BadTypeText, std::string(name) + " takes " + std::to_string(head->m_Arity) + (head->m_Arity == 1 ? " type" : " types") + ", not " + std::to_string(args.size()));
+        if (auto check = head->CheckArgs(args); !check)
+            return check.GetError();
+        return m_Table.Get(*head, args);
+    }
+};
+
+} } // namespace crude_blueprint { namespace {
+
+crude_blueprint::Result<const crude_blueprint::Type*> crude_blueprint::TypeTable::Parse(const Registry& registry, std::string_view text)
+{
+    TypeParser parser{ *this, registry, text };
+    auto type = parser.Parse();
+    if (!type)
+        return type;
+    parser.SkipSpaces();
+    if (parser.m_At != text.size())
+        return parser.Unexpected();
+    return type;
 }

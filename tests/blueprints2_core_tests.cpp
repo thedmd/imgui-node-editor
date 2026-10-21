@@ -1,12 +1,15 @@
 //------------------------------------------------------------------------------
-// blueprints2-example's runtime: RTTI, boxes, errors, types and values.
+// blueprints2-example's runtime: RTTI, boxes, errors, types, values, casts and the registry.
 //------------------------------------------------------------------------------
 # include "harness.h"
 # include "crude_blueprint.h"
 # include <crude_json.h>
 # include <array>
 # include <cstdint>
+# include <limits>
+# include <memory>
 # include <string>
+# include <vector>
 
 using namespace crude_blueprint;
 
@@ -69,6 +72,29 @@ Result<Value> RoundTrip(const Value& value)
 Result<Value> LoadText(const Type& type, const char* text)
 {
     return type.m_Head->Load(type, crude_json::value::parse(text));
+}
+
+// As a cast link converts.
+Result<Value> Convert(const Registry& registry, const Value& value, const Type& to)
+{
+    auto cast = registry.FindCast(value.GetType(), &to);
+    if (!cast)
+        return Error(BlueprintError::UnknownType, "no cast " + value.GetType()->m_Name + "->" + to.m_Name);
+    return cast->m_Function(value);
+}
+
+std::string Format(const Value& value)
+{
+    return value.GetType()->m_Head->Format(value);
+}
+
+// Array<Array<...<Int32>...>>
+std::string NestedArrays(int depth)
+{
+    std::string text;
+    for (int i = 0; i < depth; ++i)
+        text += "Array<";
+    return text + "Int32" + std::string(depth, '>');
 }
 
 } // namespace
@@ -301,4 +327,171 @@ TEST_CASE(StructFieldsChange, "runtime.structs_load_with_fields_missing_or_unkno
     auto loaded = LoadText(vector2.AsType(), "{\"x\": 2, \"z\": 5}");
 
     test::Check(loaded && loaded.GetValue() == Value::Struct(vector2.AsType(), { Value::Float(2.0f), Value::Float(0.0f) }), "x loads, y takes its default, z is ignored");
+}
+
+TEST_CASE(RegistryHoldsTypesAndCasts, "runtime.registry_holds_value_types_and_casts", nullptr, test::TestFlags_None)
+{
+    Registry registry;
+    test::Check(!registry.FindValueType("Int32") && registry.CastsFrom(&Int32Type()).empty(), "a registry starts empty");
+
+    auto builtins = RegisterBuiltins(registry);
+    auto again    = RegisterBuiltins(registry);
+    test::Check(builtins && registry.FindValueType("Int32") == &Int32ValueType() && registry.FindValueType("Map") == &MapValueType(), "the built-in value types are registered by name");
+    test::Check(!again && again.GetError().Is(BlueprintError::Duplicate), "and only once: %s", again ? "registered" : std::string(again.GetError().Message()).c_str());
+
+    auto owned   = std::make_unique<StructType>("example.Vector2", std::vector<StructField>{ { "x", &FloatType() }, { "y", &FloatType() } });
+    auto vector2 = owned.get();
+    auto added   = registry.AddValueType(std::move(owned));
+    auto twice   = registry.AddValueType(std::make_unique<StructType>("Int32", std::vector<StructField>{}));
+    auto spaced  = registry.AddValueType(std::make_unique<StructType>("example.Vector 2", std::vector<StructField>{}));
+    auto unnamed = registry.AddValueType(std::make_unique<StructType>("", std::vector<StructField>{}));
+    test::Check(added && registry.FindValueType("example.Vector2") == vector2, "an application's struct is registered, and the registry keeps it");
+    test::Check(!twice && twice.GetError().Is(BlueprintError::Duplicate) && registry.FindValueType("Int32") == &Int32ValueType(), "a second value type of a name is refused");
+    test::Check(!spaced && spaced.GetError().Is(BlueprintError::BadTypeText) && !unnamed && unnamed.GetError().Is(BlueprintError::BadTypeText), "and so is a name that type text can't hold");
+
+    auto toString  = [](const Value& value) -> Result<Value> { return Value::String(Format(value)); };
+    auto cast      = registry.AddCast({ &vector2->AsType(), &StringType(), false, toString });
+    auto duplicate = registry.AddCast({ &Int32Type(), &FloatType(), false, toString });
+    auto found     = registry.FindCast(&vector2->AsType(), &StringType());
+    auto converted = Convert(registry, Value::Struct(vector2->AsType(), { Value::Float(1.0f), Value::Float(2.0f) }), StringType());
+    test::Check(cast && found && found->Name() == "example.Vector2->String", "an application's cast is found by its types");
+    test::Check(converted && converted.GetValue() == Value::String("{x: 1, y: 2}"), "and converts");
+    test::Check(!duplicate && duplicate.GetError().Is(BlueprintError::Duplicate), "a second cast between two types is refused: %s", duplicate ? "registered" : std::string(duplicate.GetError().Message()).c_str());
+    test::Check(!registry.FindCast(&StringType(), &BoolType()) && !registry.FindCast(&FloatType(), &FloatType()), "a cast nothing registered isn't found");
+
+    std::string fromInt32;
+    for (auto c : registry.CastsFrom(&Int32Type()))
+        fromInt32 += (fromInt32.empty() ? "" : " ") + c->Name();
+    test::Check(fromInt32 == "Int32->Float Int32->Bool Int32->String", "the casts from a type, in the order they were registered: %s", fromInt32.c_str());
+}
+
+TEST_CASE(TypeTextParses, "runtime.type_text_parses", nullptr, test::TestFlags_None)
+{
+    Registry registry;
+    StructType vector2("example.Vector2", { { "x", &FloatType() }, { "y", &FloatType() } });
+    test::Check(RegisterBuiltins(registry) && registry.AddValueType(vector2), "the value types are registered");
+
+    // Parsing interns into the table; the registry stays as it is.
+    const Registry& shared = registry;
+    TypeTable table;
+    auto parse = [&](std::string_view text) { return table.Parse(shared, text); };
+
+    auto int32  = parse("Int32");
+    auto point  = parse("example.Vector2");
+    auto array  = parse("Array<Int32>");
+    auto spaced = parse(" Map < String , Array<example.Vector2> > ");
+    test::Check(int32.ValueOr(nullptr) == &Int32Type() && point.ValueOr(nullptr) == &vector2.AsType(), "a name gives its value type's own type");
+    test::Check(array.ValueOr(nullptr) == &ArrayOf(table, Int32Type()), "a constructed type is the table's");
+    test::Check(spaced && spaced.GetValue()->m_Name == "Map<String,Array<example.Vector2>>", "spaces don't count: %s", spaced ? spaced.GetValue()->m_Name.c_str() : std::string(spaced.GetError().Message()).c_str());
+    test::Check(spaced && parse(spaced.GetValue()->m_Name).ValueOr(nullptr) == spaced.GetValue(), "a type's name parses back to the type");
+
+    auto deep    = parse(NestedArrays(32));
+    auto deeper  = parse(NestedArrays(33));
+    auto deepest = parse(NestedArrays(100000));
+    test::Check(deep.IsOk(), "types nest 32 deep: %s", deep ? "parsed" : std::string(deep.GetError().Message()).c_str());
+    test::Check(!deeper && deeper.GetError().Is(BlueprintError::BadTypeText) && !deepest, "and no deeper, so text can't exhaust the stack");
+
+    struct Case
+    {
+        const char*    text;
+        BlueprintError code;
+        const char*    message; // a part of it
+    };
+    const Case cases[] =
+    {
+        { "",                  BlueprintError::BadTypeText, "ends too soon"        },
+        { "Array<Int32",       BlueprintError::BadTypeText, "ends too soon"        },
+        { "Array<>",           BlueprintError::BadTypeText, "'>' at 6"             },
+        { "Array<Int32>>",     BlueprintError::BadTypeText, "'>' at 12"            },
+        { "Int32 Float",       BlueprintError::BadTypeText, "'F' at 6"             },
+        { "Map<String;Int32>", BlueprintError::BadTypeText, "';' at 10"            },
+        { "Int32<Float>",      BlueprintError::BadTypeText, "takes 0 types, not 1" },
+        { "Array",             BlueprintError::BadTypeText, "takes 1 type, not 0"  },
+        { "Map<String>",       BlueprintError::BadTypeText, "takes 2 types, not 1" },
+        { "Vector2",           BlueprintError::UnknownType, "Vector2"              },
+        { "Array<Foo>",        BlueprintError::UnknownType, "Foo"                  },
+        { "Map<Float,Int32>",  BlueprintError::WrongType,   "Float can't be a key" },
+    };
+
+    for (auto& c : cases)
+    {
+        auto parsed = parse(c.text);
+        const bool refused = !parsed && parsed.GetError().Is(c.code) && parsed.GetError().Message().find(c.message) != std::string_view::npos;
+        test::Check(refused, "\"%s\" is refused: %s", c.text, parsed ? parsed.GetValue()->m_Name.c_str() : std::string(parsed.GetError().Message()).c_str());
+    }
+}
+
+TEST_CASE(BuiltInCasts, "runtime.built_in_casts", nullptr, test::TestFlags_None)
+{
+    Registry registry;
+    test::Check(RegisterBuiltins(registry).IsOk(), "the built-ins are registered");
+
+    const auto nan = std::numeric_limits<float>::quiet_NaN();
+    const auto inf = std::numeric_limits<float>::infinity();
+
+    struct Case
+    {
+        Value       from;
+        const Type* to;
+        Value       expected; // none when the cast fails
+        const char* message;  // a part of the failure's
+    };
+    const Case cases[] =
+    {
+        { Value::Int32(7),              &FloatType(),  Value::Float(7.0f),          nullptr                },
+        { Value::Int32(INT32_MAX),      &FloatType(),  Value::Float(2147483648.0f), nullptr                },
+        { Value::Float(2.9f),           &Int32Type(),  Value::Int32(2),             nullptr                },
+        { Value::Float(-2.9f),          &Int32Type(),  Value::Int32(-2),            nullptr                },
+        { Value::Float(-2147483648.0f), &Int32Type(),  Value::Int32(INT32_MIN),     nullptr                },
+        { Value::Float(2147483520.0f),  &Int32Type(),  Value::Int32(2147483520),    nullptr                },
+        { Value::Float(2147483648.0f),  &Int32Type(),  Value(),                     "doesn't fit Int32"    },
+        { Value::Float(nan),            &Int32Type(),  Value(),                     "doesn't fit Int32"    },
+        { Value::Float(-inf),           &Int32Type(),  Value(),                     "doesn't fit Int32"    },
+        { Value::Bool(true),            &Int32Type(),  Value::Int32(1),             nullptr                },
+        { Value::Bool(false),           &Int32Type(),  Value::Int32(0),             nullptr                },
+        { Value::Int32(-3),             &BoolType(),   Value::Bool(true),           nullptr                },
+        { Value::Int32(0),              &BoolType(),   Value::Bool(false),          nullptr                },
+        { Value::Bool(true),            &StringType(), Value::String("true"),       nullptr                },
+        { Value::Int32(-7),             &StringType(), Value::String("-7"),         nullptr                },
+        { Value::Float(0.1f),           &StringType(), Value::String("0.1"),        nullptr                },
+        { Value::String("42"),          &Int32Type(),  Value::Int32(42),            nullptr                },
+        { Value::String("-2147483648"), &Int32Type(),  Value::Int32(INT32_MIN),     nullptr                },
+        { Value::String("2147483648"),  &Int32Type(),  Value(),                     "doesn't fit Int32"    },
+        { Value::String(" 42"),         &Int32Type(),  Value(),                     "isn't a whole number" },
+        { Value::String("+42"),         &Int32Type(),  Value(),                     "isn't a whole number" },
+        { Value::String("4.2"),         &Int32Type(),  Value(),                     "isn't a whole number" },
+        { Value::String(""),            &Int32Type(),  Value(),                     "isn't a whole number" },
+        { Value::String("1.5"),         &FloatType(),  Value::Float(1.5f),          nullptr                },
+        { Value::String("-25e-3"),      &FloatType(),  Value::Float(-0.025f),       nullptr                },
+        { Value::String("1e39"),        &FloatType(),  Value(),                     "doesn't fit Float"    },
+        { Value::String("1e400"),       &FloatType(),  Value(),                     "isn't a number"       },
+        { Value::String("+1"),          &FloatType(),  Value(),                     "isn't a number"       },
+        { Value::String("nan"),         &FloatType(),  Value(),                     "isn't a number"       },
+        { Value::String("1.5 "),        &FloatType(),  Value(),                     "isn't a number"       },
+        { Value::String("1,5"),         &FloatType(),  Value(),                     "isn't a number"       },
+        { Value::String(""),            &FloatType(),  Value(),                     "isn't a number"       },
+    };
+
+    for (auto& c : cases)
+    {
+        auto converted = Convert(registry, c.from, *c.to);
+        auto from      = c.from.GetType() == &StringType() ? "\"" + Format(c.from) + "\"" : Format(c.from);
+        auto what      = c.from.GetType()->m_Name + " " + from + " to " + c.to->m_Name;
+        auto outcome   = converted ? Format(converted.GetValue()) : std::string(converted.GetError().Message());
+        if (c.message)
+        {
+            const bool failed = !converted && converted.GetError().Is(BlueprintError::CastFailed) && outcome.find(c.message) != std::string::npos;
+            test::Check(failed, "%s fails: %s", what.c_str(), outcome.c_str());
+        }
+        else
+            test::Check(converted && converted.GetValue() == c.expected, "%s: %s", what.c_str(), outcome.c_str());
+    }
+
+    auto mayFail = [&registry](const Type& from, const Type& to)
+    {
+        auto cast = registry.FindCast(&from, &to);
+        return cast ? int(cast->m_MayFail) : -1;
+    };
+    test::Check(mayFail(Int32Type(), FloatType()) == 0 && mayFail(BoolType(), Int32Type()) == 0 && mayFail(Int32Type(), BoolType()) == 0 && mayFail(FloatType(), StringType()) == 0, "casts that can't fail say so");
+    test::Check(mayFail(FloatType(), Int32Type()) == 1 && mayFail(StringType(), Int32Type()) == 1 && mayFail(StringType(), FloatType()) == 1, "and so do those that may");
 }

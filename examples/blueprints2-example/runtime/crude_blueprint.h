@@ -8,6 +8,7 @@
 # include <concepts>
 # include <cstddef>
 # include <cstdint>
+# include <functional>
 # include <map>
 # include <memory>
 # include <optional>
@@ -294,6 +295,7 @@ struct Diagnostic
 //
 
 struct ValueType;
+class Registry;
 
 // A value type, with its arguments when it's a type constructor: Int32, Array<Int32>,
 // Map<String,Int32>. There is one of each, so types compare by address.
@@ -309,6 +311,9 @@ class TypeTable
 {
 public:
     const Type* Get(const ValueType& head, std::span<const Type* const> args = {});
+
+    // Type text, as files hold it: "Int32", "Map<String,Array<Int32>>".
+    Result<const Type*> Parse(const Registry& registry, std::string_view text);
 
 private:
     std::map<std::pair<const ValueType*, std::vector<const Type*>>, std::unique_ptr<Type>> m_Types;
@@ -388,6 +393,9 @@ struct ValueType
     virtual std::string       Format(const Value& value) const = 0;
     virtual bool              Equal(const Value& a, const Value& b) const = 0;
 
+    // A type constructor's arguments, which it may refuse.
+    virtual Result<void> CheckArgs(std::span<const Type* const> args) const;
+
     // Map keys: values with an order.
     virtual bool IsKey() const { return false; }
     virtual int  Compare(const Value& a, const Value& b) const;
@@ -434,5 +442,51 @@ struct StructType final : ValueType
 private:
     const std::vector<StructField> m_Fields;
 };
+
+
+//
+// -------[ Casts ]-------
+//
+
+// Converts a value of one type into another. Applied only where the user asks for it.
+struct CastInfo
+{
+    const Type*                                m_From    = nullptr;
+    const Type*                                m_To      = nullptr;
+    bool                                       m_MayFail = false;
+    std::function<Result<Value>(const Value&)> m_Function;
+
+    // As files name it: "Int32->Float".
+    std::string Name() const { return m_From->m_Name + "->" + m_To->m_Name; }
+};
+
+
+//
+// -------[ Registry ]-------
+//
+
+// Value types and casts. One per application, shared by its blueprints: everything is
+// registered at start-up, and nothing is ever unregistered.
+class Registry
+{
+public:
+    // A type the caller keeps, as the built-in ones are kept.
+    Result<void> AddValueType(const ValueType& type);
+    Result<void> AddValueType(std::unique_ptr<ValueType> type);
+    Result<void> AddCast(CastInfo cast);
+
+    const ValueType*                 FindValueType(std::string_view name) const;
+    const CastInfo*                  FindCast(const Type* from, const Type* to) const;
+    std::span<const CastInfo* const> CastsFrom(const Type* from) const;
+
+private:
+    std::map<std::string, const ValueType*, std::less<>> m_ValueTypes;
+    std::vector<std::unique_ptr<ValueType>>              m_OwnedValueTypes;
+    std::vector<std::unique_ptr<CastInfo>>               m_Casts;
+    std::map<const Type*, std::vector<const CastInfo*>>  m_CastsFrom;
+};
+
+// The built-in value types, and the casts between them.
+Result<void> RegisterBuiltins(Registry& registry);
 
 } // namespace crude_blueprint
