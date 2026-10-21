@@ -1184,30 +1184,42 @@ private:
         drawList->PopClipRect();
     }
 
-    // Tabs for the problems, the variables, the watches and the fibers of a run.
+    // Tabs for the problems, the variables, the signature of a function whose graph shows, and the
+    // watches and the fibers of a run.
     void ShowPanels(Document& document, ImVec2 position, ImVec2 size)
     {
         ImGui::SetCursorScreenPos(position);
         if (ImGui::BeginChild("##panels", size, ImGuiChildFlags_Borders) && ImGui::BeginTabBar("##panels"))
         {
-            auto tab = [](const char* name, size_t count, auto&& show)
+            auto tab = [this](const char* name, std::string title, auto&& show)
             {
-                auto label = std::string(name) + (count ? " (" + std::to_string(count) + ")" : std::string()) + "###" + name;
-                if (!ImGui::BeginTabItem(label.c_str()))
+                auto label = title + "###" + name;
+                if (!ImGui::BeginTabItem(label.c_str(), nullptr, m_PanelRequest == name ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None))
                     return;
                 if (ImGui::BeginChild("##list"))
                     show();
                 ImGui::EndChild();
                 ImGui::EndTabItem();
             };
-            auto fibers = m_Debugger.GetContext() ? m_Debugger.GetContext()->Fibers() : std::vector<FiberInfo>();
-            tab("Problems", m_Problems.Problems().size(), [&] { ShowProblems(document); });
-            tab("Variables", document.GetBlueprint().Variables().size(), [&] { ShowVariables(document); });
-            tab("Watches", m_Debugger.Watched().size(), [&] { ShowWatches(document); });
-            tab("Fibers", fibers.size(), [&] { ShowFibers(document, fibers); });
+            auto counted = [](const char* name, size_t count) { return std::string(name) + (count ? " (" + std::to_string(count) + ")" : std::string()); };
+            auto fibers  = m_Debugger.GetContext() ? m_Debugger.GetContext()->Fibers() : std::vector<FiberInfo>();
+            tab("Problems", counted("Problems", m_Problems.Problems().size()), [&] { ShowProblems(document); });
+            tab("Variables", counted("Variables", document.GetBlueprint().Variables().size()), [&] { ShowVariables(document); });
+            if (auto function = document.GetBlueprint().FindFunction(document.GetGraph().GetId()))
+                tab("Signature", "Signature: " + function->m_Name, [&] { ShowSignature(document, *function); });
+            tab("Watches", counted("Watches", m_Debugger.Watched().size()), [&] { ShowWatches(document); });
+            tab("Fibers", counted("Fibers", fibers.size()), [&] { ShowFibers(document, fibers); });
+            m_PanelRequest.clear();
             ImGui::EndTabBar();
         }
         ImGui::EndChild();
+    }
+
+    // The panels show, the one of the name chosen.
+    void RequestPanel(const char* name)
+    {
+        m_PanelRequest = name;
+        m_ShowPanels   = true;
     }
 
     // A row for each problem; choosing one goes to it.
@@ -1352,6 +1364,140 @@ private:
                 change = [&document, removed = variable.m_Name] { RemoveVariable(document, removed); };
             if (ImGui::IsItemHovered())
                 ImGui::SetTooltip("Remove, with the nodes that use it");
+            ImGui::PopID();
+        }
+        ImGui::EndTable();
+        if (change)
+            change();
+    }
+
+    // The function's name, whether it's pure, and a row for each of its type parameters, inputs and
+    // outputs: a name, which Enter commits, and a type, or the types a parameter allows as chips that
+    // toggle. A parameter a pin's type has can't go.
+    void ShowSignature(Document& document, const Function& function)
+    {
+        auto&       blueprint = document.GetBlueprint();
+        const auto  graph     = function.m_Graph;
+        const auto& signature = function.m_Signature;
+        const auto  field     = ImGui::GetFontSize() * 8.0f;
+
+        // The change is made once the panel is drawn.
+        std::function<void()> change;
+        auto nameField = [field](const std::string& name) -> std::optional<std::string>
+        {
+            char buffer[64];
+            std::snprintf(buffer, sizeof(buffer), "%s", name.c_str());
+            ImGui::SetNextItemWidth(field);
+            if (!ImGui::InputText("##name", buffer, sizeof(buffer), ImGuiInputTextFlags_EnterReturnsTrue))
+                return std::nullopt;
+            return std::string(buffer);
+        };
+
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextUnformatted("Name");
+        ImGui::SameLine();
+        if (auto renamed = nameField(function.m_Name))
+            change = [&document, graph, renamed = *renamed] { RenameFunction(document, graph, renamed); };
+        ImGui::SameLine();
+        auto pure = signature.m_Pure;
+        if (ImGui::Checkbox("Pure", &pure))
+            change = [&document, graph, pure] { ChangeSignature(document, graph, pure ? "Make Pure" : "Make Impure", [pure](Signature& changed) { changed.m_Pure = pure; }); };
+
+        if (!ImGui::BeginTable("##signature", 3, ImGuiTableFlags_SizingFixedFit))
+            return;
+        auto section = [](const char* title, const char* add)
+        {
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::AlignTextToFramePadding();
+            ImGui::TextDisabled("%s", title);
+            ImGui::TableSetColumnIndex(2);
+            ImGui::PushID(title);
+            auto added = SquareButton("+");
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("%s", add);
+            ImGui::PopID();
+            return added;
+        };
+        auto removeButton = [](const char* blocked)
+        {
+            ImGui::BeginDisabled(blocked != nullptr);
+            auto removed = SquareButton("x");
+            ImGui::EndDisabled();
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+                ImGui::SetTooltip("%s", blocked ? blocked : "Remove");
+            return removed;
+        };
+
+        if (section("Type Parameters", "Add Type Parameter"))
+            change = [&document, graph] { AddTypeParameter(document, graph); };
+        for (size_t i = 0; i < signature.m_Parameters.size(); ++i)
+        {
+            auto& parameter = signature.m_Parameters[i];
+            ImGui::PushID(static_cast<int>(i));
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            if (auto renamed = nameField(parameter.m_Name))
+                change = [&document, graph, i, renamed = *renamed] { RenameTypeParameter(document, graph, i, renamed); };
+
+            ImGui::TableNextColumn();
+            auto first = true;
+            for (auto head : blueprint.GetRegistry().ValueTypes())
+            {
+                if (!std::exchange(first, false))
+                    ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
+                auto allowed = std::find(parameter.m_Allowed.begin(), parameter.m_Allowed.end(), head) != parameter.m_Allowed.end();
+                if (!allowed)
+                    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
+                if (ImGui::Button(head->m_Name.c_str()))
+                    change = [&document, graph, i, head] { ToggleAllowedType(document, graph, i, head); };
+                if (!allowed)
+                    ImGui::PopStyleColor();
+            }
+            if (parameter.m_Allowed.empty())
+            {
+                ImGui::SameLine();
+                ImGui::AlignTextToFramePadding();
+                ImGui::TextDisabled("any type, while none is chosen");
+            }
+
+            ImGui::TableNextColumn();
+            auto user    = TypeParameterUser(signature, static_cast<int>(i));
+            auto blocked = user ? user->m_Name + "'s type has it" : std::string();
+            if (removeButton(user ? blocked.c_str() : nullptr))
+                change = [&document, graph, i] { RemoveTypeParameter(document, graph, static_cast<int>(i)); };
+            ImGui::PopID();
+        }
+
+        const auto choices = SignatureTypeChoices(blueprint.GetRegistry(), signature);
+        for (auto input : { true, false })
+        {
+            ImGui::PushID(input ? "inputs" : "outputs");
+            if (section(input ? "Inputs" : "Outputs", input ? "Add Input" : "Add Output"))
+                change = [&document, graph, input] { AddSignaturePin(document, graph, input); };
+            for (auto& pin : input ? signature.m_Inputs : signature.m_Outputs)
+            {
+                ImGui::PushID(pin.m_Key.c_str());
+                ImGui::TableNextRow();
+                ImGui::TableNextColumn();
+                if (auto renamed = nameField(pin.m_Name))
+                    change = [&document, graph, input, key = pin.m_Key, renamed = *renamed] { RenameSignaturePin(document, graph, input, key, renamed); };
+
+                ImGui::TableNextColumn();
+                ImGui::SetNextItemWidth(field);
+                if (ImGui::BeginCombo("##type", TermText(pin.m_Type, signature.m_Parameters).c_str()))
+                {
+                    for (auto& choice : choices)
+                        if (ImGui::Selectable(TermText(choice.m_Type, signature.m_Parameters).c_str(), choice.m_Type == pin.m_Type))
+                            change = [&document, graph, input, key = pin.m_Key, type = choice.m_Type] { RetypeSignaturePin(document, graph, input, key, type); };
+                    ImGui::EndCombo();
+                }
+
+                ImGui::TableNextColumn();
+                if (removeButton(nullptr))
+                    change = [&document, graph, input, key = pin.m_Key] { RemoveSignaturePin(document, graph, input, key); };
+                ImGui::PopID();
+            }
             ImGui::PopID();
         }
         ImGui::EndTable();
@@ -1753,6 +1899,7 @@ private:
         actions.Gesture("Choose Type", "Right-Click", pinTyped);
         actions.Gesture("Split or Recombine", "Double-Click", pinSplits);
         actions.Gesture("Open Function", "Double-Click", !pin && CalledFunction(document, node));
+        actions.Gesture("Edit Signature", "Double-Click", !pin && node && SignatureNodeOf(document.GetBlueprint(), *node).m_Function);
         actions.Gesture("Create Node", "Space", background && !typing);
         actions.Gesture("Create Node", "Right-Click", background);
         if (actions.Press("Show or Hide All Problems", ImGuiMod_Ctrl | ImGuiMod_Shift | ImGuiKey_D, !m_Problems.Problems().empty()))
@@ -1785,8 +1932,11 @@ private:
         if (m_ShowActions)
             actions.Draw(canvasMin, canvasMax);
 
-        if (auto function = CalledFunction(document, graph.FindNode(static_cast<Id>(ed::GetDoubleClickedNode().Get()))))
+        auto doubleClicked = graph.FindNode(static_cast<Id>(ed::GetDoubleClickedNode().Get()));
+        if (auto function = CalledFunction(document, doubleClicked))
             m_PendingGraph = function->m_Graph;
+        else if (doubleClicked && SignatureNodeOf(document.GetBlueprint(), *doubleClicked).m_Function)
+            RequestPanel("Signature");
         if (auto clicked = graph.FindPin(static_cast<Id>(ed::GetDoubleClickedPin().Get())))
         {
             const auto owner = graph.NodeOf(clicked->m_Id)->m_Id;
@@ -1803,6 +1953,8 @@ private:
 
         m_CreateNodeDialog.Show(document);
         m_NodeContextMenu.Show(document, m_Debugger);
+        if (m_NodeContextMenu.TakeSignatureRequest())
+            RequestPanel("Signature");
         m_PinContextMenu.Show(document, m_Debugger);
         m_LinkContextMenu.Show(document);
         m_LinkDropMenu.Show(document);
@@ -2277,6 +2429,7 @@ private:
     std::optional<LinkQuery>  m_LinkQuery;
     bool                      m_ShowActions  = true;
     bool                      m_ShowPanels   = true;
+    std::string               m_PanelRequest;          // the panel to choose as the panels show next
     size_t                    m_ProblemIndex = SIZE_MAX; // the problem chosen last
 
     CreateNodeDialog m_CreateNodeDialog;

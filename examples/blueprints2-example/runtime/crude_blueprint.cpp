@@ -1001,8 +1001,9 @@ struct TypeParser
     }
 };
 
-// Type text of a signature's: its type parameters by name, "Array<T>".
-std::string TermText(const TypeTerm& term, std::span<const VariableDeclaration> parameters)
+} } // namespace crude_blueprint { namespace {
+
+std::string crude_blueprint::TermText(const TypeTerm& term, std::span<const VariableDeclaration> parameters)
 {
     if (!term.m_Head)
         return term.m_Variable >= 0 && static_cast<size_t>(term.m_Variable) < parameters.size() ? parameters[term.m_Variable].m_Name : std::string("?");
@@ -1016,8 +1017,6 @@ std::string TermText(const TypeTerm& term, std::span<const VariableDeclaration> 
     }
     return text;
 }
-
-} } // namespace crude_blueprint { namespace {
 
 crude_blueprint::Result<const crude_blueprint::Type*> crude_blueprint::TypeTable::Parse(const Registry& registry, std::string_view text)
 {

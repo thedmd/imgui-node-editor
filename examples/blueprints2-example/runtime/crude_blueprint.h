@@ -871,6 +871,9 @@ struct SignaturePin
     bool operator==(const SignaturePin& other) const = default;
 };
 
+// A term of a signature's as type text, its type parameters by name: "Array<T>".
+std::string TermText(const TypeTerm& term, std::span<const VariableDeclaration> parameters);
+
 // What a function takes and gives. A pure one has no flow pins, and its body only pure nodes.
 struct Signature
 {

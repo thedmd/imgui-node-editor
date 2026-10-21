@@ -12,6 +12,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace blueprint_editor {
@@ -421,13 +422,15 @@ struct RunArguments
 };
 
 // For a node, or for the selection when the node is in it. A function's entry runs its function,
-// and edits its type parameters, their names and the types each allows, and whether it's pure. An
-// event's node runs the event, and a Custom Event's renames it. A run that takes arguments asks for
-// them in a popup, which offers those of the last run of the same event or function.
+// and edits its type parameters, their names and the types each allows, and whether it's pure; it
+// and a return ask for the whole signature to show. An event's node runs the event, and a Custom
+// Event's renames it. A run that takes arguments asks for them in a popup, which offers those of
+// the last run of the same event or function.
 struct NodeContextMenu
 {
     void Open(Id node = 0);
     void Show(Document& document, Debugger& debugger);
+    bool TakeSignatureRequest() { return std::exchange(m_SignatureRequested, false); }
 
 private:
     void ShowRename(Document& document);
@@ -443,6 +446,8 @@ private:
     size_t m_Parameter         = 0;
     bool   m_RenamingParameter = false;
     char   m_ParameterName[64] = {};
+
+    bool m_SignatureRequested = false;
 
     Id                                  m_Run    = 0;     // the node whose run the arguments popup starts
     bool                                m_Asking = false; // the arguments popup opens

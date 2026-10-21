@@ -1832,6 +1832,10 @@ void blueprint_editor_utilities::NodeContextMenu::Show(Document& document, Debug
                 ImGui::EndMenu();
             }
         }
+        if (signature.m_Function && !signature.m_Entry)
+            ImGui::Separator();
+        if (signature.m_Function && ImGui::MenuItem("Signature..."))
+            m_SignatureRequested = true;
 
         ImGui::Separator();
 
