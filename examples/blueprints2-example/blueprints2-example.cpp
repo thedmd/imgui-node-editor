@@ -473,7 +473,7 @@ private:
         auto canStart = hasDocument && HasStart(m_Document->GetBlueprint()) && !m_Problems.BlocksRun();
 
         m_Blueprint_Start.SetEnabled(canStart);
-        m_Blueprint_Step.SetEnabled(m_Debugger.IsActive() && !m_Debugger.IsRunning());
+        m_Blueprint_Step.SetEnabled(m_Debugger.IsActive() ? !m_Debugger.IsRunning() : canStart);
         m_Blueprint_Stop.SetEnabled(m_Debugger.IsActive());
         m_Blueprint_Run.SetEnabled(canStart && !m_Debugger.IsRunning());
     }
@@ -2090,8 +2090,11 @@ private:
         m_Debugger.Start(*m_Document, false);
     }
 
+    // Without a run, a step starts one, paused, and takes its first step.
     void Blueprint_Step()
     {
+        if (!m_Debugger.IsActive() && !m_Debugger.Start(*m_Document, false))
+            return;
         m_Debugger.Step();
     }
 
