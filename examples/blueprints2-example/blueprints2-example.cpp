@@ -316,6 +316,7 @@ struct BlueprintEditorExample
 
         ImGui::Separator();
 
+        ImVec2 canvasMin, canvasMax;
         if (m_Document)
         {
             ed::Begin("###main_editor");
@@ -331,16 +332,22 @@ struct BlueprintEditorExample
             ShowInfoTooltip(*m_Document);
 
             ed::End();
+            canvasMin = ImGui::GetItemRectMin();
+            canvasMax = ImGui::GetItemRectMax();
+
+            DeclareActions(*m_Document, canvasMin, canvasMax);
 
             RecordEdits(*m_Document);
         }
         else
         {
             ImGui::Dummy(ImGui::GetContentRegionAvail());
+            canvasMin = ImGui::GetItemRectMin();
+            canvasMax = ImGui::GetItemRectMax();
         }
 
         m_OverlayLogger.Update(ImGui::GetIO().DeltaTime);
-        m_OverlayLogger.Draw(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
+        m_OverlayLogger.Draw(canvasMin, canvasMax);
 
         ed::SetCurrentEditor(nullptr);
     }
@@ -475,6 +482,8 @@ private:
             {
                 menuAction(m_View_NavigateBackward);
                 menuAction(m_View_NavigateForward);
+                ImGui::Separator();
+                ImGui::MenuItem("Show Actions", nullptr, &m_ShowActions);
 
                 ImGui::EndMenu();
             }
@@ -667,7 +676,7 @@ private:
                 }
 
                 // [3] - Show value/editor when pin is not linked to anything
-                if (!pin.m_Flow && !isLinked && pin.m_DecidedType)
+                if (HasValueEditor(graph, pin))
                 {
                     ImGui::SameLine();
                     auto value = InputValue(graph, pin);
@@ -704,7 +713,7 @@ private:
                 //    +----------+-------+
 
                 // A Constant shows its value, and an editor once clicked, before its pin.
-                if (IsConstant(node) && !pin.m_Flow && pin.m_DecidedType)
+                if (HasValueEditor(graph, pin))
                 {
                     auto value = ConstantValue(node, pin);
                     if (DrawValueWithEditor(pin.m_Id, value))
@@ -923,7 +932,13 @@ private:
 
     void HandleContextMenuAction()
     {
-        if (ed::ShowBackgroundContextMenu())
+        auto createNode = ed::ShowBackgroundContextMenu();
+        if (ed::BeginShortcut())
+        {
+            createNode = ed::AcceptCreateNode() || createNode;
+            ed::EndShortcut();
+        }
+        if (createNode)
         {
             ed::Suspend();
             LOGV("[HandleContextMenuAction] Open CreateNodeDialog");
@@ -954,6 +969,44 @@ private:
             m_LinkContextMenu.Open(static_cast<Id>(contextLinkId.Get()));
             ed::Resume();
         }
+    }
+
+    // After the editor's own, whose hovered items answer for this frame. Dialogs open in the
+    // editor, the next frame.
+    void DeclareActions(Document& document, ImVec2 canvasMin, ImVec2 canvasMax)
+    {
+        auto& graph = document.GetGraph();
+        auto  pin   = graph.FindPin(static_cast<Id>(ed::GetHoveredPin().Get()));
+        auto  link  = graph.FindLink(static_cast<Id>(ed::GetHoveredLink().Get()));
+        auto  node  = graph.FindNode(static_cast<Id>(ed::GetHoveredNode().Get()));
+
+        const auto overCanvas = ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem) && ImGui::IsMouseHoveringRect(canvasMin, canvasMax);
+        const auto background = overCanvas && !pin && !link && !node;
+        const auto typing     = ImGui::GetIO().WantTextInput;
+        const auto pinLinked  = pin && HasLinks(graph, pin->m_Id);
+        const auto pinValue   = pin && HasValueEditor(graph, *pin);
+        const auto pinTyped   = pin && PinVariable(graph, *pin);
+
+        CanvasActions actions(overCanvas);
+        actions.Gesture("Create Link", "Drag Pin to Pin", pin != nullptr);
+        actions.Gesture("Create Linked Node", "Drag Pin to Canvas", pin != nullptr);
+        if (actions.Press("Break Pin's Links", ImGuiMod_Alt | ImGuiKey_MouseLeft, pinLinked))
+            ed::BreakLinks(ed::PinId(pin->m_Id));
+        actions.Gesture("Break Link", "Alt+Click", link != nullptr);
+        actions.Gesture("Delete Selection", "Delete", ed::GetSelectedObjectCount() > 0);
+        actions.Gesture("Edit Value", "Click", pinValue);
+        actions.Gesture("Choose Type", "Right-Click", pinTyped);
+        actions.Gesture("Create Node", "Space", background && !typing);
+        actions.Gesture("Create Node", "Right-Click", background);
+        if (actions.Press("Run", ImGuiKey_F5, m_Blueprint_Run.IsEnabled(), true))
+            m_Blueprint_Run.Execute();
+        if (actions.Press("Step", ImGuiKey_F10, m_Blueprint_Step.IsEnabled(), true))
+            m_Blueprint_Step.Execute();
+        if (actions.Press("Stop", ImGuiMod_Shift | ImGuiKey_F5, m_Blueprint_Stop.IsEnabled(), true))
+            m_Blueprint_Stop.Execute();
+
+        if (m_ShowActions)
+            actions.Draw(canvasMin, canvasMax);
     }
 
     void ShowDialogs(Document& document)
@@ -1332,6 +1385,7 @@ private:
     std::unique_ptr<Document> m_Document;
     Debugger                  m_Debugger;
     std::optional<LinkQuery>  m_LinkQuery;
+    bool                      m_ShowActions = true;
 
     CreateNodeDialog m_CreateNodeDialog;
     NodeContextMenu  m_NodeContextMenu;

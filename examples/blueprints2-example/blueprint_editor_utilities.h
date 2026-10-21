@@ -28,12 +28,43 @@ Value InputValue(const Graph& graph, const Pin& pin);
 bool  IsConstant(const Node& node);
 Value ConstantValue(const Node& node, const Pin& pin);
 
+bool HasLinks(const Graph& graph, Id pin);              // active or disabled
+bool HasValueEditor(const Graph& graph, const Pin& pin); // an input without an active link, or a Constant's output; of a decided type
+
+// The node's type variable that is the pin's type, not one inside a type such as Array<T>.
+const VariableDeclaration* PinVariable(const Graph& graph, const Pin& pin);
+
 bool DrawValue(const Value& value);        // Draws a value; false for none.
 bool EditValue(Value& value);              // Shows an editor for a value; true once the edit is done.
 bool DrawValueWithEditor(Id id, Value& value); // Draws a value, or its editor once clicked; true when an edit changed it.
 
 std::vector<Id> GetSelectedNodes();
 std::vector<Id> GetSelectedLinks();
+
+// The example's own interactions on the canvas, declared each frame in priority order, and listed
+// in its bottom-right corner, with those that don't apply now dimmed. A press fires through
+// ImGui::Shortcut(): only the first active one whose chord is pressed, and only over the canvas
+// unless it's global. A gesture is the node editor's or a widget's, and only listed.
+struct CanvasActions
+{
+    explicit CanvasActions(bool overCanvas): m_OverCanvas(overCanvas) {}
+
+    bool Press(const char* name, ImGuiKeyChord chord, bool active, bool global = false);
+    void Gesture(const char* name, const char* gesture, bool active);
+
+    void Draw(ImVec2 canvasMin, ImVec2 canvasMax) const;
+
+private:
+    struct Entry
+    {
+        std::string m_Text;
+        bool        m_Active = false;
+    };
+
+    bool               m_OverCanvas = false;
+    bool               m_Fired      = false;
+    std::vector<Entry> m_Entries;
+};
 
 // Uses ImDrawListSplitter to draw background under pin value
 struct PinValueBackgroundRenderer

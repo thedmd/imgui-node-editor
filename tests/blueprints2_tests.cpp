@@ -18,6 +18,7 @@
 
 using namespace crude_blueprint;
 using blueprint_editor::Document;
+using blueprint_editor_utilities::CanvasActions;
 using blueprint_editor_utilities::DebugOverlay;
 using blueprint_editor_utilities::Debugger;
 
@@ -481,6 +482,39 @@ TEST_CASE(LogSymbolAtEnd, "blueprints2.the_log_shows_messages_that_end_with_a_sy
     const ImU32 stringColor = IM_COL32(255, 174, 133, 255);
     test::Check(test::AssertCount() == 0, "both messages show: %d IM_ASSERTs", test::AssertCount());
     test::Check(test::FirstIndexOf(test::Capture(session.DrawList), stringColor) >= 0, "with the quotes around \"10\" in the color of strings");
+}
+
+TEST_CASE(CanvasActionsFire, "blueprints2.only_the_first_active_canvas_action_fires", nullptr, test::TestFlags_None)
+{
+    // Actions on F5, declared after the editor as the example does: one inactive, two of the
+    // canvas, and a global one.
+    test::Session session(UnnamedConfig());
+    bool overCanvas = true;
+    int  fired[4]   = {};
+    session.AfterEditor = [&]
+    {
+        CanvasActions actions(overCanvas);
+        fired[0] += actions.Press("Inactive", ImGuiKey_F5, false);
+        fired[1] += actions.Press("First", ImGuiKey_F5, true);
+        fired[2] += actions.Press("Second", ImGuiKey_F5, true);
+        fired[3] += actions.Press("Global", ImGuiKey_F5, true, true);
+    };
+    auto press = [&]
+    {
+        test::Key(ImGuiKey_F5, true);
+        session.Run(1);
+        test::Key(ImGuiKey_F5, false);
+        session.Run(2);
+    };
+
+    // A Shortcut() route takes effect the frame after it's declared.
+    session.Run(2);
+    press();
+    test::Check(fired[0] == 0 && fired[1] == 1 && fired[2] == 0 && fired[3] == 0, "over the canvas, a press fires the first active action alone: %d %d %d %d", fired[0], fired[1], fired[2], fired[3]);
+
+    overCanvas = false;
+    press();
+    test::Check(fired[1] == 1 && fired[2] == 0 && fired[3] == 1, "elsewhere, only the global one: %d %d %d", fired[1], fired[2], fired[3]);
 }
 
 TEST_CASE(NewDocuments, "blueprints2.a_new_document_has_an_empty_graph", nullptr, test::TestFlags_None)

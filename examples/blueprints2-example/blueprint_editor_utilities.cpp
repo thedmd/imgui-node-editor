@@ -81,6 +81,33 @@ blueprint_editor_utilities::Value blueprint_editor_utilities::ConstantValue(cons
     return type->m_Head->Default(*type);
 }
 
+bool blueprint_editor_utilities::HasLinks(const Graph& graph, Id pin)
+{
+    for (auto& link : graph.Links())
+        if (link.m_From == pin || link.m_To == pin)
+            return true;
+    return false;
+}
+
+bool blueprint_editor_utilities::HasValueEditor(const Graph& graph, const Pin& pin)
+{
+    if (pin.m_Flow || !pin.m_DecidedType)
+        return false;
+    if (pin.m_Direction == Direction::Output)
+        return IsConstant(*graph.NodeOf(pin.m_Id));
+    for (auto& link : graph.Links())
+        if (link.m_Active && link.m_To == pin.m_Id)
+            return false;
+    return true;
+}
+
+const blueprint_editor_utilities::VariableDeclaration* blueprint_editor_utilities::PinVariable(const Graph& graph, const Pin& pin)
+{
+    if (pin.m_Flow || pin.m_Type.m_Head || pin.m_Type.m_Variable < 0)
+        return nullptr;
+    return &graph.NodeOf(pin.m_Id)->m_Variables[static_cast<size_t>(pin.m_Type.m_Variable)];
+}
+
 bool blueprint_editor_utilities::DrawValue(const Value& value)
 {
     auto type = value.GetType();
@@ -193,6 +220,46 @@ bool blueprint_editor_utilities::DrawValueWithEditor(Id id, Value& value)
     storage->SetInt(ImGui::GetID("PinValueEditor_ActivePinId"), static_cast<int>(activeId));
 
     return changed;
+}
+
+
+
+bool blueprint_editor_utilities::CanvasActions::Press(const char* name, ImGuiKeyChord chord, bool active, bool global)
+{
+    constexpr std::string_view mouseLeft = "MouseLeft";
+    auto gesture = std::string(ImGui::GetKeyChordName(chord));
+    if (auto mouse = gesture.find(mouseLeft); mouse != std::string::npos)
+        gesture.replace(mouse, mouseLeft.size(), "Click");
+    m_Entries.push_back({ std::string(name) + ": " + gesture, active });
+    if (!active || m_Fired || !(m_OverCanvas || global))
+        return false;
+    m_Fired = ImGui::Shortcut(chord, ImGuiInputFlags_RouteGlobal);
+    return m_Fired;
+}
+
+void blueprint_editor_utilities::CanvasActions::Gesture(const char* name, const char* gesture, bool active)
+{
+    m_Entries.push_back({ std::string(name) + ": " + gesture, active });
+}
+
+void blueprint_editor_utilities::CanvasActions::Draw(ImVec2 canvasMin, ImVec2 canvasMax) const
+{
+    ImGui::PushFont(nullptr, ImGui::GetFontSize() * 0.75f);
+    auto& style  = ImGui::GetStyle();
+    auto  height = static_cast<float>(m_Entries.size()) * ImGui::GetTextLineHeightWithSpacing();
+    auto  y      = ImMax(canvasMin.y, canvasMax.y - height - style.ItemSpacing.y);
+    ImGui::PushClipRect(canvasMin, canvasMax, true);
+    for (auto& entry : m_Entries)
+    {
+        auto width = ImGui::CalcTextSize(entry.m_Text.c_str()).x;
+        ImGui::SetCursorScreenPos(ImVec2(canvasMax.x - style.ItemSpacing.x - width, y));
+        ImGui::BeginDisabled(!entry.m_Active);
+        ImGui::TextUnformatted(entry.m_Text.c_str());
+        ImGui::EndDisabled();
+        y += ImGui::GetTextLineHeightWithSpacing();
+    }
+    ImGui::PopClipRect();
+    ImGui::PopFont();
 }
 
 
@@ -787,9 +854,8 @@ void blueprint_editor_utilities::PinContextMenu::Show(Document& document)
         if (ImGui::MenuItem("Break Links", nullptr, nullptr, pin != nullptr && ax::NodeEditor::HasAnyLinks(ax::NodeEditor::PinId(m_Pin))))
             ax::NodeEditor::BreakLinks(ax::NodeEditor::PinId(m_Pin));
 
-        // Only a pin whose type is a variable itself offers it, not one in a constructed type such
-        // as Array<T>. The choice is set once the menu is drawn.
-        auto variable = pin && !pin->m_Flow && !pin->m_Type.m_Head && pin->m_Type.m_Variable >= 0 ? &node->m_Variables[static_cast<size_t>(pin->m_Type.m_Variable)] : nullptr;
+        // The choice is set once the menu is drawn.
+        auto variable = pin ? PinVariable(graph, *pin) : nullptr;
         std::optional<const Type*> choice; // null: reset
         if (variable)
         {
