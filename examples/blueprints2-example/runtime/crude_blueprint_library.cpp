@@ -1316,6 +1316,67 @@ struct FlipFlopNode final : NodeType
     }
 };
 
+// Unreal's: goes on once the duration passed on the context's clock. Entered while it counts down,
+// it ends that flow.
+struct DelayNode final : NodeType
+{
+    DelayNode(): NodeType("crude.Delay", "Delay", "Coroutines") {}
+
+    void Declare(NodeDeclaration& declaration, const NodeConfig&, const Bindings&) const override
+    {
+        declaration.FlowInput("enter");
+        declaration.Input("duration", "Duration", FloatType(), { .m_Default = Value::Float(0.2f) });
+        declaration.FlowOutput("completed", "Completed");
+    }
+
+    bool IsLatent() const override
+    {
+        return true;
+    }
+
+    Result<Exit> Execute(ExecContext& context, std::string_view) const override
+    {
+        if (context.IsResumed())
+            return Exit::To("completed");
+        auto& until = context.State<double>();
+        if (context.Time() < until)
+            return Exit::None();
+        auto duration = context.Get<float>("duration");
+        if (!duration)
+            return duration.GetError();
+        until = context.Time() + std::max(0.0f, duration.GetValue());
+        return Exit::Suspend(Wake::At(until));
+    }
+};
+
+// Goes on once the host sends the signal it's given.
+struct WaitSignalNode final : NodeType
+{
+    WaitSignalNode(): NodeType("crude.WaitSignal", "Wait Signal", "Coroutines") {}
+
+    void Declare(NodeDeclaration& declaration, const NodeConfig&, const Bindings&) const override
+    {
+        declaration.FlowInput("enter");
+        declaration.Input("signal", "Signal", StringType());
+        declaration.FlowOutput("then");
+    }
+
+    bool IsLatent() const override
+    {
+        return true;
+    }
+
+    Result<Exit> Execute(ExecContext& context, std::string_view) const override
+    {
+        if (context.IsResumed())
+            return Exit::To("then");
+        auto signal = context.Get<std::string>("signal");
+        if (!signal)
+            return signal.GetError();
+        return Exit::Suspend(Wake::OnSignal(signal.GetValue()));
+    }
+};
+
 // A struct's name without its namespace: "Vector2" of "example.Vector2".
 std::string ShortName(const StructType& type)
 {
@@ -1445,6 +1506,8 @@ crude_blueprint::Result<void> crude_blueprint::RegisterLibrary(Registry& registr
         std::make_unique<DoNNode>(),
         std::make_unique<GateNode>(),
         std::make_unique<FlipFlopNode>(),
+        std::make_unique<DelayNode>(),
+        std::make_unique<WaitSignalNode>(),
     };
     for (auto& type : types)
         if (auto result = registry.AddNodeType(std::move(type)); !result)

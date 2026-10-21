@@ -14,8 +14,8 @@ enum class LibraryError : uint16_t
 
 constexpr ErrorCategory CategoryOf(LibraryError) { return ErrorCategory::Library; }
 
-// Events, flow, values, math, logic, text, arrays, maps and debugging, each named "crude." and its
-// title without spaces: "crude.ForLoop".
+// Events, flow, coroutines, values, math, logic, text, arrays, maps and debugging, each named "crude."
+// and its title without spaces: "crude.ForLoop".
 Result<void> RegisterLibrary(Registry& registry);
 
 // Make and Break for a struct, "make:example.Vector2" and "break:example.Vector2", titled

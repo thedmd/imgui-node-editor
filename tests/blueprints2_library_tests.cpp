@@ -786,3 +786,77 @@ TEST_CASE(LibraryOnce, "library.is_registered_once", nullptr, test::TestFlags_No
     test::Check(first && registry.FindNodeType("crude.ForLoop") && registry.FindNodeType("crude.ForLoop")->m_Title == "For Loop", "the library's node types are found by name");
     test::Check(!second && second.GetError().Is(BlueprintError::Duplicate), "and registering it again is refused: %s", Message(second).c_str());
 }
+
+TEST_CASE(DelayWaits, "library.delay_goes_on_once_its_time_passed_and_ends_the_flows_entering_meanwhile", nullptr, test::TestFlags_None)
+{
+    // Start, then a Delay of 1.5 s, then a Print. Start runs again while it counts down, and again
+    // once it's done.
+    Fixture f;
+    auto start = f.Add("Start"), delay = f.Add("Delay");
+    f.Link(start, "then", delay, "enter");
+    f.Link(delay, "completed", f.Printer("done"), "enter");
+    f.Link(f.Constant(Value::Float(1.5f)), "value", delay, "duration");
+    auto end     = FiberState::Ready;
+    auto printed = f.Run(&end);
+    if (!f.m_Context)
+        return;
+    auto& context = *f.m_Context;
+    test::Check(printed.empty() && end == FiberState::Suspended && context.Fibers()[0].m_Wake == Wake::At(1.5), "the fiber waits until 1.5");
+
+    Logs logs;
+    context.SetMonitor(&logs);
+    auto again = context.Start("Start").IsOk() && context.Run(std::chrono::seconds(1)) == RunState::Suspended;
+    test::Check(again && context.Fibers()[1].m_State == FiberState::Done && logs.m_Text.empty(), "another fiber that enters meanwhile ends there");
+    context.Advance(1.0);
+    auto early = context.Run(std::chrono::seconds(1));
+    context.Advance(0.5);
+    auto late = context.Run(std::chrono::seconds(1));
+    test::Check(early == RunState::Suspended && late == RunState::Idle && logs.m_Text == "done", "at 1.5, not before, the first goes on: %s", logs.m_Text.c_str());
+
+    auto third = context.Start("Start").IsOk() && context.Run(std::chrono::seconds(1)) == RunState::Suspended;
+    test::Check(third && context.Fibers()[2].m_Wake == Wake::At(3.0), "once it's done, a fiber that enters waits in turn");
+}
+
+TEST_CASE(DelayOfNoNumber, "library.a_delay_of_no_number_waits_for_the_next_advance", nullptr, test::TestFlags_None)
+{
+    // 0 / 0, as no Constant holds NaN.
+    Fixture f;
+    auto start = f.Add("Start"), delay = f.Add("Delay"), divide = f.Add("Divide");
+    f.Link(start, "then", delay, "enter");
+    f.Link(delay, "completed", f.Printer("done"), "enter");
+    f.Link(f.Constant(Value::Float(0.0f)), "value", divide, "a");
+    f.Link(f.Constant(Value::Float(0.0f)), "value", divide, "b");
+    f.Link(divide, "result", delay, "duration");
+    auto end = FiberState::Ready;
+    f.Run(&end);
+    if (!f.m_Context)
+        return;
+    Logs logs;
+    f.m_Context->SetMonitor(&logs);
+    f.m_Context->Advance(0.0);
+    auto went = f.m_Context->Run(std::chrono::seconds(1));
+    test::Check(end == FiberState::Suspended && went == RunState::Idle && logs.m_Text == "done", "it waits as long as one of 0: %s", logs.m_Text.c_str());
+}
+
+TEST_CASE(WaitSignalWaits, "library.wait_signal_goes_on_once_its_signal_comes", nullptr, test::TestFlags_None)
+{
+    Fixture f;
+    auto start = f.Add("Start"), wait = f.Add("WaitSignal");
+    f.Link(start, "then", wait, "enter");
+    f.Link(wait, "then", f.Printer("went"), "enter");
+    f.Link(f.Constant(Value::String("go")), "value", wait, "signal");
+    auto end     = FiberState::Ready;
+    auto printed = f.Run(&end);
+    if (!f.m_Context)
+        return;
+    auto& context = *f.m_Context;
+    test::Check(printed.empty() && end == FiberState::Suspended && context.Fibers()[0].m_Wake == Wake::OnSignal("go"), "the fiber waits for go");
+
+    Logs logs;
+    context.SetMonitor(&logs);
+    context.Advance(100.0);
+    auto waiting = context.Run(std::chrono::seconds(1));
+    context.Signal("go");
+    auto went = context.Run(std::chrono::seconds(1));
+    test::Check(waiting == RunState::Suspended && went == RunState::Idle && logs.m_Text == "went", "however long it waits, until go comes: %s", logs.m_Text.c_str());
+}
