@@ -1141,6 +1141,16 @@ void crude_blueprint::Blueprint::DeleteNode(Node* node)
     // Execution holds pins of the nodes it goes through.
     m_Context.Stop();
 
+    for (auto pins : { node->GetInputPins(), node->GetOutputPins() })
+    {
+        for (auto pin : pins)
+        {
+            pin->Unlink();
+            for (auto receiver : FindPinsLinkedTo(*pin))
+                receiver->Unlink();
+        }
+    }
+
     delete *nodeIt;
 
     m_Nodes.erase(nodeIt);

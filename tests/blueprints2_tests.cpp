@@ -696,3 +696,27 @@ TEST_CASE(RegisteredNameKept, "blueprints2.a_registered_node_type_keeps_its_name
     test::Check(created, "a node of the type is created by its name");
     test::Check(unregistered, "and the type is unregistered by it");
 }
+
+TEST_CASE(DeleteBreaksLinks, "blueprints2.deleting_a_node_breaks_its_links", "CBP-5", test::TestFlags_None)
+{
+    // Nodes deleted through the API, as a cut or a delete command does, with links on both sides.
+    Blueprint blueprint;
+    auto constant = blueprint.CreateNode<ConstInt32Node>();
+    auto toString = blueprint.CreateNode<ToStringNode>();
+    auto print    = blueprint.CreateNode<PrintNode>();
+    toString->m_Value.LinkTo(constant->m_Int32);
+    print->m_String.LinkTo(toString->m_String);
+    const bool typed = toString->m_Value.GetValueType() == PinType::Int32;
+
+    blueprint.DeleteNode(constant);
+    const bool valueUnlinked = !toString->m_Value.IsLinked() && toString->m_Value.GetValueType() == PinType::Any;
+    blueprint.DeleteNode(toString);
+    const bool stringUnlinked = !print->m_String.IsLinked();
+
+    crude_json::value saved;
+    blueprint.Save(saved);
+
+    test::Check(typed, "To String took Int32 from the constant");
+    test::Check(valueUnlinked, "deleting the constant unlinks To String, which takes any type again");
+    test::Check(stringUnlinked, "deleting To String unlinks Print");
+}
