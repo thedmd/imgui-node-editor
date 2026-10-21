@@ -526,6 +526,246 @@ struct XorNode final : NodeType
     }
 };
 
+// A or B: only the one it picks is computed.
+struct SelectNode final : NodeType
+{
+    SelectNode(): NodeType("crude.Select", "Select", "Values") {}
+
+    void Declare(NodeDeclaration& declaration, const NodeConfig&, const Bindings&) const override
+    {
+        auto T = declaration.Variable("T");
+        declaration.Input("pickA", "Pick A", BoolType());
+        declaration.Input("a", "A", T);
+        declaration.Input("b", "B", T);
+        declaration.Output("result", "Result", T);
+    }
+
+    Result<void> Evaluate(EvalContext& context) const override
+    {
+        auto pickA = context.Get<bool>("pickA");
+        if (!pickA)
+            return pickA.GetError();
+        auto value = context.Get(pickA.GetValue() ? "a" : "b");
+        if (!value)
+            return value.GetError();
+        context.Set("result", value.GetValue());
+        return {};
+    }
+};
+
+// As the cast to String writes a value.
+struct ToStringNode final : NodeType
+{
+    ToStringNode(): NodeType("crude.ToString", "To String", "Text") {}
+
+    void Declare(NodeDeclaration& declaration, const NodeConfig&, const Bindings&) const override
+    {
+        auto T = declaration.Variable("T");
+        declaration.Input("value", "Value", T);
+        declaration.Output("text", "Text", StringType());
+    }
+
+    Result<void> Evaluate(EvalContext& context) const override
+    {
+        auto value = context.Get("value");
+        if (!value)
+            return value.GetError();
+        context.Set("text", Value::String(value.GetValue().GetType()->m_Head->Format(value.GetValue())));
+        return {};
+    }
+};
+
+// Of a String, its characters, counted as UTF-8 code points; of an array, its items.
+struct LengthNode final : NodeType
+{
+    LengthNode(): NodeType("crude.Length", "Length", "Text") {}
+
+    void Declare(NodeDeclaration& declaration, const NodeConfig&, const Bindings&) const override
+    {
+        auto T = declaration.Variable("T", { &StringValueType(), &ArrayValueType() });
+        declaration.Input("value", "Value", T);
+        declaration.Output("length", "Length", Int32Type());
+    }
+
+    Result<void> Evaluate(EvalContext& context) const override
+    {
+        auto value = context.Get("value");
+        if (!value)
+            return value.GetError();
+        auto& read = value.GetValue();
+        size_t length = 0;
+        if (read.GetType() == &StringType())
+            length = static_cast<size_t>(std::count_if(read.AsString().begin(), read.AsString().end(), [](char c) { return (static_cast<unsigned char>(c) & 0xC0) != 0x80; }));
+        else
+            length = read.AsArray().size();
+        auto result = Int32Result(static_cast<int64_t>(length), "the length");
+        if (!result)
+            return result.GetError();
+        context.Set("length", result.GetValue());
+        return {};
+    }
+};
+
+TypeTerm ArrayOf(TypeVariable item)
+{
+    return TypeTerm(ArrayValueType(), { item });
+}
+
+std::string Items(size_t count)
+{
+    return std::to_string(count) + (count == 1 ? " item" : " items");
+}
+
+// An index outside the array is an error.
+Result<size_t> ItemIndex(EvalContext& context, size_t size)
+{
+    auto index = context.Get<int32_t>("index");
+    if (!index)
+        return index.GetError();
+    if (index.GetValue() < 0 || static_cast<size_t>(index.GetValue()) >= size)
+        return Error(BlueprintError::OutOfRange, "index " + std::to_string(index.GetValue()) + " is outside the array of " + Items(size));
+    return static_cast<size_t>(index.GetValue());
+}
+
+struct MakeArrayNode final : NodeType
+{
+    MakeArrayNode(): NodeType("crude.MakeArray", "Make Array", "Arrays") {}
+
+    void Declare(NodeDeclaration& declaration, const NodeConfig&, const Bindings&) const override
+    {
+        auto T     = declaration.Variable("T");
+        auto count = declaration.Group("in", 1, 16);
+        for (int i = 0; i < count; ++i)
+            declaration.Input("in." + std::to_string(i), "", T);
+        declaration.Output("array", "Array", ArrayOf(T));
+    }
+
+    Result<void> Evaluate(EvalContext& context) const override
+    {
+        auto items = context.Inputs("in");
+        if (!items)
+            return items.GetError();
+        context.Set("array", Value::Array(*context.TypeOf("array"), std::move(items).GetValue()));
+        return {};
+    }
+};
+
+// An item for each output of its group; an array too short for them is an error.
+struct BreakArrayNode final : NodeType
+{
+    BreakArrayNode(): NodeType("crude.BreakArray", "Break Array", "Arrays") {}
+
+    void Declare(NodeDeclaration& declaration, const NodeConfig&, const Bindings&) const override
+    {
+        auto T = declaration.Variable("T");
+        declaration.Input("array", "Array", ArrayOf(T));
+        auto count = declaration.Group("out", 1, 16);
+        for (int i = 0; i < count; ++i)
+            declaration.Output("out." + std::to_string(i), std::to_string(i), T);
+    }
+
+    Result<void> Evaluate(EvalContext& context) const override
+    {
+        auto array = context.Get("array");
+        if (!array)
+            return array.GetError();
+        auto items = array.GetValue().AsArray();
+        for (size_t i = 0; context.HasPin("out." + std::to_string(i)); ++i)
+        {
+            if (i >= items.size())
+                return Error(BlueprintError::OutOfRange, "the array has " + Items(items.size()) + ", not the " + std::to_string(i + 1) + " it breaks into");
+            context.Set("out." + std::to_string(i), items[i]);
+        }
+        return {};
+    }
+};
+
+struct GetNode final : NodeType
+{
+    GetNode(): NodeType("crude.Get", "Get", "Arrays") {}
+
+    void Declare(NodeDeclaration& declaration, const NodeConfig&, const Bindings&) const override
+    {
+        auto T = declaration.Variable("T");
+        declaration.Input("array", "Array", ArrayOf(T));
+        declaration.Input("index", "Index", Int32Type());
+        declaration.Output("item", "Item", T);
+    }
+
+    Result<void> Evaluate(EvalContext& context) const override
+    {
+        auto array = context.Get("array");
+        if (!array)
+            return array.GetError();
+        auto items = array.GetValue().AsArray();
+        auto index = ItemIndex(context, items.size());
+        if (!index)
+            return index.GetError();
+        context.Set("item", items[index.GetValue()]);
+        return {};
+    }
+};
+
+// A copy of the array, with the item at the index.
+struct SetNode final : NodeType
+{
+    SetNode(): NodeType("crude.Set", "Set", "Arrays") {}
+
+    void Declare(NodeDeclaration& declaration, const NodeConfig&, const Bindings&) const override
+    {
+        auto T = declaration.Variable("T");
+        declaration.Input("array", "Array", ArrayOf(T));
+        declaration.Input("index", "Index", Int32Type());
+        declaration.Input("item", "Item", T);
+        declaration.Output("result", "Result", ArrayOf(T));
+    }
+
+    Result<void> Evaluate(EvalContext& context) const override
+    {
+        auto array = context.Get("array");
+        if (!array)
+            return array.GetError();
+        auto items = std::vector<Value>(array.GetValue().AsArray().begin(), array.GetValue().AsArray().end());
+        auto index = ItemIndex(context, items.size());
+        if (!index)
+            return index.GetError();
+        auto item = context.Get("item");
+        if (!item)
+            return item.GetError();
+        items[index.GetValue()] = std::move(item).GetValue();
+        context.Set("result", Value::Array(*context.TypeOf("result"), std::move(items)));
+        return {};
+    }
+};
+
+// A copy of the array, with the item after its last.
+struct AppendNode final : NodeType
+{
+    AppendNode(): NodeType("crude.Append", "Append", "Arrays") {}
+
+    void Declare(NodeDeclaration& declaration, const NodeConfig&, const Bindings&) const override
+    {
+        auto T = declaration.Variable("T");
+        declaration.Input("array", "Array", ArrayOf(T));
+        declaration.Input("item", "Item", T);
+        declaration.Output("result", "Result", ArrayOf(T));
+    }
+
+    Result<void> Evaluate(EvalContext& context) const override
+    {
+        auto array = context.Get("array");
+        if (!array)
+            return array.GetError();
+        auto item = context.Get("item");
+        if (!item)
+            return item.GetError();
+        auto items = std::vector<Value>(array.GetValue().AsArray().begin(), array.GetValue().AsArray().end());
+        items.push_back(std::move(item).GetValue());
+        context.Set("result", Value::Array(*context.TypeOf("result"), std::move(items)));
+        return {};
+    }
+};
+
 struct BranchNode final : NodeType
 {
     BranchNode(): NodeType("crude.Branch", "Branch", "Flow") {}
@@ -841,6 +1081,14 @@ crude_blueprint::Result<void> crude_blueprint::RegisterLibrary(Registry& registr
         std::make_unique<ConnectiveNode>("crude.Or", "Or", true),
         std::make_unique<NotNode>(),
         std::make_unique<XorNode>(),
+        std::make_unique<SelectNode>(),
+        std::make_unique<ToStringNode>(),
+        std::make_unique<LengthNode>(),
+        std::make_unique<MakeArrayNode>(),
+        std::make_unique<BreakArrayNode>(),
+        std::make_unique<GetNode>(),
+        std::make_unique<SetNode>(),
+        std::make_unique<AppendNode>(),
         std::make_unique<BranchNode>(),
         std::make_unique<ForLoopNode>(),
         std::make_unique<SequenceNode>(),

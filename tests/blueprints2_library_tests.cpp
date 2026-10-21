@@ -11,6 +11,7 @@
 # include <span>
 # include <string>
 # include <utility>
+# include <variant>
 # include <vector>
 
 using namespace blueprints2_tests;
@@ -73,9 +74,9 @@ struct Fixture : BlueprintFixture
         return logs.m_Text;
     }
 
-    // Start prints a node's output, through a cast unless it's a String, of the inputs it's given
-    // as Constants; inputs a group lacks are added to it. The message of an error that stops it
-    // comes after "error: ".
+    // Start prints a node's output, of the inputs it's given as Constants; inputs a group lacks are
+    // added to it. An output that isn't a String goes through the cast to String, or To String for
+    // a type without one. The message of an error that stops it comes after "error: ".
     std::string Compute(const char* type, std::span<const std::pair<const char*, Value>> inputs, const char* output = "result")
     {
         auto start = Add("Start"), print = Add("Print"), node = Add(type);
@@ -86,7 +87,17 @@ struct Fixture : BlueprintFixture
             Link(Constant(value), "value", node, key);
         }
         Link(start, "then", print, "enter");
-        Link(node, output, print, "text", Type(node, output) == "String" ? LinkMode::Plain : LinkMode::Cast);
+        auto decided = m_Graph.FindPin(Pin(node, output))->m_DecidedType;
+        if (decided == &StringType())
+            Link(node, output, print, "text");
+        else if (m_Blueprint.GetRegistry().FindCast(decided, &StringType()))
+            Link(node, output, print, "text", LinkMode::Cast);
+        else
+        {
+            auto text = Add("ToString");
+            Link(node, output, text, "value");
+            Link(text, "text", print, "text");
+        }
 
         FiberState                  end = FiberState::Ready;
         std::span<const Diagnostic> diagnostics;
@@ -515,6 +526,99 @@ TEST_CASE(FlipFlopAlternates, "library.a_flip_flop_alternates_from_a", nullptr, 
     f.Link(flipFlop, "b", f.Printer("b"), "enter");
     auto printed = f.Run();
     test::Check(printed == "a b a b", "four rounds: %s", printed.c_str());
+}
+
+TEST_CASE(ValueNodes, "library.select_text_and_arrays_give_their_values", nullptr, test::TestFlags_None)
+{
+    // An array's type comes from the type table of the blueprint it's for.
+    using Array = std::vector<int32_t>;
+    struct Case
+    {
+        const char*                       type;
+        const char*                       output;
+        std::vector<std::pair<const char*, std::variant<Value, Array>>> inputs;
+        const char*                       expected;
+    };
+    const auto i = [](int32_t value) { return Value::Int32(value); };
+    const auto s = [](const char* text) { return Value::String(text); };
+    const auto b = [](bool value) { return Value::Bool(value); };
+    const Case cases[] =
+    {
+        { "Select",    "result", { { "pickA", b(true) },  { "a", i(1) }, { "b", i(2) } }, "1" },
+        { "Select",    "result", { { "pickA", b(false) }, { "a", i(1) }, { "b", i(2) } }, "2" },
+        { "ToString",  "text",   { { "value", i(5) } },                 "5" },
+        { "ToString",  "text",   { { "value", Array{ 1, 2 } } },        "[1, 2]" },
+        { "Length",    "length", { { "value", s("za\xC5\xBC\xC3\xB3\xC5\x82\xC4\x87") } }, "6" },
+        { "Length",    "length", { { "value", Array{ 1, 2, 3 } } },     "3" },
+        { "MakeArray", "array",  { { "in.0", i(1) }, { "in.1", i(2) }, { "in.2", i(3) } }, "[1, 2, 3]" },
+        { "Get",       "item",   { { "array", Array{ 10, 20, 30 } }, { "index", i(1) } }, "20" },
+        { "Get",       "item",   { { "array", Array{ 10, 20, 30 } }, { "index", i(3) } }, "error: index 3 is outside the array of 3 items" },
+        { "Get",       "item",   { { "array", Array{ 10, 20, 30 } }, { "index", i(-1) } }, "error: index -1 is outside the array of 3 items" },
+        { "Set",       "result", { { "array", Array{ 10, 20, 30 } }, { "index", i(1) }, { "item", i(99) } }, "[10, 99, 30]" },
+        { "Set",       "result", { { "array", Array{ 10 } },         { "index", i(5) }, { "item", i(99) } }, "error: index 5 is outside the array of 1 item" },
+        { "Append",    "result", { { "array", Array{ 10 } },         { "item", i(20) } }, "[10, 20]" },
+    };
+    for (auto& c : cases)
+    {
+        Fixture f;
+        auto&  ints = *f.m_Blueprint.GetTypes().Get(ArrayValueType(), std::vector<const Type*>{ &Int32Type() });
+        Inputs inputs;
+        for (auto& [key, input] : c.inputs)
+        {
+            if (auto value = std::get_if<Value>(&input))
+                inputs.emplace_back(key, *value);
+            else
+            {
+                std::vector<Value> items;
+                for (auto item : std::get<Array>(input))
+                    items.push_back(Value::Int32(item));
+                inputs.emplace_back(key, Value::Array(ints, std::move(items)));
+            }
+        }
+        auto got = f.Compute(c.type, inputs, c.output);
+        test::Check(got == c.expected, "%s of %s: %s", c.type, Describe(inputs).c_str(), got.c_str());
+    }
+}
+
+TEST_CASE(SelectPicks, "library.select_computes_only_the_input_it_picks", nullptr, test::TestFlags_None)
+{
+    // B reads 7 / 0, and computing it fails.
+    for (auto pickA : { true, false })
+    {
+        Fixture f;
+        auto start = f.Add("Start"), print = f.Add("Print"), select = f.Add("Select"), divide = f.Add("Divide");
+        f.Link(start, "then", print, "enter");
+        f.Link(f.Constant(Value::Bool(pickA)), "value", select, "pickA");
+        f.Link(f.Constant(Value::Int32(1)), "value", select, "a");
+        f.Link(f.Constant(Value::Int32(7)), "value", divide, "a");
+        f.Link(f.Constant(Value::Int32(0)), "value", divide, "b");
+        f.Link(divide, "result", select, "b");
+        f.Link(select, "result", print, "text", LinkMode::Cast);
+        FiberState end = FiberState::Ready;
+        auto printed = f.Run(&end);
+        test::Check(pickA ? printed == "1" && end == FiberState::Done : end == FiberState::Failed, "picking %s: %s", pickA ? "A, which doesn't compute B" : "B, which fails", printed.c_str());
+    }
+}
+
+TEST_CASE(BreakArrays, "library.break_array_gives_an_item_for_each_output", nullptr, test::TestFlags_None)
+{
+    for (auto count : { 2, 3 })
+    {
+        // [10, 20] into outputs 0 and 1, or into 0 to 2.
+        Fixture f;
+        auto& ints  = *f.m_Blueprint.GetTypes().Get(ArrayValueType(), std::vector<const Type*>{ &Int32Type() });
+        auto  start = f.Add("Start"), print = f.Add("Print"), node = f.Grown("BreakArray", "out", count);
+        f.Link(start, "then", print, "enter");
+        f.Link(f.Constant(Value::Array(ints, { Value::Int32(10), Value::Int32(20) })), "value", node, "array");
+        f.Link(node, "out.1", print, "text", LinkMode::Cast);
+        FiberState                  end = FiberState::Ready;
+        std::span<const Diagnostic> diagnostics;
+        auto printed = f.Run(&end, &diagnostics);
+        if (count == 2)
+            test::Check(printed == "20", "into 2 outputs, the second is 20: %s", printed.c_str());
+        else
+            test::Check(end == FiberState::Failed && !diagnostics.empty() && diagnostics[0].m_Error.Message() == "the array has 2 items, not the 3 it breaks into", "into 3, it's too short: %s", diagnostics.empty() ? "" : std::string(diagnostics[0].m_Error.Message()).c_str());
+    }
 }
 
 TEST_CASE(RandomPerStep, "library.random_gives_one_value_a_step", nullptr, test::TestFlags_None)
