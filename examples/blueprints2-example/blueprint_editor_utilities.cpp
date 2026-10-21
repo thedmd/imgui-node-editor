@@ -375,6 +375,14 @@ const blueprint_editor_utilities::Graph* blueprint_editor_utilities::GraphOf(con
     return nullptr;
 }
 
+const blueprint_editor_utilities::Graph* blueprint_editor_utilities::GraphOfPin(const Blueprint& blueprint, Id pin)
+{
+    for (auto& graph : blueprint.Graphs())
+        if (graph->FindPin(pin))
+            return graph.get();
+    return nullptr;
+}
+
 const blueprint_editor_utilities::Node* blueprint_editor_utilities::FindNode(const Blueprint& blueprint, Id node)
 {
     auto graph = GraphOf(blueprint, node);

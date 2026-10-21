@@ -1112,11 +1112,11 @@ private:
         }
     }
 
-    // A row for each watched pin: its value, and the step that wrote it. Choosing one goes to its node.
+    // A row for each watched pin, of any graph: its value, and the step that wrote it. Choosing one
+    // goes to its node; one of a graph that isn't shown is named with the graph's name.
     void ShowWatches(Document& document)
     {
-        auto& graph   = document.GetGraph();
-        auto  watched = m_Debugger.Watched();
+        auto watched = m_Debugger.Watched();
         if (watched.empty())
         {
             ImGui::TextDisabled("No watches: Ctrl+Click a pin, or use its menu");
@@ -1134,10 +1134,14 @@ private:
             ImGui::PushID(static_cast<int>(id));
             ImGui::TableNextRow();
             ImGui::TableNextColumn();
-            if (auto pin = graph.FindPin(id))
+            auto graph = GraphOfPin(document.GetBlueprint(), id);
+            if (auto pin = graph ? graph->FindPin(id) : nullptr)
             {
-                auto node = graph.NodeOf(id);
-                if (ImGui::Selectable((node->Name() + "." + pin->m_Key).c_str()))
+                auto node  = graph->NodeOf(id);
+                auto label = node->Name() + "." + pin->m_Key;
+                if (graph != &document.GetGraph())
+                    label = graph->GetName() + ": " + label;
+                if (ImGui::Selectable(label.c_str()))
                     GoToNode(node->m_Id);
                 ImGui::TableNextColumn();
                 auto watch = m_Debugger.Evaluate(document, id);
@@ -1147,7 +1151,7 @@ private:
                 {
                     DrawValue(watch.GetValue().m_Value);
                     ImGui::TableNextColumn();
-                    if (pin->m_Direction == Direction::Output || HasLinks(graph, id))
+                    if (pin->m_Direction == Direction::Output || HasLinks(*graph, id))
                         ImGui::TextDisabled("%s", WhenWritten(watch.GetValue(), m_Debugger.StepCount()).c_str());
                 }
             }

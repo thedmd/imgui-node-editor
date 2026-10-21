@@ -53,8 +53,9 @@ std::string SplitOf(const Node& node, std::string_view key);
 // As the log and tooltips name it: "Add#7.in.0 (Int32)".
 std::string DescribePin(const Graph& graph, const Pin& pin);
 
-// The graph a node is in, and the node, of all the blueprint's graphs.
+// The graph a node or a pin is in, and the node, of all the blueprint's graphs.
 const Graph* GraphOf(const Blueprint& blueprint, Id node);
+const Graph* GraphOfPin(const Blueprint& blueprint, Id pin);
 const Node*  FindNode(const Blueprint& blueprint, Id node);
 
 // Edits of one undo step each. One the graph refuses is logged, and makes no step.
