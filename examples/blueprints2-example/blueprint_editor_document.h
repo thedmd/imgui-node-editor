@@ -122,6 +122,10 @@ private:
     std::unique_ptr<crude_blueprint::Blueprint>      m_Blueprint;
 };
 
+// What the example's documents are made of: the built-in value types and casts, the library, and
+// the example's own struct, Vector2, with its Make and Break.
+std::shared_ptr<const crude_blueprint::Registry> ExampleRegistry();
+
 // Start runs For Loop from 0 to 4, and its body prints each index plus 10, through a cast from
 // Int32 to String; then Print says "Done". Needs the document's editor current, for the layout.
 void CreateExampleBlueprint(Document& document);

@@ -1,4 +1,5 @@
 # include "blueprint_editor_document.h"
+# include "crude_blueprint_library.h"
 # include "crude_logger.h"
 # include <cmath>
 # include <stdarg.h>
@@ -468,6 +469,25 @@ std::unique_ptr<crude_blueprint::Blueprint> blueprint_editor::Document::LoadBlue
         return nullptr;
     }
     return blueprint;
+}
+
+std::shared_ptr<const crude_blueprint::Registry> blueprint_editor::ExampleRegistry()
+{
+    using namespace crude_blueprint;
+
+    static const std::shared_ptr<const Registry> registry = []
+    {
+        auto made    = std::make_shared<Registry>();
+        auto vector2 = std::make_unique<StructType>("example.Vector2", std::vector<StructField>{ { "x", &FloatType() }, { "y", &FloatType() } });
+        auto& type   = *vector2;
+        [[maybe_unused]] auto builtins = RegisterBuiltins(*made);
+        [[maybe_unused]] auto library  = RegisterLibrary(*made);
+        [[maybe_unused]] auto added    = made->AddValueType(std::move(vector2));
+        [[maybe_unused]] auto nodes    = RegisterStructNodes(*made, type);
+        IM_ASSERT(builtins && library && added && nodes);
+        return made;
+    }();
+    return registry;
 }
 
 void blueprint_editor::CreateExampleBlueprint(Document& document)

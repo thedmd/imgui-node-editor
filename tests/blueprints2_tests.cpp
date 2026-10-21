@@ -5,7 +5,6 @@
 # include "blueprint_editor_document.h"
 # include "blueprint_editor_utilities.h"
 # include "crude_blueprint.h"
-# include "crude_blueprint_library.h"
 # include "crude_logger.h"
 # include "imgui_extras.h"
 # include <crude_json.h>
@@ -19,24 +18,12 @@
 
 using namespace crude_blueprint;
 using blueprint_editor::Document;
+using blueprint_editor::ExampleRegistry;
 using blueprint_editor_utilities::CanvasActions;
 using blueprint_editor_utilities::DebugOverlay;
 using blueprint_editor_utilities::Debugger;
 
 namespace {
-
-// As the example has it.
-std::shared_ptr<const Registry> ExampleRegistry()
-{
-    static const std::shared_ptr<const Registry> registry = []
-    {
-        auto made = std::make_shared<Registry>();
-        if (!RegisterBuiltins(*made) || !RegisterLibrary(*made))
-            test::Check(false, "the example's registry is made");
-        return made;
-    }();
-    return registry;
-}
 
 struct Prints final : ContextMonitor
 {

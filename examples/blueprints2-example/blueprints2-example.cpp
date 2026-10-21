@@ -5,7 +5,6 @@
 
 # include "crude_logger.h"
 # include "crude_blueprint.h"
-# include "crude_blueprint_library.h"
 # include "blueprint_editor_document.h"
 # include "blueprint_editor_utilities.h"
 # include "blueprint_editor_icons.h"
@@ -37,20 +36,6 @@ using namespace blueprint_editor_utilities;
 static ImEx::MostRecentlyUsedList Application_GetMostRecentlyOpenFileList()
 {
     return ImEx::MostRecentlyUsedList("MostRecentlyOpenList");
-}
-
-// What every document uses: the built-in value types and casts, and the library's node types.
-static std::shared_ptr<const Registry> ExampleRegistry()
-{
-    static const std::shared_ptr<const Registry> registry = []
-    {
-        auto made = std::make_shared<Registry>();
-        [[maybe_unused]] auto builtins = RegisterBuiltins(*made);
-        [[maybe_unused]] auto library  = RegisterLibrary(*made);
-        IM_ASSERT(builtins && library);
-        return made;
-    }();
-    return registry;
 }
 
 static std::shared_ptr<TypeTable> ExampleTypes()
