@@ -2380,7 +2380,7 @@ crude_blueprint::Context::Context(std::shared_ptr<const Program> program)
 {
     CRUDE_BP_ASSERT(m_Program);
     m_Slots.resize(m_Program->m_Slots.size());
-    m_SlotSteps.resize(m_Program->m_Slots.size(), 0);
+    m_SlotSteps.resize(m_Program->m_Slots.size());
     m_Computed.resize(m_Program->m_Nodes.size(), 0);
     m_States.resize(m_Program->m_Nodes.size());
     m_Breakpoints.resize(m_Program->m_Nodes.size(), false);
@@ -2546,7 +2546,7 @@ crude_blueprint::Result<crude_blueprint::Watch> crude_blueprint::Context::Evalua
     auto value = compiled.m_Direction == Direction::Input ? Read(node, index) : ReadSlot(slot);
     if (!value)
         return value.GetError();
-    return Watch{ std::move(value).GetValue(), slot >= 0 ? m_SlotSteps[slot] : 0 };
+    return Watch{ std::move(value).GetValue(), slot >= 0 ? m_SlotSteps[slot] : std::nullopt };
 }
 
 crude_blueprint::Result<crude_blueprint::Value> crude_blueprint::Context::Read(int node, int pin)

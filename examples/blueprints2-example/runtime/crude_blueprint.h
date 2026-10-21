@@ -1024,8 +1024,8 @@ struct TraceEntry
 // A value as the debugger shows it.
 struct Watch
 {
-    Value    m_Value;
-    uint64_t m_Step = 0; // the step that stored or computed it; 0 when it's a default nothing wrote
+    Value                   m_Value;
+    std::optional<uint64_t> m_Step; // the step that stored or computed it, 0 before any; none for a constant, or a default nothing wrote
 };
 
 // What a run tells its host.
@@ -1139,25 +1139,25 @@ private:
     FiberState    Fail(Fiber& fiber, Error error, int node);
     Fiber*        FindFiber(FiberId fiber);
 
-    std::shared_ptr<const Program> m_Program;
-    std::vector<Value>             m_Slots;
-    std::vector<uint64_t>          m_SlotSteps;   // the step that wrote each slot
-    std::vector<uint64_t>          m_Computed;    // per node: the generation of a pure node's outputs
-    std::vector<std::any>          m_States;      // per node
-    std::vector<bool>              m_Breakpoints; // per node
-    std::vector<Fiber>             m_Fibers;
-    std::vector<Diagnostic>        m_Diagnostics;
-    std::vector<TraceEntry>        m_Trace;
-    ContextMonitor*                m_Monitor    = nullptr;
-    uint64_t                       m_Step       = 0;
+    std::shared_ptr<const Program>       m_Program;
+    std::vector<Value>                   m_Slots;
+    std::vector<std::optional<uint64_t>> m_SlotSteps;   // the step that wrote each slot
+    std::vector<uint64_t>                m_Computed;    // per node: the generation of a pure node's outputs
+    std::vector<std::any>                m_States;      // per node
+    std::vector<bool>                    m_Breakpoints; // per node
+    std::vector<Fiber>                   m_Fibers;
+    std::vector<Diagnostic>              m_Diagnostics;
+    std::vector<TraceEntry>              m_Trace;
+    ContextMonitor*                      m_Monitor    = nullptr;
+    uint64_t                             m_Step       = 0;
     // Up when a step starts and when a node with flow pins writes an output, so a pure output
     // is computed at most once for what it reads.
-    uint64_t                       m_Generation = 1;
-    FiberId                        m_NextFiber  = 1;
-    int                            m_Depth      = 0; // of pure nodes computed in each other's inputs
+    uint64_t                             m_Generation = 1;
+    FiberId                              m_NextFiber  = 1;
+    int                                  m_Depth      = 0; // of pure nodes computed in each other's inputs
     // Where the error on its way out arose: a pure node or a cast deep in an input.
-    int                            m_ErrorNode  = -1;
-    Id                             m_ErrorLink  = 0;
+    int                                  m_ErrorNode  = -1;
+    Id                                   m_ErrorLink  = 0;
 };
 
 template <typename T>

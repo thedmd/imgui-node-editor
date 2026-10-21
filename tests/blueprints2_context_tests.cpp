@@ -645,8 +645,8 @@ TEST_CASE(Debugger, "context.the_debugger_reads_any_pin_without_running_a_node",
     auto stored = context.Evaluate(f.Pin(count, "count"));
     auto sum    = context.Evaluate(f.Pin(plus, "sum"));
     auto again  = context.Evaluate(f.Pin(plus, "sum"));
-    test::Check(stored && stored.GetValue().m_Value == Value::Int32(0) && stored.GetValue().m_Step == 0, "before a run, an output nothing wrote reads its default");
-    test::Check(sum && sum.GetValue().m_Value == Value::Int32(1) && again && s_PlusRuns == 1 && context.StepCount() == 0, "a pure output is computed once, and nothing runs: %d runs", s_PlusRuns);
+    test::Check(stored && stored.GetValue().m_Value == Value::Int32(0) && !stored.GetValue().m_Step, "before a run, an output nothing wrote reads its default, of no step");
+    test::Check(sum && sum.GetValue().m_Value == Value::Int32(1) && sum.GetValue().m_Step == 0u && again && s_PlusRuns == 1 && context.StepCount() == 0, "a pure output is computed once, before any step, and nothing runs: %d runs", s_PlusRuns);
 
     auto fiber = context.Start("Start");
     auto event = context.Step(fiber.ValueOr(0));
@@ -655,7 +655,7 @@ TEST_CASE(Debugger, "context.the_debugger_reads_any_pin_without_running_a_node",
     auto input   = context.Evaluate(f.Pin(log, "text"));
     auto constant = context.Evaluate(f.Pin(plus, "b"));
     test::Check(event && run && counted && counted.GetValue().m_Value == Value::Int32(1) && counted.GetValue().m_Step == 2, "an output gives what its node stored, and when");
-    test::Check(input && input.GetValue().m_Value == Value::String("2") && constant && constant.GetValue().m_Value == Value::Int32(1) && constant.GetValue().m_Step == 0, "an input gives what it reads, or its constant");
+    test::Check(input && input.GetValue().m_Value == Value::String("2") && constant && constant.GetValue().m_Value == Value::Int32(1) && !constant.GetValue().m_Step, "an input gives what it reads, or its constant, of no step");
 
     auto flow    = context.Evaluate(f.Pin(count, "then"));
     auto unknown = context.Evaluate(99999);
