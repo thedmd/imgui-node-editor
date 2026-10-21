@@ -15,6 +15,7 @@
 
 # include "crude_json.h"
 
+# include <algorithm>
 # include <functional>
 # include <map>
 # include <memory>
@@ -310,6 +311,19 @@ struct BlueprintEditorExample
         {
             m_Debugger.Update(*m_Document);
             m_Problems.Update(*m_Document, m_Debugger);
+
+            // A run's error opens its node's bubble, once in each run.
+            auto running = false;
+            for (auto& problem : m_Problems.Problems())
+            {
+                if (!problem.m_Run)
+                    continue;
+                running = true;
+                if (problem.m_Node && m_RunBubbles.insert(problem.m_Node).second)
+                    m_Bubbles.insert(problem.m_Node);
+            }
+            if (!running)
+                m_RunBubbles.clear();
         }
         UpdateActions();
         UpdateTitle();
@@ -338,6 +352,7 @@ struct BlueprintEditorExample
             canvasMin = ImGui::GetItemRectMin();
             canvasMax = ImGui::GetItemRectMax();
 
+            ShowBubbles(*m_Document, canvasMin, canvasMax);
             DeclareActions(*m_Document, canvasMin, canvasMax);
 
             RecordEdits(*m_Document);
@@ -487,6 +502,8 @@ private:
                 menuAction(m_View_NavigateForward);
                 ImGui::Separator();
                 ImGui::MenuItem("Show Actions", nullptr, &m_ShowActions);
+                if (ImGui::MenuItem("Show or Hide All Problems", "Ctrl+Shift+D", false, File_IsOpen() && !m_Problems.Problems().empty()))
+                    ToggleBubbles();
 
                 ImGui::EndMenu();
             }
@@ -642,7 +659,8 @@ private:
                 if (errors > 0 || warnings > 0)
                 {
                     ImGui::SameLine();
-                    ProblemPills(errors, warnings);
+                    if (ProblemPills(errors, warnings) && !m_Bubbles.erase(node.m_Id))
+                        m_Bubbles.insert(node.m_Id);
                 }
                 ImGui::EndGroup();
 
@@ -846,6 +864,70 @@ private:
 
         if (edit)
             edit();
+    }
+
+    // Above each node whose bubble is open, its problems.
+    void ShowBubbles(const Document& document, ImVec2 canvasMin, ImVec2 canvasMax)
+    {
+        const auto wrap     = 420.0f;
+        const auto line     = ImGui::GetTextLineHeight();
+        const auto padding  = ImGui::GetStyle().FramePadding;
+        const auto spacing  = ImGui::GetStyle().ItemSpacing.y * 0.5f;
+        const auto tail     = 8.0f;
+        const auto fill     = IM_COL32(28, 28, 32, 240);
+        const auto rounding = 4.0f;
+
+        auto drawList = ImGui::GetWindowDrawList();
+        drawList->PushClipRect(canvasMin, canvasMax, true);
+        for (auto& node : document.GetGraph().Nodes())
+        {
+            if (!m_Bubbles.contains(node.m_Id))
+                continue;
+
+            std::vector<std::pair<const ProblemList::Problem*, std::string>> lines;
+            auto size = ImVec2(0.0f, -spacing);
+            for (auto& problem : m_Problems.Problems())
+            {
+                if (problem.m_Node != node.m_Id)
+                    continue;
+                auto& text = lines.emplace_back(&problem, ProblemList::Text(document.GetGraph(), problem)).second;
+                auto  textSize = ImGui::CalcTextSize(text.c_str(), nullptr, false, wrap);
+                size.x  = ImMax(size.x, line + textSize.x);
+                size.y += textSize.y + spacing;
+            }
+            if (lines.empty())
+                continue;
+
+            const auto nodeMin   = ed::CanvasToScreen(ed::GetNodePosition(node.m_Id));
+            const auto bubbleMax = ImVec2(nodeMin.x + size.x + padding.x * 2.0f, nodeMin.y - tail);
+            const auto bubbleMin = ImVec2(nodeMin.x, bubbleMax.y - size.y - padding.y * 2.0f);
+            drawList->AddRectFilled(bubbleMin, bubbleMax, fill, rounding);
+            drawList->AddRect(bubbleMin, bubbleMax, ImGui::GetColorU32(ImGuiCol_Border), rounding);
+            drawList->AddTriangleFilled(ImVec2(nodeMin.x + 10.0f, bubbleMax.y), ImVec2(nodeMin.x + 10.0f + tail * 2.0f, bubbleMax.y), ImVec2(nodeMin.x + 10.0f, nodeMin.y), fill);
+
+            auto cursor = bubbleMin + padding;
+            for (auto& [problem, text] : lines)
+            {
+                ProblemSign(drawList, cursor + ImVec2(line, line) * 0.5f, line * 0.3f, problem->m_Diagnostic.m_Severity);
+                drawList->AddText(ImGui::GetFont(), ImGui::GetFontSize(), cursor + ImVec2(line, 0.0f), ImGui::GetColorU32(ImGuiCol_Text), text.c_str(), nullptr, wrap);
+                cursor.y += ImGui::CalcTextSize(text.c_str(), nullptr, false, wrap).y + spacing;
+            }
+        }
+        drawList->PopClipRect();
+    }
+
+    // Each node's bubble opens, unless all are open already: then all close.
+    void ToggleBubbles()
+    {
+        std::unordered_set<Id> nodes;
+        for (auto& problem : m_Problems.Problems())
+            if (problem.m_Node)
+                nodes.insert(problem.m_Node);
+        const auto allOpen = std::all_of(nodes.begin(), nodes.end(), [this](Id node) { return m_Bubbles.contains(node); });
+        if (allOpen)
+            m_Bubbles.clear();
+        else
+            m_Bubbles.insert(nodes.begin(), nodes.end());
     }
 
     // An input keeps its value in the graph, and a Constant the value of its output in its config.
@@ -1092,11 +1174,14 @@ private:
         actions.Gesture("Break Link", "Alt+Click", link != nullptr);
         actions.Gesture("Delete Selection", "Delete", ed::GetSelectedObjectCount() > 0);
         actions.Gesture("Edit Value", "Click", pinValue);
+        actions.Gesture("Show Node's Problems", "Click Count", owner && (m_Problems.Count(Severity::Error, owner->m_Id) > 0 || m_Problems.Count(Severity::Warning, owner->m_Id) > 0));
         actions.Gesture("Add Pin", "Click +", canGrow);
         actions.Gesture("Remove Pin", "Click -", canShrink);
         actions.Gesture("Choose Type", "Right-Click", pinTyped);
         actions.Gesture("Create Node", "Space", background && !typing);
         actions.Gesture("Create Node", "Right-Click", background);
+        if (actions.Press("Show or Hide All Problems", ImGuiMod_Ctrl | ImGuiMod_Shift | ImGuiKey_D, !m_Problems.Problems().empty()))
+            ToggleBubbles();
         if (actions.Press("Run", ImGuiKey_F5, m_Blueprint_Run.IsEnabled(), true))
             m_Blueprint_Run.Execute();
         if (actions.Press("Step", ImGuiKey_F10, m_Blueprint_Step.IsEnabled(), true))
@@ -1158,7 +1243,7 @@ private:
                 auto  link = diagnostic.m_Link ? graph.FindLink(diagnostic.m_Link) : nullptr;
                 auto  here = pin ? diagnostic.m_Pin == pin || (link && link->m_To == pin) : problem.m_Node == node;
                 if (here)
-                    ImGui::TextColored(ImColor(ProblemColor(diagnostic.m_Severity)), "%s", Text(diagnostic.m_Error.Message()).c_str());
+                    ImGui::TextColored(ImColor(ProblemColor(diagnostic.m_Severity)), "%s", ProblemList::Text(graph, problem).c_str());
             }
         };
 
@@ -1337,6 +1422,8 @@ private:
 
         m_Debugger.Stop();
         m_Problems = {};
+        m_Bubbles.clear();
+        m_RunBubbles.clear();
         m_Document = nullptr;
 
         DestroyDocumentEditor();
@@ -1489,6 +1576,8 @@ private:
     std::unique_ptr<Document> m_Document;
     Debugger                  m_Debugger;
     ProblemList               m_Problems;
+    std::unordered_set<Id>    m_Bubbles;    // nodes whose problems show
+    std::unordered_set<Id>    m_RunBubbles; // nodes whose bubble a run's error opened
     std::optional<LinkQuery>  m_LinkQuery;
     bool                      m_ShowActions = true;
 

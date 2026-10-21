@@ -516,6 +516,30 @@ TEST_CASE(CanvasActionsFire, "blueprints2.only_the_first_active_canvas_action_fi
     overCanvas = false;
     press();
     test::Check(fired[1] == 1 && fired[2] == 0 && fired[3] == 1, "elsewhere, only the global one: %d %d %d", fired[1], fired[2], fired[3]);
+
+    // A chord of two modifiers fires with both held, and not with one.
+    int chord = 0;
+    session.AfterEditor = [&]
+    {
+        CanvasActions actions(true);
+        chord += actions.Press("Chord", ImGuiMod_Ctrl | ImGuiMod_Shift | ImGuiKey_D, true);
+    };
+    session.Run(2);
+    auto pressD = [&](bool shift)
+    {
+        test::Key(ImGuiMod_Ctrl, true);
+        test::Key(ImGuiMod_Shift, shift);
+        session.Run(1);
+        test::Key(ImGuiKey_D, true);
+        session.Run(1);
+        test::Key(ImGuiKey_D, false);
+        test::Key(ImGuiMod_Shift, false);
+        test::Key(ImGuiMod_Ctrl, false);
+        session.Run(2);
+    };
+    pressD(false);
+    pressD(true);
+    test::Check(chord == 1, "Ctrl+Shift+D fires once, for Ctrl+Shift and D, not for Ctrl and D: %d", chord);
 }
 
 TEST_CASE(GroupPinEdits, "blueprints2.group_pins_are_added_and_removed_in_undo_steps", nullptr, test::TestFlags_None)
@@ -651,6 +675,9 @@ TEST_CASE(ProblemLists, "blueprints2.problems_are_listed_by_their_nodes", nullpt
     problems.Update(document, debugger);
     test::Check(problems.Count(Severity::Error, sum) == 1 && problems.Count(Severity::Error, print) == 1, "For Loop's index into Add, and Add's result into Print: %d, %d",
         problems.Count(Severity::Error, sum), problems.Count(Severity::Error, print));
+    for (auto& problem : problems.Problems())
+        if (problem.m_Node == print)
+            test::Check(blueprint_editor_utilities::ProblemList::Text(graph, problem).starts_with("text: "), "and names the input: %s", blueprint_editor_utilities::ProblemList::Text(graph, problem).c_str());
 }
 
 TEST_CASE(RunProblems, "blueprints2.a_runs_error_is_listed_until_the_run_goes", nullptr, test::TestFlags_None)

@@ -227,7 +227,15 @@ ImU32 blueprint_editor_utilities::ProblemColor(Severity severity)
     return IM_COL32(170, 170, 170, 255);
 }
 
-void blueprint_editor_utilities::ProblemPills(int errors, int warnings)
+void blueprint_editor_utilities::ProblemSign(ImDrawList* drawList, ImVec2 center, float radius, Severity severity)
+{
+    if (severity == Severity::Error)
+        drawList->AddCircleFilled(center, radius, ProblemColor(severity));
+    else
+        drawList->AddTriangleFilled(center + ImVec2(0.0f, -radius), center + ImVec2(radius, radius * 0.8f), center + ImVec2(-radius, radius * 0.8f), ProblemColor(severity));
+}
+
+bool blueprint_editor_utilities::ProblemPills(int errors, int warnings)
 {
     auto drawList = ImGui::GetWindowDrawList();
     auto size     = ImGui::GetTextLineHeight();
@@ -235,12 +243,7 @@ void blueprint_editor_utilities::ProblemPills(int errors, int warnings)
     {
         auto at = ImGui::GetCursorScreenPos();
         ImGui::Dummy(ImVec2(size, size));
-        auto center = at + ImVec2(size, size) * 0.5f;
-        auto radius = size * 0.32f;
-        if (severity == Severity::Error)
-            drawList->AddCircleFilled(center, radius, ProblemColor(severity));
-        else
-            drawList->AddTriangleFilled(center + ImVec2(0.0f, -radius), center + ImVec2(radius, radius * 0.8f), center + ImVec2(-radius, radius * 0.8f), ProblemColor(severity));
+        ProblemSign(drawList, at + ImVec2(size, size) * 0.5f, size * 0.32f, severity);
         ImGui::SameLine(0.0f, 2.0f);
         ImGui::Text("%d", count);
     };
@@ -253,6 +256,11 @@ void blueprint_editor_utilities::ProblemPills(int errors, int warnings)
     if (warnings > 0)
         sign(warnings, Severity::Warning);
     ImGui::EndGroup();
+
+    const auto pillsMin  = ImGui::GetItemRectMin();
+    const auto pillsSize = ImGui::GetItemRectSize();
+    ImGui::SetCursorScreenPos(pillsMin);
+    return ImGui::InvisibleButton("##problems", pillsSize);
 }
 
 bool blueprint_editor_utilities::DrawValue(const Value& value)
@@ -630,6 +638,15 @@ void blueprint_editor_utilities::ProblemList::Update(const Document& document, c
     if (auto context = debugger.GetContext())
         for (auto& diagnostic : context->Diagnostics())
             m_Problems.push_back({ diagnostic, owner(diagnostic), true });
+}
+
+std::string blueprint_editor_utilities::ProblemList::Text(const Graph& graph, const Problem& problem)
+{
+    auto& diagnostic = problem.m_Diagnostic;
+    auto  link       = diagnostic.m_Link ? graph.FindLink(diagnostic.m_Link) : nullptr;
+    auto  input      = link ? graph.FindPin(link->m_To) : nullptr;
+    auto  message    = std::string(diagnostic.m_Error.Message());
+    return input ? input->m_Key + ": " + message : message;
 }
 
 int blueprint_editor_utilities::ProblemList::Count(Severity severity, Id node) const

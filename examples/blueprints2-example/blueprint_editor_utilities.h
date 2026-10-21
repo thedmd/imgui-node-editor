@@ -53,7 +53,8 @@ void AddGroupPin(Document& document, Id node, std::string group);
 void RemoveGroupPin(Document& document, Id node, std::string group, int index);
 
 ImU32 ProblemColor(Severity severity);
-void  ProblemPills(int errors, int warnings); // a red disc and a yellow triangle, with their counts
+bool  ProblemPills(int errors, int warnings); // a red disc and a yellow triangle, with their counts; true when clicked
+void  ProblemSign(ImDrawList* drawList, ImVec2 center, float radius, Severity severity);
 
 bool DrawValue(const Value& value);        // Draws a value; false for none.
 bool EditValue(Value& value);              // Shows an editor for a value; true once the edit is done.
@@ -150,6 +151,9 @@ struct ProblemList
     };
 
     void Update(const Document& document, const Debugger& debugger);
+
+    // As the editor shows it: a link's names its input pin, "text: a cast needs both types decided".
+    static std::string Text(const Graph& graph, const Problem& problem);
 
     std::span<const Problem> Problems() const { return m_Problems; }
     int  Count(Severity severity, Id node = 0) const; // of a node, or of all
