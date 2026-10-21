@@ -530,12 +530,16 @@ struct TypeTerm
     TypeTerm(const Type& type);
     TypeTerm(TypeVariable variable): m_Variable(variable.m_Index) {}
     TypeTerm(const ValueType& head, std::vector<TypeTerm> args);
+
+    bool operator==(const TypeTerm& other) const = default;
 };
 
 struct VariableDeclaration
 {
     std::string                   m_Name;
     std::vector<const ValueType*> m_Allowed; // the heads it may take, Array for any Array<T>; empty: any
+
+    bool operator==(const VariableDeclaration& other) const = default;
 };
 
 struct PinDeclaration
@@ -863,6 +867,8 @@ struct SignaturePin
     std::string m_Key;  // stable and saved, as a pin's; "enter" and "then" are the flow pins'
     std::string m_Name; // shown
     TypeTerm    m_Type; // its variables are the signature's type parameters, by index
+
+    bool operator==(const SignaturePin& other) const = default;
 };
 
 // What a function takes and gives. A pure one has no flow pins, and its body only pure nodes.
@@ -872,6 +878,8 @@ struct Signature
     std::vector<SignaturePin>        m_Inputs;
     std::vector<SignaturePin>        m_Outputs;
     bool                             m_Pure = false;
+
+    bool operator==(const Signature& other) const = default;
 };
 
 // A graph that runs when called, with the blueprint's node types for it: "entry:<name>" gives

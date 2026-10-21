@@ -84,11 +84,28 @@ struct SignatureNode
 };
 SignatureNode SignatureNodeOf(const Blueprint& blueprint, const Node& node);
 
-// Edits of a function's signature, each one undo step. One the blueprint refuses is logged.
+// Edits of a function's signature, each one undo step, and none when nothing changes. One the
+// blueprint refuses is logged. Pins are an input's or an output's, by key.
 void ChangeSignature(Document& document, Id graph, std::string_view what, const std::function<void(Signature&)>& change);
 void AddSignaturePin(Document& document, Id graph, bool input); // of a key of its own, an Int32
+void RenameSignaturePin(Document& document, Id graph, bool input, std::string key, std::string name);
+void RetypeSignaturePin(Document& document, Id graph, bool input, std::string key, TypeTerm type);
+void RemoveSignaturePin(Document& document, Id graph, bool input, std::string key);
+void AddTypeParameter(Document& document, Id graph); // named T, U, V..., the first free
+void ToggleAllowedType(Document& document, Id graph, size_t index, const ValueType* head);
 // A type parameter that a pin's type has can't go.
 void RemoveTypeParameter(Document& document, Id graph, int index);
+const SignaturePin* TypeParameterUser(const Signature& signature, int index); // the first pin whose type has it
+
+// What a signature's pin may be of: each value type of no type arguments, each type parameter, and
+// an array of each.
+struct SignatureTypeChoice
+{
+    std::string m_Name;  // the value type's or the parameter's
+    TypeTerm    m_Type;
+    bool        m_Array = false;
+};
+std::vector<SignatureTypeChoice> SignatureTypeChoices(const Registry& registry, const Signature& signature);
 void RenameFunction(Document& document, Id graph, std::string name);
 void RemoveFunction(Document& document, Id graph); // with the calls of it in other graphs
 void RenameTypeParameter(Document& document, Id graph, size_t index, std::string name);
@@ -443,7 +460,7 @@ struct PinContextMenu
     void Show(Document& document, Debugger& debugger);
 
 private:
-    void ShowSignatureItems(Document& document, const Node& node, const Pin& pin);
+    std::function<void()> ShowSignatureItems(Document& document, const Node& node, const Pin& pin); // gives the edit chosen
     void ShowRenameItem(const Pin& pin); // opens the rename popup
     void ShowRename(Document& document);
 

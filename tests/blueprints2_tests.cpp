@@ -1394,3 +1394,58 @@ TEST_CASE(TypeParameterRenames, "blueprints2.a_type_parameter_is_renamed_in_one_
     test::Check(back.x == color.x && back.y == color.y && back.z == color.z && (renamed.x != color.x || renamed.y != color.y || renamed.z != color.z), "a parameter's color follows its own name, not its function's");
     test::Check(blueprint_editor_utilities::TypeParameterText(blueprint, &Int32Type()).empty(), "and a type that isn't a parameter tells nothing of one");
 }
+
+TEST_CASE(SignatureSteps, "blueprints2.a_signature_edit_is_one_undo_step_and_none_when_it_changes_nothing", nullptr, test::TestFlags_None)
+{
+    // Echo(x: Int32).
+    test::Session session(UnnamedConfig());
+    OverlayLog    log;
+    Example       example(session);
+    auto& document = example.m_Document;
+    auto  graph    = Id(0);
+    session.Use([&]
+    {
+        Signature echo;
+        echo.m_Inputs = { { "x", "X", Int32Type() } };
+        auto transaction = document.BeginUndoTransaction("Add Echo");
+        auto added = document.GetBlueprint().AddFunction("Echo", echo);
+        if (added && added.GetValue()->AddNode("entry:Echo"))
+            transaction->AddAction("Echo added");
+        graph = added ? added.GetValue()->GetId() : 0;
+    });
+    auto& blueprint = document.GetBlueprint();
+    auto  signature = [&blueprint, graph]() -> const Signature& { return blueprint.FindFunction(graph)->m_Signature; };
+    auto  steps     = [&document] { return document.m_Undo.size(); };
+
+    const auto before = steps();
+    session.Use([&]
+    {
+        blueprint_editor_utilities::RenameSignaturePin(document, graph, true, "x", "Value");
+        blueprint_editor_utilities::RenameSignaturePin(document, graph, true, "x", "Value");
+    });
+    test::Check(signature().m_Inputs[0].m_Name == "Value" && steps() == before + 1, "a renamed input is one step, and its own name none");
+
+    session.Use([&]
+    {
+        blueprint_editor_utilities::AddTypeParameter(document, graph);
+        blueprint_editor_utilities::AddTypeParameter(document, graph);
+        blueprint_editor_utilities::ToggleAllowedType(document, graph, 0, &Int32ValueType());
+        blueprint_editor_utilities::ToggleAllowedType(document, graph, 0, &FloatValueType());
+        blueprint_editor_utilities::ToggleAllowedType(document, graph, 0, &Int32ValueType());
+    });
+    auto& parameters = signature().m_Parameters;
+    test::Check(parameters.size() == 2 && parameters[0].m_Name == "T" && parameters[1].m_Name == "U" && parameters[0].m_Allowed == std::vector<const ValueType*>{ &FloatValueType() } && steps() == before + 6, "parameters are T, then U, and a toggle adds a type or takes it away");
+
+    session.Use([&] { blueprint_editor_utilities::RetypeSignaturePin(document, graph, true, "x", TypeVariable{ 0 }); });
+    auto user = blueprint_editor_utilities::TypeParameterUser(signature(), 0);
+    test::Check(signature().m_Inputs[0].m_Type == TypeTerm(TypeVariable{ 0 }) && user && user->m_Key == "x" && !blueprint_editor_utilities::TypeParameterUser(signature(), 1), "retyped, the input is of T, which it uses, and U is used by none");
+    session.Use([&] { blueprint_editor_utilities::RemoveTypeParameter(document, graph, 0); });
+    test::Check(signature().m_Parameters.size() == 2 && steps() == before + 7, "so T can't go");
+
+    auto choices = blueprint_editor_utilities::SignatureTypeChoices(blueprint.GetRegistry(), signature());
+    auto has = [&choices](const char* name, bool array) { return std::any_of(choices.begin(), choices.end(), [&](const blueprint_editor_utilities::SignatureTypeChoice& choice) { return choice.m_Name == name && choice.m_Array == array; }); };
+    test::Check(has("Int32", false) && has("T", false) && has("U", true) && has("Float", true) && !has("Array", false), "the choices are the value types of no arguments, the parameters, and arrays of both");
+
+    session.Use([&] { blueprint_editor_utilities::RemoveSignaturePin(document, graph, true, "x"); });
+    test::Check(signature().m_Inputs.empty() && steps() == before + 8, "and a removed input is one step");
+}
