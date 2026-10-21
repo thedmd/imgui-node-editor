@@ -1013,6 +1013,14 @@ enum class RunState : uint8_t
     Breakpoint, // a fiber is before a node with a breakpoint
 };
 
+// A flow link a step took.
+struct TraceEntry
+{
+    FiberId  m_Fiber = 0;
+    Id       m_Link  = 0;
+    uint64_t m_Step  = 0;
+};
+
 // A value as the debugger shows it.
 struct Watch
 {
@@ -1082,6 +1090,8 @@ private:
 class Context
 {
 public:
+    static constexpr size_t c_TraceLength = 64;
+
     explicit Context(std::shared_ptr<const Program> program);
 
     Result<FiberId>    Start(std::string_view event);
@@ -1096,6 +1106,8 @@ public:
 
     std::vector<FiberInfo>      Fibers() const;
     uint64_t                    StepCount() const   { return m_Step; }
+    // The flow links the last steps took, up to c_TraceLength, the oldest first.
+    std::span<const TraceEntry> Trace() const       { return m_Trace; }
     std::span<const Diagnostic> Diagnostics() const { return m_Diagnostics; }
     const Program&              GetProgram() const  { return *m_Program; }
     void                        SetMonitor(ContextMonitor* monitor) { m_Monitor = monitor; }
@@ -1132,6 +1144,7 @@ private:
     std::vector<bool>              m_Breakpoints; // per node
     std::vector<Fiber>             m_Fibers;
     std::vector<Diagnostic>        m_Diagnostics;
+    std::vector<TraceEntry>        m_Trace;
     ContextMonitor*                m_Monitor    = nullptr;
     uint64_t                       m_Step       = 0;
     // Up when a step starts and when a node with flow pins writes an output, so a pure output

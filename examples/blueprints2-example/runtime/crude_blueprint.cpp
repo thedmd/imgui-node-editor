@@ -2436,6 +2436,12 @@ crude_blueprint::Result<crude_blueprint::FiberState> crude_blueprint::Context::S
         fiber->m_Node        = node.m_Pins[pin].m_Target;
         fiber->m_Entry       = node.m_Pins[pin].m_TargetPin;
         fiber->m_Info.m_Link = node.m_Pins[pin].m_Link;
+        if (fiber->m_Info.m_Link)
+        {
+            if (m_Trace.size() == c_TraceLength)
+                m_Trace.erase(m_Trace.begin());
+            m_Trace.push_back({ id, fiber->m_Info.m_Link, m_Step });
+        }
     }
     Settle(*fiber);
     return fiber->m_Info.m_State;

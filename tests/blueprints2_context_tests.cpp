@@ -814,6 +814,39 @@ TEST_CASE(Breakpoints, "context.run_stops_before_a_node_with_a_breakpoint_and_st
     test::Check(again == RunState::Breakpoint && !context.Fibers()[0].m_AtBreakpoint && context.Run(std::chrono::seconds(1)) == RunState::Idle, "stopped there, a fiber is at no breakpoint");
 }
 
+TEST_CASE(Trace, "context.the_trace_keeps_the_flow_links_the_last_steps_took", nullptr, test::TestFlags_None)
+{
+    // Start, then Count and a Log in a loop; another Start's Log leads nowhere.
+    Fixture f;
+    auto start = f.Add("Start"), count = f.Add("Count"), log = f.Add("Log"), other = f.Add("Start", Event("Other")), last = f.Add("Log");
+    auto into  = f.Link(start, "then", count, "enter");
+    auto ahead = f.Link(count, "then", log, "enter");
+    auto back  = f.Link(log, "then", count, "enter");
+    auto end   = f.Link(other, "then", last, "enter");
+    auto program = f.Compiled();
+    if (!program)
+        return;
+    Context context(program);
+    auto looping = context.Start("Start").ValueOr(0);
+    auto ending  = context.Start("Other").ValueOr(0);
+    auto stepped = true;
+    for (auto fiber : { looping, looping, looping, ending, ending })
+        stepped = context.Step(fiber).IsOk() && stepped;
+
+    auto trace = context.Trace();
+    test::Check(stepped && trace.size() == 4, "of five steps, four took a link, and the last Log's took none: %d", static_cast<int>(trace.size()));
+    if (trace.size() != 4)
+        return;
+    test::Check(trace[0].m_Link == into && trace[1].m_Link == ahead && trace[2].m_Link == back && trace[3].m_Link == end, "each link is there, the oldest first");
+    test::Check(trace[0].m_Step == 1 && trace[2].m_Step == 3 && trace[3].m_Step == 4 && trace[2].m_Fiber == looping && trace[3].m_Fiber == ending, "with its step and its fiber");
+
+    for (int i = 0; i < 100; ++i)
+        stepped = context.Step(looping).IsOk() && stepped;
+    trace = context.Trace();
+    test::Check(stepped && trace.size() == Context::c_TraceLength && trace.back().m_Step == context.StepCount() && trace.front().m_Step == context.StepCount() - Context::c_TraceLength + 1,
+        "after many steps, it keeps the last %d", static_cast<int>(Context::c_TraceLength));
+}
+
 TEST_CASE(SplitPinsRun, "context.a_split_pin_reads_and_writes_its_struct_whole", nullptr, test::TestFlags_None)
 {
     // Shift's point and its moved point are split, and so are Show's point, its box and the box's
