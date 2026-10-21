@@ -1280,7 +1280,79 @@ struct FlipFlopNode final : NodeType
     }
 };
 
+// A struct's name without its namespace: "Vector2" of "example.Vector2".
+std::string ShortName(const StructType& type)
+{
+    auto dot = type.m_Name.find_last_of('.');
+    return dot == std::string::npos ? type.m_Name : type.m_Name.substr(dot + 1);
+}
+
+// The struct of its fields.
+struct MakeStructNode final : NodeType
+{
+    explicit MakeStructNode(const StructType& type): NodeType("make:" + type.m_Name, "Make " + ShortName(type), "Structs"), m_Struct(type) {}
+
+    void Declare(NodeDeclaration& declaration, const NodeConfig&, const Bindings&) const override
+    {
+        for (auto& field : m_Struct.Fields())
+            declaration.Input(field.m_Name, field.m_Name, *field.m_Type);
+        declaration.Output("struct", ShortName(m_Struct), m_Struct.AsType());
+    }
+
+    Result<void> Evaluate(EvalContext& context) const override
+    {
+        std::vector<Value> fields;
+        for (auto& field : m_Struct.Fields())
+        {
+            auto value = context.Get(field.m_Name);
+            if (!value)
+                return value.GetError();
+            fields.push_back(std::move(value).GetValue());
+        }
+        context.Set("struct", Value::Struct(m_Struct.AsType(), std::move(fields)));
+        return {};
+    }
+
+    const StructType& m_Struct;
+};
+
+// The fields of the struct.
+struct BreakStructNode final : NodeType
+{
+    explicit BreakStructNode(const StructType& type): NodeType("break:" + type.m_Name, "Break " + ShortName(type), "Structs"), m_Struct(type) {}
+
+    void Declare(NodeDeclaration& declaration, const NodeConfig&, const Bindings&) const override
+    {
+        declaration.Input("struct", ShortName(m_Struct), m_Struct.AsType());
+        for (auto& field : m_Struct.Fields())
+            declaration.Output(field.m_Name, field.m_Name, *field.m_Type);
+    }
+
+    Result<void> Evaluate(EvalContext& context) const override
+    {
+        auto value = context.Get("struct");
+        if (!value)
+            return value.GetError();
+        auto fields = value.GetValue().AsStruct();
+        for (size_t i = 0; i < m_Struct.Fields().size(); ++i)
+            context.Set(m_Struct.Fields()[i].m_Name, fields[i]);
+        return {};
+    }
+
+    const StructType& m_Struct;
+};
+
 } } // namespace crude_blueprint { namespace {
+
+crude_blueprint::Result<void> crude_blueprint::RegisterStructNodes(Registry& registry, const StructType& type)
+{
+    for (auto& field : type.Fields())
+        if (field.m_Name == "struct")
+            return Error(BlueprintError::Duplicate, type.m_Name + "'s field struct has the key of the struct's pin");
+    if (auto made = registry.AddNodeType(std::make_unique<MakeStructNode>(type)); !made)
+        return made;
+    return registry.AddNodeType(std::make_unique<BreakStructNode>(type));
+}
 
 crude_blueprint::Result<void> crude_blueprint::RegisterLibrary(Registry& registry)
 {

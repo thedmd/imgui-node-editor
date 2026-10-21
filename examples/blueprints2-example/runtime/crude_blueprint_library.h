@@ -18,4 +18,9 @@ constexpr ErrorCategory CategoryOf(LibraryError) { return ErrorCategory::Library
 // title without spaces: "crude.ForLoop".
 Result<void> RegisterLibrary(Registry& registry);
 
+// Make and Break for a struct, "make:example.Vector2" and "break:example.Vector2", titled
+// "Make Vector2" and "Break Vector2". The struct lives as long as the registry; a field named
+// "struct", the key of their struct pins, is refused.
+Result<void> RegisterStructNodes(Registry& registry, const StructType& type);
+
 } // namespace crude_blueprint

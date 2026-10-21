@@ -43,7 +43,7 @@ struct Logs final : ContextMonitor
 
 struct Fixture : BlueprintFixture
 {
-    Fixture(): BlueprintFixture(LibraryRegistry(), "crude.") {}
+    explicit Fixture(std::shared_ptr<const Registry> registry = LibraryRegistry()): BlueprintFixture(std::move(registry), "crude.") {}
 
     Id Constant(Value value)
     {
@@ -699,6 +699,47 @@ TEST_CASE(AssertStops, "library.a_failing_assert_stops_its_fiber", nullptr, test
             test::Check(printed.empty() && end == FiberState::Failed && diagnostics.size() == 1 && diagnostics[0].m_Node == check && diagnostics[0].m_Error.Is(LibraryError::AssertFailed) && diagnostics[0].m_Error.Message() == "assertion failed: it holds",
                 "false stops the fiber at Assert: %s", diagnostics.empty() ? "" : std::string(diagnostics[0].m_Error.Message()).c_str());
     }
+}
+
+TEST_CASE(StructNodes, "library.a_struct_is_made_and_broken_by_nodes_of_its_own", nullptr, test::TestFlags_None)
+{
+    static const StructType vector2("test.Vector2", { { "x", &FloatType() }, { "y", &FloatType() } });
+    static const std::shared_ptr<const Registry> registry = []
+    {
+        auto made = std::make_shared<Registry>();
+        if (!RegisterBuiltins(*made) || !RegisterLibrary(*made) || !RegisterStructNodes(*made, vector2))
+            test::Check(false, "the library and Vector2's nodes are registered");
+        return made;
+    }();
+    auto makeType = registry->FindNodeType("make:test.Vector2"), breakType = registry->FindNodeType("break:test.Vector2");
+    test::Check(makeType && makeType->m_Title == "Make Vector2" && breakType && breakType->m_Title == "Break Vector2", "they're named after the struct, and titled after its short name");
+
+    // Make (1.5, 2) printed whole, and its y through Break; then its x, read off its split output.
+    Fixture f(registry);
+    auto node  = [&f](const char* type) { return f.m_Graph.AddNode(type).ValueOr(0); };
+    auto start = f.Add("Start"), whole = f.Add("Print"), y = f.Add("Print"), x = f.Add("Print"), text = f.Add("ToString");
+    auto make  = node("make:test.Vector2"), take = node("break:test.Vector2"), split = node("make:test.Vector2");
+    for (auto made : { make, split })
+    {
+        f.Link(f.Constant(Value::Float(1.5f)), "value", made, "x");
+        f.Link(f.Constant(Value::Float(2.0f)), "value", made, "y");
+    }
+    auto splitting = f.m_Graph.SplitPin(split, "struct", true);
+    f.Link(start, "then", whole, "enter");
+    f.Link(whole, "then", y, "enter");
+    f.Link(y, "then", x, "enter");
+    f.Link(make, "struct", text, "value");
+    f.Link(text, "text", whole, "text");
+    f.Link(make, "struct", take, "struct");
+    f.Link(take, "y", y, "text", LinkMode::Cast);
+    f.Link(split, "struct.x", x, "text", LinkMode::Cast);
+    auto printed = f.Run();
+    test::Check(splitting && printed == "{x: 1.5, y: 2} 2 1.5", "the struct, its y, and its x: %s", printed.c_str());
+
+    Registry other;
+    const StructType clash("test.Clash", { { "struct", &Int32Type() } });
+    auto refused = RegisterStructNodes(other, clash);
+    test::Check(!refused && refused.GetError().Is(BlueprintError::Duplicate) && !other.FindNodeType("make:test.Clash"), "a field named struct is refused: %s", Message(refused).c_str());
 }
 
 TEST_CASE(RandomPerStep, "library.random_gives_one_value_a_step", nullptr, test::TestFlags_None)
