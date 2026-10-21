@@ -96,6 +96,26 @@ struct Fixture : BlueprintFixture
         return printed;
     }
 
+    // A Print of the text.
+    Id Printer(const char* text)
+    {
+        auto print = Add("Print");
+        if (auto set = m_Graph.SetValue(Pin(print, "text"), Value::String(text)); !set)
+            test::Check(false, "a Print of %s is made: %s", text, Message(set).c_str());
+        return print;
+    }
+
+    // A node of a group grown to the count.
+    Id Grown(const char* type, const char* group, int count)
+    {
+        auto node = Add(type);
+        NodeConfig config = m_Graph.FindNode(node)->m_Config;
+        config.m_Groups[group] = count;
+        if (auto set = m_Graph.SetConfig(node, std::move(config)); !set)
+            test::Check(false, "%s's %s has %d pins: %s", type, group, count, Message(set).c_str());
+        return node;
+    }
+
     std::unique_ptr<Context> m_Context;
 };
 
@@ -363,6 +383,138 @@ TEST_CASE(ConnectivesStop, "library.and_and_or_stop_at_the_input_that_decides", 
         const auto decided = *c.printed != 0;
         test::Check(printed == c.printed && (end == FiberState::Failed) != decided, "%s with in.0 %s %s: %s", c.type, c.first ? "true" : "false", decided ? "decides without in.1" : "reads in.1, which fails", printed.c_str());
     }
+}
+
+TEST_CASE(SequenceTurns, "library.a_sequence_runs_its_outputs_in_turn", nullptr, test::TestFlags_None)
+{
+    // In For Loop's body, so it starts over in each round.
+    Fixture f;
+    auto start = f.Add("Start"), loop = f.Add("ForLoop"), sequence = f.Grown("Sequence", "then", 3), done = f.Printer("done");
+    f.Link(start, "then", loop, "enter");
+    f.Link(f.Constant(Value::Int32(1)), "value", loop, "last");
+    f.Link(loop, "body", sequence, "enter");
+    f.Link(sequence, "then.0", f.Printer("a"), "enter");
+    f.Link(sequence, "then.1", f.Printer("b"), "enter");
+    f.Link(sequence, "then.2", f.Printer("c"), "enter");
+    f.Link(loop, "completed", done, "enter");
+    auto printed = f.Run();
+    test::Check(printed == "a b c a b c done", "two rounds of a, b and c, then done: %s", printed.c_str());
+}
+
+TEST_CASE(SwitchCases, "library.switch_on_int_takes_its_case_or_the_default", nullptr, test::TestFlags_None)
+{
+    struct Case
+    {
+        int32_t     selection;
+        const char* printed;
+    };
+    for (auto& c : { Case{ 0, "zero" }, Case{ 2, "two" }, Case{ 3, "default" }, Case{ -1, "default" } })
+    {
+        Fixture f;
+        auto start = f.Add("Start"), choice = f.Grown("SwitchOnInt", "case", 3);
+        f.Link(start, "then", choice, "enter");
+        f.Link(f.Constant(Value::Int32(c.selection)), "value", choice, "selection");
+        f.Link(choice, "case.0", f.Printer("zero"), "enter");
+        f.Link(choice, "case.1", f.Printer("one"), "enter");
+        f.Link(choice, "case.2", f.Printer("two"), "enter");
+        f.Link(choice, "default", f.Printer("default"), "enter");
+        auto printed = f.Run();
+        test::Check(printed == c.printed, "%d of 3 cases: %s", c.selection, printed.c_str());
+    }
+}
+
+TEST_CASE(ForEachItems, "library.for_each_gives_each_item_and_its_index", nullptr, test::TestFlags_None)
+{
+    Fixture f;
+    auto  start = f.Add("Start"), loop = f.Add("ForEach"), index = f.Add("Print"), element = f.Add("Print"), done = f.Printer("done");
+    auto& ints  = *f.m_Blueprint.GetTypes().Get(ArrayValueType(), std::vector<const Type*>{ &Int32Type() });
+    f.Link(start, "then", loop, "enter");
+    f.Link(f.Constant(Value::Array(ints, { Value::Int32(10), Value::Int32(20), Value::Int32(30) })), "value", loop, "array");
+    f.Link(loop, "body", index, "enter");
+    f.Link(index, "then", element, "enter");
+    f.Link(loop, "index", index, "text", LinkMode::Cast);
+    f.Link(loop, "element", element, "text", LinkMode::Cast);
+    f.Link(loop, "completed", done, "enter");
+    auto printed = f.Run();
+    test::Check(printed == "0 10 1 20 2 30 done" && f.Type(loop, "element") == "Int32", "each index and item of [10, 20, 30], then done: %s", printed.c_str());
+}
+
+TEST_CASE(WhileLoopRounds, "library.a_while_loop_reads_its_condition_before_each_round", nullptr, test::TestFlags_None)
+{
+    // The condition is that Flip Flop isn't at A: true until the body enters it once.
+    Fixture f;
+    auto start = f.Add("Start"), loop = f.Add("WhileLoop"), flipFlop = f.Add("FlipFlop"), isB = f.Add("Not"), done = f.Printer("done");
+    f.Link(start, "then", loop, "enter");
+    f.Link(flipFlop, "isA", isB, "value");
+    f.Link(isB, "result", loop, "condition");
+    f.Link(loop, "body", flipFlop, "enter");
+    f.Link(flipFlop, "a", f.Printer("a"), "enter");
+    f.Link(loop, "completed", done, "enter");
+    auto printed = f.Run();
+    test::Check(printed == "a done", "one round, then done: %s", printed.c_str());
+}
+
+TEST_CASE(DoOnceReset, "library.do_once_goes_on_once_until_its_reset", nullptr, test::TestFlags_None)
+{
+    Fixture f;
+    auto start = f.Add("Start"), sequence = f.Grown("Sequence", "then", 4), once = f.Add("DoOnce");
+    f.Link(start, "then", sequence, "enter");
+    f.Link(sequence, "then.0", once, "enter");
+    f.Link(sequence, "then.1", once, "enter");
+    f.Link(sequence, "then.2", once, "reset");
+    f.Link(sequence, "then.3", once, "enter");
+    f.Link(once, "completed", f.Printer("once"), "enter");
+    auto printed = f.Run();
+    test::Check(printed == "once once", "entered twice, reset, entered again: %s", printed.c_str());
+}
+
+TEST_CASE(DoNCounts, "library.do_n_goes_on_n_times_counting_from_1", nullptr, test::TestFlags_None)
+{
+    Fixture f;
+    auto start = f.Add("Start"), loop = f.Add("ForLoop"), doN = f.Add("DoN"), print = f.Add("Print"), done = f.Printer("done");
+    f.Link(start, "then", loop, "enter");
+    f.Link(f.Constant(Value::Int32(4)), "value", loop, "last");
+    f.Link(f.Constant(Value::Int32(3)), "value", doN, "n");
+    f.Link(loop, "body", doN, "enter");
+    f.Link(doN, "exit", print, "enter");
+    f.Link(doN, "counter", print, "text", LinkMode::Cast);
+    f.Link(loop, "completed", done, "enter");
+    auto printed = f.Run();
+    test::Check(printed == "1 2 3 done", "five rounds, three of them through: %s", printed.c_str());
+}
+
+TEST_CASE(GateOpens, "library.a_gate_lets_the_flow_through_while_its_open", nullptr, test::TestFlags_None)
+{
+    for (auto startClosed : { true, false })
+    {
+        // Entered, opened, entered, toggled, entered.
+        Fixture f;
+        auto start = f.Add("Start"), sequence = f.Grown("Sequence", "then", 5), gate = f.Add("Gate");
+        f.Link(start, "then", sequence, "enter");
+        f.Link(f.Constant(Value::Bool(startClosed)), "value", gate, "startClosed");
+        f.Link(sequence, "then.0", gate, "enter");
+        f.Link(sequence, "then.1", gate, "open");
+        f.Link(sequence, "then.2", gate, "enter");
+        f.Link(sequence, "then.3", gate, "toggle");
+        f.Link(sequence, "then.4", gate, "enter");
+        f.Link(gate, "exit", f.Printer("through"), "enter");
+        auto printed = f.Run();
+        auto expected = startClosed ? "through" : "through through";
+        test::Check(printed == expected, "starting %s: %s", startClosed ? "closed" : "open", printed.c_str());
+    }
+}
+
+TEST_CASE(FlipFlopAlternates, "library.a_flip_flop_alternates_from_a", nullptr, test::TestFlags_None)
+{
+    Fixture f;
+    auto start = f.Add("Start"), loop = f.Add("ForLoop"), flipFlop = f.Add("FlipFlop");
+    f.Link(start, "then", loop, "enter");
+    f.Link(f.Constant(Value::Int32(3)), "value", loop, "last");
+    f.Link(loop, "body", flipFlop, "enter");
+    f.Link(flipFlop, "a", f.Printer("a"), "enter");
+    f.Link(flipFlop, "b", f.Printer("b"), "enter");
+    auto printed = f.Run();
+    test::Check(printed == "a b a b", "four rounds: %s", printed.c_str());
 }
 
 TEST_CASE(RandomPerStep, "library.random_gives_one_value_a_step", nullptr, test::TestFlags_None)

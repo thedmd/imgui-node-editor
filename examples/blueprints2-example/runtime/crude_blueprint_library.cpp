@@ -5,6 +5,7 @@
 # include <cstdint>
 # include <limits>
 # include <memory>
+# include <optional>
 # include <random>
 # include <string>
 
@@ -584,6 +585,232 @@ struct ForLoopNode final : NodeType
     }
 };
 
+// Each output of its group in turn, once the branch from the one before has ended.
+struct SequenceNode final : NodeType
+{
+    SequenceNode(): NodeType("crude.Sequence", "Sequence", "Flow") {}
+
+    void Declare(NodeDeclaration& declaration, const NodeConfig&, const Bindings&) const override
+    {
+        declaration.FlowInput("enter");
+        auto count = declaration.Group("then", 2, 16);
+        for (int i = 0; i < count; ++i)
+            declaration.FlowOutput("then." + std::to_string(i), "Then " + std::to_string(i));
+    }
+
+    Result<Exit> Execute(ExecContext& context, std::string_view) const override
+    {
+        auto& next = context.State<int>();
+        if (!context.IsAgain())
+            next = 0;
+        auto key = "then." + std::to_string(next);
+        if (!context.HasPin(key))
+            return Exit::None();
+        ++next;
+        return Exit::Loop(std::move(key));
+    }
+};
+
+// The case of the selection's index, or the default for one without a case.
+struct SwitchOnIntNode final : NodeType
+{
+    SwitchOnIntNode(): NodeType("crude.SwitchOnInt", "Switch on Int", "Flow") {}
+
+    void Declare(NodeDeclaration& declaration, const NodeConfig&, const Bindings&) const override
+    {
+        declaration.FlowInput("enter");
+        declaration.Input("selection", "Selection", Int32Type());
+        auto count = declaration.Group("case", 1, 16);
+        for (int i = 0; i < count; ++i)
+            declaration.FlowOutput("case." + std::to_string(i), std::to_string(i));
+        declaration.FlowOutput("default", "Default");
+    }
+
+    Result<Exit> Execute(ExecContext& context, std::string_view) const override
+    {
+        auto selection = context.Get<int32_t>("selection");
+        if (!selection)
+            return selection.GetError();
+        auto key = "case." + std::to_string(selection.GetValue());
+        return Exit::To(selection.GetValue() >= 0 && context.HasPin(key) ? std::move(key) : std::string("default"));
+    }
+};
+
+// Of an array it reads again before each round, so its items may change while it runs.
+struct ForEachNode final : NodeType
+{
+    ForEachNode(): NodeType("crude.ForEach", "For Each", "Flow") {}
+
+    void Declare(NodeDeclaration& declaration, const NodeConfig&, const Bindings&) const override
+    {
+        auto T = declaration.Variable("T");
+        declaration.FlowInput("enter");
+        declaration.Input("array", "Array", TypeTerm(ArrayValueType(), { T }));
+        declaration.FlowOutput("body", "Loop Body");
+        declaration.Output("element", "Element", T);
+        declaration.Output("index", "Index", Int32Type());
+        declaration.FlowOutput("completed", "Completed");
+    }
+
+    Result<Exit> Execute(ExecContext& context, std::string_view) const override
+    {
+        auto& index = context.State<size_t>();
+        if (context.IsAgain())
+            ++index;
+        else
+            index = 0;
+        auto array = context.Get("array");
+        if (!array)
+            return array.GetError();
+        auto items = array.GetValue().AsArray();
+        if (index >= items.size())
+            return Exit::To("completed");
+        context.Set("element", items[index]);
+        context.Set("index", Value::Int32(static_cast<int32_t>(index)));
+        return Exit::Loop("body");
+    }
+};
+
+// Reads its condition again before each round.
+struct WhileLoopNode final : NodeType
+{
+    WhileLoopNode(): NodeType("crude.WhileLoop", "While Loop", "Flow") {}
+
+    void Declare(NodeDeclaration& declaration, const NodeConfig&, const Bindings&) const override
+    {
+        declaration.FlowInput("enter");
+        declaration.Input("condition", "Condition", BoolType());
+        declaration.FlowOutput("body", "Loop Body");
+        declaration.FlowOutput("completed", "Completed");
+    }
+
+    Result<Exit> Execute(ExecContext& context, std::string_view) const override
+    {
+        auto condition = context.Get<bool>("condition");
+        if (!condition)
+            return condition.GetError();
+        return condition.GetValue() ? Exit::Loop("body") : Exit::To("completed");
+    }
+};
+
+// Goes on once, until it's reset.
+struct DoOnceNode final : NodeType
+{
+    DoOnceNode(): NodeType("crude.DoOnce", "Do Once", "Flow") {}
+
+    void Declare(NodeDeclaration& declaration, const NodeConfig&, const Bindings&) const override
+    {
+        declaration.FlowInput("enter");
+        declaration.FlowInput("reset", "Reset");
+        declaration.FlowOutput("completed", "Completed");
+    }
+
+    Result<Exit> Execute(ExecContext& context, std::string_view entry) const override
+    {
+        auto& done = context.State<bool>();
+        if (entry == "reset")
+        {
+            done = false;
+            return Exit::None();
+        }
+        if (done)
+            return Exit::None();
+        done = true;
+        return Exit::To("completed");
+    }
+};
+
+// Unreal's: goes on N times, counting them from 1, until it's reset.
+struct DoNNode final : NodeType
+{
+    DoNNode(): NodeType("crude.DoN", "Do N", "Flow") {}
+
+    void Declare(NodeDeclaration& declaration, const NodeConfig&, const Bindings&) const override
+    {
+        declaration.FlowInput("enter");
+        declaration.Input("n", "N", Int32Type(), { .m_Default = Value::Int32(1) });
+        declaration.FlowInput("reset", "Reset");
+        declaration.FlowOutput("exit", "Exit");
+        declaration.Output("counter", "Counter", Int32Type());
+    }
+
+    Result<Exit> Execute(ExecContext& context, std::string_view entry) const override
+    {
+        auto& counter = context.State<int32_t>();
+        if (entry == "reset")
+        {
+            counter = 0;
+            return Exit::None();
+        }
+        auto n = context.Get<int32_t>("n");
+        if (!n)
+            return n.GetError();
+        if (counter >= n.GetValue())
+            return Exit::None();
+        context.Set("counter", Value::Int32(++counter));
+        return Exit::To("exit");
+    }
+};
+
+// Lets the flow through while it's open; it starts as Start Closed says, on the first entry.
+struct GateNode final : NodeType
+{
+    GateNode(): NodeType("crude.Gate", "Gate", "Flow") {}
+
+    void Declare(NodeDeclaration& declaration, const NodeConfig&, const Bindings&) const override
+    {
+        declaration.FlowInput("enter");
+        declaration.FlowInput("open", "Open");
+        declaration.FlowInput("close", "Close");
+        declaration.FlowInput("toggle", "Toggle");
+        declaration.Input("startClosed", "Start Closed", BoolType(), { .m_Default = Value::Bool(true) });
+        declaration.FlowOutput("exit", "Exit");
+    }
+
+    Result<Exit> Execute(ExecContext& context, std::string_view entry) const override
+    {
+        auto& open = context.State<std::optional<bool>>();
+        if (!open)
+        {
+            auto closed = context.Get<bool>("startClosed");
+            if (!closed)
+                return closed.GetError();
+            open = !closed.GetValue();
+        }
+        if (entry == "open")
+            open = true;
+        else if (entry == "close")
+            open = false;
+        else if (entry == "toggle")
+            open = !*open;
+        else if (*open)
+            return Exit::To("exit");
+        return Exit::None();
+    }
+};
+
+// A, then B, then A again.
+struct FlipFlopNode final : NodeType
+{
+    FlipFlopNode(): NodeType("crude.FlipFlop", "Flip Flop", "Flow") {}
+
+    void Declare(NodeDeclaration& declaration, const NodeConfig&, const Bindings&) const override
+    {
+        declaration.FlowInput("enter");
+        declaration.FlowOutput("a", "A");
+        declaration.FlowOutput("b", "B");
+        declaration.Output("isA", "Is A", BoolType());
+    }
+
+    Result<Exit> Execute(ExecContext& context, std::string_view) const override
+    {
+        auto& isA = context.State<bool>();
+        isA = !isA;
+        context.Set("isA", Value::Bool(isA));
+        return Exit::To(isA ? "a" : "b");
+    }
+};
+
 } } // namespace crude_blueprint { namespace {
 
 crude_blueprint::Result<void> crude_blueprint::RegisterLibrary(Registry& registry)
@@ -616,6 +843,14 @@ crude_blueprint::Result<void> crude_blueprint::RegisterLibrary(Registry& registr
         std::make_unique<XorNode>(),
         std::make_unique<BranchNode>(),
         std::make_unique<ForLoopNode>(),
+        std::make_unique<SequenceNode>(),
+        std::make_unique<SwitchOnIntNode>(),
+        std::make_unique<ForEachNode>(),
+        std::make_unique<WhileLoopNode>(),
+        std::make_unique<DoOnceNode>(),
+        std::make_unique<DoNNode>(),
+        std::make_unique<GateNode>(),
+        std::make_unique<FlipFlopNode>(),
     };
     for (auto& type : types)
         if (auto result = registry.AddNodeType(std::move(type)); !result)

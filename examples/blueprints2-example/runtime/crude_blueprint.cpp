@@ -2232,6 +2232,11 @@ const crude_blueprint::Type* crude_blueprint::NodeContext::TypeOf(std::string_vi
     return found >= 0 ? node.m_Pins[found].m_Type : nullptr;
 }
 
+bool crude_blueprint::NodeContext::HasPin(std::string_view pin) const
+{
+    return FindPinByKey(m_Context.m_Program->m_Nodes[m_Node], pin) >= 0;
+}
+
 const crude_blueprint::NodeConfig& crude_blueprint::NodeContext::Config() const
 {
     return m_Context.m_Program->m_Nodes[m_Node].m_Config;

@@ -1004,6 +1004,7 @@ public:
     void Set(std::string_view output, Value value);
 
     const Type*       TypeOf(std::string_view pin) const;
+    bool              HasPin(std::string_view pin) const; // as a group's, which the config decides
     const NodeConfig& Config() const;
     void              Log(std::string_view text);
 
