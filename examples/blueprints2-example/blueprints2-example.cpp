@@ -581,8 +581,10 @@ private:
         auto& graph = document.GetGraph();
 
         // A pin with an active link has a filled icon, and an input with one, no value. An input
-        // whose link is disabled has its icon slashed.
+        // whose link is disabled has its icon slashed, and one linked through a cast has it split:
+        // the source's color on the left, its own on the right.
         std::unordered_set<Id> linked, disabled;
+        std::unordered_map<Id, ImVec4> castFrom;
         for (auto& link : graph.Links())
         {
             if (!link.m_Active)
@@ -592,6 +594,8 @@ private:
             }
             linked.insert(link.m_From);
             linked.insert(link.m_To);
+            if (!link.m_Cast.empty())
+                castFrom[link.m_To] = PinColor(*graph.FindPin(link.m_From));
         }
 
         // An edit made with a node's widgets, done once the nodes are drawn.
@@ -728,7 +732,14 @@ private:
 
                 // [1] - Icon
                 const auto isLinked = linked.count(pin.m_Id) > 0;
-                Icon(iconSize, PinIcon(pin), isLinked, PinColor(pin));
+                if (auto cast = castFrom.find(pin.m_Id); cast != castFrom.end())
+                {
+                    auto iconMin = ImGui::GetCursorScreenPos();
+                    DrawSplitIcon(ImGui::GetWindowDrawList(), iconMin, iconMin + iconSize, PinIcon(pin), ImColor(cast->second), ImColor(PinColor(pin)));
+                    ImGui::Dummy(iconSize);
+                }
+                else
+                    Icon(iconSize, PinIcon(pin), isLinked, PinColor(pin));
                 if (disabled.contains(pin.m_Id))
                 {
                     auto iconMin = ImGui::GetItemRectMin(), iconMax = ImGui::GetItemRectMax();
@@ -1436,6 +1447,13 @@ private:
                 ImGui::Bullet(); ImGui::Text("Node: %s", graph.NodeOf(pin.m_Id)->Name().c_str());
             }
             ImGui::Bullet(); ImGui::Text("Type: %s", pin.m_Flow ? "flow" : graph.TypeText(pin.m_Id).c_str());
+            for (auto& link : graph.Links())
+            {
+                if (link.m_To != pin.m_Id || !link.m_Active || link.m_Cast.empty())
+                    continue;
+                auto arrow = link.m_Cast.find("->");
+                ImGui::Bullet(); ImGui::Text("Cast: %.*s -> %s", static_cast<int>(arrow), link.m_Cast.c_str(), link.m_Cast.c_str() + arrow + 2);
+            }
             ImGui::Bullet(); ImGui::Text("%s%s", pin.m_Direction == Direction::Input ? "input" : "output",
                 pin.m_Requirement == Requirement::Required ? ", required" : pin.m_Requirement == Requirement::Recommended ? ", recommended" : "");
             if (pin.m_Flow)

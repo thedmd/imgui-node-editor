@@ -243,6 +243,19 @@ void blueprint_editor_utilities::DrawIcon(ImDrawList* drawList, const ImVec2& a,
     }
 }
 
+// DrawIcon() puts the shapes other than Flow's left of the rect's center, by half of a 16th of its
+// width in whole pixels.
+void blueprint_editor_utilities::DrawSplitIcon(ImDrawList* drawList, const ImVec2& a, const ImVec2& b, IconType type, ImU32 left, ImU32 right)
+{
+    DrawIcon(drawList, a, b, type, true, right, 0);
+    auto middle = (a.x + b.x) * 0.5f;
+    if (type != IconType::Flow && type != IconType::FlowDown)
+        middle -= static_cast<float>(static_cast<int>((b.x - a.x) * 0.25f * 0.25f)) * 0.5f;
+    drawList->PushClipRect(a, ImVec2(middle, b.y), true);
+    DrawIcon(drawList, a, b, type, true, left, 0);
+    drawList->PopClipRect();
+}
+
 void blueprint_editor_utilities::Icon(const ImVec2& size, IconType type, bool filled, const ImVec4& color/* = ImVec4(1, 1, 1, 1)*/, const ImVec4& innerColor/* = ImVec4(0, 0, 0, 0)*/)
 {
     if (ImGui::IsRectVisible(size))
