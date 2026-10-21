@@ -695,7 +695,7 @@ private:
 
                 // [1] - Icon
                 const auto isLinked = linked.count(pin.m_Id) > 0;
-                Icon(iconSize, PinIcon(pin), isLinked, TypeColor(pin.m_DecidedType));
+                Icon(iconSize, PinIcon(pin), isLinked, PinColor(pin));
 
                 // [2] - Show pin name if it has one
                 if (!pin.m_Name.empty())
@@ -711,6 +711,13 @@ private:
                     auto value = InputValue(graph, pin);
                     if (DrawValueWithEditor(pin.m_Id, value))
                         edit = [&document, id = pin.m_Id, value] { SetPinValue(document, id, value); };
+                }
+                else if (auto kept = KeptValue(graph, pin); kept.IsValid())
+                {
+                    ImGui::SameLine();
+                    ImGui::BeginDisabled();
+                    DrawValue(kept);
+                    ImGui::EndDisabled();
                 }
 
                 ed::EndPin();
@@ -753,6 +760,13 @@ private:
                         edit = [&document, id = pin.m_Id, value] { SetPinValue(document, id, value); };
                     ImGui::SameLine();
                 }
+                else if (auto kept = KeptValue(graph, pin); kept.IsValid())
+                {
+                    ImGui::BeginDisabled();
+                    DrawValue(kept);
+                    ImGui::EndDisabled();
+                    ImGui::SameLine();
+                }
 
                 ed::BeginPin(pin.m_Id, ed::PinKind::Output);
 
@@ -772,7 +786,7 @@ private:
                 }
 
                 // [2] - Show icon
-                Icon(iconSize, PinIcon(pin), linked.count(pin.m_Id) > 0, TypeColor(pin.m_DecidedType));
+                Icon(iconSize, PinIcon(pin), linked.count(pin.m_Id) > 0, PinColor(pin));
 
                 ed::EndPin();
 
@@ -799,7 +813,7 @@ private:
             if (!from || !graph.FindPin(link.m_To))
                 continue;
             if (link.m_Active)
-                ed::Link(link.m_Id, link.m_From, link.m_To, TypeColor(from->m_DecidedType), from->m_Flow ? 2.5f : 1.5f);
+                ed::Link(link.m_Id, link.m_From, link.m_To, PinColor(*from), from->m_Flow ? 2.5f : 1.5f);
             else
                 ed::Link(link.m_Id, link.m_From, link.m_To, ImVec4(0.5f, 0.5f, 0.5f, 0.4f), 1.0f);
         }

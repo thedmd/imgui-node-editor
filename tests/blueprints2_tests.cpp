@@ -556,6 +556,33 @@ TEST_CASE(GroupPinEdits, "blueprints2.group_pins_are_added_and_removed_in_undo_s
     test::Check(inputs() == 3 && linkedTo("in.1"), "undo brings in.1 back with its link");
 }
 
+TEST_CASE(KeptValues, "blueprints2.an_undecided_pin_shows_the_value_it_keeps", nullptr, test::TestFlags_None)
+{
+    // A new Add, whose T the example's Constant decides as Int32 through in.0.
+    test::Session session(UnnamedConfig());
+    Example       example(session);
+    auto& graph = example.m_Document.GetGraph();
+    auto  ten   = example.Node("crude.Constant");
+    auto  add   = graph.AddNode("crude.Add").ValueOr(0);
+    auto  link  = graph.Connect(example.Pin(ten, "value"), example.Pin(add, "in.0"));
+    auto  set   = graph.SetValue(example.Pin(add, "in.1"), Value::Int32(5));
+    auto  in1   = [&] { return *graph.FindPin(example.Pin(add, "in.1")); };
+    using blueprint_editor_utilities::KeptValue;
+    using blueprint_editor_utilities::InputValue;
+    test::Check(link && set && InputValue(graph, in1()) == Value::Int32(5) && !KeptValue(graph, in1()).IsValid(), "decided, in.1 reads the 5 typed into it, and keeps nothing aside");
+
+    auto unlinked = graph.Disconnect(link.ValueOr(0));
+    test::Check(unlinked && KeptValue(graph, in1()) == Value::Int32(5) && !InputValue(graph, in1()).IsValid() && !blueprint_editor_utilities::HasValueEditor(graph, in1()),
+        "undecided once unlinked, it keeps the 5, with no editor");
+
+    // As one whose chosen type was reset.
+    NodeConfig untyped;
+    untyped.m_Data["value"] = Value::Int32(7);
+    auto constant = graph.AddNode("crude.Constant", untyped);
+    auto value    = constant ? graph.FindNode(constant.GetValue())->FindPin("value") : nullptr;
+    test::Check(value && KeptValue(graph, *value) == Value::Int32(7), "an undecided Constant keeps its value too");
+}
+
 TEST_CASE(NewDocuments, "blueprints2.a_new_document_has_an_empty_graph", nullptr, test::TestFlags_None)
 {
     Document document(ExampleRegistry(), std::make_shared<TypeTable>());

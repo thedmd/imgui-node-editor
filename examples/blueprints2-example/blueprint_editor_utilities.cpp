@@ -25,6 +25,15 @@ blueprint_editor_utilities::IconType blueprint_editor_utilities::PinIcon(const P
     return IconType::Circle;
 }
 
+ImVec4 blueprint_editor_utilities::PinColor(const Pin& pin)
+{
+    if (pin.m_Flow)
+        return ImVec4(1.0f, 1.0f, 1.0f, 1.0f);
+    if (!pin.m_DecidedType)
+        return ImVec4(0.6f, 0.6f, 0.6f, 1.0f);
+    return TypeColor(pin.m_DecidedType);
+}
+
 // Arrays take their items' colors, and maps their values'. Other types without a color of their
 // own take one from their name, so each keeps it.
 ImVec4 blueprint_editor_utilities::TypeColor(const Type* type)
@@ -63,6 +72,23 @@ blueprint_editor_utilities::Value blueprint_editor_utilities::InputValue(const G
     if (pin.m_Default.IsValid() && pin.m_Default.GetType() == type)
         return pin.m_Default;
     return type->m_Head->Default(*type);
+}
+
+blueprint_editor_utilities::Value blueprint_editor_utilities::KeptValue(const Graph& graph, const Pin& pin)
+{
+    if (pin.m_Flow || pin.m_DecidedType)
+        return {};
+    if (pin.m_Direction == Direction::Output)
+    {
+        auto node  = graph.NodeOf(pin.m_Id);
+        auto value = node->m_Config.m_Data.find("value");
+        return IsConstant(*node) && value != node->m_Config.m_Data.end() ? value->second : Value();
+    }
+    for (auto& link : graph.Links())
+        if (link.m_Active && link.m_To == pin.m_Id)
+            return {};
+    auto value = graph.FindValue(pin.m_Id);
+    return value ? *value : Value();
 }
 
 bool blueprint_editor_utilities::IsConstant(const Node& node)

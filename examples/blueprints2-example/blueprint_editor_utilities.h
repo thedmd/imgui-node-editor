@@ -18,11 +18,16 @@ using namespace blueprint_editor;
 using namespace crude_blueprint;
 
 IconType PinIcon(const Pin& pin);     // by its type's kind; a diamond while undecided
-ImVec4   TypeColor(const Type* type); // white for flow and undecided pins
+ImVec4   PinColor(const Pin& pin);    // white for flow, grey while undecided, else its type's
+ImVec4   TypeColor(const Type* type);
 
 // What an input without a link reads: the value the user typed, the default its node declares,
 // or its type's. None while its type is undecided.
 Value InputValue(const Graph& graph, const Pin& pin);
+
+// While a pin's type is undecided, the value it keeps: one typed into an input without an active
+// link, or a Constant's. None when nothing is kept.
+Value KeptValue(const Graph& graph, const Pin& pin);
 
 // A Constant holds its value in its config.
 bool  IsConstant(const Node& node);
