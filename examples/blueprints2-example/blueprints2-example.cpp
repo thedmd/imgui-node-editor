@@ -323,12 +323,11 @@ struct BlueprintEditorExample
 
     void OnFrame(float deltaTime) override
     {
-        IM_UNUSED(deltaTime);
-
         ed::SetCurrentEditor(m_Document ? EditorFor(m_Document->GetGraph().GetId()) : nullptr);
 
         if (m_Document)
         {
+            m_Debugger.Advance(deltaTime);
             m_Debugger.Update(*m_Document);
             m_Problems.Update(*m_Document, m_Debugger);
 
@@ -608,7 +607,7 @@ private:
         if (errors > 0)
             ImGui::Text("Status: %d error%s", errors, errors != 1 ? "s" : "");
         else if (m_Debugger.IsRunning())
-            ImGui::TextUnformatted("Status: running");
+            ImGui::TextUnformatted(m_Debugger.Waiting() ? "Status: suspended" : "Status: running");
         else if (m_Debugger.IsActive())
             ImGui::TextUnformatted(m_Debugger.IsAtBreakpoint() ? "Status: paused at a breakpoint" : "Status: paused");
         else
@@ -623,6 +622,11 @@ private:
             ImGui::SameLine(); ImGui::Text("Current: %s", current ? current->Name().c_str() : "-");
             ImGui::SameLine(); ImGui::Spacing();
             ImGui::SameLine(); ImGui::Text("Next: %s", next ? next->Name().c_str() : "-");
+            if (auto waiting = m_Debugger.Waiting())
+            {
+                ImGui::SameLine(); ImGui::Spacing();
+                ImGui::SameLine(); ImGui::Text("Waits: %s", WakeText(*waiting, m_Debugger.GetContext()->Time()).c_str());
+            }
         }
     }
 
@@ -653,6 +657,21 @@ private:
 
         // An edit made with a node's widgets, done once the nodes are drawn.
         std::function<void()> edit;
+
+        // Where the run's fibers wait: at their nodes, and in the calls they're in.
+        std::unordered_map<Id, std::string> waits;
+        if (auto context = m_Debugger.GetContext())
+        {
+            for (auto& fiber : context->Fibers())
+            {
+                if (fiber.m_State != FiberState::Suspended)
+                    continue;
+                auto text = WakeText(fiber.m_Wake, context->Time());
+                for (auto call : fiber.m_Calls)
+                    waits[call] = text;
+                waits[fiber.m_Node] = text;
+            }
+        }
 
         // A paused run's next node has a blue border, and the node its last step ran an orange one.
         const auto current = m_Debugger.IsActive() ? m_Debugger.CurrentNode() : 0;
@@ -716,6 +735,17 @@ private:
                     ImGui::SameLine();
                     if (ProblemPills(errors, warnings) && !m_Bubbles.erase(node.m_Id))
                         m_Bubbles.insert(node.m_Id);
+                }
+                auto wait = waits.find(node.m_Id);
+                if (wait != waits.end() || document.GetBlueprint().MaySuspend(*node.m_Type))
+                {
+                    ImGui::SameLine();
+                    if (LatentMark(wait != waits.end() ? wait->second : std::string()))
+                    {
+                        ed::Suspend();
+                        ImGui::SetTooltip("May suspend its fiber");
+                        ed::Resume();
+                    }
                 }
                 ImGui::EndGroup();
 
@@ -1127,7 +1157,8 @@ private:
             m_Debugger.SetWatched(*removed, false);
     }
 
-    // A row for each fiber of the run: its state, and the node it's at. Choosing one goes to the node.
+    // A row for each fiber of the run: its state, the node it's at, and while it's suspended, what it
+    // waits for. Choosing the node goes to it, and a signal it waits for can be sent.
     void ShowFibers(const Document& document, std::span<const FiberInfo> fibers)
     {
         if (fibers.empty())
@@ -1135,7 +1166,7 @@ private:
             ImGui::TextDisabled("No run");
             return;
         }
-        if (!ImGui::BeginTable("##fibers", 3, ImGuiTableFlags_SizingFixedFit))
+        if (!ImGui::BeginTable("##fibers", 4, ImGuiTableFlags_SizingFixedFit))
             return;
         for (auto& fiber : fibers)
         {
@@ -1155,8 +1186,19 @@ private:
             ImGui::TableNextColumn();
             ImGui::TextUnformatted(state);
             ImGui::TableNextColumn();
-            if (auto node = document.GetGraph().FindNode(fiber.m_Node); node && ImGui::Selectable(node->Name().c_str()))
+            if (auto node = FindNode(document.GetBlueprint(), fiber.m_Node); node && ImGui::Selectable(node->Name().c_str()))
                 GoToNode(node->m_Id);
+            ImGui::TableNextColumn();
+            if (fiber.m_State == FiberState::Suspended)
+            {
+                ImGui::TextUnformatted(WakeText(fiber.m_Wake, m_Debugger.GetContext()->Time()).c_str());
+                if (fiber.m_Wake.m_Kind == Wake::Kind::Signal)
+                {
+                    ImGui::SameLine();
+                    if (ImGui::SmallButton("Send"))
+                        m_Debugger.Signal(fiber.m_Wake.m_Signal);
+                }
+            }
             ImGui::PopID();
         }
         ImGui::EndTable();
@@ -1169,15 +1211,7 @@ private:
         if (index >= problems.size())
             return;
         m_ProblemIndex = index;
-        auto node = problems[index].m_Node;
-        if (!node)
-            return;
-        if (auto graph = GraphOf(m_Document->GetBlueprint(), node); graph && graph->GetId() != m_Document->GetGraph().GetId())
-        {
-            m_PendingGraph = graph->GetId();
-            m_PendingNode  = node;
-        }
-        else
+        if (auto node = problems[index].m_Node)
             GoToNode(node);
     }
 
@@ -1213,8 +1247,15 @@ private:
         ImGui::EndTabBar();
     }
 
+    // Selects the node, and brings it into view, in its graph.
     void GoToNode(Id node)
     {
+        if (auto graph = GraphOf(m_Document->GetBlueprint(), node); graph && graph->GetId() != m_Document->GetGraph().GetId())
+        {
+            m_PendingGraph = graph->GetId();
+            m_PendingNode  = node;
+            return;
+        }
         ed::SelectNode(node);
         ed::NavigateToSelection();
     }

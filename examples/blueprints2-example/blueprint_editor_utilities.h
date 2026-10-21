@@ -82,6 +82,10 @@ ImU32 ProblemColor(Severity severity);
 bool  ProblemPills(int errors, int warnings); // a red disc and a yellow triangle, with their counts; true when clicked
 void  ProblemSign(ImDrawList* drawList, ImVec2 center, float radius, Severity severity);
 
+// After the title of a node that may suspend its fiber: a clock, filled while a fiber waits there,
+// then what it waits for. True when hovered.
+bool LatentMark(std::string_view waiting);
+
 bool DrawValue(const Value& value);        // Draws a value; false for none.
 bool EditValue(Value& value);              // Shows an editor for a value; true once the edit is done.
 bool DrawValueWithEditor(Id id, Value& value); // Draws a value, or its editor once clicked; true when an edit changed it.
@@ -133,17 +137,20 @@ private:
 
 // A run of a document's blueprint: a context of its compiled program, and the fiber its Start
 // began. Prints go to the log. A step the document takes goes on in the run when it changed only
-// values, and stops it otherwise. Breakpoints stay for the runs that follow.
+// values, and stops it otherwise. Breakpoints stay for the runs that follow. The run's clock moves
+// on only while it runs.
 struct Debugger
 {
     // A blueprint with an error doesn't start: its diagnostics are logged.
     bool Start(const Document& document, bool running);
     void Continue(); // a paused run runs on
-    void Step();
+    void Step();     // a fiber that waits for its time skips the wait
     void Stop();
     // Each frame: a run steps for a few milliseconds, so the window stays responsive, and pauses
     // before a node with a breakpoint.
     void Update(const Document& document);
+    void Advance(double seconds); // a running run's clock, by a frame's time
+    void Signal(std::string_view signal);
 
     void SetBreakpoint(Id node, bool enabled);
     bool HasBreakpoint(Id node) const { return m_Breakpoints.contains(node); }
@@ -154,9 +161,10 @@ struct Debugger
     bool                IsWatched(Id pin) const;
     std::span<const Id> Watched() const { return m_Watched; }
 
-    bool IsActive() const; // a fiber that's ready
+    bool IsActive() const; // a fiber that's ready or suspended
     bool IsRunning() const { return IsActive() && m_Running; }
     bool IsAtBreakpoint() const;
+    std::optional<Wake> Waiting() const; // what the fiber waits for, while it's suspended
 
     // A pin's value: the run's while there is one, else as a run that hasn't started computes it,
     // until the document changes. An error for a blueprint with errors.
@@ -222,6 +230,9 @@ void FlowTakenLink(const Debugger& debugger);
 // When a run wrote a value, as the debugger shows it: "this step", "step 12", "not run yet"; empty
 // for one computed before any step.
 std::string WhenWritten(const Watch& watch, uint64_t step);
+
+// What a fiber waits for, as the debugger shows it: 1.5 s left, or signal "go".
+std::string WakeText(const Wake& wake, double now);
 
 // Wrapper over flat API for item construction
 struct ItemBuilder

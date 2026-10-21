@@ -403,6 +403,32 @@ bool blueprint_editor_utilities::ProblemPills(int errors, int warnings)
     return ImGui::InvisibleButton("##problems", pillsSize);
 }
 
+bool blueprint_editor_utilities::LatentMark(std::string_view waiting)
+{
+    auto drawList = ImGui::GetWindowDrawList();
+    auto size     = ImGui::GetTextLineHeight();
+    auto center   = ImGui::GetCursorScreenPos() + ImVec2(size, size) * 0.5f;
+    auto radius   = size * 0.4f;
+    auto face     = ImGui::GetColorU32(waiting.empty() ? ImGuiCol_Text : ImGuiCol_NavCursor);
+    auto hands    = waiting.empty() ? face : ImGui::GetColorU32(ImGuiCol_WindowBg);
+
+    ImGui::BeginGroup();
+    ImGui::Dummy(ImVec2(size, size));
+    if (waiting.empty())
+        drawList->AddCircle(center, radius, face, 0, 1.5f);
+    else
+        drawList->AddCircleFilled(center, radius, face);
+    drawList->AddLine(center, center + ImVec2(0.0f, -radius * 0.65f), hands, 1.5f);
+    drawList->AddLine(center, center + ImVec2(radius * 0.5f, 0.0f), hands, 1.5f);
+    if (!waiting.empty())
+    {
+        ImGui::SameLine(0.0f, 4.0f);
+        ImGui::TextUnformatted(waiting.data(), waiting.data() + waiting.size());
+    }
+    ImGui::EndGroup();
+    return ImGui::IsItemHovered();
+}
+
 bool blueprint_editor_utilities::DrawValue(const Value& value)
 {
     auto type = value.GetType();
@@ -694,6 +720,15 @@ void blueprint_editor_utilities::Debugger::Step()
 {
     if (!IsActive())
         return;
+    if (auto waiting = Waiting())
+    {
+        if (waiting->m_Kind == Wake::Kind::Signal)
+        {
+            LOGI("Execution: waits for %s", WakeText(*waiting, 0.0).c_str());
+            return;
+        }
+        m_Context->AdvanceTo(waiting->m_Time);
+    }
     if (m_Context->Step(m_Fiber))
         Report();
 }
@@ -734,6 +769,20 @@ void blueprint_editor_utilities::Debugger::Update(const Document& document)
     Report();
 }
 
+void blueprint_editor_utilities::Debugger::Advance(double seconds)
+{
+    if (IsRunning())
+        m_Context->Advance(seconds);
+}
+
+void blueprint_editor_utilities::Debugger::Signal(std::string_view signal)
+{
+    if (!IsActive())
+        return;
+    LOGI("Execution: %s sent", WakeText(Wake::OnSignal(std::string(signal)), 0.0).c_str());
+    m_Context->Signal(signal);
+}
+
 void blueprint_editor_utilities::Debugger::SetBreakpoint(Id node, bool enabled)
 {
     if (enabled)
@@ -770,7 +819,15 @@ void blueprint_editor_utilities::Debugger::ClearBreakpoints()
 bool blueprint_editor_utilities::Debugger::IsActive() const
 {
     auto fiber = Fiber();
-    return fiber && fiber->m_State == FiberState::Ready;
+    return fiber && (fiber->m_State == FiberState::Ready || fiber->m_State == FiberState::Suspended);
+}
+
+std::optional<blueprint_editor_utilities::Wake> blueprint_editor_utilities::Debugger::Waiting() const
+{
+    auto fiber = Fiber();
+    if (!fiber || fiber->m_State != FiberState::Suspended)
+        return std::nullopt;
+    return fiber->m_Wake;
 }
 
 bool blueprint_editor_utilities::Debugger::IsAtBreakpoint() const
@@ -824,7 +881,7 @@ std::optional<blueprint_editor_utilities::FiberInfo> blueprint_editor_utilities:
 void blueprint_editor_utilities::Debugger::Report()
 {
     auto fiber = Fiber();
-    if (!fiber || fiber->m_State == FiberState::Ready || m_Reported)
+    if (!fiber || fiber->m_State == FiberState::Ready || fiber->m_State == FiberState::Suspended || m_Reported)
         return;
     m_Reported = true;
     if (fiber->m_State == FiberState::Done)
@@ -904,6 +961,15 @@ std::string blueprint_editor_utilities::WhenWritten(const Watch& watch, uint64_t
     if (*watch.m_Step == step)
         return "this step";
     return "step " + std::to_string(*watch.m_Step);
+}
+
+std::string blueprint_editor_utilities::WakeText(const Wake& wake, double now)
+{
+    if (wake.m_Kind == Wake::Kind::Signal)
+        return std::string("signal ") + '"' + wake.m_Signal + '"';
+    char text[32];
+    std::snprintf(text, sizeof(text), "%.1f s left", std::max(0.0, wake.m_Time - now));
+    return text;
 }
 
 

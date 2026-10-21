@@ -908,3 +908,88 @@ TEST_CASE(SignatureEdits, "blueprints2.signatures_change_in_undo_steps", nullptr
     });
     test::Check(refused && signature().m_Parameters.size() == 2, "a signature the blueprint refuses makes no step, and undo brings the parameter back");
 }
+
+namespace {
+
+// A document whose Start links to a node of the type, which links to a Print.
+struct WaitingDocument
+{
+    WaitingDocument(const char* type, const char* input, Value value)
+    {
+        auto& graph = m_Document.GetGraph();
+        m_Start = graph.AddNode("crude.Start").ValueOr(0);
+        m_Node  = graph.AddNode(type).ValueOr(0);
+        m_Print = graph.AddNode("crude.Print").ValueOr(0);
+        auto& node    = *graph.FindNode(m_Node);
+        auto  next    = node.FindPin("completed") ? "completed" : "then";
+        auto  made    = graph.Connect(Pin(m_Start, "then"), Pin(m_Node, "enter")).IsOk() && graph.Connect(Pin(m_Node, next), Pin(m_Print, "enter")).IsOk();
+        if (!made || !graph.SetValue(Pin(m_Node, input), std::move(value)))
+            test::Check(false, "the document of a %s is made", type);
+    }
+
+    Id Pin(Id node, std::string_view key) const
+    {
+        auto found = m_Document.GetGraph().FindNode(node);
+        auto pin   = found ? found->FindPin(key) : nullptr;
+        return pin ? pin->m_Id : 0;
+    }
+
+    Document m_Document{ ExampleRegistry(), std::make_shared<TypeTable>() };
+    Id       m_Start = 0;
+    Id       m_Node  = 0;
+    Id       m_Print = 0;
+};
+
+} // namespace
+
+TEST_CASE(SuspendedRuns, "blueprints2.a_run_goes_on_while_its_fiber_waits_and_a_step_skips_the_wait", nullptr, test::TestFlags_None)
+{
+    // Start, then a Delay of 1 s, then a Print.
+    test::Session   session(UnnamedConfig());
+    OverlayLog      log;
+    WaitingDocument made("crude.Delay", "duration", Value::Float(1.0f));
+    auto& document = made.m_Document;
+
+    Debugger debugger;
+    auto started = debugger.Start(document, true);
+    debugger.Update(document);
+    test::Check(started && debugger.IsRunning() && debugger.Waiting() == Wake::At(1.0) && debugger.NextNode() == made.m_Node, "running, the run waits at the Delay");
+    debugger.Advance(0.6);
+    debugger.Update(document);
+    auto waits = debugger.Waiting().has_value();
+    debugger.Advance(0.6);
+    debugger.Update(document);
+    test::Check(waits && !debugger.IsActive() && debugger.GetContext()->Fibers()[0].m_State == FiberState::Done, "the frames' time moves its clock on, and once its time came, it goes on to its end");
+
+    debugger.Start(document, false);
+    debugger.Step();
+    debugger.Step();
+    auto paused = debugger.Waiting();
+    debugger.Advance(5.0);
+    auto time = debugger.GetContext()->Time();
+    debugger.Step();
+    test::Check(paused == Wake::At(1.0) && time == 0.0 && debugger.GetContext()->Time() == 1.0 && debugger.NextNode() == made.m_Print, "paused, its clock stays, and a step skips the wait");
+}
+
+TEST_CASE(SignalledRuns, "blueprints2.a_fiber_waiting_for_a_signal_goes_on_once_its_sent", nullptr, test::TestFlags_None)
+{
+    // Start, then a Wait Signal for "go", then a Print.
+    test::Session   session(UnnamedConfig());
+    OverlayLog      log;
+    WaitingDocument made("crude.WaitSignal", "signal", Value::String("go"));
+    auto& document = made.m_Document;
+
+    Debugger debugger;
+    auto started = debugger.Start(document, false);
+    debugger.Step();
+    debugger.Step();
+    auto waiting = debugger.Waiting();
+    debugger.Step();
+    auto steps = debugger.StepCount();
+    debugger.Signal("stop");
+    auto still = debugger.Waiting().has_value();
+    debugger.Signal("go");
+    debugger.Step();
+    test::Check(started && waiting == Wake::OnSignal("go") && steps == 2 && still, "a step can't skip the wait, nor does another signal end it");
+    test::Check(!debugger.Waiting() && debugger.IsActive() && debugger.NextNode() == made.m_Print, "its own does, and the run goes on");
+}
