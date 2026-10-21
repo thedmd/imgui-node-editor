@@ -625,6 +625,7 @@ private:
     vector<NodeTypeInfo> m_BuildInNodes;
 
     vector<NodeTypeInfo> m_CustomNodes;
+    map<uint32_t, string> m_CustomNames; // by type ID; the names m_CustomNodes view
 
     vector<NodeTypeInfo*> m_Types;
 };

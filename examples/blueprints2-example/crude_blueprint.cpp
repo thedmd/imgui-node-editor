@@ -951,9 +951,12 @@ uint32_t crude_blueprint::NodeRegistry::RegisterNodeType(string_view name, NodeT
     if (it != m_CustomNodes.end())
         m_CustomNodes.erase(it);
 
+    auto& storedName = m_CustomNames[id];
+    storedName = name.to_string();
+
     NodeTypeInfo typeInfo;
     typeInfo.m_Id       = id;
-    typeInfo.m_Name     = name.to_string();
+    typeInfo.m_Name     = storedName;
     typeInfo.m_Factory  = factory;
 
     m_CustomNodes.push_back(std::move(typeInfo));
@@ -973,7 +976,9 @@ void crude_blueprint::NodeRegistry::UnregisterNodeType(string_view name)
     if (it == m_CustomNodes.end())
         return;
 
+    const auto id = it->m_Id;
     m_CustomNodes.erase(it);
+    m_CustomNames.erase(id);
 
     RebuildTypes();
 }

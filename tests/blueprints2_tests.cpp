@@ -680,3 +680,19 @@ TEST_CASE(RecentFilesIni, "blueprints2.recent_files_take_only_indices_in_order",
 
     test::Check(entries == "a.bp|b2.bp|", "only entries at an index of the list, or the next one, are read: %s", entries.c_str());
 }
+
+TEST_CASE(RegisteredNameKept, "blueprints2.a_registered_node_type_keeps_its_name", "CBP-1", test::TestFlags_NeedsSanitizer)
+{
+    // A name built for the call, as an application building names does; too long for a string's own buffer.
+    auto registry = std::make_shared<NodeRegistry>();
+    const std::string name = std::string("ExampleNodeType") + "WithALongName";
+    registry->RegisterNodeType(name, ConstInt32Node::GetStaticTypeInfo().m_Factory);
+
+    Blueprint blueprint(registry);
+    const bool created = blueprint.CreateNode(string_view(name)) != nullptr;
+    registry->UnregisterNodeType(name);
+    const bool unregistered = blueprint.CreateNode(string_view(name)) == nullptr;
+
+    test::Check(created, "a node of the type is created by its name");
+    test::Check(unregistered, "and the type is unregistered by it");
+}
