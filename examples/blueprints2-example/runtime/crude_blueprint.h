@@ -1250,6 +1250,8 @@ public:
     void               Stop(FiberId fiber);
     // Moves the clock on, in seconds; only the host does. The fibers whose time came are ready again.
     void               Advance(double seconds);
+    // As Advance(), to the time, unless the clock is past it.
+    void               AdvanceTo(double time);
     // Readies the fibers that wait for the signal; one that none waits for is lost.
     void               Signal(std::string_view signal);
     // Of a node with flow pins; a pure node's never stops a run.

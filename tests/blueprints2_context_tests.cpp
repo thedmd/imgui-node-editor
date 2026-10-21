@@ -1091,3 +1091,26 @@ TEST_CASE(ResumedBreakpoints, "context.a_fiber_resumed_at_a_breakpoint_doesnt_st
     auto end = context.Run(std::chrono::seconds(1));
     test::Check(started && before == RunState::Breakpoint && suspended == RunState::Suspended && end == RunState::Idle && logs.m_Text == "woke", "Run stops before Sleep once, and Sleep resumes without stopping");
 }
+
+TEST_CASE(ClockJumps, "context.the_clock_moves_on_to_a_time_but_never_back", nullptr, test::TestFlags_None)
+{
+    // Start Sleeps for 0.7 s from 0.1. At 0.2, adding the difference to its time rounds short of it.
+    Fixture f;
+    auto start = f.Add("Start"), sleep = f.Add("Sleep");
+    f.Link(start, "then", sleep, "enter");
+    f.SetValue(sleep, "seconds", Value::Float(0.7f));
+    auto program = f.Compiled();
+    if (!program)
+        return;
+    Context context(program);
+    context.Advance(0.1);
+    auto started = context.Start("Start").IsOk() && context.Run(std::chrono::seconds(1)) == RunState::Suspended;
+    auto wake    = context.Fibers()[0].m_Wake.m_Time;
+    context.Advance(0.1);
+    context.AdvanceTo(0.1);
+    context.Advance(-1.0);
+    auto kept = context.Time();
+    test::Check(started && kept == 0.2 && kept + (wake - kept) < wake, "the clock stays at 0.2 for an earlier time or a negative step, and adding the difference to it falls short of the fiber's time");
+    context.AdvanceTo(wake);
+    test::Check(context.Time() == wake && context.Fibers()[0].m_State == FiberState::Ready, "and moved on to the fiber's time, it wakes it");
+}

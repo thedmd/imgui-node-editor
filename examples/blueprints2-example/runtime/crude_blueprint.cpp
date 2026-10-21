@@ -2890,8 +2890,13 @@ void crude_blueprint::Context::Stop(FiberId id)
 
 void crude_blueprint::Context::Advance(double seconds)
 {
-    if (seconds > 0.0)
-        m_Time += seconds;
+    AdvanceTo(m_Time + seconds);
+}
+
+void crude_blueprint::Context::AdvanceTo(double time)
+{
+    if (time > m_Time)
+        m_Time = time;
     for (auto& fiber : m_Fibers)
         if (fiber.m_Info.m_State == FiberState::Suspended && fiber.m_Info.m_Wake.m_Kind == Wake::Kind::Time && fiber.m_Info.m_Wake.m_Time <= m_Time)
             Resume(fiber);
