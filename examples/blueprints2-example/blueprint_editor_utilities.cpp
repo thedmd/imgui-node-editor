@@ -539,22 +539,30 @@ bool blueprint_editor_utilities::SquareButton(const char* label)
     return pressed;
 }
 
-bool blueprint_editor_utilities::DrawValue(const Value& value)
+std::string blueprint_editor_utilities::ValueText(const Value& value)
 {
     auto type = value.GetType();
     if (!type)
-        return false;
+        return {};
     if (type == &BoolType())
-        ImGui::TextUnformatted(value.AsBool() ? "true" : "false");
-    else if (type == &Int32Type())
-        ImGui::Text("%d", value.AsInt32());
-    else if (type == &FloatType())
-        ImGui::Text("%g", value.AsFloat());
-    else
+        return value.AsBool() ? "true" : "false";
+    if (type == &Int32Type())
+        return std::to_string(value.AsInt32());
+    if (type == &FloatType())
     {
-        auto text = type == &StringType() ? std::string(value.AsString()) : type->m_Head->Format(value);
-        ImGui::TextUnformatted(text.data(), text.data() + text.size());
+        char text[32];
+        std::snprintf(text, sizeof(text), "%g", value.AsFloat());
+        return text;
     }
+    return type == &StringType() ? std::string(value.AsString()) : type->m_Head->Format(value);
+}
+
+bool blueprint_editor_utilities::DrawValue(const Value& value)
+{
+    if (!value.GetType())
+        return false;
+    auto text = ValueText(value);
+    ImGui::TextUnformatted(text.data(), text.data() + text.size());
     return true;
 }
 

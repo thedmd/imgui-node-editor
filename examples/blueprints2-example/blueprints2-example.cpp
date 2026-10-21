@@ -391,6 +391,7 @@ struct BlueprintEditorExample
             canvasMax = ImGui::GetItemRectMax();
 
             ShowBreakpoints(*m_Document, canvasMin, canvasMax);
+            ShowRunOverlay(*m_Document, canvasMin, canvasMax);
             ShowBubbles(*m_Document, canvasMin, canvasMax);
             DeclareActions(*m_Document, canvasMin, canvasMax);
             if (m_ShowPanels)
@@ -660,6 +661,7 @@ private:
 
         // An edit made with a node's widgets, done once the nodes are drawn.
         std::function<void()> edit;
+        m_PinIcons.clear();
 
         // Where the run's fibers wait: at their nodes, and in the calls they're in.
         std::unordered_map<Id, std::string> waits;
@@ -828,6 +830,7 @@ private:
                 }
                 else
                     Icon(iconSize, PinIcon(pin), isLinked, PinColor(pin));
+                m_PinIcons[pin.m_Id] = ImRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
                 if (disabled.contains(pin.m_Id))
                 {
                     auto iconMin = ImGui::GetItemRectMin(), iconMax = ImGui::GetItemRectMax();
@@ -939,6 +942,7 @@ private:
 
                 // [2] - Show icon
                 Icon(iconSize, PinIcon(pin), linked.count(pin.m_Id) > 0, PinColor(pin));
+                m_PinIcons[pin.m_Id] = ImRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
 
                 ed::EndPin();
 
@@ -961,7 +965,8 @@ private:
         }
 
         // While a run goes on, a flow link it took in its last steps is thicker, the more so the more
-        // recently. A run that ended keeps its context, for its values, not its trace.
+        // recently, but for the one it took last, which flows. A run that ended keeps its context, for
+        // its values, not its trace.
         std::unordered_map<Id, uint64_t> taken;
         if (auto context = m_Debugger.IsActive() ? m_Debugger.GetContext() : nullptr)
             for (auto& entry : context->Trace())
@@ -970,7 +975,9 @@ private:
         {
             const float c_Steps = 16.0f;
             auto it = taken.find(link);
-            return it == taken.end() ? 0.0f : 3.0f * ImMax(0.0f, 1.0f - static_cast<float>(m_Debugger.StepCount() - it->second) / c_Steps);
+            if (it == taken.end() || (m_Debugger.IsActive() && link == m_Debugger.TakenLink()))
+                return 0.0f;
+            return 2.0f * ImMax(0.0f, 1.0f - static_cast<float>(m_Debugger.StepCount() - it->second) / c_Steps);
         };
 
         // Commit all links to editor. A disabled link shows, grey, until its problem is resolved;
@@ -992,7 +999,6 @@ private:
             edit();
     }
 
-    // Above each node whose bubble is open, its problems.
     // A red disc over the top-left corner of each node with a breakpoint.
     void ShowBreakpoints(const Document& document, ImVec2 canvasMin, ImVec2 canvasMax)
     {
@@ -1010,6 +1016,77 @@ private:
         drawList->PopClipRect();
     }
 
+    // While a run is paused, a chevron above the node its last step ran, and a blue one above the
+    // node it runs next; beside the pins, what the run holds for them: values of written outputs and
+    // of linked inputs, and the flow along the link it took. Drawn to the canvas's scale.
+    void ShowRunOverlay(Document& document, ImVec2 canvasMin, ImVec2 canvasMax)
+    {
+        if (!m_Debugger.IsActive() || m_Debugger.IsRunning())
+            return;
+        auto&      graph    = document.GetGraph();
+        auto       drawList = ImGui::GetWindowDrawList();
+        const auto scale    = ed::CanvasToScreen(ImVec2(1.0f, 0.0f)).x - ed::CanvasToScreen(ImVec2(0.0f, 0.0f)).x;
+        const auto current  = m_Debugger.CurrentNode(), next = m_Debugger.NextNode();
+        const auto ran      = ImGui::GetColorU32(ImGuiCol_PlotHistogram), runs = ImGui::GetColorU32(ImGuiCol_NavCursor);
+        drawList->PushClipRect(canvasMin, canvasMax, true);
+
+        for (auto [node, color] : { std::pair(current, ran), std::pair(next, runs) })
+        {
+            if (!node || !graph.FindNode(node))
+                continue;
+            const auto position = ed::GetNodePosition(node);
+            const auto pivot    = ed::CanvasToScreen(position + ImVec2(ed::GetNodeSize(node).x * 0.5f, 0.0f));
+            DrawIcon(drawList, pivot - ImVec2(40.0f, 35.0f) * scale, pivot + ImVec2(40.0f, 0.0f) * scale, IconType::FlowDown, true, color, 0);
+        }
+
+        auto       font     = ImGui::GetFont();
+        const auto fontSize = ImGui::GetFontSize() * scale;
+        const auto padding  = ImVec2(4.0f, 1.0f) * scale;
+        const auto gap      = ImGui::GetStyle().ItemSpacing.x * 1.75f * scale;
+        const auto taken    = graph.FindLink(m_Debugger.TakenLink());
+        auto pill = [&](const Pin& pin, ImU32 color, const std::string& text)
+        {
+            auto icon = m_PinIcons.find(pin.m_Id);
+            if (icon == m_PinIcons.end())
+                return;
+            const auto min   = ed::CanvasToScreen(icon->second.Min), max = ed::CanvasToScreen(icon->second.Max);
+            const auto inner = text.empty() ? ImVec2(fontSize, fontSize) : font->CalcTextSizeA(fontSize, FLT_MAX, 0.0f, text.c_str());
+            const auto size  = inner + padding * 2.0f;
+            const auto y     = (min.y + max.y - size.y) * 0.5f;
+            const auto a     = ImVec2(pin.m_Direction == Direction::Input ? min.x - gap - size.x : max.x + gap, y);
+            drawList->AddRectFilled(a, a + size, (color & ~IM_COL32_A_MASK) | IM_COL32(0, 0, 0, 128), 4.0f * scale);
+            drawList->AddRect(a, a + size, ImGui::GetColorU32(ImGuiCol_Text, 0.5f), 4.0f * scale);
+            if (text.empty())
+                DrawIcon(drawList, a + padding, a + padding + inner, IconType::Flow, true, color, 0);
+            else
+                drawList->AddText(font, fontSize, a + padding, ImGui::GetColorU32(ImGuiCol_Text), text.c_str());
+        };
+        for (auto& node : graph.Nodes())
+        {
+            const auto color = node.m_Id == current ? ran : runs;
+            for (auto& pin : node.m_Pins)
+            {
+                if (pin.m_Flow)
+                {
+                    if (taken && (taken->m_From == pin.m_Id || taken->m_To == pin.m_Id))
+                        pill(pin, color, {});
+                    continue;
+                }
+                if (pin.m_Direction == Direction::Input && !std::any_of(graph.Links().begin(), graph.Links().end(), [&pin](const Link& link) { return link.m_Active && link.m_To == pin.m_Id; }))
+                    continue;
+                auto watch = m_Debugger.Evaluate(document, pin.m_Id);
+                if (!watch || !watch.GetValue().m_Step)
+                    continue;
+                auto text = ValueText(watch.GetValue().m_Value);
+                if (text.size() > 32)
+                    text = text.substr(0, 29) + "...";
+                pill(pin, color, text.empty() ? std::string("\"\"") : text);
+            }
+        }
+        drawList->PopClipRect();
+    }
+
+    // Above each node whose bubble is open, its problems.
     void ShowBubbles(const Document& document, ImVec2 canvasMin, ImVec2 canvasMax)
     {
         const auto wrap     = 420.0f;
@@ -2137,6 +2214,7 @@ private:
     bool                      m_PendingRemember = true;
     Id                        m_PendingNode     = 0;     // to go to once its graph shows
     Id                        m_FollowedNode    = 0;     // the run's next node, as its graph last showed for it
+    std::unordered_map<Id, ImRect> m_PinIcons;           // where the shown graph's pins' icons are, as its nodes last drew
     Id                        m_RenamedFunction = 0;     // its graph's ID
     bool                      m_RenameFocus     = false; // the rename popup opens, its name focused
     char                      m_RenameText[64]  = {};
