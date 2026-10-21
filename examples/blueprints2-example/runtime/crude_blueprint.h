@@ -209,6 +209,7 @@ enum class BlueprintError : uint16_t
     Loop,           // a link that closes a loop of pure nodes
     Unsupported,    // what a node or a fiber can't do now, such as a node type that doesn't run
     BadFile,        // a file that isn't a blueprint this runtime reads
+    TooDeep,        // pure nodes computed in the inputs of others, nested deeper than the runtime goes
 };
 
 constexpr ErrorCategory CategoryOf(BlueprintError) { return ErrorCategory::Blueprint; }
@@ -1082,6 +1083,7 @@ private:
     // is computed at most once for what it reads.
     uint64_t                       m_Generation = 1;
     FiberId                        m_NextFiber  = 1;
+    int                            m_Depth      = 0; // of pure nodes computed in each other's inputs
     // Where the error on its way out arose: a pure node or a cast deep in an input.
     int                            m_ErrorNode  = -1;
     Id                             m_ErrorLink  = 0;

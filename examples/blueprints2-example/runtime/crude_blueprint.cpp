@@ -2061,14 +2061,28 @@ crude_blueprint::CompileResult crude_blueprint::Compile(const Blueprint& bluepri
     }
 
     // Kept links can close a loop of pure nodes, which no edit makes. A loop is named by the node
-    // its search came back to, which is on the loop, unlike nodes that only read from it.
+    // its search came back to, which is on the loop, unlike nodes that only read from it. The search
+    // keeps its own stack, as a file can chain nodes deeper than the call stack goes.
     std::vector<int> state(program->m_Nodes.size(), 0); // 0: unseen, 1: on the search's path, 2: done
-    std::function<int(int)> visit = [&](int node) -> int
+    std::vector<std::pair<int, size_t>> path;          // nodes, and the next of their pins to follow
+    for (size_t root = 0; root < program->m_Nodes.size(); ++root)
     {
-        state[node] = 1;
+        if (!program->m_Nodes[root].m_Pure || state[root] != 0)
+            continue;
         auto loop = -1;
-        for (auto& pin : program->m_Nodes[node].m_Pins)
+        state[root] = 1;
+        path.assign(1, { static_cast<int>(root), 0 });
+        while (!path.empty() && loop < 0)
         {
+            auto  node = path.back().first;
+            auto& pins = program->m_Nodes[node].m_Pins;
+            if (path.back().second == pins.size())
+            {
+                state[node] = 2;
+                path.pop_back();
+                continue;
+            }
+            auto& pin = pins[path.back().second++];
             if (pin.m_Flow || pin.m_Direction != Direction::Input || pin.m_Source < 0)
                 continue;
             auto source = program->m_Slots[pin.m_Source].first;
@@ -2077,18 +2091,14 @@ crude_blueprint::CompileResult crude_blueprint::Compile(const Blueprint& bluepri
             if (state[source] == 1)
                 loop = source;
             else if (state[source] == 0)
-                loop = visit(source);
-            if (loop >= 0)
-                break;
+            {
+                state[source] = 1;
+                path.emplace_back(source, 0);
+            }
         }
-        state[node] = 2;
-        return loop;
-    };
-    for (size_t i = 0; i < program->m_Nodes.size(); ++i)
-    {
-        if (!program->m_Nodes[i].m_Pure || state[i] != 0)
-            continue;
-        if (auto loop = visit(static_cast<int>(i)); loop >= 0)
+        for (auto& [node, next] : path)
+            state[node] = 2;
+        if (loop >= 0)
         {
             auto& node = program->m_Nodes[loop];
             error(Error(BlueprintError::Loop, node.m_Name + " is in a loop of pure nodes"), node.m_Graph, node.m_Id, 0);
@@ -2322,11 +2332,23 @@ crude_blueprint::Result<crude_blueprint::Value> crude_blueprint::Context::ReadSl
     return m_Slots[slot];
 }
 
+// Pure nodes compute in the inputs that read them, so each nests in the call stack. 128 levels take
+// about 600 KB where a level is largest, in MSVC's debug builds with AddressSanitizer, of a main
+// thread's 1 MB.
 crude_blueprint::Result<void> crude_blueprint::Context::EvaluateNode(int node)
 {
-    auto&       record = m_Program->m_Nodes[node];
+    const int c_MaxDepth = 128;
+    auto&     record     = m_Program->m_Nodes[node];
+    if (m_Depth >= c_MaxDepth)
+    {
+        if (m_ErrorNode < 0)
+            m_ErrorNode = node;
+        return Error(BlueprintError::TooDeep, record.m_Name + " is computed in inputs nested deeper than " + std::to_string(c_MaxDepth) + " pure nodes");
+    }
+    ++m_Depth;
     EvalContext context(*this, node);
     auto        result = Contained([&] { return record.m_Type->Evaluate(context); });
+    --m_Depth;
     if (!result)
     {
         if (m_ErrorNode < 0)

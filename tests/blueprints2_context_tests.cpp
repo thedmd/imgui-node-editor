@@ -3,6 +3,7 @@
 // contexts that run them.
 //------------------------------------------------------------------------------
 # include "blueprints2_fixture.h"
+# include <crude_json.h>
 # include <algorithm>
 # include <chrono>
 # include <functional>
@@ -617,6 +618,101 @@ TEST_CASE(Debugger, "context.the_debugger_reads_any_pin_without_running_a_node",
     auto flow    = context.Evaluate(f.Pin(count, "then"));
     auto unknown = context.Evaluate(99999);
     test::Check(!flow && !unknown && unknown.GetError().Is(BlueprintError::NotFound), "a flow pin has no value: %s", Message(flow).c_str());
+}
+
+// Start -> Log(Text(Plus(Plus(...)))), each Plus adding 1: as a file holds it, for chains longer than
+// edits make in good time.
+crude_json::value Chain(int length, bool loop)
+{
+    crude_json::array nodes, links;
+    Id next = 2;
+    auto node = [&nodes, &next](const char* type, std::initializer_list<std::pair<const char*, const char*>> pins)
+    {
+        crude_json::object saved, keys;
+        saved["id"]   = next++;
+        saved["type"] = std::string("test.") + type;
+        for (auto& [key, direction] : pins)
+        {
+            crude_json::object pin;
+            pin["id"]  = next++;
+            pin["dir"] = direction;
+            if (std::string_view(type) == "Start" || std::string_view(key) == "enter" || std::string_view(key) == "then")
+                pin["flow"] = true;
+            keys[key] = std::move(pin);
+        }
+        saved["pins"] = std::move(keys);
+        nodes.push_back(std::move(saved));
+        return next - 1 - static_cast<Id>(pins.size());
+    };
+    auto link = [&links, &next](Id from, Id to)
+    {
+        crude_json::object saved;
+        saved["id"]   = next++;
+        saved["from"] = from;
+        saved["to"]   = to;
+        links.push_back(std::move(saved));
+    };
+
+    auto start = node("Start", { { "then", "out" } });
+    auto log   = node("Log", { { "enter", "in" }, { "text", "in" }, { "then", "out" } });
+    auto text  = node("Text", { { "number", "in" }, { "text", "out" } });
+    link(start + 1, log + 1);
+    link(text + 2, log + 2);
+    Id first = 0, last = 0;
+    for (int i = 0; i < length; ++i)
+    {
+        auto plus = node("Plus", { { "a", "in" }, { "b", "in" }, { "sum", "out" } });
+        if (i == 0)
+            first = plus;
+        else
+            link(last + 3, plus + 1);
+        last = plus;
+    }
+    link(last + 3, text + 1);
+    if (loop)
+        link(last + 3, first + 2);
+
+    crude_json::object graph, file;
+    graph["id"]    = 1;
+    graph["kind"]  = "event";
+    graph["name"]  = "Main";
+    graph["nodes"] = std::move(nodes);
+    graph["links"] = std::move(links);
+    file["format"]  = "crude_blueprint";
+    file["version"] = 2;
+    file["next_id"] = next;
+    file["graphs"]  = crude_json::array{ std::move(graph) };
+    return file;
+}
+
+TEST_CASE(DeepChains, "context.chains_deeper_than_the_stack_fail_their_fiber_and_dont_crash", nullptr, test::TestFlags_None)
+{
+    for (auto length : { 100, 20000 })
+    {
+        Blueprint blueprint(ContextRegistry(), std::make_shared<TypeTable>());
+        auto loaded = Load(blueprint, Chain(length, false));
+        auto compiled = loaded ? Compile(blueprint) : CompileResult{};
+        if (!compiled.m_Program)
+        {
+            test::Check(false, "a chain of %d compiles: %s %s", length, Message(loaded).c_str(), Messages(compiled.m_Diagnostics).c_str());
+            continue;
+        }
+        Context context(compiled.m_Program);
+        Logs    logs;
+        context.SetMonitor(&logs);
+        auto end = Finish(context, context.Start("Start").ValueOr(0));
+        auto diagnostics = context.Diagnostics();
+        if (length == 100)
+            test::Check(end == FiberState::Done && logs.m_Text == "100", "a chain of 100 computes: %s", logs.m_Text.c_str());
+        else
+            test::Check(end == FiberState::Failed && diagnostics.size() == 1 && diagnostics[0].m_Error.Is(BlueprintError::TooDeep), "a chain of 20000 fails its fiber: %s", Messages(diagnostics).c_str());
+    }
+
+    Blueprint looped(ContextRegistry(), std::make_shared<TypeTable>());
+    auto loaded   = Load(looped, Chain(20000, true));
+    auto compiled = loaded ? Compile(looped) : CompileResult{};
+    auto refused  = loaded && !compiled.m_Program && std::any_of(compiled.m_Diagnostics.begin(), compiled.m_Diagnostics.end(), [](const Diagnostic& d) { return d.m_Error.Is(BlueprintError::Loop); });
+    test::Check(refused, "and a loop at the end of one is found: %s", Messages(compiled.m_Diagnostics).c_str());
 }
 
 TEST_CASE(RunAndStop, "context.run_steps_fibers_until_they_end_or_the_time_is_up", nullptr, test::TestFlags_None)
