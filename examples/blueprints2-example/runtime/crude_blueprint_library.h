@@ -7,7 +7,7 @@
 
 namespace crude_blueprint {
 
-// "crude.Start", "crude.Print", "crude.Constant", "crude.Add", "crude.Branch" and "crude.ForLoop".
+// Events, flow, values and math, each named "crude." and its title without spaces: "crude.ForLoop".
 Result<void> RegisterLibrary(Registry& registry);
 
 } // namespace crude_blueprint

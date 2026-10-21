@@ -1,6 +1,10 @@
 # include "crude_blueprint_library.h"
+# include <algorithm>
+# include <cmath>
+# include <cstdint>
 # include <limits>
 # include <memory>
+# include <random>
 # include <string>
 
 
@@ -118,6 +122,266 @@ struct AddNode final : NodeType
     }
 };
 
+// Of Int32s or Floats.
+TypeVariable Numbers(NodeDeclaration& declaration)
+{
+    return declaration.Variable("T", { &Int32ValueType(), &FloatValueType() });
+}
+
+// Integers that leave Int32's range are an error.
+Result<Value> Int32Result(int64_t value, std::string_view what)
+{
+    if (value < std::numeric_limits<int32_t>::min() || value > std::numeric_limits<int32_t>::max())
+        return Error(BlueprintError::OutOfRange, std::string(what) + ", " + std::to_string(value) + ", is outside Int32's range");
+    return Value::Int32(static_cast<int32_t>(value));
+}
+
+// a and b into a result, all of T.
+struct BinaryNumbersNode : NodeType
+{
+    using NodeType::NodeType;
+
+    void Declare(NodeDeclaration& declaration, const NodeConfig&, const Bindings&) const override
+    {
+        auto T = Numbers(declaration);
+        declaration.Input("a", "A", T);
+        declaration.Input("b", "B", T);
+        declaration.Output("result", "Result", T);
+    }
+
+    Result<void> Evaluate(EvalContext& context) const override
+    {
+        auto a = context.Get("a");
+        if (!a)
+            return a.GetError();
+        auto b = context.Get("b");
+        if (!b)
+            return b.GetError();
+        auto result = context.TypeOf("result") == &Int32Type()
+            ? Int32s(a.GetValue().AsInt32(), b.GetValue().AsInt32())
+            : Value::Float(Floats(a.GetValue().AsFloat(), b.GetValue().AsFloat()));
+        if (!result)
+            return result.GetError();
+        context.Set("result", result.GetValue());
+        return {};
+    }
+
+    virtual Result<Value> Int32s(int32_t a, int32_t b) const = 0;
+    virtual float         Floats(float a, float b) const = 0;
+};
+
+struct SubtractNode final : BinaryNumbersNode
+{
+    SubtractNode(): BinaryNumbersNode("crude.Subtract", "Subtract", "Math") {}
+
+    Result<Value> Int32s(int32_t a, int32_t b) const override { return Int32Result(int64_t{ a } - b, "the difference"); }
+    float         Floats(float a, float b) const override     { return a - b; }
+};
+
+struct DivideNode final : BinaryNumbersNode
+{
+    DivideNode(): BinaryNumbersNode("crude.Divide", "Divide", "Math") {}
+
+    // Toward zero, as C++ divides.
+    Result<Value> Int32s(int32_t a, int32_t b) const override
+    {
+        if (b == 0)
+            return Error(BlueprintError::OutOfRange, "division by zero");
+        return Int32Result(int64_t{ a } / b, "the quotient");
+    }
+    float Floats(float a, float b) const override { return a / b; }
+};
+
+// With the dividend's sign, as C++'s % and fmod() have it.
+struct ModuloNode final : BinaryNumbersNode
+{
+    ModuloNode(): BinaryNumbersNode("crude.Modulo", "Modulo", "Math") {}
+
+    Result<Value> Int32s(int32_t a, int32_t b) const override
+    {
+        if (b == 0)
+            return Error(BlueprintError::OutOfRange, "modulo by zero");
+        return Value::Int32(static_cast<int32_t>(int64_t{ a } % b));
+    }
+    float Floats(float a, float b) const override { return std::fmod(a, b); }
+};
+
+// A value into a result, both of T.
+struct UnaryNumbersNode : NodeType
+{
+    using NodeType::NodeType;
+
+    void Declare(NodeDeclaration& declaration, const NodeConfig&, const Bindings&) const override
+    {
+        auto T = Numbers(declaration);
+        declaration.Input("value", "Value", T);
+        declaration.Output("result", "Result", T);
+    }
+
+    Result<void> Evaluate(EvalContext& context) const override
+    {
+        auto value = context.Get("value");
+        if (!value)
+            return value.GetError();
+        auto result = context.TypeOf("result") == &Int32Type()
+            ? Int32Result(Int32s(value.GetValue().AsInt32()), "the result")
+            : Value::Float(Floats(value.GetValue().AsFloat()));
+        if (!result)
+            return result.GetError();
+        context.Set("result", result.GetValue());
+        return {};
+    }
+
+    virtual int64_t Int32s(int32_t value) const = 0;
+    virtual float   Floats(float value) const = 0;
+};
+
+struct NegateNode final : UnaryNumbersNode
+{
+    NegateNode(): UnaryNumbersNode("crude.Negate", "Negate", "Math") {}
+
+    int64_t Int32s(int32_t value) const override { return -int64_t{ value }; }
+    float   Floats(float value) const override   { return -value; }
+};
+
+struct AbsNode final : UnaryNumbersNode
+{
+    AbsNode(): UnaryNumbersNode("crude.Abs", "Abs", "Math") {}
+
+    int64_t Int32s(int32_t value) const override { return value < 0 ? -int64_t{ value } : int64_t{ value }; }
+    float   Floats(float value) const override   { return std::fabs(value); }
+};
+
+// Of a group of inputs, in.0 and on, into a result, all of T.
+struct VariadicNumbersNode : NodeType
+{
+    using NodeType::NodeType;
+
+    void Declare(NodeDeclaration& declaration, const NodeConfig&, const Bindings&) const override
+    {
+        auto T     = Numbers(declaration);
+        auto count = declaration.Group("in", 2, 16);
+        for (int i = 0; i < count; ++i)
+            declaration.Input("in." + std::to_string(i), "", T);
+        declaration.Output("result", "Result", T);
+    }
+
+    Result<void> Evaluate(EvalContext& context) const override
+    {
+        auto inputs = context.Inputs("in");
+        if (!inputs)
+            return inputs.GetError();
+        auto& values = inputs.GetValue();
+        if (context.TypeOf("result") == &Int32Type())
+        {
+            int64_t result = values[0].AsInt32();
+            for (size_t i = 1; i < values.size(); ++i)
+            {
+                auto next = Int32Result(Int32s(result, values[i].AsInt32()), "the result");
+                if (!next)
+                    return next.GetError();
+                result = next.GetValue().AsInt32();
+            }
+            context.Set("result", Value::Int32(static_cast<int32_t>(result)));
+        }
+        else
+        {
+            auto result = values[0].AsFloat();
+            for (size_t i = 1; i < values.size(); ++i)
+                result = Floats(result, values[i].AsFloat());
+            context.Set("result", Value::Float(result));
+        }
+        return {};
+    }
+
+    virtual int64_t Int32s(int64_t a, int32_t b) const = 0;
+    virtual float   Floats(float a, float b) const = 0;
+};
+
+struct MultiplyNode final : VariadicNumbersNode
+{
+    MultiplyNode(): VariadicNumbersNode("crude.Multiply", "Multiply", "Math") {}
+
+    int64_t Int32s(int64_t a, int32_t b) const override { return a * b; }
+    float   Floats(float a, float b) const override     { return a * b; }
+};
+
+struct MinNode final : VariadicNumbersNode
+{
+    MinNode(): VariadicNumbersNode("crude.Min", "Min", "Math") {}
+
+    int64_t Int32s(int64_t a, int32_t b) const override { return std::min<int64_t>(a, b); }
+    float   Floats(float a, float b) const override     { return std::min(a, b); }
+};
+
+struct MaxNode final : VariadicNumbersNode
+{
+    MaxNode(): VariadicNumbersNode("crude.Max", "Max", "Math") {}
+
+    int64_t Int32s(int64_t a, int32_t b) const override { return std::max<int64_t>(a, b); }
+    float   Floats(float a, float b) const override     { return std::max(a, b); }
+};
+
+// A min above the max is an error.
+struct ClampNode final : NodeType
+{
+    ClampNode(): NodeType("crude.Clamp", "Clamp", "Math") {}
+
+    void Declare(NodeDeclaration& declaration, const NodeConfig&, const Bindings&) const override
+    {
+        auto T = Numbers(declaration);
+        declaration.Input("value", "Value", T);
+        declaration.Input("min", "Min", T);
+        declaration.Input("max", "Max", T);
+        declaration.Output("result", "Result", T);
+    }
+
+    Result<void> Evaluate(EvalContext& context) const override
+    {
+        Value values[3];
+        const char* keys[] = { "value", "min", "max" };
+        for (int i = 0; i < 3; ++i)
+        {
+            auto value = context.Get(keys[i]);
+            if (!value)
+                return value.GetError();
+            values[i] = value.GetValue();
+        }
+        auto& [value, low, high] = values;
+        if (context.TypeOf("result") == &Int32Type())
+        {
+            if (low.AsInt32() > high.AsInt32())
+                return Error(BlueprintError::OutOfRange, "the min, " + std::to_string(low.AsInt32()) + ", is above the max, " + std::to_string(high.AsInt32()));
+            context.Set("result", Value::Int32(std::clamp(value.AsInt32(), low.AsInt32(), high.AsInt32())));
+        }
+        else
+        {
+            if (!(low.AsFloat() <= high.AsFloat()))
+                return Error(BlueprintError::OutOfRange, "the min, " + FloatValueType().Format(low) + ", is above the max, " + FloatValueType().Format(high));
+            context.Set("result", Value::Float(std::clamp(value.AsFloat(), low.AsFloat(), high.AsFloat())));
+        }
+        return {};
+    }
+};
+
+// From 0 up to 1, and the same within a step: pure outputs are computed once a step.
+struct RandomNode final : NodeType
+{
+    RandomNode(): NodeType("crude.Random", "Random", "Math") {}
+
+    void Declare(NodeDeclaration& declaration, const NodeConfig&, const Bindings&) const override
+    {
+        declaration.Output("value", "Value", FloatType());
+    }
+
+    Result<void> Evaluate(EvalContext& context) const override
+    {
+        auto& engine = context.State<std::mt19937>();
+        context.Set("value", Value::Float(std::uniform_real_distribution<float>(0.0f, 1.0f)(engine)));
+        return {};
+    }
+};
+
 struct BranchNode final : NodeType
 {
     BranchNode(): NodeType("crude.Branch", "Branch", "Flow") {}
@@ -187,6 +451,16 @@ crude_blueprint::Result<void> crude_blueprint::RegisterLibrary(Registry& registr
         std::make_unique<PrintNode>(),
         std::make_unique<ConstantNode>(),
         std::make_unique<AddNode>(),
+        std::make_unique<SubtractNode>(),
+        std::make_unique<MultiplyNode>(),
+        std::make_unique<DivideNode>(),
+        std::make_unique<ModuloNode>(),
+        std::make_unique<NegateNode>(),
+        std::make_unique<AbsNode>(),
+        std::make_unique<MinNode>(),
+        std::make_unique<MaxNode>(),
+        std::make_unique<ClampNode>(),
+        std::make_unique<RandomNode>(),
         std::make_unique<BranchNode>(),
         std::make_unique<ForLoopNode>(),
     };

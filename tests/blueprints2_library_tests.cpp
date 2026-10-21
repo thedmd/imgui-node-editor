@@ -5,8 +5,13 @@
 # include "crude_blueprint_library.h"
 # include <chrono>
 # include <cstdint>
+# include <cstdio>
+# include <limits>
 # include <memory>
+# include <span>
 # include <string>
+# include <utility>
+# include <vector>
 
 using namespace blueprints2_tests;
 
@@ -68,8 +73,58 @@ struct Fixture : BlueprintFixture
         return logs.m_Text;
     }
 
+    // Start prints a node's output, through a cast unless it's a String, of the inputs it's given
+    // as Constants; inputs a group lacks are added to it. The message of an error that stops it
+    // comes after "error: ".
+    std::string Compute(const char* type, std::span<const std::pair<const char*, Value>> inputs, const char* output = "result")
+    {
+        auto start = Add("Start"), print = Add("Print"), node = Add(type);
+        for (auto& [key, value] : inputs)
+        {
+            while (!m_Graph.FindNode(node)->FindPin(key) && m_Graph.AddGroupPin(node, "in"))
+                ;
+            Link(Constant(value), "value", node, key);
+        }
+        Link(start, "then", print, "enter");
+        Link(node, output, print, "text", Type(node, output) == "String" ? LinkMode::Plain : LinkMode::Cast);
+
+        FiberState                  end = FiberState::Ready;
+        std::span<const Diagnostic> diagnostics;
+        auto printed = Run(&end, &diagnostics);
+        if (end == FiberState::Failed)
+            return "error: " + (diagnostics.empty() ? std::string() : std::string(diagnostics.back().m_Error.Message()));
+        return printed;
+    }
+
     std::unique_ptr<Context> m_Context;
 };
+
+using Inputs = std::vector<std::pair<const char*, Value>>;
+
+std::string Describe(const Inputs& inputs)
+{
+    std::string text;
+    for (auto& [key, value] : inputs)
+        text += (text.empty() ? "" : ", ") + std::string(key) + " " + value.GetType()->m_Head->Format(value);
+    return text;
+}
+
+struct ComputeCase
+{
+    const char* type;
+    Inputs      inputs;
+    const char* expected;
+};
+
+void CheckComputed(std::span<const ComputeCase> cases)
+{
+    for (auto& c : cases)
+    {
+        Fixture f;
+        auto got = f.Compute(c.type, c.inputs);
+        test::Check(got == c.expected, "%s of %s: %s", c.type, Describe(c.inputs).c_str(), got.c_str());
+    }
+}
 
 } // namespace
 
@@ -193,6 +248,66 @@ TEST_CASE(ForLoopBounds, "library.a_for_loop_runs_from_its_first_to_its_last_ind
         auto printed = f.Run();
         test::Check(printed == c.printed, "from %d to %d: %s", c.first, c.last, printed.c_str());
     }
+}
+
+TEST_CASE(MathNodes, "library.math_works_on_int32s_and_floats", nullptr, test::TestFlags_None)
+{
+    const auto i = [](int32_t value) { return Value::Int32(value); };
+    const auto f = [](float value) { return Value::Float(value); };
+    const auto lowest = std::numeric_limits<int32_t>::min();
+    const ComputeCase cases[] =
+    {
+        { "Subtract", { { "a", i(7) },      { "b", i(10) } },  "-3" },
+        { "Subtract", { { "a", f(1.5f) },   { "b", f(0.25f) } }, "1.25" },
+        { "Subtract", { { "a", i(lowest) }, { "b", i(1) } },   "error: the difference, -2147483649, is outside Int32's range" },
+        { "Multiply", { { "in.0", i(3) },   { "in.1", i(4) }, { "in.2", i(5) } }, "60" },
+        { "Multiply", { { "in.0", i(65536) }, { "in.1", i(65536) } }, "error: the result, 4294967296, is outside Int32's range" },
+        { "Multiply", { { "in.0", f(1.5f) }, { "in.1", f(2.0f) } }, "3" },
+        { "Divide",   { { "a", i(7) },      { "b", i(2) } },   "3" },
+        { "Divide",   { { "a", i(-7) },     { "b", i(2) } },   "-3" },
+        { "Divide",   { { "a", i(7) },      { "b", i(0) } },   "error: division by zero" },
+        { "Divide",   { { "a", i(lowest) }, { "b", i(-1) } },  "error: the quotient, 2147483648, is outside Int32's range" },
+        { "Divide",   { { "a", f(1.0f) },   { "b", f(4.0f) } }, "0.25" },
+        { "Modulo",   { { "a", i(7) },      { "b", i(3) } },   "1" },
+        { "Modulo",   { { "a", i(-7) },     { "b", i(3) } },   "-1" },
+        { "Modulo",   { { "a", i(lowest) }, { "b", i(-1) } },  "0" },
+        { "Modulo",   { { "a", i(7) },      { "b", i(0) } },   "error: modulo by zero" },
+        { "Modulo",   { { "a", f(7.5f) },   { "b", f(2.0f) } }, "1.5" },
+        { "Negate",   { { "value", i(5) } },      "-5" },
+        { "Negate",   { { "value", i(lowest) } }, "error: the result, 2147483648, is outside Int32's range" },
+        { "Negate",   { { "value", f(1.5f) } },   "-1.5" },
+        { "Abs",      { { "value", i(-5) } },     "5" },
+        { "Abs",      { { "value", i(lowest) } }, "error: the result, 2147483648, is outside Int32's range" },
+        { "Abs",      { { "value", f(-2.5f) } },  "2.5" },
+        { "Min",      { { "in.0", i(3) },   { "in.1", i(-1) }, { "in.2", i(2) } }, "-1" },
+        { "Min",      { { "in.0", f(0.5f) }, { "in.1", f(-0.25f) } }, "-0.25" },
+        { "Max",      { { "in.0", i(3) },   { "in.1", i(-1) }, { "in.2", i(2) } }, "3" },
+        { "Clamp",    { { "value", i(5) },  { "min", i(0) }, { "max", i(3) } }, "3" },
+        { "Clamp",    { { "value", i(-1) }, { "min", i(0) }, { "max", i(3) } }, "0" },
+        { "Clamp",    { { "value", i(1) },  { "min", i(3) }, { "max", i(0) } }, "error: the min, 3, is above the max, 0" },
+        { "Clamp",    { { "value", f(0.5f) }, { "min", f(0.0f) }, { "max", f(1.0f) } }, "0.5" },
+    };
+    CheckComputed(cases);
+}
+
+TEST_CASE(RandomPerStep, "library.random_gives_one_value_a_step", nullptr, test::TestFlags_None)
+{
+    // Random - Random reads one value; the Prints after it, each a step of its own, read two.
+    Fixture f;
+    auto start = f.Add("Start"), difference = f.Add("Print"), first = f.Add("Print"), second = f.Add("Print"), random = f.Add("Random"), subtract = f.Add("Subtract");
+    f.Link(start, "then", difference, "enter");
+    f.Link(difference, "then", first, "enter");
+    f.Link(first, "then", second, "enter");
+    f.Link(random, "value", subtract, "a");
+    f.Link(random, "value", subtract, "b");
+    f.Link(subtract, "result", difference, "text", LinkMode::Cast);
+    f.Link(random, "value", first, "text", LinkMode::Cast);
+    f.Link(random, "value", second, "text", LinkMode::Cast);
+    auto printed = f.Run();
+
+    float a = -1.0f, b = -1.0f;
+    const auto read = std::sscanf(printed.c_str(), "0 %f %f", &a, &b);
+    test::Check(read == 2 && a != b && a >= 0.0f && a < 1.0f && b >= 0.0f && b < 1.0f, "0, then two values from 0 up to 1: %s", printed.c_str());
 }
 
 TEST_CASE(LibraryOnce, "library.is_registered_once", nullptr, test::TestFlags_None)
