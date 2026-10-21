@@ -1114,3 +1114,76 @@ TEST_CASE(ClockJumps, "context.the_clock_moves_on_to_a_time_but_never_back", nul
     context.AdvanceTo(wake);
     test::Check(context.Time() == wake && context.Fibers()[0].m_State == FiberState::Ready, "and moved on to the fiber's time, it wakes it");
 }
+
+namespace {
+
+// Doubles its number, from handles of its fixed pins; a group of tags follows them.
+struct Doubling final : NodeType
+{
+    Doubling(): NodeType("test.Doubling", "Doubling") {}
+
+    void Declare(NodeDeclaration& declaration, const NodeConfig&, const Bindings&) const override
+    {
+        auto count = declaration.Group("tag", 0, 4);
+        for (int i = 0; i < count; ++i)
+            declaration.Input("tag." + std::to_string(i), "Tag", StringType());
+    }
+
+    Result<Exit> Execute(ExecContext& context, std::string_view entry) const override
+    {
+        if (!(m_Enter == entry))
+            return Error(BlueprintError::NotFound, "entered elsewhere");
+        auto number = context.Get(m_Number);
+        if (!number)
+            return number.GetError();
+        context.Set(m_Double, number.GetValue() * 2);
+        context.Set(m_Text, std::to_string(number.GetValue()));
+        return Exit::To(m_Then);
+    }
+
+    FlowPin                m_Enter  = FlowInput("enter");
+    InputPin<int32_t>      m_Number = Input<int32_t>("number", "Number", { .m_Default = Value::Int32(4) });
+    FlowPin                m_Then   = FlowOutput("then");
+    OutputPin<int32_t>     m_Double = Output<int32_t>("double", "Double");
+    OutputPin<std::string> m_Text   = Output<std::string>("text", "Text");
+};
+
+} // namespace
+
+TEST_CASE(PinHandles, "context.a_node_type_reaches_its_fixed_pins_by_handle", nullptr, test::TestFlags_None)
+{
+    // Start, then Doubling of a Number, then a Log of its double, cast, and of its text.
+    static Doubling doubling;
+    auto registry = std::make_shared<Registry>();
+    auto made     = RegisterBuiltins(*registry).IsOk() && registry->AddNodeType(s_Start).IsOk() && registry->AddNodeType(s_Log).IsOk() && registry->AddNodeType(s_Number).IsOk() && registry->AddNodeType(doubling).IsOk();
+    BlueprintFixture f(registry);
+    NodeConfig tagged;
+    tagged.m_Groups["tag"] = 2;
+    auto start = f.Add("Start"), twice = f.Add("Doubling", tagged), number = f.Add("Number", Holds(Value::Int32(21))), log = f.Add("Log"), text = f.Add("Log");
+    f.Link(start, "then", twice, "enter");
+    f.Link(twice, "then", log, "enter");
+    f.Link(log, "then", text, "enter");
+    f.Link(number, "value", twice, "number");
+    f.Link(twice, "double", log, "text", LinkMode::Cast);
+    f.Link(twice, "text", text, "text");
+    test::Check(made && f.Keys(twice) == "enter number then double text tag.0 tag.1", "its fixed pins come first, in the order declared: %s", f.Keys(twice).c_str());
+    const NodeType* types[] = { &doubling };
+    auto fits = f.m_Graph.FitNewNodes(f.Pin(number, "value"), types);
+    test::Check(fits && fits.GetValue().size() == 1 && fits.GetValue()[0].m_Pin == "number", "a new node of the type fits a link by its fixed pins");
+
+    auto compiled = Compile(f.m_Blueprint);
+    if (!compiled.m_Program)
+        return test::Check(false, "the blueprint compiles: %s", Messages(compiled.m_Diagnostics).c_str());
+    Context context(compiled.m_Program);
+    Logs    logs;
+    context.SetMonitor(&logs);
+    auto end = Finish(context, context.Start("Start").ValueOr(0));
+    test::Check(end == FiberState::Done && logs.m_Text == "42 21", "it reads and writes them by handle: %s", logs.m_Text.c_str());
+
+    auto defaulted = f.m_Graph.Disconnect(f.m_Graph.Links()[3].m_Id).IsOk();
+    Context again(Compile(f.m_Blueprint).m_Program);
+    Logs    more;
+    again.SetMonitor(&more);
+    Finish(again, again.Start("Start").ValueOr(0));
+    test::Check(defaulted && more.m_Text == "8 4", "and an unlinked one gives its declared default: %s", more.m_Text.c_str());
+}

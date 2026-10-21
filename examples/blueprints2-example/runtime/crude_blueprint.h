@@ -626,6 +626,31 @@ private:
 class EvalContext;
 class ExecContext;
 
+// A pin a node type declares in its constructor, which every node of its type has, before the pins
+// Declare() gives, and none splits. Its handle reaches it at its place, without looking its key up,
+// in the type of its values: bool, int32_t, float or std::string.
+template <typename T>
+struct InputPin
+{
+    std::string m_Key;
+    int         m_Index = -1;
+};
+
+template <typename T>
+struct OutputPin
+{
+    std::string m_Key;
+    int         m_Index = -1;
+};
+
+// A flow pin a node type declares in its constructor: an exit to it, or the entry it is.
+struct FlowPin
+{
+    std::string m_Key;
+
+    bool operator==(std::string_view entry) const { return m_Key == entry; }
+};
+
 // What a suspended fiber waits for: the context's clock to reach a time, or a signal its host sends.
 struct Wake
 {
@@ -663,6 +688,8 @@ struct Exit
     static Exit None()                { return {}; }
     static Exit To(std::string pin)   { return { Kind::To, std::move(pin), {} }; }
     static Exit Loop(std::string pin) { return { Kind::Loop, std::move(pin), {} }; }
+    static Exit To(const FlowPin& pin)   { return To(pin.m_Key); }
+    static Exit Loop(const FlowPin& pin) { return Loop(pin.m_Key); }
     // For a latent node only.
     static Exit Suspend(Wake wake)    { return { Kind::Suspend, {}, std::move(wake) }; }
 };
@@ -682,7 +709,9 @@ struct NodeType
     const std::string m_Category; // "Math"
     const uint32_t    m_Version;  // of what files save of its nodes; see Upgrade()
 
-    virtual void Declare(NodeDeclaration& declaration, const NodeConfig& config, const Bindings& bindings) const = 0;
+    // The pins after the fixed ones, which may follow the config and the bindings.
+    virtual void Declare(NodeDeclaration& declaration, const NodeConfig& config, const Bindings& bindings) const;
+    std::span<const PinDeclaration> FixedPins() const { return m_Fixed; }
 
     // A node with flow pins runs from the flow input it was entered at, and a pure one computes its
     // outputs from its inputs. Both give Unsupported unless the node type has them.
@@ -698,6 +727,20 @@ struct NodeType
     // Makes a node that an older version of this node type saved, as a file holds it, one this
     // version reads. Unsupported unless the node type has it.
     virtual Result<void> Upgrade(crude_json::value& node, uint32_t version) const;
+
+protected:
+    // Fixed pins, for the constructor to declare.
+    template <typename T>
+    InputPin<T>  Input(std::string key, std::string name, PinOptions options = {});
+    template <typename T>
+    OutputPin<T> Output(std::string key, std::string name);
+    FlowPin      FlowInput(std::string key, std::string name = {});
+    FlowPin      FlowOutput(std::string key, std::string name = {});
+
+private:
+    int Fix(PinDeclaration pin); // its index
+
+    std::vector<PinDeclaration> m_Fixed;
 };
 
 
@@ -919,6 +962,7 @@ private:
 
     void             Update();
     void             Declare();
+    static void      Declare(const NodeType& type, NodeDeclaration& declaration, const NodeConfig& config, const Bindings& bindings);
     std::vector<int> Resolve(TypeResolution& resolution);
     void             Diagnose();
     Result<void>     Disruption(const Graph& before, bool forced) const;
@@ -1212,6 +1256,10 @@ public:
     Result<std::vector<Value>> Inputs(std::string_view prefix);
     // Of the output's decided type.
     void Set(std::string_view output, Value value);
+    template <typename T>
+    Result<T>     Get(const InputPin<T>& input);
+    template <typename T>
+    void          Set(const OutputPin<T>& output, T value);
 
     const Type*       TypeOf(std::string_view pin) const;
     bool              HasPin(std::string_view pin) const; // as a group's, which the config decides
@@ -1234,8 +1282,12 @@ protected:
     CallFrame& m_Frame;
 
 private:
-    std::any& StateSlot();
-    Error     NotA(std::string_view input, const Type& type) const;
+    template <typename T>
+    Result<T>     As(Result<Value> read, std::string_view input) const;
+    Result<Value> GetAt(int pin, std::string_view key);
+    void          SetAt(int pin, Value value);
+    std::any&     StateSlot();
+    Error         NotA(std::string_view input, const Type& type) const;
 };
 
 class EvalContext final : public NodeContext
@@ -1372,10 +1424,66 @@ private:
     Id                                   m_ErrorLink  = 0;
 };
 
+// The value type of a handle's type.
+template <typename T>
+const Type& HandleType()
+{
+    if constexpr (std::is_same_v<T, bool>)
+        return BoolType();
+    else if constexpr (std::is_same_v<T, int32_t>)
+        return Int32Type();
+    else if constexpr (std::is_same_v<T, float>)
+        return FloatType();
+    else if constexpr (std::is_same_v<T, std::string>)
+        return StringType();
+    else
+        static_assert(sizeof(T) == 0, "pin handles are of bool, int32_t, float or std::string");
+}
+
+template <typename T>
+InputPin<T> NodeType::Input(std::string key, std::string name, PinOptions options)
+{
+    InputPin<T> handle{ key, -1 };
+    handle.m_Index = Fix({ std::move(key), std::move(name), Direction::Input, false, HandleType<T>(), std::move(options.m_Default), options.m_Requirement });
+    return handle;
+}
+
+template <typename T>
+OutputPin<T> NodeType::Output(std::string key, std::string name)
+{
+    OutputPin<T> handle{ key, -1 };
+    handle.m_Index = Fix({ std::move(key), std::move(name), Direction::Output, false, HandleType<T>(), {}, Requirement::Optional });
+    return handle;
+}
+
 template <typename T>
 Result<T> NodeContext::Get(std::string_view input)
 {
-    auto read = Get(input);
+    return As<T>(Get(input), input);
+}
+
+template <typename T>
+Result<T> NodeContext::Get(const InputPin<T>& input)
+{
+    return As<T>(GetAt(input.m_Index, input.m_Key), input.m_Key);
+}
+
+template <typename T>
+void NodeContext::Set(const OutputPin<T>& output, T value)
+{
+    if constexpr (std::is_same_v<T, bool>)
+        SetAt(output.m_Index, Value::Bool(value));
+    else if constexpr (std::is_same_v<T, int32_t>)
+        SetAt(output.m_Index, Value::Int32(value));
+    else if constexpr (std::is_same_v<T, float>)
+        SetAt(output.m_Index, Value::Float(value));
+    else
+        SetAt(output.m_Index, Value::String(std::move(value)));
+}
+
+template <typename T>
+Result<T> NodeContext::As(Result<Value> read, std::string_view input) const
+{
     if (!read)
         return read.GetError();
     auto& value = read.GetValue();

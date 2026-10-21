@@ -694,6 +694,29 @@ crude_blueprint::NodeType::NodeType(std::string name, std::string title, std::st
 {
 }
 
+void crude_blueprint::NodeType::Declare(NodeDeclaration&, const NodeConfig&, const Bindings&) const
+{
+}
+
+crude_blueprint::FlowPin crude_blueprint::NodeType::FlowInput(std::string key, std::string name)
+{
+    Fix({ key, std::move(name), Direction::Input, true, {}, {}, Requirement::Optional });
+    return { std::move(key) };
+}
+
+crude_blueprint::FlowPin crude_blueprint::NodeType::FlowOutput(std::string key, std::string name)
+{
+    Fix({ key, std::move(name), Direction::Output, true, {}, {}, Requirement::Optional });
+    return { std::move(key) };
+}
+
+int crude_blueprint::NodeType::Fix(PinDeclaration pin)
+{
+    CRUDE_BP_ASSERT(!pin.m_Key.empty() && std::none_of(m_Fixed.begin(), m_Fixed.end(), [&pin](const PinDeclaration& other) { return other.m_Key == pin.m_Key; }));
+    m_Fixed.push_back(std::move(pin));
+    return static_cast<int>(m_Fixed.size()) - 1;
+}
+
 
 //
 // -------[ Registry ]-------
@@ -1716,7 +1739,7 @@ crude_blueprint::Result<std::vector<crude_blueprint::NewNodeFit>> crude_blueprin
     for (auto type : types)
     {
         NodeDeclaration declaration(config);
-        type->Declare(declaration, config, {});
+        Declare(*type, declaration, config, {});
         const auto base = resolution.Size();
         for (auto& variable : declaration.Variables())
             resolution.AddVariable(type->m_Title + "." + variable.m_Name, variable.m_Allowed);
@@ -2061,6 +2084,14 @@ void crude_blueprint::Graph::Update()
     Diagnose();
 }
 
+// A node type's fixed pins first, then those its Declare() adds.
+void crude_blueprint::Graph::Declare(const NodeType& type, NodeDeclaration& declaration, const NodeConfig& config, const Bindings& bindings)
+{
+    for (auto& fixed : type.FixedPins())
+        declaration.AddPin(fixed);
+    type.Declare(declaration, config, bindings);
+}
+
 void crude_blueprint::Graph::Declare()
 {
     m_NodeIndex.clear();
@@ -2071,7 +2102,7 @@ void crude_blueprint::Graph::Declare()
         m_NodeIndex[node.m_Id] = i;
 
         NodeDeclaration declaration(node.m_Config);
-        node.m_Type->Declare(declaration, node.m_Config, node.m_Bindings);
+        Declare(*node.m_Type, declaration, node.m_Config, node.m_Bindings);
         node.m_Splits.clear();
         Split(declaration.m_Pins, node.m_Config.m_Split, node.m_Splits);
         node.m_Variables = std::move(declaration.m_Variables);
@@ -2959,6 +2990,21 @@ void crude_blueprint::NodeContext::Set(std::string_view output, Value value)
             Set(std::string(output) + "." + fields[i].m_Name, value.AsStruct()[i]);
         return;
     }
+    SetAt(pin, std::move(value));
+}
+
+crude_blueprint::Result<crude_blueprint::Value> crude_blueprint::NodeContext::GetAt(int pin, std::string_view key)
+{
+    auto& node = m_Context.m_Program->m_Nodes[m_Node];
+    CRUDE_BP_ASSERT(node.m_Pins[pin].m_Key == key && node.m_Pins[pin].m_Direction == Direction::Input && "a fixed input not at its place");
+    if (node.m_Pins[pin].m_Key != key)
+        return Get(key);
+    return m_Context.Read(m_Frame, m_Node, pin);
+}
+
+void crude_blueprint::NodeContext::SetAt(int pin, Value value)
+{
+    auto& node = m_Context.m_Program->m_Nodes[m_Node];
     CRUDE_BP_ASSERT(node.m_Pins[pin].m_Slot >= 0 && "no data output of that key");
     if (node.m_Pins[pin].m_Slot < 0)
         return;
