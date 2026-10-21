@@ -464,7 +464,14 @@ struct AddNode final : Node
             switch (m_Type)
             {
                 case PinType::Int32:
-                    return aValue.As<int32_t>() + bValue.As<int32_t>();
+                {
+                    auto sum = static_cast<int64_t>(aValue.As<int32_t>()) + bValue.As<int32_t>();
+                    if (sum > INT32_MAX)
+                        sum -= int64_t(1) << 32;
+                    else if (sum < INT32_MIN)
+                        sum += int64_t(1) << 32;
+                    return static_cast<int32_t>(sum);
+                }
                 case PinType::Float:
                     return aValue.As<float>() + bValue.As<float>();
                 case PinType::String:
