@@ -1422,6 +1422,77 @@ crude_blueprint::Result<std::vector<crude_blueprint::Id>> crude_blueprint::Graph
     return disabled;
 }
 
+crude_blueprint::Result<std::vector<crude_blueprint::NewNodeFit>> crude_blueprint::Graph::FitNewNodes(Id pin, std::span<const NodeType* const> types) const
+{
+    auto dragged = FindPin(pin);
+    if (!dragged)
+        return Error(BlueprintError::NotFound, "no pin " + std::to_string(pin) + " in " + m_Name);
+    std::vector<NewNodeFit> fits;
+    if (IsA<PlaceholderNodeType>(NodeOf(pin)->m_Type))
+        return fits;
+
+    // Without the link the new one would replace, as Connect() leaves the graph.
+    const auto output = dragged->m_Direction == Direction::Output;
+    const auto flow   = dragged->m_Flow;
+    const auto next   = m_Blueprint->m_NextId;
+    Graph scratch = *this;
+    if (std::erase_if(scratch.m_Links, [pin, output, flow](const Link& link) { return flow ? output && link.m_From == pin : !output && link.m_To == pin; }))
+        scratch.Update();
+    TypeResolution resolution(m_Blueprint->GetTypes());
+    const auto bases = scratch.Resolve(resolution);
+    m_Blueprint->m_NextId = next;
+
+    // Its node can lose it with that link.
+    auto at = scratch.m_PinIndex.find(pin);
+    if (at == scratch.m_PinIndex.end())
+        return fits;
+    auto& [nodeIndex, pinIndex] = at->second;
+    const auto& resolved = scratch.m_Nodes[nodeIndex].m_Pins[pinIndex];
+    const auto  term     = Offset(resolved.m_Type, bases[nodeIndex]);
+    const auto  decided  = resolved.m_DecidedType;
+
+    const std::string why = "a link to a new node";
+    const NodeConfig  config;
+    const auto&       registry = m_Blueprint->GetRegistry();
+    for (auto type : types)
+    {
+        NodeDeclaration declaration(config);
+        type->Declare(declaration, config, {});
+        const auto base = resolution.Size();
+        for (auto& variable : declaration.Variables())
+            resolution.AddVariable(type->m_Title + "." + variable.m_Name, variable.m_Allowed);
+
+        std::optional<NewNodeFit> plain, cast;
+        for (auto& candidate : declaration.Pins())
+        {
+            if ((candidate.m_Direction == Direction::Output) == output || candidate.m_Flow != flow)
+                continue;
+            if (flow)
+            {
+                plain = NewNodeFit{ type, candidate.m_Key, {} };
+                break;
+            }
+            auto candidateTerm = Offset(candidate.m_Type, base);
+            resolution.Begin();
+            auto unified = resolution.Unify(term, candidateTerm, why);
+            resolution.Rollback();
+            if (unified)
+            {
+                plain = NewNodeFit{ type, candidate.m_Key, {} };
+                break;
+            }
+            auto candidateType = cast || !decided ? nullptr : resolution.TypeOf(candidateTerm);
+            if (!candidateType)
+                continue;
+            if (auto info = output ? registry.FindCast(decided, candidateType) : registry.FindCast(candidateType, decided))
+                cast = NewNodeFit{ type, candidate.m_Key, info->Name() };
+        }
+        if (plain || cast)
+            fits.push_back(plain ? std::move(*plain) : std::move(*cast));
+    }
+    return fits;
+}
+
 crude_blueprint::Result<void> crude_blueprint::Graph::Disconnect(Id link)
 {
     if (!FindLink(link))

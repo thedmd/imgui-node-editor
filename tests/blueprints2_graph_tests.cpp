@@ -87,6 +87,14 @@ TestNodeType s_Print("Print", [](NodeDeclaration& d, const NodeConfig&, const Bi
     d.FlowOutput("exit");
 });
 
+// String goes into its first input through a cast, and into its second as it is.
+TestNodeType s_Repeat("Repeat", [](NodeDeclaration& d, const NodeConfig&, const Bindings&)
+{
+    d.Input("count", "Count", Int32Type());
+    d.Input("text", "Text", StringType());
+    d.Output("out", "Out", StringType());
+});
+
 TestNodeType s_Pass("Pass", [](NodeDeclaration& d, const NodeConfig&, const Bindings&)
 {
     auto T = d.Variable("T");
@@ -219,7 +227,7 @@ std::shared_ptr<const Registry> TestRegistry()
         auto made = std::make_shared<Registry>();
         auto ok = RegisterBuiltins(*made).IsOk() && made->AddValueType(s_Vector2).IsOk() && made->AddValueType(s_Rect).IsOk();
         for (auto type : { &s_Add, &s_MakeMap, &s_BreakAny, &s_ForLoop, &s_ConstBool, &s_ConstInt32, &s_ConstFloat, &s_ConstString, &s_ToString, &s_Print,
-                           &s_Pass, &s_Pair, &s_MakeArray, &s_Get, &s_Length, &s_Concat, &s_Find, &s_MakeVector2, &s_BreakVector2, &s_Flipper,
+                           &s_Repeat, &s_Pass, &s_Pair, &s_MakeArray, &s_Get, &s_Length, &s_Concat, &s_Find, &s_MakeVector2, &s_BreakVector2, &s_Flipper,
                            &s_MakeRect, &s_MoveBy, &s_Points, &s_Verify, &s_Wrap })
             ok = made->AddNodeType(*type).IsOk() && ok;
         if (!ok)
@@ -762,6 +770,50 @@ TEST_CASE(ForceDisablesTells, "graph.asking_about_forcing_tells_the_links_it_wou
     test::Check(fits && fits.GetValue().empty(), "a link that fits disables none");
     auto refused = f.m_Graph.ForceDisables(f.Pin(ints, "value"), f.Pin(print, "text"));
     test::Check(!refused && refused.GetError().Is(BlueprintError::TypeMismatch), "Int32 into Print's String input can't be forced, as no link decides String: %s", Message(refused).c_str());
+}
+
+TEST_CASE(NewNodeFits, "graph.a_new_node_takes_a_link_through_its_first_pin_that_fits", nullptr, test::TestFlags_None)
+{
+    Fixture f;
+    auto ints = f.Add("ConstInt32"), strings = f.Add("ConstString"), bools = f.Add("ConstBool"), add = f.Add("Add"), loop = f.Add("ForLoop");
+    auto text = f.Add("ToString"), print = f.Add("Print"), fresh = f.Add("Add");
+    f.Link(ints, "value", add, "in.1");
+    f.Link(ints, "value", text, "value");
+    f.Link(loop, "body", print, "enter");
+    const auto nodes = f.m_Graph.Nodes().size(), links = f.m_Graph.Links().size();
+    const auto before = f.m_Blueprint.NewId();
+
+    auto fit = [&f](Id node, std::string_view key, const char* type) -> std::string
+    {
+        const NodeType* types[] = { f.m_Blueprint.FindNodeType(std::string("test.") + type) };
+        auto fits = f.m_Graph.FitNewNodes(f.Pin(node, key), types);
+        if (!fits || fits.GetValue().empty())
+            return "none";
+        auto& found = fits.GetValue().front();
+        return found.m_Pin + (found.m_Cast.empty() ? "" : " " + found.m_Cast);
+    };
+    test::Check(fit(ints, "value", "Add") == "in.0", "Int32 goes into a new Add's first input as it is");
+    test::Check(fit(ints, "value", "Print") == "text Int32->String", "and into a new Print's text through a cast");
+    test::Check(fit(strings, "value", "Repeat") == "text", "a pin it fits as it is wins over an earlier one a cast fits");
+    test::Check(fit(add, "in.0", "ConstInt32") == "value", "an input takes a new node's output: Int32, which Add's other input decides");
+    test::Check(fit(add, "in.0", "ConstFloat") == "value Float->Int32", "and Float only through a cast");
+    test::Check(fit(text, "value", "ConstFloat") == "value", "a link the new one would replace decides nothing: %s", fit(text, "value", "ConstFloat").c_str());
+    test::Check(fit(fresh, "in.0", "ConstString") == "value" && fit(fresh, "in.0", "ConstBool") == "none", "an undecided input takes what its allowed set does, and no cast");
+    test::Check(fit(loop, "body", "Print") == "enter" && fit(print, "enter", "ForLoop") == "body", "flow goes from a flow output to a flow input, linked or not");
+    test::Check(fit(loop, "body", "ConstInt32") == "none", "a node without a flow input doesn't fit a flow output");
+    test::Check(fit(bools, "value", "MakeVector2") == "none", "nor Bool a node of Float inputs, as no cast goes from Bool to Float");
+
+    const NodeType* types[] = { f.m_Blueprint.FindNodeType("test.Print"), f.m_Blueprint.FindNodeType("test.ConstBool"), f.m_Blueprint.FindNodeType("test.Add") };
+    auto fits = f.m_Graph.FitNewNodes(f.Pin(ints, "value"), types);
+    test::Check(fits && fits.GetValue().size() == 2 && fits.GetValue()[0].m_Type == types[0] && fits.GetValue()[1].m_Type == types[2], "the node types that fit are given in their order, and the others left out");
+    const NodeType* constants[] = { f.m_Blueprint.FindNodeType("test.ConstString"), f.m_Blueprint.FindNodeType("test.ConstInt32") };
+    auto undecided = f.m_Graph.FitNewNodes(f.Pin(fresh, "in.0"), constants);
+    test::Check(undecided && undecided.GetValue().size() == 2, "each is tried on its own: an undecided input takes a String and an Int32 alike");
+    auto noPin = f.m_Graph.FitNewNodes(99999, types);
+    test::Check(!noPin && noPin.GetError().Is(BlueprintError::NotFound), "nothing fits a pin nothing has: %s", Message(noPin).c_str());
+
+    const auto after = f.m_Blueprint.NewId();
+    test::Check(f.m_Graph.Nodes().size() == nodes && f.m_Graph.Links().size() == links && f.Type(text, "value") == "Int32" && after == before + 1, "and asking changes neither the graph nor the blueprint's IDs: %d after %d", static_cast<int>(after), static_cast<int>(before));
 }
 
 TEST_CASE(RemovingNodes, "graph.removing_a_node_removes_its_links", nullptr, test::TestFlags_None)

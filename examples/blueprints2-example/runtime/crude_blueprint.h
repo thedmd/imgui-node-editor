@@ -764,6 +764,14 @@ struct Link
     Error m_Reason;
 };
 
+// A node type whose new node a link with a pin of the graph would join, and through which pin.
+struct NewNodeFit
+{
+    const NodeType* m_Type = nullptr;
+    std::string     m_Pin;  // the new node's
+    std::string     m_Cast; // the cast the link needs, as files name it; empty when it needs none
+};
+
 // Nodes, and links between their pins. After every edit, nodes declare their pins and links
 // decide their types, until the pins no longer change. The pointers and spans it gives out last
 // until its next edit.
@@ -782,6 +790,10 @@ public:
     Result<void> CanConnect(Id from, Id to, LinkMode mode = LinkMode::Plain) const;
     // The active links that forcing a link from 'from' to 'to' would disable, or why it can't be.
     Result<std::vector<Id>> ForceDisables(Id from, Id to) const;
+    // Of the node types, in their order, those whose new node a link with 'pin' fits by types: through
+    // its first pin a link fits as it is, or else its first a cast fits. The graph is resolved once,
+    // so the link can still be refused when made, as when deciding the pin's type changes pins elsewhere.
+    Result<std::vector<NewNodeFit>> FitNewNodes(Id pin, std::span<const NodeType* const> types) const;
     Result<void> Disconnect(Id link);
     // A forced config may disable links, but a type the user chose must fit its variable even then.
     Result<void> SetConfig(Id node, NodeConfig config, bool force = false);
