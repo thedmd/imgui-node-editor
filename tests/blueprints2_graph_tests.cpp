@@ -182,6 +182,26 @@ TestNodeType s_BreakVector2("BreakVector2", [](NodeDeclaration& d, const NodeCon
         d.Output(field.m_Name, field.m_Name, *field.m_Type);
 });
 
+StructType s_Rect("example.Rect", { { "min", &s_Vector2.AsType() }, { "max", &s_Vector2.AsType() } });
+
+TestNodeType s_MakeRect("MakeRect", [](NodeDeclaration& d, const NodeConfig&, const Bindings&)
+{
+    d.Output("rect", "Rect", s_Rect.AsType());
+});
+
+TestNodeType s_MoveBy("MoveBy", [](NodeDeclaration& d, const NodeConfig&, const Bindings&)
+{
+    d.Input("offset", "Offset", s_Vector2.AsType(), { .m_Default = Value::Struct(s_Vector2.AsType(), { Value::Float(1.0f), Value::Float(2.0f) }), .m_Requirement = Requirement::Recommended });
+    d.Output("moved", "Moved", s_Vector2.AsType());
+});
+
+TestNodeType s_Points("Points", [](NodeDeclaration& d, const NodeConfig&, const Bindings&)
+{
+    auto count = d.Group("point", 1, 8);
+    for (int i = 0; i < count; ++i)
+        d.Input("point." + std::to_string(i), "Point", s_Vector2.AsType());
+});
+
 // Its output's type flips with its input's, so types linked back to it never settle.
 TestNodeType s_Flipper("Flipper", [](NodeDeclaration& d, const NodeConfig&, const Bindings& bindings)
 {
@@ -195,9 +215,10 @@ std::shared_ptr<const Registry> TestRegistry()
     static const std::shared_ptr<const Registry> registry = []
     {
         auto made = std::make_shared<Registry>();
-        auto ok = RegisterBuiltins(*made).IsOk() && made->AddValueType(s_Vector2).IsOk();
+        auto ok = RegisterBuiltins(*made).IsOk() && made->AddValueType(s_Vector2).IsOk() && made->AddValueType(s_Rect).IsOk();
         for (auto type : { &s_Add, &s_MakeMap, &s_BreakAny, &s_ForLoop, &s_ConstBool, &s_ConstInt32, &s_ConstFloat, &s_ConstString, &s_ToString, &s_Print,
-                           &s_Pass, &s_Pair, &s_MakeArray, &s_Get, &s_Length, &s_Concat, &s_Find, &s_MakeVector2, &s_BreakVector2, &s_Flipper })
+                           &s_Pass, &s_Pair, &s_MakeArray, &s_Get, &s_Length, &s_Concat, &s_Find, &s_MakeVector2, &s_BreakVector2, &s_Flipper,
+                           &s_MakeRect, &s_MoveBy, &s_Points })
             ok = made->AddNodeType(*type).IsOk() && ok;
         if (!ok)
             test::Check(false, "the test registry is made");
@@ -273,6 +294,15 @@ struct Fixture
     {
         auto found = m_Graph.FindNode(node);
         return found ? found->Name() : "?";
+    }
+
+    std::string Keys(Id node) const
+    {
+        std::string keys;
+        if (auto found = m_Graph.FindNode(node))
+            for (auto& pin : found->m_Pins)
+                keys += (keys.empty() ? "" : " ") + pin.m_Key;
+        return keys;
     }
 
     Blueprint m_Blueprint;
@@ -890,4 +920,79 @@ TEST_CASE(AllowedSetsMeet, "graph.allowed_sets_of_linked_variables_meet", nullpt
     test::Check(keys && f.Type(add, "in.0") == "?{Int32|String}", "Add's T linked to a map's key takes the types both take: %s", f.Type(add, "in.0").c_str());
     auto refused = f.Connect(add2, "out", length, "array");
     test::Check(Message(refused) == f.Name(add2) + ".T takes {Int32|Float|String} and " + f.Name(length) + ".T takes {Array}: no type is both", "two sets without a common type are refused: %s", Message(refused).c_str());
+}
+
+TEST_CASE(SplitPins, "graph.a_struct_pin_splits_into_its_fields", nullptr, test::TestFlags_None)
+{
+    Fixture f;
+    auto make = f.Add("MakeVector2"), split = f.Add("BreakVector2"), add = f.Add("Add");
+    auto whole = f.Link(make, "value", split, "value");
+    auto value = f.Pin(make, "value");
+    auto made  = f.m_Graph.SplitPin(make, "value", true);
+    test::Check(made && f.Keys(make) == "x y value.x value.y" && f.Type(make, "value.x") == "Float", "Make Vector2's output gives way to a pin per field: %s", f.Keys(make).c_str());
+    test::Check(!IsActive(f.m_Graph, whole) && f.m_Graph.IsBroken(), "and the link of the struct pin is disabled: %s", Reason(f.m_Graph, whole).c_str());
+
+    auto field = f.Link(make, "value.x", add, "in.0");
+    test::Check(field && f.Type(add, "out") == "Float", "a field links on its own");
+    auto recombined = f.m_Graph.SplitPin(make, "value", false);
+    test::Check(recombined && f.Keys(make) == "x y value" && f.Pin(make, "value") == value, "recombined, the struct pin is back, with its ID");
+    test::Check(IsActive(f.m_Graph, whole) && !IsActive(f.m_Graph, field), "its link is active again, and the field's is disabled");
+
+    auto input = f.m_Graph.SplitPin(split, "value", true);
+    test::Check(input && f.Keys(split) == "value.x value.y x y" && f.Type(split, "value.y") == "Float", "an input splits too: %s", f.Keys(split).c_str());
+}
+
+TEST_CASE(SplitPinDefaults, "graph.split_fields_take_the_struct_pins_default_and_requirement", nullptr, test::TestFlags_None)
+{
+    Fixture f;
+    auto move = f.Add("MoveBy");
+    auto made = f.m_Graph.SplitPin(move, "offset", true);
+    auto node = f.m_Graph.FindNode(move);
+    auto x = node ? node->FindPin("offset.x") : nullptr;
+    auto y = node ? node->FindPin("offset.y") : nullptr;
+    test::Check(made && x && y && x->m_Default == Value::Float(1.0f) && y->m_Default == Value::Float(2.0f), "each field takes its part of the default");
+    test::Check(x && y && x->m_Requirement == Requirement::Recommended && x->m_Name == "Offset x" && x->m_Direction == Direction::Input, "and the struct pin's requirement, direction and name");
+}
+
+TEST_CASE(OnlyStructPinsSplit, "graph.only_struct_pins_split", nullptr, test::TestFlags_None)
+{
+    Fixture f;
+    auto add = f.Add("Add"), make = f.Add("MakeVector2");
+    auto number  = f.m_Graph.SplitPin(add, "in.0", true);
+    auto missing = f.m_Graph.SplitPin(make, "colour", true);
+    auto whole   = f.m_Graph.SplitPin(make, "value", false);
+    test::Check(!number && number.GetError().Is(BlueprintError::WrongType), "a pin of a type variable doesn't split: %s", Message(number).c_str());
+    test::Check(!missing && missing.GetError().Is(BlueprintError::NotFound) && !whole && whole.GetError().Is(BlueprintError::NotFound), "nor does one the node hasn't, and an unsplit pin doesn't recombine: %s", Message(whole).c_str());
+    auto once  = f.m_Graph.SplitPin(make, "value", true);
+    auto twice = f.m_Graph.SplitPin(make, "value", true);
+    auto node  = f.m_Graph.FindNode(make);
+    test::Check(once && twice && node && node->m_Config.m_Split.size() == 1, "splitting a split pin changes nothing");
+}
+
+TEST_CASE(NestedSplits, "graph.split_fields_split_too", nullptr, test::TestFlags_None)
+{
+    Fixture f;
+    auto rect = f.Add("MakeRect");
+    auto outer = f.m_Graph.SplitPin(rect, "rect", true);
+    test::Check(outer && f.Keys(rect) == "rect.min rect.max" && f.Type(rect, "rect.min") == "example.Vector2", "a Rect splits into Vector2s: %s", f.Keys(rect).c_str());
+    auto inner = f.m_Graph.SplitPin(rect, "rect.min", true);
+    test::Check(inner && f.Keys(rect) == "rect.min.x rect.min.y rect.max", "and a Vector2 of it into Floats: %s", f.Keys(rect).c_str());
+    auto whole = f.m_Graph.SplitPin(rect, "rect", false);
+    auto node  = f.m_Graph.FindNode(rect);
+    test::Check(whole && f.Keys(rect) == "rect" && node && node->m_Config.m_Split.empty(), "recombining the Rect recombines its fields: %s", f.Keys(rect).c_str());
+}
+
+TEST_CASE(SplitPinsInGroups, "graph.a_split_pin_in_a_group_moves_with_its_index", nullptr, test::TestFlags_None)
+{
+    Fixture f;
+    auto points = f.Add("Points", [] { NodeConfig config; config.m_Groups["point"] = 3; return config; }()), floats = f.Add("ConstFloat");
+    auto split = f.m_Graph.SplitPin(points, "point.2", true);
+    auto link  = f.Link(floats, "value", points, "point.2.x");
+    auto x     = f.Pin(points, "point.2.x");
+    auto moved = f.m_Graph.RemoveGroupPin(points, "point", 0);
+    auto node  = f.m_Graph.FindNode(points);
+    test::Check(split && moved && f.Keys(points) == "point.0 point.1.x point.1.y", "point.2 is point.1 now, still split: %s", f.Keys(points).c_str());
+    test::Check(f.Pin(points, "point.1.x") == x && IsActive(f.m_Graph, link) && node && node->m_Config.m_Split == std::vector<std::string>{ "point.1" }, "its fields keep their IDs and links");
+    auto gone = f.m_Graph.RemoveGroupPin(points, "point", 1);
+    test::Check(gone && f.Keys(points) == "point.0" && f.m_Graph.Links().empty() && node && f.m_Graph.FindNode(points)->m_Config.m_Split.empty(), "removing it takes its fields, their links and its split: %s", f.Keys(points).c_str());
 }

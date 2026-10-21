@@ -3,6 +3,7 @@
 # include <algorithm>
 # include <charconv>
 # include <cmath>
+# include <iterator>
 # include <limits>
 
 
@@ -1135,6 +1136,72 @@ int GroupIndex(std::string_view key, std::string_view prefix, std::string_view* 
     return index;
 }
 
+// A key once an index of the group goes: none for that index's keys, one index down for later ones.
+std::optional<std::string> AfterRemoval(const std::string& key, const GroupDeclaration& group, int index)
+{
+    for (auto& prefix : group.m_Prefixes)
+    {
+        std::string_view rest;
+        auto at = GroupIndex(key, prefix, &rest);
+        if (at < 0)
+            continue;
+        if (at == index)
+            return std::nullopt;
+        if (at > index)
+            return prefix + "." + std::to_string(at - 1) + std::string(rest);
+        break;
+    }
+    return key;
+}
+
+// A data pin declared with a struct type; a pin of a type variable can't split.
+const StructType* SplittableStruct(const PinDeclaration& pin)
+{
+    return pin.m_Flow ? nullptr : Cast<StructType>(pin.m_Type.m_Head);
+}
+
+// Fields of split fields split too.
+void Split(std::vector<PinDeclaration>& pins, std::span<const std::string> split)
+{
+    for (size_t i = 0; i < pins.size();)
+    {
+        auto structType = SplittableStruct(pins[i]);
+        if (!structType || std::find(split.begin(), split.end(), pins[i].m_Key) == split.end())
+        {
+            ++i;
+            continue;
+        }
+
+        auto& pin      = pins[i];
+        auto  defaults = pin.m_Default.IsValid() ? pin.m_Default.AsStruct() : std::span<const Value>();
+        std::vector<PinDeclaration> fields;
+        for (size_t f = 0; f < structType->Fields().size(); ++f)
+        {
+            auto& field = structType->Fields()[f];
+            PinDeclaration fieldPin;
+            fieldPin.m_Key         = pin.m_Key + "." + field.m_Name;
+            fieldPin.m_Name        = pin.m_Name.empty() ? field.m_Name : pin.m_Name + " " + field.m_Name;
+            fieldPin.m_Direction   = pin.m_Direction;
+            fieldPin.m_Type        = *field.m_Type;
+            fieldPin.m_Default     = f < defaults.size() ? defaults[f] : Value();
+            fieldPin.m_Requirement = pin.m_Requirement;
+            fields.push_back(std::move(fieldPin));
+        }
+        auto taken = std::any_of(fields.begin(), fields.end(), [&pins](const PinDeclaration& field)
+        {
+            return std::any_of(pins.begin(), pins.end(), [&field](const PinDeclaration& other) { return other.m_Key == field.m_Key; });
+        });
+        CRUDE_BP_ASSERT(!taken && "a split pin's field has the key of another pin");
+        if (taken)
+        {
+            ++i;
+            continue;
+        }
+        pins.erase(pins.begin() + static_cast<std::ptrdiff_t>(i));
+        pins.insert(pins.begin() + static_cast<std::ptrdiff_t>(i), std::make_move_iterator(fields.begin()), std::make_move_iterator(fields.end()));
+    }
+}
+
 } } // namespace crude_blueprint { namespace {
 
 const crude_blueprint::Pin* crude_blueprint::Node::FindPin(std::string_view key) const
@@ -1298,23 +1365,50 @@ crude_blueprint::Result<void> crude_blueprint::Graph::RemoveGroupPin(Id node, st
 
     std::vector<Id>                        removed;
     std::map<std::string, Id, std::less<>> keyIds;
-    for (auto& entry : changed->m_KeyIds)
+    for (auto& [key, id] : changed->m_KeyIds)
     {
-        auto& key = entry.first;
-        auto  id  = entry.second;
-        std::string_view rest;
-        auto prefix = std::find_if(declared->m_Prefixes.begin(), declared->m_Prefixes.end(), [&key, &rest](const std::string& p) { return GroupIndex(key, p, &rest) >= 0; });
-        auto at     = prefix != declared->m_Prefixes.end() ? GroupIndex(key, *prefix) : -1;
-        if (at == index)
-            removed.push_back(id);
-        else if (at > index)
-            keyIds[*prefix + "." + std::to_string(at - 1) + std::string(rest)] = id;
+        if (auto moved = AfterRemoval(key, *declared, index))
+            keyIds.emplace(std::move(*moved), id);
         else
-            keyIds.emplace(key, id);
+            removed.push_back(id);
     }
+    std::vector<std::string> split;
+    for (auto& key : changed->m_Config.m_Split)
+        if (auto moved = AfterRemoval(key, *declared, index))
+            split.push_back(std::move(*moved));
     changed->m_KeyIds = std::move(keyIds);
+    changed->m_Config.m_Split = std::move(split);
     changed->m_Config.m_Groups[declared->m_Name] = count - 1;
     std::erase_if(m_Links, [&removed](const Link& link) { return std::find(removed.begin(), removed.end(), link.m_From) != removed.end() || std::find(removed.begin(), removed.end(), link.m_To) != removed.end(); });
+    Update();
+    return {};
+}
+
+crude_blueprint::Result<void> crude_blueprint::Graph::SplitPin(Id node, std::string_view key, bool split)
+{
+    auto changed = MutableNode(node);
+    if (!changed)
+        return Error(BlueprintError::NotFound, "no node " + std::to_string(node) + " in " + m_Name);
+    auto& list   = changed->m_Config.m_Split;
+    auto  listed = std::find(list.begin(), list.end(), key) != list.end();
+    if (split)
+    {
+        if (listed)
+            return {};
+        auto pin = changed->FindPin(key);
+        if (!pin)
+            return Error(BlueprintError::NotFound, changed->Name() + " has no pin " + std::string(key));
+        if (!SplittableStruct(*pin))
+            return Error(BlueprintError::WrongType, changed->Name() + "." + std::string(key) + " isn't a struct pin");
+        list.emplace_back(key);
+    }
+    else
+    {
+        if (!listed)
+            return Error(BlueprintError::NotFound, changed->Name() + "." + std::string(key) + " isn't split");
+        auto prefix = std::string(key) + ".";
+        std::erase_if(list, [key, &prefix](const std::string& other) { return other == key || other.starts_with(prefix); });
+    }
     Update();
     return {};
 }
@@ -1434,6 +1528,7 @@ void crude_blueprint::Graph::Declare()
 
         NodeDeclaration declaration(node.m_Config);
         node.m_Type->Declare(declaration, node.m_Config, node.m_Bindings);
+        Split(declaration.m_Pins, node.m_Config.m_Split);
         node.m_Variables = std::move(declaration.m_Variables);
         node.m_Groups    = std::move(declaration.m_Groups);
         node.m_Pins.clear();

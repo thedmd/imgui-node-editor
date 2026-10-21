@@ -540,6 +540,7 @@ struct NodeConfig
 {
     std::map<std::string, int, std::less<>>         m_Groups; // indices per group
     std::map<std::string, const Type*, std::less<>> m_Types;  // the type variables the user chose
+    std::vector<std::string>                        m_Split;  // struct pins split into their fields, by key
 
     bool operator==(const NodeConfig& other) const = default;
 };
@@ -716,6 +717,9 @@ public:
     Result<void> AddGroupPin(Id node, std::string_view group);
     // The pins at the index go with their links; later indices move down, keeping their IDs.
     Result<void> RemoveGroupPin(Id node, std::string_view group, int index);
+    // A struct pin gives way to a pin per field, "pos" to "pos.x" and "pos.y", and its links are
+    // disabled until it's recombined. Recombining a pin recombines its split fields too.
+    Result<void> SplitPin(Id node, std::string_view key, bool split);
 
     std::span<const Node>       Nodes() const       { return m_Nodes; }
     std::span<const Link>       Links() const       { return m_Links; }
