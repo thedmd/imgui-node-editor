@@ -78,6 +78,11 @@ void AddSignaturePin(Document& document, Id graph, bool input); // of a key of i
 // A type parameter that a pin's type has can't go.
 void RemoveTypeParameter(Document& document, Id graph, int index);
 
+// Edits of the blueprint's variables, one undo step each. One the blueprint refuses is logged.
+void AddVariable(Document& document); // an Int32, named Variable1, or of the first number free
+void ChangeVariable(Document& document, std::string name, Variable changed, std::string_view what);
+void RemoveVariable(Document& document, std::string name); // with the nodes that use it
+
 ImU32 ProblemColor(Severity severity);
 bool  ProblemPills(int errors, int warnings); // a red disc and a yellow triangle, with their counts; true when clicked
 void  ProblemSign(ImDrawList* drawList, ImVec2 center, float radius, Severity severity);

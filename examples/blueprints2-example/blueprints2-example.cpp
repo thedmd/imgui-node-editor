@@ -15,6 +15,7 @@
 # include "crude_json.h"
 
 # include <algorithm>
+# include <cstdio>
 # include <functional>
 # include <map>
 # include <memory>
@@ -466,6 +467,7 @@ private:
         m_View_NavigateBackward.SetEnabled(hasDocument && m_HistoryIndex > 0);
         m_View_NavigateForward.SetEnabled(hasDocument && m_HistoryIndex + 1 < m_History.size());
         m_Blueprint_AddFunction.SetEnabled(hasDocument);
+        m_Blueprint_AddVariable.SetEnabled(hasDocument);
 
         // An error blocks a run, never an edit or saving.
         auto canStart = hasDocument && HasStart(m_Document->GetBlueprint()) && !m_Problems.BlocksRun();
@@ -559,6 +561,7 @@ private:
                 menuAction(m_Blueprint_Run);
                 ImGui::Separator();
                 menuAction(m_Blueprint_AddFunction);
+                menuAction(m_Blueprint_AddVariable);
 
                 ImGui::EndMenu();
             }
@@ -1054,7 +1057,7 @@ private:
         drawList->PopClipRect();
     }
 
-    // Tabs for the problems, the watches and the fibers of a run.
+    // Tabs for the problems, the variables, the watches and the fibers of a run.
     void ShowPanels(Document& document, ImVec2 position, ImVec2 size)
     {
         ImGui::SetCursorScreenPos(position);
@@ -1072,6 +1075,7 @@ private:
             };
             auto fibers = m_Debugger.GetContext() ? m_Debugger.GetContext()->Fibers() : std::vector<FiberInfo>();
             tab("Problems", m_Problems.Problems().size(), [&] { ShowProblems(document); });
+            tab("Variables", document.GetBlueprint().Variables().size(), [&] { ShowVariables(document); });
             tab("Watches", m_Debugger.Watched().size(), [&] { ShowWatches(document); });
             tab("Fibers", fibers.size(), [&] { ShowFibers(document, fibers); });
             ImGui::EndTabBar();
@@ -1155,6 +1159,73 @@ private:
         ImGui::EndTable();
         if (removed)
             m_Debugger.SetWatched(*removed, false);
+    }
+
+    // A row for each of the blueprint's variables: its name, type and default, which edits change,
+    // and its value in the run.
+    void ShowVariables(Document& document)
+    {
+        auto& blueprint = document.GetBlueprint();
+        auto  variables = blueprint.Variables();
+        if (ImGui::SmallButton("+"))
+            m_Blueprint_AddVariable.Execute();
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Add Variable");
+        if (variables.empty())
+        {
+            ImGui::SameLine();
+            ImGui::TextDisabled("No variables");
+            return;
+        }
+        if (!ImGui::BeginTable("##variables", 5, ImGuiTableFlags_SizingFixedFit))
+            return;
+
+        // The change is made once the table is drawn.
+        std::function<void()> change;
+        for (size_t i = 0; i < variables.size(); ++i)
+        {
+            auto& variable = *variables[i];
+            ImGui::PushID(static_cast<int>(i));
+            ImGui::TableNextRow();
+
+            ImGui::TableNextColumn();
+            char name[64];
+            std::snprintf(name, sizeof(name), "%s", variable.m_Name.c_str());
+            ImGui::SetNextItemWidth(ImGui::GetFontSize() * 8.0f);
+            if (ImGui::InputText("##name", name, sizeof(name), ImGuiInputTextFlags_EnterReturnsTrue))
+                change = [&document, old = variable.m_Name, renamed = Variable{ name, variable.m_Default }] { ChangeVariable(document, old, renamed, "Rename Variable"); };
+
+            ImGui::TableNextColumn();
+            auto type = variable.m_Default.GetType();
+            ImGui::SetNextItemWidth(ImGui::GetFontSize() * 7.0f);
+            if (ImGui::BeginCombo("##type", type->m_Name.c_str()))
+            {
+                for (auto head : blueprint.GetRegistry().ValueTypes())
+                    if (head->m_Arity == 0 && ImGui::Selectable(head->m_Name.c_str(), &head->AsType() == type) && &head->AsType() != type)
+                        change = [&document, retyped = Variable{ variable.m_Name, head->Default(head->AsType()) }] { ChangeVariable(document, retyped.m_Name, retyped, "Change Variable Type"); };
+                ImGui::EndCombo();
+            }
+
+            ImGui::TableNextColumn();
+            auto value = variable.m_Default;
+            if (DrawValueWithEditor(static_cast<Id>(i + 1), value))
+                change = [&document, given = Variable{ variable.m_Name, value }] { ChangeVariable(document, given.m_Name, given, "Change Variable Default"); };
+
+            ImGui::TableNextColumn();
+            auto current = m_Debugger.GetContext() ? m_Debugger.GetContext()->GetVariable(variable.m_Name) : Result<Value>(BlueprintError::NotFound);
+            if (!current || !DrawValue(current.GetValue()))
+                ImGui::TextDisabled("-");
+
+            ImGui::TableNextColumn();
+            if (ImGui::SmallButton("x"))
+                change = [&document, removed = variable.m_Name] { RemoveVariable(document, removed); };
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("Remove, with the nodes that use it");
+            ImGui::PopID();
+        }
+        ImGui::EndTable();
+        if (change)
+            change();
     }
 
     // A row for each fiber of the run: its state, the node it's at, and while it's suspended, what it
@@ -2074,6 +2145,7 @@ private:
     Action m_Blueprint_Stop  = { "Stop",         [this] { Blueprint_Stop();  } };
     Action m_Blueprint_Run   = { "Run",          [this] { Blueprint_Run();   } };
     Action m_Blueprint_AddFunction = { "Add Function", [this] { Blueprint_AddFunction(); } };
+    Action m_Blueprint_AddVariable = { "Add Variable", [this] { AddVariable(*m_Document); } };
 };
 
 

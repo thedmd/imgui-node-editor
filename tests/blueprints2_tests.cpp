@@ -993,3 +993,43 @@ TEST_CASE(SignalledRuns, "blueprints2.a_fiber_waiting_for_a_signal_goes_on_once_
     test::Check(started && waiting == Wake::OnSignal("go") && steps == 2 && still, "a step can't skip the wait, nor does another signal end it");
     test::Check(!debugger.Waiting() && debugger.IsActive() && debugger.NextNode() == made.m_Print, "its own does, and the run goes on");
 }
+
+TEST_CASE(VariableEdits, "blueprints2.variables_change_in_undo_steps_and_go_with_their_nodes", nullptr, test::TestFlags_None)
+{
+    test::Session session(UnnamedConfig());
+    OverlayLog    log;
+    Example       example(session);
+    auto& document  = example.m_Document;
+    auto& blueprint = document.GetBlueprint();
+    using namespace blueprint_editor_utilities;
+
+    session.Use([&]
+    {
+        AddVariable(document);
+        AddVariable(document);
+    });
+    auto first = blueprint.FindVariable("Variable1"), second = blueprint.FindVariable("Variable2");
+    test::Check(first && second && first->m_Default == Value::Int32(0) && document.m_Undo.size() == 2, "variables are added as Int32s, each of a name of its own, each an undo step");
+
+    session.Use([&]
+    {
+        ChangeVariable(document, "Variable1", { "Health", Value::Int32(100) }, "Rename Variable");
+        ChangeVariable(document, "Health", { "Variable2", Value::Int32(1) }, "Rename Variable");
+    });
+    auto health = blueprint.FindVariable("Health");
+    test::Check(health && health->m_Default == Value::Int32(100) && document.m_Undo.size() == 3, "a change the blueprint refuses makes no step");
+
+    auto added = Result<Id>(BlueprintError::NotFound);
+    session.Use([&]
+    {
+        auto transaction = document.BeginUndoTransaction("Add Node");
+        added = document.GetGraph().AddNode("set:Health");
+        if (added)
+            transaction->AddAction("Set Health added");
+    });
+    session.Use([&] { RemoveVariable(document, "Health"); });
+    test::Check(added && !blueprint.FindVariable("Health") && !document.GetGraph().FindNode(added.ValueOr(0)) && document.m_Undo.size() == 5, "removed, a variable takes its nodes along, in one step");
+
+    session.Use([&] { document.Undo(); });
+    test::Check(document.GetBlueprint().FindVariable("Health") && document.GetGraph().FindNode(added.ValueOr(0)), "and undoing it brings both back");
+}

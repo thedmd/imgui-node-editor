@@ -274,6 +274,61 @@ void blueprint_editor_utilities::RemoveTypeParameter(Document& document, Id grap
     });
 }
 
+void blueprint_editor_utilities::AddVariable(Document& document)
+{
+    auto&       blueprint = document.GetBlueprint();
+    std::string name;
+    for (int i = 1; name.empty() || blueprint.FindVariable(name); ++i)
+        name = "Variable" + std::to_string(i);
+    auto transaction = document.BeginUndoTransaction("Add Variable");
+    if (auto added = blueprint.AddVariable({ name, Value::Int32(0) }); !added)
+    {
+        auto message = added.GetError().Message();
+        LOGW("[Variable] %.*s", static_cast<int>(message.size()), message.data());
+        transaction->Discard();
+        return;
+    }
+    transaction->AddAction("%s added", name.c_str());
+}
+
+void blueprint_editor_utilities::ChangeVariable(Document& document, std::string name, Variable changed, std::string_view what)
+{
+    auto transaction = document.BeginUndoTransaction(what);
+    if (auto set = document.GetBlueprint().SetVariable(name, std::move(changed)); !set)
+    {
+        auto message = set.GetError().Message();
+        LOGW("[Variable] %s: %.*s", name.c_str(), static_cast<int>(message.size()), message.data());
+        transaction->Discard();
+        return;
+    }
+    transaction->AddAction("%s: %.*s", name.c_str(), static_cast<int>(what.size()), what.data());
+}
+
+void blueprint_editor_utilities::RemoveVariable(Document& document, std::string name)
+{
+    auto& blueprint = document.GetBlueprint();
+    auto  get       = blueprint.FindNodeType("get:" + name), set = blueprint.FindNodeType("set:" + name);
+    auto  transaction = document.BeginUndoTransaction("Remove Variable");
+    auto  removedNodes = 0;
+    for (auto& graph : blueprint.Graphs())
+    {
+        std::vector<Id> uses;
+        for (auto& node : graph->Nodes())
+            if (node.m_Type == get || node.m_Type == set)
+                uses.push_back(node.m_Id);
+        for (auto node : uses)
+            removedNodes += graph->RemoveNode(node).IsOk() ? 1 : 0;
+    }
+    if (auto removed = blueprint.RemoveVariable(name); !removed)
+    {
+        auto message = removed.GetError().Message();
+        LOGW("[Variable] %s: %.*s", name.c_str(), static_cast<int>(message.size()), message.data());
+        transaction->Discard();
+        return;
+    }
+    transaction->AddAction("%s removed, with %d node%s", name.c_str(), removedNodes, removedNodes != 1 ? "s" : "");
+}
+
 const blueprint_editor_utilities::Graph* blueprint_editor_utilities::GraphOf(const Blueprint& blueprint, Id node)
 {
     for (auto& graph : blueprint.Graphs())
