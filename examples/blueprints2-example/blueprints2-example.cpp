@@ -340,6 +340,7 @@ struct BlueprintEditorExample
             canvasMin = ImGui::GetItemRectMin();
             canvasMax = ImGui::GetItemRectMax();
 
+            ShowBreakpoints(*m_Document, canvasMin, canvasMax);
             ShowBubbles(*m_Document, canvasMin, canvasMax);
             DeclareActions(*m_Document, canvasMin, canvasMax);
             if (m_ShowProblems)
@@ -557,7 +558,7 @@ private:
         else if (m_Debugger.IsRunning())
             ImGui::TextUnformatted("Status: running");
         else if (m_Debugger.IsActive())
-            ImGui::TextUnformatted("Status: paused");
+            ImGui::TextUnformatted(m_Debugger.IsAtBreakpoint() ? "Status: paused at a breakpoint" : "Status: paused");
         else
             ImGui::TextUnformatted("Status: -");
 
@@ -858,6 +859,23 @@ private:
     }
 
     // Above each node whose bubble is open, its problems.
+    // A red disc over the top-left corner of each node with a breakpoint.
+    void ShowBreakpoints(const Document& document, ImVec2 canvasMin, ImVec2 canvasMax)
+    {
+        const auto radius = ImGui::GetTextLineHeight() * 0.35f;
+        auto drawList = ImGui::GetWindowDrawList();
+        drawList->PushClipRect(canvasMin, canvasMax, true);
+        for (auto& node : document.GetGraph().Nodes())
+        {
+            if (!m_Debugger.HasBreakpoint(node.m_Id))
+                continue;
+            const auto center = ed::CanvasToScreen(ed::GetNodePosition(node.m_Id)) + ImVec2(radius, radius) * 0.5f;
+            drawList->AddCircleFilled(center, radius, IM_COL32(220, 48, 48, 255));
+            drawList->AddCircle(center, radius, IM_COL32(32, 32, 32, 255), 0, 1.5f);
+        }
+        drawList->PopClipRect();
+    }
+
     void ShowBubbles(const Document& document, ImVec2 canvasMin, ImVec2 canvasMax)
     {
         const auto wrap     = 420.0f;
@@ -1233,6 +1251,14 @@ private:
             m_Blueprint_Step.Execute();
         if (actions.Press("Stop", ImGuiMod_Shift | ImGuiKey_F5, m_Blueprint_Stop.IsEnabled(), true))
             m_Blueprint_Stop.Execute();
+        auto selected = GetSelectedNodes();
+        if (actions.Press("Toggle Breakpoint", ImGuiKey_F9, owner || !selected.empty(), true))
+        {
+            auto nodes   = owner ? std::vector<Id>{ owner->m_Id } : selected;
+            auto enabled = !m_Debugger.HasBreakpoint(nodes.front());
+            for (auto node : nodes)
+                m_Debugger.SetBreakpoint(node, enabled);
+        }
 
         if (m_ShowActions)
             actions.Draw(canvasMin, canvasMax);
@@ -1252,7 +1278,7 @@ private:
         ed::Suspend();
 
         m_CreateNodeDialog.Show(document);
-        m_NodeContextMenu.Show(document);
+        m_NodeContextMenu.Show(document, m_Debugger);
         m_PinContextMenu.Show(document);
         m_LinkContextMenu.Show(document);
         m_LinkDropMenu.Show(document);
@@ -1475,6 +1501,7 @@ private:
         LOGI("[File] Close");
 
         m_Debugger.Stop();
+        m_Debugger.ClearBreakpoints();
         m_Problems = {};
         m_Bubbles.clear();
         m_RunBubbles.clear();
@@ -1612,7 +1639,10 @@ private:
 
     void Blueprint_Run()
     {
-        m_Debugger.Start(*m_Document, true);
+        if (m_Debugger.IsActive())
+            m_Debugger.Continue();
+        else
+            m_Debugger.Start(*m_Document, true);
     }
 
     struct LinkQuery

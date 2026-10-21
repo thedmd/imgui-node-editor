@@ -115,7 +115,7 @@ TEST_CASE(ExampleRuns, "blueprints2.the_example_blueprint_runs", nullptr, test::
     test::Check(state == FiberState::Done && prints.m_Text == "10 11 12 13 14 Done", "it prints each index plus 10, then Done: %s", prints.m_Text.c_str());
 }
 
-TEST_CASE(EditsStopRuns, "blueprints2.an_edit_stops_a_run_and_a_move_doesnt", nullptr, test::TestFlags_None)
+TEST_CASE(EditsDuringRuns, "blueprints2.a_run_goes_on_after_an_edit_of_values_and_stops_after_others", nullptr, test::TestFlags_None)
 {
     test::Session session(UnnamedConfig());
     OverlayLog    log;
@@ -139,6 +139,7 @@ TEST_CASE(EditsStopRuns, "blueprints2.an_edit_stops_a_run_and_a_move_doesnt", nu
     debugger.Update(document);
     test::Check(debugger.IsActive() && document.m_Undo.size() == 1, "moving a node leaves the run");
 
+    auto last = [&] { auto read = debugger.GetContext() ? debugger.GetContext()->Evaluate(example.Pin(loop, "last")) : Result<Watch>(BlueprintError::NotFound); return read ? read.GetValue().m_Value : Value(); };
     session.Use([&]
     {
         auto transaction = document.BeginUndoTransaction("Edit Value");
@@ -146,17 +147,62 @@ TEST_CASE(EditsStopRuns, "blueprints2.an_edit_stops_a_run_and_a_move_doesnt", nu
             transaction->AddAction("For Loop's last index changed");
     });
     debugger.Update(document);
-    test::Check(!debugger.IsActive(), "changing a value stops it");
+    test::Check(debugger.IsActive() && last() == Value::Int32(2), "changing a value goes on in the run, which reads the new one");
 
-    debugger.Start(document, false);
     session.Use([&] { document.Undo(); });
     debugger.Update(document);
-    test::Check(!debugger.IsActive(), "and so does undoing it");
+    test::Check(debugger.IsActive() && last() == Value::Int32(4), "and so does undoing it");
+
+    session.Use([&]
+    {
+        auto transaction = document.BeginUndoTransaction("Break Link");
+        if (document.GetGraph().Disconnect(document.GetGraph().Links().front().m_Id))
+            transaction->AddAction("A link broken");
+    });
+    debugger.Update(document);
+    test::Check(!debugger.IsActive(), "and breaking a link stops it");
 
     NodeConfig untyped;
     if (!document.GetGraph().AddNode("crude.Constant", untyped))
         test::Check(false, "a Constant is added");
     test::Check(!debugger.Start(document, false) && !debugger.IsActive(), "a blueprint with an error doesn't start: a Constant of no type");
+}
+
+TEST_CASE(Breakpoints, "blueprints2.a_run_pauses_at_breakpoints_which_stay_for_later_runs", nullptr, test::TestFlags_None)
+{
+    // A breakpoint on the Print in For Loop's body.
+    test::Session session(UnnamedConfig());
+    OverlayLog    log;
+    Example       example(session);
+    auto& document = example.m_Document;
+    auto  print    = example.Node("crude.Print");
+
+    Debugger debugger;
+    auto finish = [&] { for (int i = 0; i < 100 && debugger.IsRunning(); ++i) debugger.Update(document); };
+    debugger.SetBreakpoint(print, true);
+    auto started = debugger.Start(document, true);
+    debugger.Update(document);
+    test::Check(started && debugger.IsActive() && !debugger.IsRunning() && debugger.IsAtBreakpoint() && debugger.NextNode() == print, "a run pauses before the Print");
+
+    const auto steps = debugger.GetContext()->StepCount();
+    debugger.Continue();
+    debugger.Update(document);
+    test::Check(debugger.IsAtBreakpoint() && debugger.GetContext()->StepCount() == steps + 2, "continued, it runs the Print and pauses there again, once round the loop: %d steps",
+        static_cast<int>(debugger.GetContext()->StepCount() - steps));
+
+    debugger.SetBreakpoint(print, false);
+    debugger.Continue();
+    finish();
+    test::Check(!debugger.IsActive() && !debugger.HasBreakpoint(print), "without the breakpoint, it runs to its end");
+
+    debugger.SetBreakpoint(print, true);
+    debugger.Start(document, true);
+    debugger.Update(document);
+    test::Check(debugger.IsAtBreakpoint() && debugger.NextNode() == print, "a breakpoint stays for the runs that follow");
+    debugger.ClearBreakpoints();
+    debugger.Continue();
+    finish();
+    test::Check(!debugger.IsActive() && !debugger.HasBreakpoint(print), "until it's cleared");
 }
 
 TEST_CASE(DebugOverlayLayout, "blueprints2.debug_overlay_leaves_the_layout_alone", nullptr, test::TestFlags_None)

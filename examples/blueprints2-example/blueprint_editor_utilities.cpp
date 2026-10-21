@@ -533,8 +533,8 @@ void blueprint_editor_utilities::Debugger::Monitor::OnLog(const Context& context
 bool blueprint_editor_utilities::Debugger::Start(const Document& document, bool running)
 {
     m_Context.reset();
-    m_Running = false;
-    m_Current = 0;
+    m_Running  = false;
+    m_Reported = false;
 
     auto compiled = Compile(document.GetBlueprint());
     for (auto& diagnostic : compiled.m_Diagnostics)
@@ -553,6 +553,8 @@ bool blueprint_editor_utilities::Debugger::Start(const Document& document, bool 
 
     m_Context = std::make_unique<Context>(compiled.m_Program);
     m_Context->SetMonitor(&m_Monitor);
+    for (auto node : m_Breakpoints)
+        m_Context->SetBreakpoint(node, true);
     auto fiber = m_Context->Start("Start");
     if (!fiber)
     {
@@ -569,22 +571,20 @@ bool blueprint_editor_utilities::Debugger::Start(const Document& document, bool 
     return true;
 }
 
+void blueprint_editor_utilities::Debugger::Continue()
+{
+    if (!IsActive())
+        return;
+    LOGI("Execution: Continue");
+    m_Running = true;
+}
+
 void blueprint_editor_utilities::Debugger::Step()
 {
     if (!IsActive())
         return;
-    m_Current = NextNode();
-    auto stepped = m_Context->Step(m_Fiber);
-    if (!stepped)
-        return;
-    if (stepped.GetValue() == FiberState::Done)
-        LOGI("Execution: Done (%llu steps)", static_cast<unsigned long long>(m_Context->StepCount()));
-    else if (stepped.GetValue() == FiberState::Failed)
-    {
-        auto diagnostics = m_Context->Diagnostics();
-        auto message = diagnostics.empty() ? std::string_view() : diagnostics.back().m_Error.Message();
-        LOGE("Execution: Failed at step %llu: %.*s", static_cast<unsigned long long>(m_Context->StepCount()), static_cast<int>(message.size()), message.data());
-    }
+    if (m_Context->Step(m_Fiber))
+        Report();
 }
 
 void blueprint_editor_utilities::Debugger::Stop()
@@ -593,54 +593,107 @@ void blueprint_editor_utilities::Debugger::Stop()
         LOGI("Execution: Stop");
     m_Context.reset();
     m_Running = false;
-    m_Current = 0;
 }
 
 void blueprint_editor_utilities::Debugger::Update(const Document& document)
 {
     if (m_Context && document.m_Revision != m_Revision)
     {
-        if (IsActive())
-            LOGI("Execution: an edit stopped it");
-        m_Context.reset();
-        m_Running = false;
-        m_Current = 0;
-        return;
+        m_Revision = document.m_Revision;
+        auto compiled = IsActive() ? Compile(document.GetBlueprint()) : CompileResult();
+        if (!compiled.m_Program || !m_Context->Patch(compiled.m_Program))
+        {
+            if (IsActive())
+                LOGI("Execution: an edit stopped it");
+            m_Context.reset();
+            m_Running = false;
+            return;
+        }
     }
     if (!IsRunning())
         return;
 
-    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(5);
-    while (IsActive() && std::chrono::steady_clock::now() < deadline)
-        Step();
+    if (m_Context->Run(std::chrono::milliseconds(5)) == RunState::Breakpoint)
+    {
+        m_Running = false;
+        auto index = m_Context->GetProgram().FindNode(NextNode());
+        auto name  = index >= 0 ? m_Context->GetProgram().Nodes()[static_cast<size_t>(index)].m_Name : std::string("?");
+        LOGI("Execution: Paused at %s's breakpoint", name.c_str());
+    }
+    Report();
+}
+
+void blueprint_editor_utilities::Debugger::SetBreakpoint(Id node, bool enabled)
+{
+    if (enabled)
+        m_Breakpoints.insert(node);
+    else
+        m_Breakpoints.erase(node);
+    if (m_Context)
+        m_Context->SetBreakpoint(node, enabled);
+}
+
+void blueprint_editor_utilities::Debugger::ClearBreakpoints()
+{
+    if (m_Context)
+        for (auto node : m_Breakpoints)
+            m_Context->SetBreakpoint(node, false);
+    m_Breakpoints.clear();
 }
 
 bool blueprint_editor_utilities::Debugger::IsActive() const
 {
-    if (!m_Context)
-        return false;
-    for (auto& fiber : m_Context->Fibers())
-        if (fiber.m_Id == m_Fiber)
-            return fiber.m_State == FiberState::Ready;
-    return false;
+    auto fiber = Fiber();
+    return fiber && fiber->m_State == FiberState::Ready;
+}
+
+bool blueprint_editor_utilities::Debugger::IsAtBreakpoint() const
+{
+    auto fiber = Fiber();
+    return fiber && fiber->m_AtBreakpoint;
+}
+
+blueprint_editor_utilities::Id blueprint_editor_utilities::Debugger::CurrentNode() const
+{
+    auto fiber = Fiber();
+    return fiber ? fiber->m_Ran : 0;
 }
 
 blueprint_editor_utilities::Id blueprint_editor_utilities::Debugger::NextNode() const
 {
-    if (m_Context)
-        for (auto& fiber : m_Context->Fibers())
-            if (fiber.m_Id == m_Fiber)
-                return fiber.m_Node;
-    return 0;
+    auto fiber = Fiber();
+    return fiber ? fiber->m_Node : 0;
 }
 
 blueprint_editor_utilities::Id blueprint_editor_utilities::Debugger::TakenLink() const
 {
+    auto fiber = Fiber();
+    return fiber ? fiber->m_Link : 0;
+}
+
+std::optional<blueprint_editor_utilities::FiberInfo> blueprint_editor_utilities::Debugger::Fiber() const
+{
     if (m_Context)
         for (auto& fiber : m_Context->Fibers())
             if (fiber.m_Id == m_Fiber)
-                return fiber.m_Link;
-    return 0;
+                return fiber;
+    return std::nullopt;
+}
+
+void blueprint_editor_utilities::Debugger::Report()
+{
+    auto fiber = Fiber();
+    if (!fiber || fiber->m_State == FiberState::Ready || m_Reported)
+        return;
+    m_Reported = true;
+    if (fiber->m_State == FiberState::Done)
+        LOGI("Execution: Done (%llu steps)", static_cast<unsigned long long>(m_Context->StepCount()));
+    else if (fiber->m_State == FiberState::Failed)
+    {
+        auto diagnostics = m_Context->Diagnostics();
+        auto message = diagnostics.empty() ? std::string_view() : diagnostics.back().m_Error.Message();
+        LOGE("Execution: Failed at step %llu: %.*s", static_cast<unsigned long long>(m_Context->StepCount()), static_cast<int>(message.size()), message.data());
+    }
 }
 
 void blueprint_editor_utilities::ProblemList::Update(const Document& document, const Debugger& debugger)
@@ -1140,7 +1193,7 @@ void blueprint_editor_utilities::NodeContextMenu::Open(Id node)
     ImGui::OpenPopup("##node-context-menu");
 }
 
-void blueprint_editor_utilities::NodeContextMenu::Show(Document& document)
+void blueprint_editor_utilities::NodeContextMenu::Show(Document& document, Debugger& debugger)
 {
     if (!ImGui::IsPopupOpen("##node-context-menu"))
         return;
@@ -1149,6 +1202,18 @@ void blueprint_editor_utilities::NodeContextMenu::Show(Document& document)
 
     if (ImGui::BeginPopup("##node-context-menu"))
     {
+        if (ImGui::MenuItem("Breakpoint", "F9", debugger.HasBreakpoint(m_Node), node != nullptr))
+        {
+            const auto enabled = !debugger.HasBreakpoint(m_Node);
+            if (!ax::NodeEditor::IsNodeSelected(m_Node))
+                debugger.SetBreakpoint(m_Node, enabled);
+            else
+                for (auto selected : GetSelectedNodes())
+                    debugger.SetBreakpoint(selected, enabled);
+        }
+
+        ImGui::Separator();
+
         if (ImGui::MenuItem("Break Links", nullptr, nullptr, node != nullptr && ax::NodeEditor::HasAnyLinks(ax::NodeEditor::NodeId(m_Node))))
         {
             if (!ax::NodeEditor::IsNodeSelected(m_Node))

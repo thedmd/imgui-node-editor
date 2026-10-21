@@ -6,6 +6,7 @@
 #include <chrono>
 #include <memory>
 #include <optional>
+#include <set>
 #include <span>
 #include <string>
 #include <vector>
@@ -110,24 +111,32 @@ private:
 };
 
 // A run of a document's blueprint: a context of its compiled program, and the fiber its Start
-// began. Prints go to the log. Any step the document takes since stops the run.
+// began. Prints go to the log. A step the document takes goes on in the run when it changed only
+// values, and stops it otherwise. Breakpoints stay for the runs that follow.
 struct Debugger
 {
     // A blueprint with an error doesn't start: its diagnostics are logged.
     bool Start(const Document& document, bool running);
+    void Continue(); // a paused run runs on
     void Step();
     void Stop();
-    // Each frame: a run steps for a few milliseconds, so the window stays responsive.
+    // Each frame: a run steps for a few milliseconds, so the window stays responsive, and pauses
+    // before a node with a breakpoint.
     void Update(const Document& document);
 
-    bool IsActive() const;  // a fiber that's ready
+    void SetBreakpoint(Id node, bool enabled);
+    bool HasBreakpoint(Id node) const { return m_Breakpoints.contains(node); }
+    void ClearBreakpoints();
+
+    bool IsActive() const; // a fiber that's ready
     bool IsRunning() const { return IsActive() && m_Running; }
+    bool IsAtBreakpoint() const;
 
     const Context* GetContext() const { return m_Context.get(); }
     Context*       GetContext()       { return m_Context.get(); }
-    Id             CurrentNode() const { return m_Current; } // the node the last step ran
+    Id             CurrentNode() const; // the node the last step ran
     Id             NextNode() const;
-    Id             TakenLink() const; // the flow link the last step took
+    Id             TakenLink() const;   // the flow link the last step took
 
 private:
     struct Monitor final : ContextMonitor
@@ -135,12 +144,16 @@ private:
         void OnLog(const Context& context, Id node, std::string_view text) override;
     };
 
+    std::optional<FiberInfo> Fiber() const;
+    void                     Report(); // how the fiber ended, once
+
     std::unique_ptr<Context> m_Context;
     Monitor                  m_Monitor;
+    std::set<Id>             m_Breakpoints;
     FiberId                  m_Fiber    = 0;
-    Id                       m_Current  = 0;
     uint64_t                 m_Revision = 0;
     bool                     m_Running  = false;
+    bool                     m_Reported = false;
 };
 
 // What's wrong with a document's blueprint: its graphs' problems and compiling's, for its revision,
@@ -283,10 +296,11 @@ private:
     std::vector<NewNodeFit> m_Entries;    // by category and title; those that need a cast last, by title
 };
 
+// For a node, or for the selection when the node is in it.
 struct NodeContextMenu
 {
     void Open(Id node = 0);
-    void Show(Document& document);
+    void Show(Document& document, Debugger& debugger);
 
 private:
     Id m_Node = 0;
