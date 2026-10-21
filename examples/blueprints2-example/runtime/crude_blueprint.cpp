@@ -881,3 +881,751 @@ crude_blueprint::Result<const crude_blueprint::Type*> crude_blueprint::TypeTable
         return parser.Unexpected();
     return type;
 }
+
+
+//
+// -------[ Type resolution ]-------
+//
+
+namespace crude_blueprint {
+
+// Union-find over a graph's type variables, where a link makes two pins' types equal. A unification
+// that fails is rolled back, so a link that doesn't fit leaves no trace.
+class TypeResolution
+{
+public:
+    explicit TypeResolution(TypeTable& types): m_Types(types) {}
+
+    int Size() const { return static_cast<int>(m_Variables.size()); }
+
+    void AddVariable(std::string name, std::vector<const ValueType*> allowed)
+    {
+        Variable variable;
+        variable.m_Parent    = Size();
+        variable.m_AllowedBy = allowed.empty() ? std::string() : name;
+        variable.m_Allowed   = std::move(allowed);
+        variable.m_Name      = std::move(name);
+        m_Variables.push_back(std::move(variable));
+    }
+
+    void Begin()
+    {
+        m_Trail.clear();
+        m_Recording = true;
+    }
+
+    void Commit()
+    {
+        m_Trail.clear();
+        m_Recording = false;
+    }
+
+    void Rollback()
+    {
+        for (auto it = m_Trail.rbegin(); it != m_Trail.rend(); ++it)
+            m_Variables[it->first] = std::move(it->second);
+        Commit();
+    }
+
+    // 'why' names what makes them equal, for the messages of later conflicts.
+    Result<void> Unify(const TypeTerm& lhs, const TypeTerm& rhs, const std::string& why)
+    {
+        int fromA, fromB;
+        auto a = Shallow(lhs, fromA);
+        auto b = Shallow(rhs, fromB);
+        if (!a.m_Head && !b.m_Head)
+            return Merge(Find(a.m_Variable), Find(b.m_Variable));
+        if (!a.m_Head)
+            return Bind(Find(a.m_Variable), b, why);
+        if (!b.m_Head)
+            return Bind(Find(b.m_Variable), a, why);
+        if (a.m_Head != b.m_Head)
+            return Error(BlueprintError::TypeMismatch, Text(a) + Because(fromA) + " doesn't match " + Text(b) + Because(fromB));
+        for (size_t i = 0; i < a.m_Args.size(); ++i)
+            if (auto result = Unify(a.m_Args[i], b.m_Args[i], why); !result)
+                return result;
+        return {};
+    }
+
+    // Null while any part is undecided.
+    const Type* TypeOf(const TypeTerm& term) const
+    {
+        int from;
+        auto shallow = Shallow(term, from);
+        if (!shallow.m_Head)
+            return nullptr;
+        std::vector<const Type*> args;
+        for (auto& arg : shallow.m_Args)
+        {
+            auto type = TypeOf(arg);
+            if (!type)
+                return nullptr;
+            args.push_back(type);
+        }
+        return m_Types.Get(*shallow.m_Head, args);
+    }
+
+    std::string Text(const TypeTerm& term) const
+    {
+        int from;
+        auto shallow = Shallow(term, from);
+        if (!shallow.m_Head)
+            return "?" + (shallow.m_Variable < 0 ? std::string() : AllowedText(m_Variables[Find(shallow.m_Variable)].m_Allowed));
+        auto text = shallow.m_Head->m_Name;
+        if (!shallow.m_Args.empty())
+        {
+            text += "<";
+            for (size_t i = 0; i < shallow.m_Args.size(); ++i)
+                text += (i ? "," : "") + Text(shallow.m_Args[i]);
+            text += ">";
+        }
+        return text;
+    }
+
+private:
+    struct Variable
+    {
+        int                           m_Parent = 0;
+        int                           m_Size   = 1;
+        std::optional<TypeTerm>       m_Bound;     // by representative
+        std::vector<const ValueType*> m_Allowed;   // by representative; empty: any
+        std::string                   m_AllowedBy; // by representative: whose allowed set applies
+        std::string                   m_BoundBy;   // by representative: what bound it
+        std::string                   m_Name;      // "Add#7.T"
+    };
+
+    static std::string AllowedText(const std::vector<const ValueType*>& allowed)
+    {
+        if (allowed.empty())
+            return {};
+        std::string text = "{";
+        for (size_t i = 0; i < allowed.size(); ++i)
+            text += (i ? "|" : "") + allowed[i]->m_Name;
+        return text + "}";
+    }
+
+    // No path compression, which would have to be rolled back too; union by size keeps paths short.
+    int Find(int variable) const
+    {
+        while (m_Variables[variable].m_Parent != variable)
+            variable = m_Variables[variable].m_Parent;
+        return variable;
+    }
+
+    // The term with its top variable replaced by what it's bound to; 'from' is that variable.
+    TypeTerm Shallow(const TypeTerm& term, int& from) const
+    {
+        from = -1;
+        if (term.m_Head || term.m_Variable < 0)
+            return term;
+        auto representative = Find(term.m_Variable);
+        if (!m_Variables[representative].m_Bound)
+            return TypeVariable{ representative };
+        from = representative;
+        return *m_Variables[representative].m_Bound;
+    }
+
+    bool Occurs(int variable, const TypeTerm& term) const
+    {
+        int from;
+        auto shallow = Shallow(term, from);
+        if (!shallow.m_Head)
+            return Find(shallow.m_Variable) == variable;
+        return std::any_of(shallow.m_Args.begin(), shallow.m_Args.end(), [this, variable](const TypeTerm& arg) { return Occurs(variable, arg); });
+    }
+
+    std::string Because(int from) const
+    {
+        if (from < 0 || m_Variables[from].m_BoundBy.empty())
+            return {};
+        return " (from " + m_Variables[from].m_BoundBy + ")";
+    }
+
+    Result<void> Bind(int variable, const TypeTerm& term, const std::string& why)
+    {
+        auto& bound = m_Variables[variable];
+        if (Occurs(variable, term))
+            return Error(BlueprintError::TypeMismatch, bound.m_Name + " can't be " + Text(term) + ", which contains it");
+        if (!bound.m_Allowed.empty() && std::find(bound.m_Allowed.begin(), bound.m_Allowed.end(), term.m_Head) == bound.m_Allowed.end())
+            return Error(BlueprintError::TypeMismatch, bound.m_AllowedBy + " takes only " + AllowedText(bound.m_Allowed) + ", not " + Text(term));
+        Save(variable);
+        bound.m_Bound   = term;
+        bound.m_BoundBy = why;
+        return {};
+    }
+
+    Result<void> Merge(int a, int b)
+    {
+        if (a == b)
+            return {};
+        auto& allowedA = m_Variables[a].m_Allowed;
+        auto& allowedB = m_Variables[b].m_Allowed;
+        std::vector<const ValueType*> allowed;
+        std::string                   allowedBy;
+        if (allowedA.empty() || allowedB.empty())
+        {
+            allowed   = allowedA.empty() ? allowedB : allowedA;
+            allowedBy = allowedA.empty() ? m_Variables[b].m_AllowedBy : m_Variables[a].m_AllowedBy;
+        }
+        else
+        {
+            for (auto head : allowedA)
+                if (std::find(allowedB.begin(), allowedB.end(), head) != allowedB.end())
+                    allowed.push_back(head);
+            if (allowed.empty())
+                return Error(BlueprintError::TypeMismatch, m_Variables[a].m_AllowedBy + " takes " + AllowedText(allowedA) + " and " + m_Variables[b].m_AllowedBy + " takes " + AllowedText(allowedB) + ": no type is both");
+            allowedBy = m_Variables[a].m_AllowedBy + " and " + m_Variables[b].m_AllowedBy;
+        }
+
+        if (m_Variables[a].m_Size < m_Variables[b].m_Size)
+            std::swap(a, b);
+        Save(a);
+        Save(b);
+        m_Variables[b].m_Parent    = a;
+        m_Variables[a].m_Size     += m_Variables[b].m_Size;
+        m_Variables[a].m_Allowed   = std::move(allowed);
+        m_Variables[a].m_AllowedBy = std::move(allowedBy);
+        return {};
+    }
+
+    void Save(int variable)
+    {
+        if (m_Recording)
+            m_Trail.emplace_back(variable, m_Variables[variable]);
+    }
+
+    TypeTable&                            m_Types;
+    std::vector<Variable>                 m_Variables;
+    std::vector<std::pair<int, Variable>> m_Trail;
+    bool                                  m_Recording = false;
+};
+
+} // namespace crude_blueprint
+
+
+//
+// -------[ Graphs ]-------
+//
+
+namespace crude_blueprint { namespace {
+
+// A node's term in the graph: its variables numbered from the node's first.
+TypeTerm Offset(const TypeTerm& term, int base)
+{
+    TypeTerm result = term;
+    if (!result.m_Head && result.m_Variable >= 0)
+        result.m_Variable += base;
+    for (auto& arg : result.m_Args)
+        arg = Offset(arg, base);
+    return result;
+}
+
+// The index of a group's pin key: 2 for "in.2", and for "in.2.x" of a split pin; -1 for others.
+int GroupIndex(std::string_view key, std::string_view prefix, std::string_view* rest = nullptr)
+{
+    if (key.size() <= prefix.size() + 1 || key.substr(0, prefix.size()) != prefix || key[prefix.size()] != '.')
+        return -1;
+    auto digits = key.substr(prefix.size() + 1);
+    int index = 0;
+    auto [end, error] = std::from_chars(digits.data(), digits.data() + digits.size(), index);
+    if (error != std::errc() || end == digits.data() || (end != digits.data() + digits.size() && *end != '.'))
+        return -1;
+    if (rest)
+        *rest = digits.substr(static_cast<size_t>(end - digits.data()));
+    return index;
+}
+
+} } // namespace crude_blueprint { namespace {
+
+const crude_blueprint::Pin* crude_blueprint::Node::FindPin(std::string_view key) const
+{
+    for (auto& pin : m_Pins)
+        if (pin.m_Key == key)
+            return &pin;
+    return nullptr;
+}
+
+std::string crude_blueprint::Node::Name() const
+{
+    return (m_Type->m_Title.empty() ? m_Type->m_Name : m_Type->m_Title) + "#" + std::to_string(m_Id);
+}
+
+crude_blueprint::Graph::Graph(Blueprint& blueprint, Id id, std::string name)
+    : m_Blueprint(&blueprint)
+    , m_Id(id)
+    , m_Name(std::move(name))
+{
+}
+
+crude_blueprint::Result<crude_blueprint::Id> crude_blueprint::Graph::AddNode(std::string_view type, NodeConfig config)
+{
+    auto nodeType = m_Blueprint->FindNodeType(type);
+    if (!nodeType)
+        return Error(BlueprintError::UnknownType, "no node type is named " + std::string(type));
+
+    Graph trial = *this;
+    auto& node = trial.m_Nodes.emplace_back();
+    node.m_Id     = m_Blueprint->NewId();
+    node.m_Type   = nodeType;
+    node.m_Config = std::move(config);
+    const auto id = node.m_Id;
+    trial.Update();
+    if (auto disruption = trial.Disruption(*this, false); !disruption)
+        return disruption.GetError();
+    *this = std::move(trial);
+    return id;
+}
+
+crude_blueprint::Result<void> crude_blueprint::Graph::RemoveNode(Id node)
+{
+    auto removed = MutableNode(node);
+    if (!removed)
+        return Error(BlueprintError::NotFound, "no node " + std::to_string(node) + " in " + m_Name);
+    // Links to pins the node doesn't have now, too.
+    auto isNodesPin = [removed](Id pin) { return std::any_of(removed->m_KeyIds.begin(), removed->m_KeyIds.end(), [pin](const auto& key) { return key.second == pin; }); };
+    std::erase_if(m_Links, [&isNodesPin](const Link& link) { return isNodesPin(link.m_From) || isNodesPin(link.m_To); });
+    std::erase_if(m_Nodes, [node](const Node& other) { return other.m_Id == node; });
+    Update();
+    return {};
+}
+
+crude_blueprint::Result<crude_blueprint::Id> crude_blueprint::Graph::Connect(Id from, Id to, LinkMode mode)
+{
+    auto fromPin = FindPin(from);
+    auto toPin   = FindPin(to);
+    if (!fromPin || !toPin)
+        return Error(BlueprintError::NotFound, "no pin " + std::to_string(fromPin ? to : from) + " in " + m_Name);
+    if (auto check = CheckLink(*fromPin, *toPin); !check)
+        return check.GetError();
+
+    Link link;
+    link.m_Id   = m_Blueprint->NewId();
+    link.m_From = from;
+    link.m_To   = to;
+    if (mode == LinkMode::Cast)
+    {
+        if (fromPin->m_Flow)
+            return Error(BlueprintError::BadLink, "a flow link can't cast");
+        if (!fromPin->m_DecidedType || !toPin->m_DecidedType)
+            return Error(BlueprintError::Undecided, "a cast needs both types decided");
+        auto cast = m_Blueprint->GetRegistry().FindCast(fromPin->m_DecidedType, toPin->m_DecidedType);
+        if (!cast)
+            return Error(BlueprintError::NoCast, "no cast from " + fromPin->m_DecidedType->m_Name + " to " + toPin->m_DecidedType->m_Name);
+        link.m_Cast = cast->Name();
+    }
+
+    Graph trial = *this;
+    if (mode == LinkMode::Force)
+        link.m_Forced = ++trial.m_LastForced;
+    const auto flow = fromPin->m_Flow;
+    std::erase_if(trial.m_Links, [&link, flow](const Link& other) { return flow ? other.m_From == link.m_From : other.m_To == link.m_To; });
+    trial.m_Links.push_back(link);
+    trial.Update();
+
+    if (mode != LinkMode::Keep)
+    {
+        auto made = trial.FindLink(link.m_Id);
+        if (!made->m_Active)
+            return made->m_Reason;
+        if (auto disruption = trial.Disruption(*this, mode == LinkMode::Force); !disruption)
+            return disruption.GetError();
+    }
+    *this = std::move(trial);
+    return link.m_Id;
+}
+
+crude_blueprint::Result<void> crude_blueprint::Graph::CanConnect(Id from, Id to, LinkMode mode) const
+{
+    Graph trial = *this;
+    if (auto result = trial.Connect(from, to, mode); !result)
+        return result.GetError();
+    return {};
+}
+
+crude_blueprint::Result<void> crude_blueprint::Graph::Disconnect(Id link)
+{
+    if (!FindLink(link))
+        return Error(BlueprintError::NotFound, "no link " + std::to_string(link) + " in " + m_Name);
+    std::erase_if(m_Links, [link](const Link& other) { return other.m_Id == link; });
+    Update();
+    return {};
+}
+
+crude_blueprint::Result<void> crude_blueprint::Graph::SetConfig(Id node, NodeConfig config, bool force)
+{
+    if (!FindNode(node))
+        return Error(BlueprintError::NotFound, "no node " + std::to_string(node) + " in " + m_Name);
+    Graph trial = *this;
+    trial.MutableNode(node)->m_Config = std::move(config);
+    trial.Update();
+    if (auto disruption = trial.Disruption(*this, force); !disruption)
+        return disruption;
+    *this = std::move(trial);
+    return {};
+}
+
+crude_blueprint::Result<void> crude_blueprint::Graph::AddGroupPin(Id node, std::string_view group)
+{
+    auto changed = MutableNode(node);
+    if (!changed)
+        return Error(BlueprintError::NotFound, "no node " + std::to_string(node) + " in " + m_Name);
+    auto declared = std::find_if(changed->m_Groups.begin(), changed->m_Groups.end(), [group](const GroupDeclaration& other) { return other.m_Name == group; });
+    if (declared == changed->m_Groups.end())
+        return Error(BlueprintError::NotFound, changed->Name() + " has no group " + std::string(group));
+    auto it    = changed->m_Config.m_Groups.find(group);
+    auto count = it != changed->m_Config.m_Groups.end() ? std::clamp(it->second, declared->m_Min, declared->m_Max) : declared->m_Min;
+    if (count >= declared->m_Max)
+        return Error(BlueprintError::OutOfRange, changed->Name() + "." + declared->m_Name + " has its most pins, " + std::to_string(declared->m_Max));
+    changed->m_Config.m_Groups[declared->m_Name] = count + 1;
+    Update();
+    return {};
+}
+
+crude_blueprint::Result<void> crude_blueprint::Graph::RemoveGroupPin(Id node, std::string_view group, int index)
+{
+    auto changed = MutableNode(node);
+    if (!changed)
+        return Error(BlueprintError::NotFound, "no node " + std::to_string(node) + " in " + m_Name);
+    auto declared = std::find_if(changed->m_Groups.begin(), changed->m_Groups.end(), [group](const GroupDeclaration& other) { return other.m_Name == group; });
+    if (declared == changed->m_Groups.end())
+        return Error(BlueprintError::NotFound, changed->Name() + " has no group " + std::string(group));
+    auto it    = changed->m_Config.m_Groups.find(group);
+    auto count = it != changed->m_Config.m_Groups.end() ? std::clamp(it->second, declared->m_Min, declared->m_Max) : declared->m_Min;
+    if (index < 0 || index >= count)
+        return Error(BlueprintError::OutOfRange, changed->Name() + "." + declared->m_Name + " has no index " + std::to_string(index));
+    if (count <= declared->m_Min)
+        return Error(BlueprintError::OutOfRange, changed->Name() + "." + declared->m_Name + " has its fewest pins, " + std::to_string(declared->m_Min));
+
+    std::vector<Id>                        removed;
+    std::map<std::string, Id, std::less<>> keyIds;
+    for (auto& entry : changed->m_KeyIds)
+    {
+        auto& key = entry.first;
+        auto  id  = entry.second;
+        std::string_view rest;
+        auto prefix = std::find_if(declared->m_Prefixes.begin(), declared->m_Prefixes.end(), [&key, &rest](const std::string& p) { return GroupIndex(key, p, &rest) >= 0; });
+        auto at     = prefix != declared->m_Prefixes.end() ? GroupIndex(key, *prefix) : -1;
+        if (at == index)
+            removed.push_back(id);
+        else if (at > index)
+            keyIds[*prefix + "." + std::to_string(at - 1) + std::string(rest)] = id;
+        else
+            keyIds.emplace(key, id);
+    }
+    changed->m_KeyIds = std::move(keyIds);
+    changed->m_Config.m_Groups[declared->m_Name] = count - 1;
+    std::erase_if(m_Links, [&removed](const Link& link) { return std::find(removed.begin(), removed.end(), link.m_From) != removed.end() || std::find(removed.begin(), removed.end(), link.m_To) != removed.end(); });
+    Update();
+    return {};
+}
+
+bool crude_blueprint::Graph::IsBroken() const
+{
+    return std::any_of(m_Diagnostics.begin(), m_Diagnostics.end(), [](const Diagnostic& diagnostic) { return diagnostic.m_Severity == Severity::Error; });
+}
+
+const crude_blueprint::Node* crude_blueprint::Graph::FindNode(Id node) const
+{
+    auto it = m_NodeIndex.find(node);
+    return it != m_NodeIndex.end() ? &m_Nodes[it->second] : nullptr;
+}
+
+crude_blueprint::Node* crude_blueprint::Graph::MutableNode(Id node)
+{
+    auto it = m_NodeIndex.find(node);
+    return it != m_NodeIndex.end() ? &m_Nodes[it->second] : nullptr;
+}
+
+const crude_blueprint::Pin* crude_blueprint::Graph::FindPin(Id pin) const
+{
+    auto it = m_PinIndex.find(pin);
+    return it != m_PinIndex.end() ? &m_Nodes[it->second.first].m_Pins[it->second.second] : nullptr;
+}
+
+const crude_blueprint::Node* crude_blueprint::Graph::NodeOf(Id pin) const
+{
+    auto it = m_PinIndex.find(pin);
+    return it != m_PinIndex.end() ? &m_Nodes[it->second.first] : nullptr;
+}
+
+const crude_blueprint::Link* crude_blueprint::Graph::FindLink(Id link) const
+{
+    for (auto& other : m_Links)
+        if (other.m_Id == link)
+            return &other;
+    return nullptr;
+}
+
+std::string crude_blueprint::Graph::TypeText(Id pin) const
+{
+    auto found = FindPin(pin);
+    if (!found || found->m_Flow)
+        return {};
+    return found->m_DecidedType ? found->m_DecidedType->m_Name : found->m_Wildcard;
+}
+
+std::string crude_blueprint::Graph::PinName(const Pin& pin) const
+{
+    return NodeOf(pin.m_Id)->Name() + "." + pin.m_Key;
+}
+
+std::string crude_blueprint::Graph::LinkName(const Link& link) const
+{
+    return PinName(*FindPin(link.m_From)) + " -> " + PinName(*FindPin(link.m_To));
+}
+
+crude_blueprint::Result<void> crude_blueprint::Graph::CheckLink(const Pin& from, const Pin& to) const
+{
+    if (from.m_Direction != Direction::Output || to.m_Direction != Direction::Input)
+        return Error(BlueprintError::BadLink, "a link goes from an output to an input");
+    if (from.m_Flow != to.m_Flow)
+        return Error(BlueprintError::BadLink, "a flow pin links only to a flow pin");
+    if (from.m_Node == to.m_Node)
+        return Error(BlueprintError::BadLink, "a link joins two nodes");
+    return {};
+}
+
+// Pins that depend on types repeat the two steps until the pins settle: nodes declare their pins
+// from their bindings, and the links decide the types, which give new bindings.
+void crude_blueprint::Graph::Update()
+{
+    const int c_MaxRounds = 8;
+    for (int round = 1; ; ++round)
+    {
+        Declare();
+        TypeResolution resolution(m_Blueprint->GetTypes());
+        auto bases = Resolve(resolution);
+
+        std::vector<const Node*> changed;
+        for (size_t i = 0; i < m_Nodes.size(); ++i)
+        {
+            auto& node = m_Nodes[i];
+            Bindings bindings;
+            for (size_t v = 0; v < node.m_Variables.size(); ++v)
+                if (auto type = resolution.TypeOf(TypeVariable{ bases[i] + static_cast<int>(v) }))
+                    bindings.m_Types[node.m_Variables[v].m_Name] = type;
+            if (bindings != node.m_Bindings)
+            {
+                node.m_Bindings = std::move(bindings);
+                changed.push_back(&node);
+            }
+        }
+
+        if (changed.empty())
+            break;
+        if (round == c_MaxRounds)
+        {
+            for (auto node : changed)
+                m_Problems.push_back({ node->m_Id, Error(BlueprintError::Unsettled, "the types of " + node->Name() + " don't settle") });
+            break;
+        }
+    }
+    Diagnose();
+}
+
+void crude_blueprint::Graph::Declare()
+{
+    m_NodeIndex.clear();
+    m_PinIndex.clear();
+    for (size_t i = 0; i < m_Nodes.size(); ++i)
+    {
+        auto& node = m_Nodes[i];
+        m_NodeIndex[node.m_Id] = i;
+
+        NodeDeclaration declaration(node.m_Config);
+        node.m_Type->Declare(declaration, node.m_Config, node.m_Bindings);
+        node.m_Variables = std::move(declaration.m_Variables);
+        node.m_Groups    = std::move(declaration.m_Groups);
+        node.m_Pins.clear();
+        for (auto& declared : declaration.m_Pins)
+        {
+            auto [it, added] = node.m_KeyIds.try_emplace(declared.m_Key, 0);
+            if (added)
+                it->second = m_Blueprint->NewId();
+            Pin pin;
+            static_cast<PinDeclaration&>(pin) = std::move(declared);
+            pin.m_Id   = it->second;
+            pin.m_Node = node.m_Id;
+            m_PinIndex[pin.m_Id] = { i, node.m_Pins.size() };
+            node.m_Pins.push_back(std::move(pin));
+        }
+    }
+}
+
+// Gives each node's first variable.
+std::vector<int> crude_blueprint::Graph::Resolve(TypeResolution& resolution)
+{
+    m_Problems.clear();
+
+    // A type the user chose counts as a link made before any other.
+    std::vector<int> bases(m_Nodes.size());
+    for (size_t i = 0; i < m_Nodes.size(); ++i)
+    {
+        auto& node = m_Nodes[i];
+        bases[i] = resolution.Size();
+        for (auto& variable : node.m_Variables)
+            resolution.AddVariable(node.Name() + "." + variable.m_Name, variable.m_Allowed);
+        for (size_t v = 0; v < node.m_Variables.size(); ++v)
+        {
+            auto chosen = node.m_Config.m_Types.find(node.m_Variables[v].m_Name);
+            if (chosen == node.m_Config.m_Types.end())
+                continue;
+            resolution.Begin();
+            if (auto result = resolution.Unify(TypeVariable{ bases[i] + static_cast<int>(v) }, *chosen->second, "the type chosen on " + node.Name()); !result)
+            {
+                resolution.Rollback();
+                m_Problems.push_back({ node.m_Id, result.GetError() });
+            }
+            else
+                resolution.Commit();
+        }
+    }
+
+    // Forced links first, the latest first; then the others, in the order they were made.
+    std::vector<size_t> order(m_Links.size());
+    for (size_t i = 0; i < order.size(); ++i)
+        order[i] = i;
+    std::stable_sort(order.begin(), order.end(), [this](size_t a, size_t b) { return m_Links[a].m_Forced > m_Links[b].m_Forced; });
+
+    auto termOf = [this, &bases](const Pin& pin) { return Offset(pin.m_Type, bases[m_PinIndex.find(pin.m_Id)->second.first]); };
+    auto disable = [](Link& link, Error reason)
+    {
+        link.m_Active = false;
+        link.m_Reason = std::move(reason);
+    };
+
+    for (auto index : order)
+    {
+        auto& link = m_Links[index];
+        link.m_Active = true;
+        link.m_Reason = {};
+        auto from = FindPin(link.m_From);
+        auto to   = FindPin(link.m_To);
+        if (!from || !to)
+        {
+            disable(link, Error(BlueprintError::NoPin, "its pin isn't on the node now"));
+            continue;
+        }
+        if (auto check = CheckLink(*from, *to); !check)
+        {
+            disable(link, check.GetError());
+            continue;
+        }
+        if (from->m_Flow || !link.m_Cast.empty())
+            continue;
+        resolution.Begin();
+        if (auto result = resolution.Unify(termOf(*from), termOf(*to), LinkName(link)); !result)
+        {
+            resolution.Rollback();
+            disable(link, result.GetError());
+        }
+        else
+            resolution.Commit();
+    }
+
+    for (size_t i = 0; i < m_Nodes.size(); ++i)
+    {
+        for (auto& pin : m_Nodes[i].m_Pins)
+        {
+            if (pin.m_Flow)
+                continue;
+            auto term = Offset(pin.m_Type, bases[i]);
+            pin.m_DecidedType = resolution.TypeOf(term);
+            pin.m_Wildcard    = pin.m_DecidedType ? std::string() : resolution.Text(term);
+        }
+    }
+
+    // A cast link joins two types that the rest of the graph decides.
+    for (auto index : order)
+    {
+        auto& link = m_Links[index];
+        if (link.m_Cast.empty() || !link.m_Active)
+            continue;
+        auto from = FindPin(link.m_From);
+        auto to   = FindPin(link.m_To);
+        if (!from->m_DecidedType || !to->m_DecidedType)
+        {
+            disable(link, Error(BlueprintError::Undecided, "a cast needs both types decided"));
+            continue;
+        }
+        auto cast = from->m_DecidedType->m_Name + "->" + to->m_DecidedType->m_Name;
+        if (cast != link.m_Cast)
+            disable(link, Error(BlueprintError::NoCast, "its cast is " + link.m_Cast + ", not " + cast));
+        else if (!m_Blueprint->GetRegistry().FindCast(from->m_DecidedType, to->m_DecidedType))
+            disable(link, Error(BlueprintError::NoCast, "no cast " + cast + " is registered"));
+    }
+
+    return bases;
+}
+
+void crude_blueprint::Graph::Diagnose()
+{
+    m_Diagnostics.clear();
+    for (auto& problem : m_Problems)
+        m_Diagnostics.push_back({ problem.m_Error, Severity::Error, m_Id, problem.m_Node, 0, 0 });
+    for (auto& link : m_Links)
+        if (!link.m_Active)
+            m_Diagnostics.push_back({ link.m_Reason, Severity::Error, m_Id, 0, 0, link.m_Id });
+}
+
+// What an edit broke that wasn't broken before: a link it disabled, a node whose types it unsettled,
+// or a chosen type that no longer fits. A forced edit may do the first two.
+crude_blueprint::Result<void> crude_blueprint::Graph::Disruption(const Graph& before, bool forced) const
+{
+    for (auto& problem : m_Problems)
+    {
+        if (forced && !problem.m_Error.Is(BlueprintError::TypeMismatch))
+            continue;
+        auto known = std::any_of(before.m_Problems.begin(), before.m_Problems.end(), [&problem](const Problem& other) { return other.m_Node == problem.m_Node && other.m_Error == problem.m_Error; });
+        if (!known)
+            return problem.m_Error;
+    }
+    if (forced)
+        return {};
+    for (auto& link : m_Links)
+    {
+        if (link.m_Active)
+            continue;
+        if (auto old = before.FindLink(link.m_Id); old && old->m_Active)
+            return Error(link.m_Reason.m_Category, link.m_Reason.m_Code, before.LinkName(*old) + " would be disabled: " + std::string(link.m_Reason.Message()));
+    }
+    return {};
+}
+
+
+//
+// -------[ Blueprints ]-------
+//
+
+crude_blueprint::Blueprint::Blueprint(std::shared_ptr<const Registry> registry, std::shared_ptr<TypeTable> types)
+    : m_Registry(std::move(registry))
+    , m_Types(std::move(types))
+{
+    CRUDE_BP_ASSERT(m_Registry && m_Types);
+}
+
+crude_blueprint::Graph& crude_blueprint::Blueprint::AddGraph(std::string name)
+{
+    return *m_Graphs.emplace_back(std::make_unique<Graph>(*this, NewId(), std::move(name)));
+}
+
+crude_blueprint::Graph* crude_blueprint::Blueprint::FindGraph(Id graph)
+{
+    for (auto& other : m_Graphs)
+        if (other->GetId() == graph)
+            return other.get();
+    return nullptr;
+}
+
+const crude_blueprint::Graph* crude_blueprint::Blueprint::FindGraph(Id graph) const
+{
+    for (auto& other : m_Graphs)
+        if (other->GetId() == graph)
+            return other.get();
+    return nullptr;
+}
+
+const crude_blueprint::NodeType* crude_blueprint::Blueprint::FindNodeType(std::string_view name) const
+{
+    return m_Registry->FindNodeType(name);
+}

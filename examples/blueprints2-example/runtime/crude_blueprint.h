@@ -16,6 +16,7 @@
 # include <string>
 # include <string_view>
 # include <type_traits>
+# include <unordered_map>
 # include <utility>
 # include <variant>
 # include <vector>
@@ -189,12 +190,19 @@ enum class BlueprintError : uint16_t
 {
     Threw = 1,      // node or extension code threw
     WrongType,      // a value, or a value in a file, of another type
-    OutOfRange,     // a number outside its type's range
+    OutOfRange,     // a number outside its range: a type's, a group's
     NotFinite,      // NaN or an infinity, which files can't hold
     Duplicate,      // a name registered twice, a key twice in a file
     UnknownType,    // a type name nothing registered
     BadTypeText,    // type text that doesn't parse
     CastFailed,     // a cast that may fail, failed
+    NotFound,       // an ID or a name that nothing has
+    BadLink,        // a link that can't be, such as from an input
+    TypeMismatch,   // types that don't match, or a type that a type variable doesn't take
+    Undecided,      // a type that nothing decided
+    NoCast,         // a cast that the registry doesn't have
+    NoPin,          // a link to a pin that isn't on its node now
+    Unsettled,      // types that keep changing a node's pins
 };
 
 constexpr ErrorCategory CategoryOf(BlueprintError) { return ErrorCategory::Blueprint; }
@@ -627,5 +635,163 @@ private:
 
 // The built-in value types, and the casts between them.
 Result<void> RegisterBuiltins(Registry& registry);
+
+
+//
+// -------[ Graphs ]-------
+//
+
+class Blueprint;
+class TypeResolution;
+
+enum class LinkMode : uint8_t
+{
+    Plain, // made only when it fits, and disables no other link
+    Force, // made, and the links it conflicts with are disabled
+    Cast,  // joins two decided types through the registry's cast between them, and changes neither
+    Keep,  // made as a file lists it: disabled when it doesn't fit
+};
+
+struct Pin : PinDeclaration
+{
+    Id          m_Id          = 0;
+    Id          m_Node        = 0;
+    const Type* m_DecidedType = nullptr; // null for flow pins, and while undecided
+    std::string m_Wildcard;              // an undecided type, as shown: "?{Int32|Float}", "Array<?>"
+};
+
+struct Node
+{
+    Id              m_Id   = 0;
+    const NodeType* m_Type = nullptr;
+    NodeConfig      m_Config;
+
+    // Every key the node has had: a pin that goes and comes back keeps its ID, and so its links.
+    std::map<std::string, Id, std::less<>> m_KeyIds;
+
+    // From the last update.
+    std::vector<VariableDeclaration> m_Variables;
+    std::vector<GroupDeclaration>    m_Groups;
+    std::vector<Pin>                 m_Pins;
+    Bindings                         m_Bindings;
+
+    const Pin* FindPin(std::string_view key) const;
+
+    // As messages name it: "Add#7".
+    std::string Name() const;
+};
+
+struct Link
+{
+    Id          m_Id     = 0;
+    Id          m_From   = 0; // an output
+    Id          m_To     = 0; // an input
+    int         m_Forced = 0; // > 0: forced; the latest forced link wins
+    std::string m_Cast;       // a cast link's cast, as files name it: "Int32->Float"
+
+    // From the last update. A disabled link takes no part in typing, compiling or running.
+    bool  m_Active = true;
+    Error m_Reason;
+};
+
+// Nodes, and links between their pins. After every edit, nodes declare their pins and links
+// decide their types, until the pins no longer change. The pointers and spans it gives out last
+// until its next edit.
+class Graph
+{
+public:
+    Graph(Blueprint& blueprint, Id id, std::string name);
+
+    Id                 GetId() const   { return m_Id; }
+    const std::string& GetName() const { return m_Name; }
+
+    Result<Id>   AddNode(std::string_view type, NodeConfig config = {});
+    Result<void> RemoveNode(Id node);
+    // A data input takes one link, as a flow output does; a new link replaces the one it has.
+    Result<Id>   Connect(Id from, Id to, LinkMode mode = LinkMode::Plain);
+    Result<void> CanConnect(Id from, Id to, LinkMode mode = LinkMode::Plain) const;
+    Result<void> Disconnect(Id link);
+    // A forced config may disable links, but a type the user chose must fit its variable even then.
+    Result<void> SetConfig(Id node, NodeConfig config, bool force = false);
+    Result<void> AddGroupPin(Id node, std::string_view group);
+    // The pins at the index go with their links; later indices move down, keeping their IDs.
+    Result<void> RemoveGroupPin(Id node, std::string_view group, int index);
+
+    std::span<const Node>       Nodes() const       { return m_Nodes; }
+    std::span<const Link>       Links() const       { return m_Links; }
+    std::span<const Diagnostic> Diagnostics() const { return m_Diagnostics; }
+
+    // With an error diagnostic, the graph can be edited and saved, but not run.
+    bool IsBroken() const;
+
+    const Node* FindNode(Id node) const;
+    const Pin*  FindPin(Id pin) const;
+    const Node* NodeOf(Id pin) const;
+    const Link* FindLink(Id link) const;
+
+    // "Int32", or an undecided type: "?{Int32|Float|String}", "Array<?>".
+    std::string TypeText(Id pin) const;
+
+private:
+    struct Problem
+    {
+        Id    m_Node = 0;
+        Error m_Error;
+    };
+
+    void             Update();
+    void             Declare();
+    std::vector<int> Resolve(TypeResolution& resolution);
+    void             Diagnose();
+    Result<void>     Disruption(const Graph& before, bool forced) const;
+    Result<void>     CheckLink(const Pin& from, const Pin& to) const;
+    Node*            MutableNode(Id node);
+    std::string      PinName(const Pin& pin) const;
+    std::string      LinkName(const Link& link) const; // of an active link, whose pins are on their nodes
+
+    Blueprint*                                         m_Blueprint;
+    Id                                                 m_Id;
+    std::string                                        m_Name;
+    std::vector<Node>                                  m_Nodes;
+    std::vector<Link>                                  m_Links;
+    int                                                m_LastForced = 0;
+    std::unordered_map<Id, size_t>                     m_NodeIndex;
+    std::unordered_map<Id, std::pair<size_t, size_t>>  m_PinIndex;
+    std::vector<Problem>                               m_Problems;
+    std::vector<Diagnostic>                            m_Diagnostics;
+};
+
+
+//
+// -------[ Blueprints ]-------
+//
+
+// A document: graphs that share one space of IDs, and the application's registry and type table.
+class Blueprint
+{
+public:
+    Blueprint(std::shared_ptr<const Registry> registry, std::shared_ptr<TypeTable> types);
+    Blueprint(const Blueprint&) = delete;
+    Blueprint& operator=(const Blueprint&) = delete;
+
+    const Registry& GetRegistry() const { return *m_Registry; }
+    TypeTable&      GetTypes() const    { return *m_Types; }
+
+    Graph&       AddGraph(std::string name);
+    Graph*       FindGraph(Id graph);
+    const Graph* FindGraph(Id graph) const;
+
+    std::span<const std::unique_ptr<Graph>> Graphs() const { return m_Graphs; }
+
+    const NodeType* FindNodeType(std::string_view name) const;
+
+    Id NewId() { return m_NextId++; }
+
+private:
+    std::shared_ptr<const Registry>     m_Registry;
+    std::shared_ptr<TypeTable>          m_Types;
+    Id                                  m_NextId = 1;
+    std::vector<std::unique_ptr<Graph>> m_Graphs;
+};
 
 } // namespace crude_blueprint
