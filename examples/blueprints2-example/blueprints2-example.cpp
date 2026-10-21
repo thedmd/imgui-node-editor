@@ -774,12 +774,12 @@ private:
                 ImGui::Spacing();
                 ImGui::PushID(group.m_Name.c_str());
                 ImGui::BeginDisabled(count >= group.m_Max);
-                if (ImGui::SmallButton("+"))
+                if (SquareButton("+"))
                     edit = [&document, id = node.m_Id, name = group.m_Name] { AddGroupPin(document, id, name); };
                 ImGui::EndDisabled();
                 ImGui::SameLine();
                 ImGui::BeginDisabled(count <= group.m_Min);
-                if (ImGui::SmallButton("-"))
+                if (SquareButton("-"))
                     edit = [&document, id = node.m_Id, name = group.m_Name, index = count - 1] { RemoveGroupPin(document, id, name, index); };
                 ImGui::EndDisabled();
                 ImGui::PopID();
@@ -871,7 +871,7 @@ private:
             auto       addPinButton = [&](bool input)
             {
                 ImGui::Spacing();
-                if (ImGui::SmallButton("+"))
+                if (SquareButton("+"))
                     edit = [&document, graph = signature.m_Function->m_Graph, input] { AddSignaturePin(document, graph, input); };
                 if (ImGui::IsItemHovered())
                 {
@@ -1154,7 +1154,7 @@ private:
             else
                 ImGui::TextDisabled("pin %u, gone", static_cast<unsigned>(id));
             ImGui::TableSetColumnIndex(3);
-            if (ImGui::SmallButton("x"))
+            if (SquareButton("x"))
                 removed = id;
             ImGui::PopID();
         }
@@ -1169,7 +1169,7 @@ private:
     {
         auto& blueprint = document.GetBlueprint();
         auto  variables = blueprint.Variables();
-        if (ImGui::SmallButton("+"))
+        if (SquareButton("+"))
             m_Blueprint_AddVariable.Execute();
         if (ImGui::IsItemHovered())
             ImGui::SetTooltip("Add Variable");
@@ -1219,7 +1219,7 @@ private:
                 ImGui::TextDisabled("-");
 
             ImGui::TableNextColumn();
-            if (ImGui::SmallButton("x"))
+            if (SquareButton("x"))
                 change = [&document, removed = variable.m_Name] { RemoveVariable(document, removed); };
             if (ImGui::IsItemHovered())
                 ImGui::SetTooltip("Remove, with the nodes that use it");

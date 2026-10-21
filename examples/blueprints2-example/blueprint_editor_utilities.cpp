@@ -521,6 +521,15 @@ bool blueprint_editor_utilities::LatentMark(std::string_view waiting)
     return ImGui::IsItemHovered();
 }
 
+bool blueprint_editor_utilities::SquareButton(const char* label)
+{
+    const auto size = ImGui::GetTextLineHeight();
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(0.0f, 0.0f));
+    const auto pressed = ImGui::Button(label, ImVec2(size, size));
+    ImGui::PopStyleVar();
+    return pressed;
+}
+
 bool blueprint_editor_utilities::DrawValue(const Value& value)
 {
     auto type = value.GetType();

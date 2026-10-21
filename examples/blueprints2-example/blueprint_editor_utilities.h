@@ -93,6 +93,7 @@ void  ProblemSign(ImDrawList* drawList, ImVec2 center, float radius, Severity se
 // then what it waits for. True when hovered.
 bool LatentMark(std::string_view waiting);
 
+bool SquareButton(const char* label);      // As wide as it's high, a line's height: for a sign such as + or -.
 bool DrawValue(const Value& value);        // Draws a value; false for none.
 bool EditValue(Value& value);              // Shows an editor for a value; true once the edit is done.
 bool DrawValueWithEditor(Id id, Value& value); // Draws a value, or its editor once clicked; true when an edit changed it.
