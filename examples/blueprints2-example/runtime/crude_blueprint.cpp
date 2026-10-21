@@ -702,6 +702,14 @@ const crude_blueprint::ValueType* crude_blueprint::Registry::FindValueType(std::
     return it != m_ValueTypes.end() ? it->second : nullptr;
 }
 
+std::vector<const crude_blueprint::ValueType*> crude_blueprint::Registry::ValueTypes() const
+{
+    std::vector<const ValueType*> types;
+    for (auto& [name, type] : m_ValueTypes)
+        types.push_back(type);
+    return types;
+}
+
 const crude_blueprint::CastInfo* crude_blueprint::Registry::FindCast(const Type* from, const Type* to) const
 {
     for (auto cast : CastsFrom(from))

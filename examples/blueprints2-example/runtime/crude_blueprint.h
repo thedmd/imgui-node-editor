@@ -668,6 +668,7 @@ public:
     Result<void> AddNodeType(std::unique_ptr<NodeType> type);
 
     const ValueType*                 FindValueType(std::string_view name) const;
+    std::vector<const ValueType*>    ValueTypes() const; // in the order of their names
     const CastInfo*                  FindCast(const Type* from, const Type* to) const;
     std::span<const CastInfo* const> CastsFrom(const Type* from) const;
     const NodeType*                  FindNodeType(std::string_view name) const;

@@ -346,6 +346,10 @@ TEST_CASE(RegistryHoldsTypesAndCasts, "runtime.registry_holds_value_types_and_ca
     auto spaced  = registry.AddValueType(std::make_unique<StructType>("example.Vector 2", std::vector<StructField>{}));
     auto unnamed = registry.AddValueType(std::make_unique<StructType>("", std::vector<StructField>{}));
     test::Check(added && registry.FindValueType("example.Vector2") == vector2, "an application's struct is registered, and the registry keeps it");
+    std::string names;
+    for (auto type : registry.ValueTypes())
+        names += (names.empty() ? "" : " ") + type->m_Name;
+    test::Check(names == "Array Bool Float Int32 Map String example.Vector2", "the registry lists its value types by name: %s", names.c_str());
     test::Check(!twice && twice.GetError().Is(BlueprintError::Duplicate) && registry.FindValueType("Int32") == &Int32ValueType(), "a second value type of a name is refused");
     test::Check(!spaced && spaced.GetError().Is(BlueprintError::BadTypeText) && !unnamed && unnamed.GetError().Is(BlueprintError::BadTypeText), "and so is a name that type text can't hold");
 
