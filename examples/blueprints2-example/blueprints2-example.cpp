@@ -706,20 +706,24 @@ private:
         }
 
         // A paused run's next node has a blue border, and the node its last step ran an orange one.
+        // The example draws the borders, over the header bands, on the nodes' outlines.
         const auto current = m_Debugger.IsActive() ? m_Debugger.CurrentNode() : 0;
         const auto next    = m_Debugger.IsActive() ? m_Debugger.NextNode() : 0;
+        ed::PushStyleVar(ed::StyleVar_NodeBorderWidth, 0.0f);
         for (auto& node : graph.Nodes())
         {
             const auto errors   = m_Problems.Count(Severity::Error, node.m_Id);
             const auto warnings = m_Problems.Count(Severity::Warning, node.m_Id);
             const auto stepped  = node.m_Id == next || node.m_Id == current;
+            auto borderColor = ImGui::ColorConvertFloat4ToU32(ed::GetStyle().Colors[ed::StyleColor_NodeBorder]);
+            auto borderWidth = 1.0f;
             if (stepped)
             {
-                ed::PushStyleColor(ed::StyleColor_NodeBorder, ImGui::GetStyleColorVec4(node.m_Id == next ? ImGuiCol_NavCursor : ImGuiCol_PlotHistogram));
-                ed::PushStyleVar(ed::StyleVar_NodeBorderWidth, 3.0f);
+                borderColor = ImGui::GetColorU32(node.m_Id == next ? ImGuiCol_NavCursor : ImGuiCol_PlotHistogram);
+                borderWidth = 3.0f;
             }
             else if (errors > 0)
-                ed::PushStyleColor(ed::StyleColor_NodeBorder, ImColor(ProblemColor(Severity::Error)));
+                borderColor = ProblemColor(Severity::Error);
 
             ed::BeginNode(node.m_Id);
 
@@ -738,32 +742,13 @@ private:
             // An event's node is titled by the event's name.
             const auto event = node.m_Type->EventName(node.m_Config);
             const auto title = event.empty() ? node.m_Type->m_Title : event;
+
+            // A band of a tint of what the node is, white one fainter.
+            auto tint = HeaderColor(document.GetBlueprint(), node);
+            tint.w    = tint.x + tint.y + tint.z >= 3.0f ? 0.25f : 0.55f;
+            auto band = ImGui::GetColorU32(tint);
+            auto bandBottom = 0.0f;
             {
-                // A tint of what the node is, white one fainter.
-                auto tint  = HeaderColor(document.GetBlueprint(), node);
-                tint.w     = tint.x + tint.y + tint.z >= 3.0f ? 0.25f : 0.55f;
-                auto id    = node.m_Id;
-                auto color = ImGui::GetColorU32(tint);
-                auto headerBackgroundRenderer = ImEx::ItemBackgroundRenderer([id, color](ImDrawList* drawList)
-                {
-                    auto border   = ed::GetStyle().NodeBorderWidth;
-                    auto rounding = ed::GetStyle().NodeRounding;
-
-                    auto itemMin = ImGui::GetItemRectMin();
-                    auto itemMax = ImGui::GetItemRectMax();
-
-                    auto nodeStart = ed::GetNodePosition(id);
-                    auto nodeSize  = ed::GetNodeSize(id);
-
-                    itemMin   = nodeStart;
-                    itemMin.x = itemMin.x + border - 0.5f;
-                    itemMin.y = itemMin.y + border - 0.5f;
-                    itemMax.x = nodeStart.x + nodeSize.x - border + 0.5f;
-                    itemMax.y = itemMax.y + ImGui::GetStyle().ItemSpacing.y + 0.5f;
-
-                    drawList->AddRectFilled(itemMin, itemMax, color, rounding, ImDrawFlags_RoundTop);
-                });
-
                 ImGui::BeginGroup();
                 ImGui::PushFont(HeaderFont(), HeaderFont()->LegacySize);
                 ImGui::TextUnformatted(title.data(), title.data() + title.size());
@@ -786,6 +771,7 @@ private:
                     }
                 }
                 ImGui::EndGroup();
+                bandBottom = ImGui::GetItemRectMax().y + ImGui::GetStyle().ItemSpacing.y;
 
                 ImGui::Spacing();
             }
@@ -986,14 +972,17 @@ private:
             layout.End();
 
             ed::EndNode();
-            if (stepped)
+
+            if (auto drawList = ed::GetNodeBackgroundDrawList(node.m_Id))
             {
-                ed::PopStyleVar();
-                ed::PopStyleColor();
+                const auto min      = ed::GetNodePosition(node.m_Id);
+                const auto max      = min + ed::GetNodeSize(node.m_Id);
+                const auto rounding = ed::GetStyle().NodeRounding;
+                drawList->AddRectFilled(min, ImVec2(max.x, bandBottom), band, rounding, ImDrawFlags_RoundTop);
+                drawList->AddRect(min, max, borderColor, rounding, borderWidth);
             }
-            else if (errors > 0)
-                ed::PopStyleColor();
         }
+        ed::PopStyleVar();
 
         // While a run goes on, a flow link it took in its last steps is thicker, the more so the more
         // recently, but for the one it took last, which flows. A run that ended keeps its context, for
