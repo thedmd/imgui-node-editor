@@ -73,13 +73,15 @@ macro(add_example_executable name)
             ${IMGUI_NODE_EDITOR_ROOT_DIR}/examples/application/support/Resource.rc.in
             ${CMAKE_CURRENT_BINARY_DIR}/Resource.rc
         )
+        set(_Example_Manifest ${IMGUI_NODE_EDITOR_ROOT_DIR}/examples/application/support/Application.manifest)
         source_group(TREE "${IMGUI_NODE_EDITOR_ROOT_DIR}/examples" FILES ${_Example_CommonResources})
         source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES ${_Example_Resources})
         list(APPEND _Example_Resources
             ${CMAKE_CURRENT_BINARY_DIR}/Resource.rc
+            ${_Example_Manifest}
             ${_Example_CommonResources}
         )
-        source_group("resources" FILES ${CMAKE_CURRENT_BINARY_DIR}/Resource.rc)
+        source_group("resources" FILES ${CMAKE_CURRENT_BINARY_DIR}/Resource.rc ${_Example_Manifest})
     elseif (APPLE)
         set(_Example_Type MACOSX_BUNDLE)
 
