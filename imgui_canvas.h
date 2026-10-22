@@ -279,6 +279,7 @@ private:
     ImRect      m_ViewRect;
 
     ImVec2 m_ViewTransformPosition;
+    float  m_PixelDensity = 1.0f; // of the space the canvas began in
 
     int m_SuspendCounter = 0;
 

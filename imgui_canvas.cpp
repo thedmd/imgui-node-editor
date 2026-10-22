@@ -55,6 +55,9 @@ bool ImGuiEx::Canvas::Begin(ImGuiID id, const ImVec2& size)
     m_WidgetRect = ImRect(m_WidgetPosition, m_WidgetPosition + m_WidgetSize);
     m_Window = ImGui::GetCurrentWindow();
     m_DrawList = m_Window->DrawList;
+# if IMGUI_VERSION_NUM >= 19292
+    m_PixelDensity = m_DrawList->_InvFringeScale;
+# endif
 
     UpdateViewTransformPosition();
 
@@ -315,9 +318,9 @@ ImRect ImGuiEx::Canvas::CalcViewRect(const CanvasView& view) const
 
 ImVec2 ImGuiEx::Canvas::CalcViewTransformPosition(const CanvasView& view) const
 {
-    // On whole pixels, so content on whole canvas units is too at scale 1.
-    const auto position = view.Origin() + m_WidgetPosition;
-    return ImVec2(std::floor(position.x), std::floor(position.y));
+    // On whole pixels, so content on whole pixels of local space is too at scale 1.
+    const auto position = (view.Origin() + m_WidgetPosition) * m_PixelDensity;
+    return ImVec2(std::floor(position.x) / m_PixelDensity, std::floor(position.y) / m_PixelDensity);
 }
 
 void ImGuiEx::Canvas::UpdateViewTransformPosition()

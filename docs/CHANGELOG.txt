@@ -664,6 +664,10 @@ v0.10.0 (WIP):
     BUGFIX: Examples: Dim the Houdini pins that can't take a new link in the blueprints example
         Each pin took the dimming meant for the pin before it.
 
+    BUGFIX: Canvas: Put the view origin on whole pixels at fractional display scales
+        It went to whole units, every other one half a pixel off the pixel grid at 150%, so the canvas moved what its
+        local space put on whole pixels half a pixel off them.
+
 v0.9.3 (2023-10-14):
 
     CHANGE: Canvas: Use ImDrawCallback_ImCanvas macro as draw callback sentinel (#256), thanks @nspitko

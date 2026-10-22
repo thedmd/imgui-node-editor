@@ -342,6 +342,34 @@ TEST_CASE(PixelSnappedOrigin, "canvas_widget.view_origin_is_on_whole_pixels", "C
     test::Check(mouseMapped.x == 170.0f && mouseMapped.y == 110.0f, "mapping to the screen and back is exact: (%g, %g)", mouseMapped.x, mouseMapped.y);
 }
 
+TEST_CASE(PixelSnappedOriginAtFractionalDensity, "canvas_widget.view_origin_is_on_whole_pixels_at_fractional_density", nullptr, test::TestFlags_None)
+{
+# if IMGUI_VERSION_NUM >= 19292
+    // As above, with a framebuffer at 1.5 times the display's density, where every other whole
+    // unit is half a pixel off: a rectangle on whole pixels of local space, without anti-aliasing.
+    test::Host host;
+    ImGui::GetIO().DisplayFramebufferScale = ImVec2(1.5f, 1.5f);
+    host.NewFrame();
+    BeginHostWindow();
+    ImGuiEx::Canvas canvas;
+    canvas.SetView(ImVec2(-150.5f, -90.25f), 1.0f);
+    canvas.Begin("canvas", ImVec2(300.0f, 300.0f));
+    auto drawList = ImGui::GetWindowDrawList();
+    drawList->PrimReserve(6, 4);
+    drawList->PrimRect(ImVec2(160.0f, 100.0f), ImVec2(200.0f, 140.0f), c_Red);
+    canvas.End();
+    ImGui::End();
+    host.Render();
+
+    auto onWholePixel = [](float value) { return std::fabs(value * 1.5f - std::round(value * 1.5f)) < 0.001f; };
+    const auto rect = VertexBounds(drawList, c_Red);
+    test::Check(onWholePixel(rect.Min.x) && onWholePixel(rect.Min.y) && onWholePixel(rect.Max.x) && onWholePixel(rect.Max.y),
+        "the rectangle lands on whole pixels: (%g, %g) - (%g, %g) in pixels", rect.Min.x * 1.5f, rect.Min.y * 1.5f, rect.Max.x * 1.5f, rect.Max.y * 1.5f);
+# else
+    test::Skip("needs Dear ImGui 1.93, whose draw lists know their pixel density");
+# endif
+}
+
 TEST_CASE(SuspendWithAnotherSplitter, "canvas_widget.suspend_with_another_splitter_asserts", "CNV-1", test::TestFlags_None)
 {
     // A splitter of the application's own has its second channel current when the
