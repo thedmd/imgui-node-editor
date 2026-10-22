@@ -2139,25 +2139,27 @@ void blueprint_editor_utilities::NodeContextMenu::Show(Document& document, Debug
         }
 
         auto run     = node ? RunArguments::Of(document, node->m_Id) : std::nullopt;
-        auto runItem = [&](const char* label, bool enabled)
+        auto runItem = [&](const char* label, bool enabled, bool running)
         {
             const auto asks = run && run->Asks();
             if (!ImGui::MenuItem(asks ? (std::string(label) + "...").c_str() : label, nullptr, false, enabled))
                 return;
             if (asks)
             {
-                m_Run    = node->m_Id;
-                m_Asking = true;
+                m_Run     = node->m_Id;
+                m_Running = running;
+                m_Asking  = true;
             }
             else if (run->m_Call)
-                debugger.Call(document, true, run->m_Name);
+                debugger.Call(document, running, run->m_Name);
             else
-                debugger.Start(document, true, run->m_Name);
+                debugger.Start(document, running, run->m_Name);
         };
 
         if (auto event = node ? node->m_Type->EventName(node->m_Config) : std::string(); !event.empty())
         {
-            runItem("Run Event", true);
+            runItem("Run Event", true, true);
+            runItem("Debug Event", true, false);
             if (IsCustomEvent(*node) && ImGui::MenuItem("Rename Event..."))
             {
                 m_RenamedEvent = node->m_Id;
@@ -2186,7 +2188,8 @@ void blueprint_editor_utilities::NodeContextMenu::Show(Document& document, Debug
             const auto  graph    = signature.m_Function->m_Graph;
             const auto& declared = signature.m_Function->m_Signature;
             ImGui::Separator();
-            runItem("Run Function", run.has_value());
+            runItem("Run Function", run.has_value(), true);
+            runItem("Debug Function", run.has_value(), false);
             if (ImGui::MenuItem("Pure", nullptr, declared.m_Pure))
                 change = [&document, graph, pure = declared.m_Pure] { ChangeSignature(document, graph, pure ? "Make Impure" : "Make Pure", [](Signature& changed) { changed.m_Pure = !changed.m_Pure; }); };
             if (ImGui::BeginMenu("Type Parameters"))
@@ -2313,7 +2316,7 @@ void blueprint_editor_utilities::NodeContextMenu::ShowArguments(Document& docume
 
     auto& arguments = m_Arguments;
     auto& types     = blueprint.GetTypes();
-    ImGui::Text("Run %s", arguments.m_Name.c_str());
+    ImGui::Text("%s %s", m_Running ? "Run" : "Debug", arguments.m_Name.c_str());
     ImGui::Separator();
     // Of IDs of their own each time, the value editors open closed.
     ImGui::PushID(m_Asked);
@@ -2360,7 +2363,7 @@ void blueprint_editor_utilities::NodeContextMenu::ShowArguments(Document& docume
     ImGui::PopID();
     ImGui::Separator();
     ImGui::BeginDisabled(!arguments.IsReady(types));
-    const auto run = ImGui::Button("Run");
+    const auto run = ImGui::Button(m_Running ? "Run" : "Debug");
     ImGui::EndDisabled();
     ImGui::SameLine();
     if (ImGui::Button("Cancel") || ImGui::IsKeyPressed(ImGuiKey_Escape, false))
@@ -2370,9 +2373,9 @@ void blueprint_editor_utilities::NodeContextMenu::ShowArguments(Document& docume
         m_Used[arguments.Key()] = arguments;
         ImGui::CloseCurrentPopup();
         if (arguments.m_Call)
-            debugger.Call(document, true, arguments.m_Name, arguments.m_Values);
+            debugger.Call(document, m_Running, arguments.m_Name, arguments.m_Values);
         else
-            debugger.Start(document, true, arguments.m_Name, arguments.m_Values);
+            debugger.Start(document, m_Running, arguments.m_Name, arguments.m_Values);
     }
     ImGui::EndPopup();
 }

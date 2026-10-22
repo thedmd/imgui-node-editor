@@ -478,11 +478,12 @@ struct RunArguments
     bool        IsReady(TypeTable& types) const; // each value of its decided type
 };
 
-// For a node, or for the selection when the node is in it. A function's entry runs its function,
-// and edits its type parameters, their names and the types each allows, and whether it's pure; it
-// and a return ask for the whole signature to show. An event's node runs the event, and a Custom
-// Event's renames it. A run that takes arguments asks for them in a popup, which offers those of
-// the last run of the same event or function. A comment's edits its text, in a popup of its own.
+// For a node, or for the selection when the node is in it. A function's entry runs or debugs its
+// function, and edits its type parameters, their names and the types each allows, and whether it's
+// pure; it and a return ask for the whole signature to show. An event's node runs or debugs the
+// event, and a Custom Event's renames it. A debugged run starts paused, before its first step. A run
+// that takes arguments asks for them in a popup, which offers those of the last run of the same
+// event or function. A comment's edits its text, in a popup of its own.
 struct NodeContextMenu
 {
     void Open(Id node = 0);
@@ -512,9 +513,10 @@ private:
 
     bool m_SignatureRequested = false;
 
-    Id                                  m_Run    = 0;     // the node whose run the arguments popup starts
-    bool                                m_Asking = false; // the arguments popup opens
-    int                                 m_Asked  = 0;     // times it opened
+    Id                                  m_Run     = 0;     // the node whose run the arguments popup starts
+    bool                                m_Running = true;  // the run it starts runs, else it's debugged
+    bool                                m_Asking  = false; // the arguments popup opens
+    int                                 m_Asked   = 0;     // times it opened
     RunArguments                        m_Arguments;
     std::map<std::string, RunArguments> m_Used;           // by key, of the last run each
 };
