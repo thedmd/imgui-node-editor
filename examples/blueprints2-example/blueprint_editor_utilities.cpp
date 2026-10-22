@@ -1039,6 +1039,69 @@ void blueprint_editor_utilities::AddGroupPin(Document& document, Id node, std::s
     transaction->AddAction("%s: %s pin added", name.c_str(), group.c_str());
 }
 
+namespace blueprint_editor_utilities { namespace {
+
+const GroupDeclaration* GroupNamed(const Node& node, std::string_view name)
+{
+    auto found = std::find_if(node.m_Groups.begin(), node.m_Groups.end(), [name](const GroupDeclaration& group) { return group.m_Name == name; });
+    return found != node.m_Groups.end() ? &*found : nullptr;
+}
+
+// The key of the first pin the group's next index has.
+std::string NextGroupKey(const Node& node, const GroupDeclaration& group)
+{
+    return group.m_Prefixes.front() + "." + std::to_string(GroupCount(group, node.m_Config));
+}
+
+} } // namespace blueprint_editor_utilities { namespace {
+
+blueprint_editor_utilities::Result<void> blueprint_editor_utilities::CanLinkNewGroupPin(const Graph& graph, Id node, const std::string& group, Id pin)
+{
+    auto found       = graph.FindNode(node);
+    auto declaration = found ? GroupNamed(*found, group) : nullptr;
+    if (!declaration)
+        return Error(BlueprintError::NotFound, "the node has no " + group + " pins to add");
+    const auto key = NextGroupKey(*found, *declaration);
+    auto trial = graph;
+    if (auto added = trial.AddGroupPin(node, group); !added)
+        return added.GetError();
+    auto fresh = trial.FindNode(node)->FindPin(key);
+    auto other = trial.FindPin(pin);
+    if (!fresh || !other)
+        return Error(BlueprintError::NoPin, "the pin to add has nothing to link to");
+    return other->m_Direction == Direction::Output ? trial.CanConnect(pin, fresh->m_Id) : trial.CanConnect(fresh->m_Id, pin);
+}
+
+void blueprint_editor_utilities::AddGroupPinLinked(Document& document, Id node, std::string group, Id pin)
+{
+    auto& graph       = document.GetGraph();
+    auto  found       = graph.FindNode(node);
+    auto  other       = graph.FindPin(pin);
+    auto  declaration = found ? GroupNamed(*found, group) : nullptr;
+    if (!declaration || !other)
+        return;
+
+    const auto key    = NextGroupKey(*found, *declaration);
+    const auto name   = found->Name();
+    const auto linked = DescribePin(graph, *other);
+    const auto output = other->m_Direction == Direction::Output;
+    auto transaction = document.BeginUndoTransaction("Add Pin and Link");
+    auto refused     = [&transaction](const Error& error)
+    {
+        auto message = error.Message();
+        LOGW("%.*s", static_cast<int>(message.size()), message.data());
+        transaction->Discard();
+    };
+    if (auto added = graph.AddGroupPin(node, group); !added)
+        return refused(added.GetError());
+    auto fresh = graph.FindNode(node)->FindPin(key);
+    if (!fresh)
+        return refused(Error(BlueprintError::NoPin, "the pin added isn't " + key));
+    if (auto made = output ? graph.Connect(pin, fresh->m_Id) : graph.Connect(fresh->m_Id, pin); !made)
+        return refused(made.GetError());
+    transaction->AddAction("%s: %s added, linked to %s", name.c_str(), key.c_str(), linked.c_str());
+}
+
 void blueprint_editor_utilities::RemoveGroupPin(Document& document, Id node, std::string group, int index)
 {
     auto& graph = document.GetGraph();

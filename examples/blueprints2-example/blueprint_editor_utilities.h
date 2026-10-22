@@ -114,6 +114,10 @@ const Node*  FindNode(const Blueprint& blueprint, Id node);
 void CreateLink(Document& document, Id from, Id to, LinkMode mode = LinkMode::Plain);
 void AddGroupPin(Document& document, Id node, std::string group);
 void RemoveGroupPin(Document& document, Id node, std::string group, int index);
+// Whether a link between a pin and the first pin a node's group would add next fits, tried on a copy
+// of the graph; and the group grown by that pin, linked to the one given, as one undo step.
+Result<void> CanLinkNewGroupPin(const Graph& graph, Id node, const std::string& group, Id pin);
+void         AddGroupPinLinked(Document& document, Id node, std::string group, Id pin);
 void SplitStructPin(Document& document, Id node, std::string key, bool split);
 
 // A function's entry, which gives its inputs, or a return, which takes its outputs; no function

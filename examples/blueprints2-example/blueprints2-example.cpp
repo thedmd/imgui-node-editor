@@ -789,10 +789,10 @@ private:
     }
 
     // A node that grows by pins has a "+" on its bottom edge, under the column they're added to:
-    // faint until the node is hovered or selected. A click on it adds a pin. Each pin the node can
-    // lose has a "-" beside it, outside the node, while the node is hovered: faint until the pin or
-    // the "-" is. Neither takes room in the node. Called once the node's layout ends, its padding
-    // given.
+    // faint until the node is hovered or selected. A click on it adds a pin, and a link dropped on
+    // it one linked (LinkToTab()). Each pin the node can lose has a "-" beside it, outside the node,
+    // while the node is hovered: faint until the pin or the "-" is. Neither takes room in the node.
+    // Called once the node's layout ends, its padding given.
     void ShowPinControls(Document& document, const Node& node, ImVec4 padding, std::function<void()>& edit)
     {
         auto&      blueprint = document.GetBlueprint();
@@ -867,6 +867,33 @@ private:
                 tooltip(!removal.m_Function ? "Remove Pin" : removal.m_Input ? "Remove Input" : "Remove Output");
             ImGui::PopID();
         }
+    }
+
+    // A link dragged between a pin and a node's "+" adds a pin to the node's group, linked to the one
+    // dragged, in one undo step. A function's entry and return take none this way.
+    void LinkToTab(Document& document, ItemBuilder::LinkBuilder& builder, Id node, Id pin)
+    {
+        auto&      graph  = document.GetGraph();
+        auto       found  = graph.FindNode(node);
+        const auto growth = found ? GrowthOf(document.GetBlueprint(), *found) : PinGrowth();
+        const auto tab    = static_cast<Id>(GrowTabId(node).Get());
+        if (!m_LinkQuery || m_LinkQuery->m_From != pin || m_LinkQuery->m_To != tab || m_LinkQuery->m_Revision != document.m_Revision)
+        {
+            auto fits = growth.m_Group.empty() ? Result<void>(Error(BlueprintError::Unsupported, "a link adds no input or output to a function"))
+                      : !growth.m_Enabled      ? Result<void>(Error(BlueprintError::Unsupported, "the node has all the pins it can"))
+                                               : CanLinkNewGroupPin(graph, node, growth.m_Group, pin);
+            m_LinkQuery = LinkQuery{ pin, tab, document.m_Revision, std::move(fits) };
+        }
+        ed::Suspend();
+        if (m_LinkQuery->m_Fits)
+            ImGui::SetTooltip("Add a Pin, Linked");
+        else
+            ImGui::SetTooltip("Can't Add a Pin: %s", Text(m_LinkQuery->m_Fits.GetError().Message()).c_str());
+        ed::Resume();
+        if (!m_LinkQuery->m_Fits)
+            builder.Reject();
+        else if (builder.Accept())
+            AddGroupPinLinked(document, node, growth.m_Group, pin);
     }
 
     // Where a link meets a pin on the canvas, as the editor last placed it: a reroute's center, the
@@ -2141,6 +2168,13 @@ private:
 
         if (auto linkBuilder = itemBuilder.QueryNewLink())
         {
+            const auto startTab = GrowTabNode(linkBuilder->m_StartPinId), endTab = GrowTabNode(linkBuilder->m_EndPinId);
+            if (startTab || endTab)
+            {
+                LinkToTab(document, *linkBuilder, startTab ? startTab : endTab, static_cast<Id>((startTab ? linkBuilder->m_EndPinId : linkBuilder->m_StartPinId).Get()));
+                return;
+            }
+
             auto startPin = graph.FindPin(static_cast<Id>(linkBuilder->m_StartPinId.Get()));
             auto endPin   = graph.FindPin(static_cast<Id>(linkBuilder->m_EndPinId.Get()));
             if (!startPin || !endPin)
@@ -2367,7 +2401,7 @@ private:
         actions.Gesture("Delete Selection", "Delete", ed::GetSelectedObjectCount() > 0);
         actions.Gesture("Edit Value", "Click", pinValue);
         actions.Gesture("Show Node's Problems", "Click Count", owner && (m_Problems.Count(Severity::Error, owner->m_Id) > 0 || m_Problems.Count(Severity::Warning, owner->m_Id) > 0));
-        actions.Gesture("Add Pin", "Click +", canGrow);
+        actions.Gesture("Add Pin", "Click +, or Drop a Link on It", canGrow);
         actions.Gesture("Remove Pin", "Click - Beside It", canShrink);
         actions.Gesture("Choose Type", "Right-Click", pinTyped);
         actions.Gesture("Split or Recombine", "Double-Click", pinSplits);

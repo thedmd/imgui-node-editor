@@ -1729,3 +1729,22 @@ TEST_CASE(PinGrowths, "blueprints2.a_node_grows_by_a_pin_of_its_group_and_loses_
     session.Use([&] { RemovePin(document, sum, removal); });
     test::Check(!node(sum)->FindPin("in.2"), "and loses it");
 }
+
+TEST_CASE(PinDrops, "blueprints2.a_link_dropped_on_a_nodes_plus_adds_a_pin_linked", nullptr, test::TestFlags_None)
+{
+    using namespace blueprint_editor_utilities;
+    test::Session session(UnnamedConfig());
+    OverlayLog    log;
+    Example       example(session);
+    auto& document = example.m_Document;
+    auto  node     = [&document](Id id) { return document.GetGraph().FindNode(id); };
+    const auto sum = example.Node("crude.Add"), value = example.Pin(example.Node("crude.Constant"), "value");
+
+    // The constant dropped on Add's "+": a third input, linked to it, in one undo step.
+    const auto steps = document.m_Undo.size();
+    test::Check(CanLinkNewGroupPin(document.GetGraph(), sum, "in", value).IsOk() && !node(sum)->FindPin("in.2"), "a link to a third input fits, tried on a copy of the graph");
+    session.Use([&] { AddGroupPinLinked(document, sum, "in", value); });
+    const auto third = node(sum)->FindPin("in.2");
+    test::Check(third && example.LinkBetween(value, third->m_Id) && document.m_Undo.size() == steps + 1, "dropped on it, the link adds the third input, linked, in one undo step");
+    test::Check(!CanLinkNewGroupPin(document.GetGraph(), sum, "in", example.Pin(example.Node("crude.Print"), "then")), "a flow output's link doesn't fit a new input of Add");
+}
