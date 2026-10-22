@@ -672,6 +672,10 @@ v0.10.0 (WIP):
         A press that moved by a pixel opened no menu, while a right drag pans only past Dear ImGui's drag threshold, so
         a click that moved a little did nothing. At 150% scale, most one pixel moves of the mouse move Dear ImGui's position.
 
+    BUGFIX: Editor: Open no link or canvas menu for a right-click on a window over them
+        Links and the background are hit by the mouse position, so a right-click on a popup over the canvas closed it and
+        opened the menu of what lay under it.
+
 v0.9.3 (2023-10-14):
 
     CHANGE: Canvas: Use ImDrawCallback_ImCanvas macro as draw callback sentinel (#256), thanks @nspitko

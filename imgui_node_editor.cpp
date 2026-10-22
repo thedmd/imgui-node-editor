@@ -5079,7 +5079,11 @@ ed::EditorAction::AcceptResult ed::ContextMenuAction::Accept(const Control& cont
         else if (control.BackgroundHot)
             candidateMenu = Background;
 
-        // Outside the editor, a press or release has no menu to open.
+        // Links and the background are hit by position, also through a window over the canvas.
+        if ((candidateMenu == Link || candidateMenu == Background) && !ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByPopup | ImGuiHoveredFlags_AllowWhenBlockedByActiveItem))
+            candidateMenu = None;
+
+        // Outside the editor, or over another window, a press or release has no menu to open.
         if (candidateMenu == None)
         {
             m_CandidateMenu = None;

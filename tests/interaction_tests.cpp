@@ -1248,3 +1248,40 @@ TEST_CASE(RightClickWithinDragThreshold, "interaction.a_right_click_is_a_click_u
     test::Check(backgroundMenus == 0 && panned.x == threshold + 4.0f && panned.y == 0.0f, "one on the canvas that moves %g px pans by as much and opens no menu: %d menus, panned by (%g, %g)",
         threshold + 4.0f, backgroundMenus, panned.x, panned.y);
 }
+
+TEST_CASE(RightClickOnPopupOverCanvas, "interaction.a_right_click_on_a_popup_over_the_canvas_opens_no_canvas_menu", nullptr, test::TestFlags_None)
+{
+    // The background and links are hit by the mouse position, which is over them also
+    // through a popup over the canvas.
+    test::Storage storage;
+    test::Session session(&storage);
+    bool open = false, shown = false;
+    int  backgroundMenus = 0;
+    session.DefaultContent = [&](int)
+    {
+        backgroundMenus += ed::ShowBackgroundContextMenu() ? 1 : 0;
+        ed::Suspend();
+        if (open)
+        {
+            ImGui::OpenPopup("##popup");
+            open = false;
+        }
+        ImGui::SetNextWindowPos(ImVec2(600.0f, 300.0f));
+        shown = ImGui::BeginPopup("##popup");
+        if (shown)
+        {
+            ImGui::Dummy(ImVec2(200.0f, 100.0f));
+            ImGui::EndPopup();
+        }
+        ed::Resume();
+    };
+    session.Run(3);
+    session.Click(ImVec2(900.0f, 600.0f));
+    open = true;
+    session.Run(3);
+
+    session.Click(ImVec2(650.0f, 340.0f), 1);
+    test::Check(shown && backgroundMenus == 0, "a right-click on the popup keeps it, and opens no canvas menu: %d", backgroundMenus);
+    session.Click(ImVec2(900.0f, 600.0f), 1);
+    test::Check(!shown && backgroundMenus == 1, "one on the canvas beside it closes it, and opens the canvas menu: %d", backgroundMenus);
+}
