@@ -2472,8 +2472,6 @@ private:
         }
         if (actions.Press("Watch Pin", ImGuiMod_Ctrl | ImGuiKey_MouseLeft, pin && !pin->m_Flow))
             m_Debugger.SetWatched(pin->m_Id, !m_Debugger.IsWatched(pin->m_Id));
-        actions.Gesture("Break Link", "Alt+Click", link != nullptr);
-        actions.Gesture("Delete Selection", "Delete", ed::GetSelectedObjectCount() > 0);
         actions.Gesture("Edit Value", "Click", pinValue);
         actions.Gesture("Show Node's Problems", "Click Count", owner && (m_Problems.Count(Severity::Error, owner->m_Id) > 0 || m_Problems.Count(Severity::Warning, owner->m_Id) > 0));
         actions.Gesture("Add Pin", "Click +, or Drop a Link on It", canGrow);
@@ -2482,7 +2480,21 @@ private:
         actions.Gesture("Split or Recombine", "Double-Click", pinSplits);
         actions.Gesture("Open Function", "Double-Click", !pin && CalledFunction(document, node));
         actions.Gesture("Edit Signature", "Double-Click", !pin && node && SignatureNodeOf(document.GetBlueprint(), *node).m_Function);
-        actions.Gesture("Create Node", "Space", background && !typing);
+
+        // The node editor's own actions, its groups being comments, but for Create Link and the
+        // context menus, which the example lists as it carries them out, and Cut, Copy, Paste and
+        // Duplicate, which it doesn't.
+        for (auto action : { ed::Action::Center, ed::Action::Frame, ed::Action::Pan, ed::Action::Zoom, ed::Action::Select, ed::Action::ToggleSelection, ed::Action::ClearSelection,
+                             ed::Action::SelectNodes, ed::Action::AddToSelection, ed::Action::SelectGroups, ed::Action::SelectLinks, ed::Action::Move, ed::Action::MoveWithoutSnapping,
+                             ed::Action::MoveGroupAlone, ed::Action::ResizeGroup, ed::Action::DeleteSelection, ed::Action::DeleteLink, ed::Action::CreateNode })
+        {
+            constexpr std::string_view group = "Group";
+            const auto info = ed::GetActionInfo(action);
+            auto       name = std::string(action == ed::Action::DeleteLink ? "Break Link" : info.Name);
+            if (auto at = name.find(group); at != std::string::npos)
+                name.replace(at, group.size(), "Comment");
+            actions.Gesture(name.c_str(), info.Trigger, info.Available);
+        }
         actions.Gesture("Create Node", "Right-Click", background);
         actions.Gesture("Edit Comment", "Double-Click", node && IsComment(*node));
         if (actions.Press("Comment Selection", ImGuiKey_C, ed::GetSelectedObjectCount() > 0 && !typing))
