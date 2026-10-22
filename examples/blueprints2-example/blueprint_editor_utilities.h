@@ -50,21 +50,21 @@ Value ConstantValue(const Node& node, const Pin& pin);
 // A Custom Event's config holds its event's name, and the names of its parameters.
 bool  IsCustomEvent(const Node& node);
 // A Constant, and a variable's Get, show as a row of their own, without a header; a Get's row names
-// its variable.
+// its variable. An operator, a node type with a compact title, shows it instead of a header.
 bool             IsCompact(const Node& node);
 std::string_view GetterVariable(const Node& node); // empty for a node that isn't a variable's Get
 
 // A node's look behind its content, on its outline: the top-left and bottom-right corners cut at
 // 45°, and a compact node's other two as well. Over a darker header row, a header's band runs from
 // the top-left cut past its title and ends in a 45° slant, or spans a node too narrow for that; a
-// compact node has a stripe of its type's color along its left edge instead. The border is stroked
+// Constant or Get has a stripe of its type's color along its left edge instead. The border is stroked
 // inside the outline, and the selection's ring outside it, past a gap.
 struct NodeLook
 {
     ImU32 m_Band        = 0;
     float m_BandBottom  = 0.0f; // a header's
     float m_TitleRight  = 0.0f; // the band's slant starts past it
-    ImU32 m_Stripe      = 0;    // a compact node's
+    ImU32 m_Stripe      = 0;    // a compact Constant's or Get's
     ImU32 m_Border      = 0;
     float m_BorderWidth = 1.0f;
     bool  m_Compact     = false;

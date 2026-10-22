@@ -153,7 +153,7 @@ bool blueprint_editor_utilities::IsCustomEvent(const Node& node)
 
 bool blueprint_editor_utilities::IsCompact(const Node& node)
 {
-    return IsConstant(node) || !GetterVariable(node).empty();
+    return IsConstant(node) || !GetterVariable(node).empty() || !node.m_Type->m_CompactTitle.empty();
 }
 
 std::string_view blueprint_editor_utilities::GetterVariable(const Node& node)
@@ -274,7 +274,7 @@ ImVec2 blueprint_editor_utilities::CutCenter(bool compact)
 ImVec4 blueprint_editor_utilities::NodePadding(const NodeLook& look)
 {
     auto padding = ax::NodeEditor::GetStyle().NodePadding;
-    if (look.m_Compact)
+    if (look.m_Compact && look.m_Stripe != 0)
         padding.x += c_Stripe;
     return padding;
 }

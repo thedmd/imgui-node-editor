@@ -802,6 +802,13 @@ private:
                 look.m_BorderWidth = 1.5f;
             }
 
+            // A Constant's and a variable Get's stripe is of their value's color; an operator has none.
+            const auto symbol = std::string_view(node.m_Type->m_CompactTitle);
+            if (compact && symbol.empty())
+                for (auto& pin : node.m_Pins)
+                    if (pin.m_Direction == Direction::Output)
+                        look.m_Stripe = ImGui::GetColorU32(PinColor(pin));
+
             ed::PushStyleVar(ed::StyleVar_NodePadding, NodePadding(look));
             ed::BeginNode(node.m_Id);
             ed::PopStyleVar();
@@ -872,8 +879,30 @@ private:
                 ImGui::Dummy(ImVec2(100.0f, 0.0f)); // For minimum node width
             }
 
+            // An operator's symbol stands between its inputs and outputs, its group's + and - under
+            // it. Rows are a line apart, and the columns are centered on one another.
+            const auto spacing    = ImGui::GetStyle().ItemSpacing.y;
+            const auto lineHeight = ImGui::GetTextLineHeight();
+            const auto pitch      = lineHeight + 2.0f * spacing;
+            auto       rowsHeight = [&](Direction direction)
+            {
+                const auto rows = std::count_if(node.m_Pins.begin(), node.m_Pins.end(), [direction](const Pin& pin) { return pin.m_Direction == direction; });
+                return rows > 0 ? static_cast<float>(rows - 1) * pitch + lineHeight : 0.0f;
+            };
+            const auto glyphs       = std::count_if(symbol.begin(), symbol.end(), [](char c) { return (static_cast<unsigned char>(c) & 0xC0) != 0x80; });
+            const auto symbolScale  = glyphs == 1 ? 2.0f : 1.25f; // a sign large, a word less so
+            const auto symbolHeight = symbol.empty() ? 0.0f : ImGui::GetTextLineHeight() * symbolScale + (node.m_Groups.empty() ? 0.0f : 2.0f * spacing + lineHeight);
+            const auto inputsHeight = rowsHeight(Direction::Input), outputsHeight = rowsHeight(Direction::Output);
+            const auto middle       = ImMax(spacing + ImMax(inputsHeight, outputsHeight) * 0.5f, symbolHeight * 0.5f);
+            const auto bodyTop      = ImGui::GetCursorScreenPos().y;
+            auto       startAt      = [&](float top)
+            {
+                if (!symbol.empty())
+                    ImGui::SetCursorScreenPos(ImVec2(ImGui::GetCursorScreenPos().x, bodyTop + ImFloor(top)));
+            };
+
             crude_layout::Grid layout;
-            layout.Begin(node.m_Id, 2, bodyWidth);
+            layout.Begin(node.m_Id, symbol.empty() ? 2 : 3, bodyWidth);
             layout.SetColumnAlignment(0.0f);
 
             // A group's [+] and [-] follow its last pin, or end the inputs while it has none.
@@ -902,6 +931,7 @@ private:
             };
 
             // Draw column with input pins.
+            startAt(middle - inputsHeight * 0.5f - spacing);
             for (auto& pin : node.m_Pins)
             {
                 if (pin.m_Direction != Direction::Input)
@@ -944,8 +974,8 @@ private:
                     ImGui::GetWindowDrawList()->AddLine(ImVec2(iconMin.x + 1.0f, iconMax.y - 1.0f), ImVec2(iconMax.x - 1.0f, iconMin.y + 1.0f), IM_COL32(255, 96, 96, 255), 2.0f);
                 }
 
-                // [2] - Show pin name if it has one
-                if (!pin.m_Name.empty())
+                // [2] - Show pin name if it has one, but on a compact node
+                if (!pin.m_Name.empty() && !compact)
                 {
                     ImGui::SameLine();
                     ImGui::TextUnformatted(pin.m_Name.data(), pin.m_Name.data() + pin.m_Name.size());
@@ -968,11 +998,15 @@ private:
                 ed::EndPin();
 
                 layout.NextRow();
-                groupButtonsAfter(pin);
+                if (symbol.empty())
+                    groupButtonsAfter(pin);
             }
-            for (auto& group : node.m_Groups)
-                if (!lastOfGroup.contains(&group))
-                    groupButtons(group);
+            if (symbol.empty())
+            {
+                for (auto& group : node.m_Groups)
+                    if (!lastOfGroup.contains(&group))
+                        groupButtons(group);
+            }
 
             // A function's return adds its outputs, and its entry its inputs, with [+] at their end.
             const auto signature    = SignatureNodeOf(document.GetBlueprint(), node);
@@ -992,8 +1026,24 @@ private:
             if (signature.m_Function && !signature.m_Entry)
                 addPinButton(false);
 
+            if (!symbol.empty())
+            {
+                layout.SetColumnAlignment(0.5f);
+                layout.NextColumn();
+                startAt(middle - symbolHeight * 0.5f);
+                ImGui::PushFont(nullptr, ImGui::GetFontSize() * symbolScale);
+                ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+                ImGui::TextUnformatted(symbol.data(), symbol.data() + symbol.size());
+                ImGui::PopStyleColor();
+                ImGui::PopFont();
+                layout.NextRow();
+                for (auto& group : node.m_Groups)
+                    groupButtons(group);
+            }
+
             layout.SetColumnAlignment(1.0f);
             layout.NextColumn();
+            startAt(middle - outputsHeight * 0.5f - spacing);
 
             // Draw column with output pins.
             for (auto& pin : node.m_Pins)
@@ -1019,9 +1069,6 @@ private:
                         m_Bubbles.insert(node.m_Id);
                     ImGui::SameLine();
                 }
-                if (compact)
-                    look.m_Stripe = ImGui::GetColorU32(PinColor(pin));
-
                 // A Constant shows its value, and an editor once clicked, before its pin.
                 if (HasValueEditor(graph, pin))
                 {
