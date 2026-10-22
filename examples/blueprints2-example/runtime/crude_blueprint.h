@@ -705,6 +705,7 @@ struct NodeType
     CRUDE_BP_RTTI_ROOT(NodeType)
 
     NodeType(std::string name, std::string title, std::string category = {}, uint32_t version = 1);
+    NodeType(std::string name, std::string title, std::string category, std::string compactTitle);
     NodeType(const NodeType&) = delete;
     NodeType& operator=(const NodeType&) = delete;
     virtual ~NodeType() = default;
@@ -713,6 +714,7 @@ struct NodeType
     const std::string m_Title;    // shown: "Add"
     const std::string m_Category; // "Math"
     const uint32_t    m_Version;  // of what files save of its nodes; see Upgrade()
+    const std::string m_CompactTitle; // "+": shown between the inputs and outputs of a node without a header; none for a node with one
 
     // The pins after the fixed ones, which may follow the config and the bindings.
     virtual void Declare(NodeDeclaration& declaration, const NodeConfig& config, const Bindings& bindings) const;

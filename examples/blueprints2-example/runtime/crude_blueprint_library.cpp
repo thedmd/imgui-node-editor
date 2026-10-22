@@ -103,7 +103,7 @@ struct ConstantNode final : NodeType
 // Integers that leave Int32's range are an error; strings are joined.
 struct AddNode final : NodeType
 {
-    AddNode(): NodeType("crude.Add", "Add", "Math") {}
+    AddNode(): NodeType("crude.Add", "Add", "Math", "+") {}
 
     void Declare(NodeDeclaration& declaration, const NodeConfig&, const Bindings&) const override
     {
@@ -197,7 +197,7 @@ struct BinaryNumbersNode : NodeType
 
 struct SubtractNode final : BinaryNumbersNode
 {
-    SubtractNode(): BinaryNumbersNode("crude.Subtract", "Subtract", "Math") {}
+    SubtractNode(): BinaryNumbersNode("crude.Subtract", "Subtract", "Math", "\xE2\x88\x92") {}
 
     Result<Value> Int32s(int32_t a, int32_t b) const override { return Int32Result(int64_t{ a } - b, "the difference"); }
     float         Floats(float a, float b) const override     { return a - b; }
@@ -205,7 +205,7 @@ struct SubtractNode final : BinaryNumbersNode
 
 struct DivideNode final : BinaryNumbersNode
 {
-    DivideNode(): BinaryNumbersNode("crude.Divide", "Divide", "Math") {}
+    DivideNode(): BinaryNumbersNode("crude.Divide", "Divide", "Math", "\xC3\xB7") {}
 
     // Toward zero, as C++ divides.
     Result<Value> Int32s(int32_t a, int32_t b) const override
@@ -220,7 +220,7 @@ struct DivideNode final : BinaryNumbersNode
 // With the dividend's sign, as C++'s % and fmod() have it.
 struct ModuloNode final : BinaryNumbersNode
 {
-    ModuloNode(): BinaryNumbersNode("crude.Modulo", "Modulo", "Math") {}
+    ModuloNode(): BinaryNumbersNode("crude.Modulo", "Modulo", "Math", "%") {}
 
     Result<Value> Int32s(int32_t a, int32_t b) const override
     {
@@ -263,7 +263,7 @@ struct UnaryNumbersNode : NodeType
 
 struct NegateNode final : UnaryNumbersNode
 {
-    NegateNode(): UnaryNumbersNode("crude.Negate", "Negate", "Math") {}
+    NegateNode(): UnaryNumbersNode("crude.Negate", "Negate", "Math", "\xE2\x88\x92") {}
 
     int64_t Int32s(int32_t value) const override { return -int64_t{ value }; }
     float   Floats(float value) const override   { return -value; }
@@ -271,7 +271,7 @@ struct NegateNode final : UnaryNumbersNode
 
 struct AbsNode final : UnaryNumbersNode
 {
-    AbsNode(): UnaryNumbersNode("crude.Abs", "Abs", "Math") {}
+    AbsNode(): UnaryNumbersNode("crude.Abs", "Abs", "Math", "ABS") {}
 
     int64_t Int32s(int32_t value) const override { return value < 0 ? -int64_t{ value } : int64_t{ value }; }
     float   Floats(float value) const override   { return std::fabs(value); }
@@ -325,7 +325,7 @@ struct VariadicNumbersNode : NodeType
 
 struct MultiplyNode final : VariadicNumbersNode
 {
-    MultiplyNode(): VariadicNumbersNode("crude.Multiply", "Multiply", "Math") {}
+    MultiplyNode(): VariadicNumbersNode("crude.Multiply", "Multiply", "Math", "\xC3\x97") {}
 
     int64_t Int32s(int64_t a, int32_t b) const override { return a * b; }
     float   Floats(float a, float b) const override     { return a * b; }
@@ -333,7 +333,7 @@ struct MultiplyNode final : VariadicNumbersNode
 
 struct MinNode final : VariadicNumbersNode
 {
-    MinNode(): VariadicNumbersNode("crude.Min", "Min", "Math") {}
+    MinNode(): VariadicNumbersNode("crude.Min", "Min", "Math", "MIN") {}
 
     int64_t Int32s(int64_t a, int32_t b) const override { return std::min<int64_t>(a, b); }
     float   Floats(float a, float b) const override     { return std::min(a, b); }
@@ -341,7 +341,7 @@ struct MinNode final : VariadicNumbersNode
 
 struct MaxNode final : VariadicNumbersNode
 {
-    MaxNode(): VariadicNumbersNode("crude.Max", "Max", "Math") {}
+    MaxNode(): VariadicNumbersNode("crude.Max", "Max", "Math", "MAX") {}
 
     int64_t Int32s(int64_t a, int32_t b) const override { return std::max<int64_t>(a, b); }
     float   Floats(float a, float b) const override     { return std::max(a, b); }
@@ -407,7 +407,7 @@ struct RandomNode final : NodeType
 // a and b of any type T, by their type's own equality.
 struct EqualityNode final : NodeType
 {
-    EqualityNode(std::string name, std::string title, bool equal): NodeType(std::move(name), std::move(title), "Logic"), m_Equal(equal) {}
+    EqualityNode(std::string name, std::string title, std::string compactTitle, bool equal): NodeType(std::move(name), std::move(title), "Logic", std::move(compactTitle)), m_Equal(equal) {}
 
     void Declare(NodeDeclaration& declaration, const NodeConfig&, const Bindings&) const override
     {
@@ -438,7 +438,7 @@ struct OrderNode final : NodeType
 {
     using Holds = bool (*)(std::partial_ordering order);
 
-    OrderNode(std::string name, std::string title, Holds holds): NodeType(std::move(name), std::move(title), "Logic"), m_Holds(holds) {}
+    OrderNode(std::string name, std::string title, std::string compactTitle, Holds holds): NodeType(std::move(name), std::move(title), "Logic", std::move(compactTitle)), m_Holds(holds) {}
 
     void Declare(NodeDeclaration& declaration, const NodeConfig&, const Bindings&) const override
     {
@@ -472,7 +472,7 @@ struct OrderNode final : NodeType
 // Of a group of Bools, read in order until one decides the result: false for And, true for Or.
 struct ConnectiveNode final : NodeType
 {
-    ConnectiveNode(std::string name, std::string title, bool decider): NodeType(std::move(name), std::move(title), "Logic"), m_Decider(decider) {}
+    ConnectiveNode(std::string name, std::string title, std::string compactTitle, bool decider): NodeType(std::move(name), std::move(title), "Logic", std::move(compactTitle)), m_Decider(decider) {}
 
     void Declare(NodeDeclaration& declaration, const NodeConfig&, const Bindings&) const override
     {
@@ -504,7 +504,7 @@ struct ConnectiveNode final : NodeType
 
 struct NotNode final : NodeType
 {
-    NotNode(): NodeType("crude.Not", "Not", "Logic") {}
+    NotNode(): NodeType("crude.Not", "Not", "Logic", "NOT") {}
 
     Result<void> Evaluate(EvalContext& context) const override
     {
@@ -521,7 +521,7 @@ struct NotNode final : NodeType
 
 struct XorNode final : NodeType
 {
-    XorNode(): NodeType("crude.Xor", "Xor", "Logic") {}
+    XorNode(): NodeType("crude.Xor", "Xor", "Logic", "XOR") {}
 
     Result<void> Evaluate(EvalContext& context) const override
     {
@@ -1545,14 +1545,14 @@ crude_blueprint::Result<void> crude_blueprint::RegisterLibrary(Registry& registr
         std::make_unique<MaxNode>(),
         std::make_unique<ClampNode>(),
         std::make_unique<RandomNode>(),
-        std::make_unique<EqualityNode>("crude.Equal", "Equal", true),
-        std::make_unique<EqualityNode>("crude.NotEqual", "Not Equal", false),
-        std::make_unique<OrderNode>("crude.Less", "Less", [](std::partial_ordering order) { return order < 0; }),
-        std::make_unique<OrderNode>("crude.LessOrEqual", "Less Or Equal", [](std::partial_ordering order) { return order <= 0; }),
-        std::make_unique<OrderNode>("crude.Greater", "Greater", [](std::partial_ordering order) { return order > 0; }),
-        std::make_unique<OrderNode>("crude.GreaterOrEqual", "Greater Or Equal", [](std::partial_ordering order) { return order >= 0; }),
-        std::make_unique<ConnectiveNode>("crude.And", "And", false),
-        std::make_unique<ConnectiveNode>("crude.Or", "Or", true),
+        std::make_unique<EqualityNode>("crude.Equal", "Equal", "=", true),
+        std::make_unique<EqualityNode>("crude.NotEqual", "Not Equal", "\xE2\x89\xA0", false),
+        std::make_unique<OrderNode>("crude.Less", "Less", "<", [](std::partial_ordering order) { return order < 0; }),
+        std::make_unique<OrderNode>("crude.LessOrEqual", "Less Or Equal", "\xE2\x89\xA4", [](std::partial_ordering order) { return order <= 0; }),
+        std::make_unique<OrderNode>("crude.Greater", "Greater", ">", [](std::partial_ordering order) { return order > 0; }),
+        std::make_unique<OrderNode>("crude.GreaterOrEqual", "Greater Or Equal", "\xE2\x89\xA5", [](std::partial_ordering order) { return order >= 0; }),
+        std::make_unique<ConnectiveNode>("crude.And", "And", "AND", false),
+        std::make_unique<ConnectiveNode>("crude.Or", "Or", "OR", true),
         std::make_unique<NotNode>(),
         std::make_unique<XorNode>(),
         std::make_unique<SelectNode>(),

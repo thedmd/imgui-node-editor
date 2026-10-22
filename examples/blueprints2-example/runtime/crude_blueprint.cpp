@@ -694,6 +694,15 @@ crude_blueprint::NodeType::NodeType(std::string name, std::string title, std::st
 {
 }
 
+crude_blueprint::NodeType::NodeType(std::string name, std::string title, std::string category, std::string compactTitle)
+    : m_Name(std::move(name))
+    , m_Title(std::move(title))
+    , m_Category(std::move(category))
+    , m_Version(1)
+    , m_CompactTitle(std::move(compactTitle))
+{
+}
+
 void crude_blueprint::NodeType::Declare(NodeDeclaration&, const NodeConfig&, const Bindings&) const
 {
 }
