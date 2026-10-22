@@ -1265,17 +1265,19 @@ private:
         }
 
         // While a run goes on, a flow link it took in its last steps is thicker, the more so the more
-        // recently, but for the one it took last, which flows. A run that ended keeps its context, for
-        // its values, not its trace.
+        // recently, but for the one it took last, which flows. The links past flow reroutes are taken
+        // with the link into them. A run that ended keeps its context, for its values, not its trace.
         std::unordered_map<Id, uint64_t> taken;
         if (auto context = m_Debugger.IsActive() ? m_Debugger.GetContext() : nullptr)
             for (auto& entry : context->Trace())
-                taken[entry.m_Link] = entry.m_Step;
-        auto takenWidth = [this, &taken](Id link)
+                for (auto link : FlowChain(graph, entry.m_Link))
+                    taken[link] = entry.m_Step;
+        const auto last = m_Debugger.IsActive() ? FlowChain(graph, m_Debugger.TakenLink()) : std::vector<Id>();
+        auto takenWidth = [this, &taken, &last](Id link)
         {
             const float c_Steps = 16.0f;
             auto it = taken.find(link);
-            if (it == taken.end() || (m_Debugger.IsActive() && link == m_Debugger.TakenLink()))
+            if (it == taken.end() || std::find(last.begin(), last.end(), link) != last.end())
                 return 0.0f;
             return 2.0f * ImMax(0.0f, 1.0f - static_cast<float>(m_Debugger.StepCount() - it->second) / c_Steps);
         };
@@ -1293,7 +1295,7 @@ private:
                 ed::Link(link.m_Id, link.m_From, link.m_To, ImVec4(0.5f, 0.5f, 0.5f, 0.4f), 1.0f);
         }
 
-        FlowTakenLink(m_Debugger);
+        FlowTakenLink(m_Debugger, graph);
 
         if (edit)
             edit();
@@ -1339,7 +1341,8 @@ private:
 
     // While a run is paused, a chevron above the node its last step ran, and a blue one above the
     // node it runs next; beside the pins, what the run holds for them: values of written outputs and
-    // of linked inputs, and the flow along the link it took. Drawn to the canvas's scale.
+    // of linked inputs, and the flow along the link it took, past flow reroutes. Drawn to the
+    // canvas's scale.
     void ShowRunOverlay(Document& document, ImVec2 canvasMin, ImVec2 canvasMax)
     {
         if (!m_Debugger.IsActive() || m_Debugger.IsRunning())
@@ -1364,7 +1367,9 @@ private:
         const auto fontSize = ImGui::GetFontSize() * scale;
         const auto padding  = ImVec2(4.0f, 1.0f) * scale;
         const auto gap      = ImGui::GetStyle().ItemSpacing.x * 1.75f * scale;
-        const auto taken    = graph.FindLink(m_Debugger.TakenLink());
+        const auto taken    = FlowChain(graph, m_Debugger.TakenLink());
+        const auto from     = taken.empty() ? Id(0) : graph.FindLink(taken.front())->m_From;
+        const auto to       = taken.empty() ? Id(0) : graph.FindLink(taken.back())->m_To;
         auto pill = [&](const Pin& pin, ImU32 color, const std::string& text)
         {
             auto icon = m_PinIcons.find(pin.m_Id);
@@ -1389,7 +1394,7 @@ private:
             {
                 if (pin.m_Flow)
                 {
-                    if (taken && (taken->m_From == pin.m_Id || taken->m_To == pin.m_Id))
+                    if (pin.m_Id == from || pin.m_Id == to)
                         pill(pin, color, {});
                     continue;
                 }

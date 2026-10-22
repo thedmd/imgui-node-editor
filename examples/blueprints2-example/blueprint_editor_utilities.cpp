@@ -161,6 +161,23 @@ float blueprint_editor_utilities::RerouteSize()
     return ImGui::GetTextLineHeight() * 1.5f;
 }
 
+std::vector<blueprint_editor_utilities::Id> blueprint_editor_utilities::FlowChain(const Graph& graph, Id link)
+{
+    std::vector<Id> chain;
+    for (auto found = graph.FindLink(link); found && chain.size() <= graph.Links().size();)
+    {
+        chain.push_back(found->m_Id);
+        auto target = graph.NodeOf(found->m_To);
+        auto pin    = graph.FindPin(found->m_To);
+        auto out    = target && pin && pin->m_Flow && IsReroute(*target) ? target->FindPin("out") : nullptr;
+        found = nullptr;
+        for (auto& next : graph.Links())
+            if (out && next.m_From == out->m_Id && next.m_Active)
+                found = &next;
+    }
+    return chain;
+}
+
 bool blueprint_editor_utilities::IsComment(const Node& node)
 {
     return node.m_Type->m_Name == "crude.Comment";
@@ -1686,12 +1703,13 @@ bool blueprint_editor_utilities::ProblemList::BlocksRun() const
     return std::any_of(m_Compiled.begin(), m_Compiled.end(), [](const Problem& problem) { return problem.m_Diagnostic.m_Severity == Severity::Error; });
 }
 
-void blueprint_editor_utilities::FlowTakenLink(const Debugger& debugger)
+void blueprint_editor_utilities::FlowTakenLink(const Debugger& debugger, const Graph& graph)
 {
     if (!debugger.IsActive() || !debugger.TakenLink())
         return;
     ax::NodeEditor::PushStyleVar(ax::NodeEditor::StyleVar_FlowDuration, 0.5f);
-    ax::NodeEditor::Flow(debugger.TakenLink());
+    for (auto link : FlowChain(graph, debugger.TakenLink()))
+        ax::NodeEditor::Flow(link);
     ax::NodeEditor::PopStyleVar();
 }
 

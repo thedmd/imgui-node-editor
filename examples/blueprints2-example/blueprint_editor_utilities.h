@@ -52,6 +52,8 @@ bool  IsCustomEvent(const Node& node);
 // A reroute, data or flow, shows as a disc that links bend around; its node is RerouteSize() square.
 bool  IsReroute(const Node& node);
 float RerouteSize();
+// The link, and the links after it past flow reroutes, as a program takes them at once.
+std::vector<Id> FlowChain(const Graph& graph, Id link);
 // A comment, which the editor shows as a group over part of a graph, holds its text in its config.
 bool        IsComment(const Node& node);
 std::string CommentText(const Node& node); // "Comment" for one without any
@@ -331,8 +333,9 @@ private:
     std::vector<Problem> m_Problems;
 };
 
-// While a run is paused, the link its last step took flows. After the links are submitted.
-void FlowTakenLink(const Debugger& debugger);
+// While a run is paused, the link its last step took flows, and so do the links past flow reroutes
+// after it. After the links are submitted.
+void FlowTakenLink(const Debugger& debugger, const Graph& graph);
 
 // When a run wrote a value, as the debugger shows it: "this step", "step 12", "not run yet"; empty
 // for one computed before any step.

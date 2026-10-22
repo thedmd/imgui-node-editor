@@ -319,7 +319,7 @@ TEST_CASE(TakenLinkFlows, "blueprints2.only_the_link_the_last_step_took_flows", 
         }
         for (auto& link : graph.Links())
             ed::Link(link.m_Id, link.m_From, link.m_To);
-        blueprint_editor_utilities::FlowTakenLink(debugger);
+        blueprint_editor_utilities::FlowTakenLink(debugger, graph);
     };
 
     int inside = 0, outside = 0;
@@ -1666,4 +1666,30 @@ TEST_CASE(RerouteRemovals, "blueprints2.a_dissolved_reroute_joins_its_links_and_
     session.Use([&] { document.Undo(); });
     test::Check(document.GetGraph().FindNode(flow) && example.LinkBetween(body, example.Pin(flow, "in")) && example.LinkBetween(example.Pin(flow, "out"), enter),
         "and undone, it is back with them");
+}
+
+TEST_CASE(RerouteFlows, "blueprints2.a_run_goes_past_a_flow_reroute_and_flows_both_its_links", nullptr, test::TestFlags_None)
+{
+    using namespace blueprint_editor_utilities;
+    test::Session session(UnnamedConfig());
+    OverlayLog    log;
+    Example       example(session);
+    auto& document = example.m_Document;
+    const auto print = example.Node("crude.Print"), loop = example.Node("crude.ForLoop");
+    const auto body  = example.Pin(loop, "body"), enter = example.Pin(print, "enter");
+    const auto flowing = example.LinkBetween(body, enter);
+    if (!flowing)
+        return test::Check(false, "the example's loop's body leads into the Print");
+
+    const auto flow = session.Use([&] { return InsertReroute(document, flowing->m_Id, ImVec2(500.0f, 100.0f)); });
+    auto into = example.LinkBetween(body, example.Pin(flow, "in"));
+    auto onto = example.LinkBetween(example.Pin(flow, "out"), enter);
+
+    Debugger debugger;
+    debugger.Start(document, false);
+    debugger.Step();
+    debugger.Step();
+    const auto chain = FlowChain(document.GetGraph(), debugger.TakenLink());
+    test::Check(debugger.CurrentNode() == loop && debugger.NextNode() == print, "the run paused after For Loop, with Print next, past the reroute");
+    test::Check(into && onto && chain == std::vector<Id>{ into->m_Id, onto->m_Id }, "the link it took is the one into the reroute, which flows with the one out of it");
 }
