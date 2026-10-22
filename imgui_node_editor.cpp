@@ -5054,9 +5054,10 @@ ed::ContextMenuAction::ContextMenuAction(EditorContext* editor):
 
 ed::EditorAction::AcceptResult ed::ContextMenuAction::Accept(const Control& control)
 {
-    const auto isPressed  = ImGui::IsMouseClicked(Editor->GetConfig().ContextMenuButtonIndex);
-    const auto isReleased = ImGui::IsMouseReleased(Editor->GetConfig().ContextMenuButtonIndex);
-    const auto isDragging = ImGui::IsMouseDragging(Editor->GetConfig().ContextMenuButtonIndex, 1);
+    const auto button     = Editor->GetConfig().ContextMenuButtonIndex;
+    const auto isPressed  = ImGui::IsMouseClicked(button);
+    const auto isReleased = ImGui::IsMouseReleased(button);
+    const auto isDragging = (ImGui::IsMouseDown(button) || isReleased) && ImGui::IsMouseDragPastThreshold(button);
 
     if (isPressed || isReleased || isDragging)
     {
@@ -5093,7 +5094,7 @@ ed::EditorAction::AcceptResult ed::ContextMenuAction::Accept(const Control& cont
             m_ContextId     = contextId;
             return Possible;
         }
-        else if (isReleased && m_CandidateMenu == candidateMenu && m_ContextId == contextId)
+        else if (isReleased && !isDragging && m_CandidateMenu == candidateMenu && m_ContextId == contextId)
         {
             m_CurrentMenu   = m_CandidateMenu;
             m_CandidateMenu = ContextMenuAction::None;

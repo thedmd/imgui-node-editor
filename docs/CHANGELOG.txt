@@ -668,6 +668,10 @@ v0.10.0 (WIP):
         It went to whole units, every other one half a pixel off the pixel grid at 150%, so the canvas moved what its
         local space put on whole pixels half a pixel off them.
 
+    BUGFIX: Editor: Open a context menu for a right-click that moves less than a drag
+        A press that moved by a pixel opened no menu, while a right drag pans only past Dear ImGui's drag threshold, so
+        a click that moved a little did nothing. At 150% scale, most one pixel moves of the mouse move Dear ImGui's position.
+
 v0.9.3 (2023-10-14):
 
     CHANGE: Canvas: Use ImDrawCallback_ImCanvas macro as draw callback sentinel (#256), thanks @nspitko

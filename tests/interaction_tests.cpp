@@ -1198,3 +1198,53 @@ TEST_CASE(GroupHeaderPossibleActions, "interaction.group_header_offers_drag_and_
     test::Check(cursor == ImGuiMouseCursor_ResizeAll, "the cursor offers dragging the group: %d", static_cast<int>(cursor));
     test::Check(menu && menuNode == ed::NodeId(1), "and a right-click opens the group's context menu");
 }
+
+TEST_CASE(RightClickWithinDragThreshold, "interaction.a_right_click_is_a_click_until_it_moves_as_far_as_a_drag", nullptr, test::TestFlags_None)
+{
+    // The mouse moves a little in a hand's click. A right press that moves less than the drag
+    // threshold opens the menu, and one that moves farther pans the canvas without one.
+    test::Storage storage;
+    test::Session session(&storage);
+    ImVec2 nodeCenter;
+    int    nodeMenus = 0, backgroundMenus = 0;
+    session.DefaultContent = [&](int frame)
+    {
+        if (frame == 0)
+            ed::SetNodePosition(1, ImVec2(100.0f, 100.0f));
+        ed::BeginNode(1);
+        ImGui::TextUnformatted("Node");
+        ImGui::Dummy(ImVec2(120.0f, 60.0f));
+        ed::EndNode();
+        nodeCenter = ed::CanvasToScreen(ed::GetNodePosition(1) + ed::GetNodeSize(1) * 0.5f);
+
+        ed::NodeId node;
+        nodeMenus       += ed::ShowNodeContextMenu(&node) ? 1 : 0;
+        backgroundMenus += ed::ShowBackgroundContextMenu() ? 1 : 0;
+    };
+    session.Run(3);
+    session.Click(ImVec2(900.0f, 600.0f));
+    const auto threshold = session.HostContext.Context->IO.MouseDragThreshold;
+    auto rightClick = [&](ImVec2 from, ImVec2 by)
+    {
+        test::MouseMove(from);
+        session.Run(2);
+        test::MouseButton(1, true);
+        session.Run(2);
+        test::MouseMove(from + by);
+        session.Run(2);
+        test::MouseButton(1, false);
+        session.Run(2);
+    };
+    auto origin = [&] { return session.Use([] { return ed::CanvasToScreen(ImVec2(0.0f, 0.0f)); }); };
+
+    const auto before = origin();
+    rightClick(nodeCenter, ImVec2(threshold - 2.0f, 1.0f));
+    const auto still = origin();
+    test::Check(nodeMenus == 1 && still.x == before.x && still.y == before.y, "a right-click on the node that moves %g px opens its menu, and the canvas stays: %d menus, moved by (%g, %g)",
+        threshold - 2.0f, nodeMenus, still.x - before.x, still.y - before.y);
+
+    rightClick(ImVec2(700.0f, 500.0f), ImVec2(threshold + 4.0f, 0.0f));
+    const auto panned = origin() - still;
+    test::Check(backgroundMenus == 0 && panned.x == threshold + 4.0f && panned.y == 0.0f, "one on the canvas that moves %g px pans by as much and opens no menu: %d menus, panned by (%g, %g)",
+        threshold + 4.0f, backgroundMenus, panned.x, panned.y);
+}
