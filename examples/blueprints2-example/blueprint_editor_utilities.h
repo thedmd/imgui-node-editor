@@ -267,6 +267,7 @@ struct Debugger
     void SetBreakpoint(Id node, bool enabled);
     bool HasBreakpoint(Id node) const { return m_Breakpoints.contains(node); }
     void ClearBreakpoints();
+    const std::set<Id>& Breakpoints() const { return m_Breakpoints; } // the nodes', of any graph
 
     // The pins whose values the debugger lists, in the order they were added.
     void                SetWatched(Id pin, bool watched);

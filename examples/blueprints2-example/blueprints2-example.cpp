@@ -1523,8 +1523,8 @@ private:
         drawList->PopClipRect();
     }
 
-    // Tabs for the problems, the variables, the signature of a function whose graph shows, and the
-    // watches and the fibers of a run.
+    // Tabs for the problems, the variables, the signature of a function whose graph shows, the
+    // watches and the fibers of a run, and the breakpoints.
     void ShowPanels(Document& document, ImVec2 position, ImVec2 size)
     {
         ImGui::SetCursorScreenPos(position);
@@ -1548,6 +1548,7 @@ private:
                 tab("Signature", "Signature: " + function->m_Name, [&] { ShowSignature(document, *function); });
             tab("Watches", counted("Watches", m_Debugger.Watched().size()), [&] { ShowWatches(document); });
             tab("Fibers", counted("Fibers", fibers.size()), [&] { ShowFibers(document, fibers); });
+            tab("Breakpoints", counted("Breakpoints", m_Debugger.Breakpoints().size()), [&] { ShowBreakpointList(document); });
             m_PanelRequest.clear();
             ImGui::EndTabBar();
         }
@@ -1641,6 +1642,61 @@ private:
         ImGui::EndTable();
         if (removed)
             m_Debugger.SetWatched(*removed, false);
+    }
+
+    // A row for each breakpoint, of any graph: its disc, its node, whether the run is paused there,
+    // and a button that removes it. Choosing one goes to its node; one of a graph that isn't shown is
+    // named with the graph's name.
+    void ShowBreakpointList(const Document& document)
+    {
+        auto& breakpoints = m_Debugger.Breakpoints();
+        if (breakpoints.empty())
+        {
+            ImGui::TextDisabled("No breakpoints: F9 on a node, or use its menu");
+            return;
+        }
+        if (ImGui::Button("Remove All"))
+        {
+            m_Debugger.ClearBreakpoints();
+            return;
+        }
+        if (!ImGui::BeginTable("##breakpoints", 3, ImGuiTableFlags_SizingFixedFit))
+            return;
+        ImGui::TableSetupColumn("Node");
+        ImGui::TableSetupColumn("Run");
+        ImGui::TableSetupColumn("Remove");
+        const auto line = ImGui::GetTextLineHeight();
+        std::optional<Id> removed;
+        for (auto id : breakpoints)
+        {
+            ImGui::PushID(static_cast<int>(id));
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            const auto at = ImGui::GetCursorScreenPos();
+            ImGui::Dummy(ImVec2(line, line));
+            ImGui::GetWindowDrawList()->AddCircleFilled(at + ImVec2(line, line) * 0.5f, line * 0.3f, IM_COL32(220, 48, 48, 255));
+            ImGui::SameLine();
+            if (auto graph = GraphOf(document.GetBlueprint(), id))
+            {
+                auto label = graph->FindNode(id)->Name();
+                if (graph != &document.GetGraph())
+                    label = graph->GetName() + ": " + label;
+                if (ImGui::Selectable(label.c_str()))
+                    GoToNode(id);
+            }
+            else
+                ImGui::TextDisabled("node %u, gone", static_cast<unsigned>(id));
+            ImGui::TableNextColumn();
+            if (m_Debugger.IsAtBreakpoint() && m_Debugger.NextNode() == id)
+                ImGui::TextColored(ImGui::GetStyleColorVec4(ImGuiCol_NavCursor), "paused here");
+            ImGui::TableNextColumn();
+            if (SquareButton("x"))
+                removed = id;
+            ImGui::PopID();
+        }
+        ImGui::EndTable();
+        if (removed)
+            m_Debugger.SetBreakpoint(*removed, false);
     }
 
     // A row for each of the blueprint's variables: its name, type and default, which edits change,
