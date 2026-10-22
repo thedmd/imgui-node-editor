@@ -133,7 +133,8 @@ void crude_layout::Grid::End()
 
     ImGui::EndGroup();
 
-    float totalWidth = 0.0f;
+    // The minimum width holds the space between columns too.
+    float totalWidth = static_cast<float>(m_Columns - 1) * ImGui::GetStyle().ItemSpacing.x;
     for (int i = 0; i < m_Columns; ++i)
     {
         ImGui::PushID(ColumnSeed(i));

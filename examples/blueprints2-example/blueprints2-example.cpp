@@ -831,7 +831,9 @@ private:
             }
 
             // The band, of the color of what the node is, ends past the title, and the problems'
-            // pills and the clock of a node that may suspend follow it.
+            // pills and the clock of a node that may suspend follow it. The body is as wide as the
+            // header at least, so outputs line up at the node's right edge.
+            auto bodyWidth = compact ? -1.0f : 100.0f;
             if (!compact)
             {
                 look.m_Band = ImGui::GetColorU32(HeaderColor(document.GetBlueprint(), node));
@@ -864,13 +866,14 @@ private:
                 }
                 ImGui::EndGroup();
                 look.m_BandBottom = ImGui::GetItemRectMax().y + ImGui::GetStyle().ItemSpacing.y;
+                bodyWidth = ImMax(bodyWidth, ImMax(ImGui::GetItemRectMax().x, BandEnd(look.m_TitleRight, bandHeight)) - ImGui::GetItemRectMin().x);
 
                 ImGui::Spacing();
                 ImGui::Dummy(ImVec2(100.0f, 0.0f)); // For minimum node width
             }
 
             crude_layout::Grid layout;
-            layout.Begin(node.m_Id, 2, compact ? -1.0f : 100.0f);
+            layout.Begin(node.m_Id, 2, bodyWidth);
             layout.SetColumnAlignment(0.0f);
 
             // A group's [+] and [-] follow its last pin, or end the inputs while it has none.
