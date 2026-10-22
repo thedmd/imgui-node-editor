@@ -670,12 +670,12 @@ int crude_blueprint::GroupCount(const GroupDeclaration& group, const NodeConfig&
     return it != config.m_Groups.end() ? std::clamp(it->second, group.m_Min, group.m_Max) : group.m_Min;
 }
 
-int crude_blueprint::NodeDeclaration::Group(std::string name, int min, int max, std::vector<std::string> prefixes)
+int crude_blueprint::NodeDeclaration::Group(std::string name, int min, int max, Direction direction, std::vector<std::string> prefixes)
 {
     CRUDE_BP_ASSERT(0 <= min && min <= max);
     if (prefixes.empty())
         prefixes.push_back(name);
-    m_Groups.push_back({ std::move(name), std::move(prefixes), min, max });
+    m_Groups.push_back({ std::move(name), std::move(prefixes), min, max, direction });
     return GroupCount(m_Groups.back(), m_Config);
 }
 
@@ -683,6 +683,7 @@ void crude_blueprint::NodeDeclaration::AddPin(PinDeclaration pin)
 {
     CRUDE_BP_ASSERT(!pin.m_Key.empty() && std::none_of(m_Pins.begin(), m_Pins.end(), [&pin](const PinDeclaration& other) { return other.m_Key == pin.m_Key; }));
     CRUDE_BP_ASSERT(pin.m_Flow || UsesOnly(pin.m_Type, m_Variables.size()));
+    CRUDE_BP_ASSERT(std::none_of(m_Groups.begin(), m_Groups.end(), [&pin](const GroupDeclaration& group) { return GroupIndex(group, pin.m_Key) >= 0 && group.m_Direction != pin.m_Direction; }));
     m_Pins.push_back(std::move(pin));
 }
 

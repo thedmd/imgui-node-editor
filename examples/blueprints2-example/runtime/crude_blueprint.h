@@ -559,13 +559,15 @@ struct PinOptions
     Requirement m_Requirement = Requirement::Optional;
 };
 
-// Pins the user adds and removes. Each index has a pin per prefix, keyed "<prefix>.<index>".
+// Pins the user adds and removes. Each index has a pin per prefix, keyed "<prefix>.<index>", all of
+// the group's direction.
 struct GroupDeclaration
 {
     std::string              m_Name;
     std::vector<std::string> m_Prefixes;
-    int                      m_Min = 0;
-    int                      m_Max = 0;
+    int                      m_Min       = 0;
+    int                      m_Max       = 0;
+    Direction                m_Direction = Direction::Input;
 };
 
 struct NodeConfig;
@@ -609,9 +611,9 @@ public:
     void FlowInput(std::string key, std::string name = {}, PinOptions options = {});
     void FlowOutput(std::string key, std::string name = {}, PinOptions options = {});
 
-    // How many indices the config gives the group, within min and max. The node declares their pins.
-    // The prefixes are the group's name when none are given.
-    int Group(std::string name, int min, int max, std::vector<std::string> prefixes = {});
+    // How many indices the config gives the group, within min and max. The node declares their pins,
+    // of the group's direction. The prefixes are the group's name when none are given.
+    int Group(std::string name, int min, int max, Direction direction = Direction::Input, std::vector<std::string> prefixes = {});
 
     std::span<const VariableDeclaration> Variables() const { return m_Variables; }
     std::span<const PinDeclaration>      Pins() const      { return m_Pins; }

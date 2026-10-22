@@ -34,7 +34,7 @@ TestNodeType s_MakeMap("MakeMap", [](NodeDeclaration& d, const NodeConfig&, cons
 {
     auto K = d.Variable("K", { &Int32ValueType(), &StringValueType() });
     auto V = d.Variable("V");
-    auto count = d.Group("pair", 1, 16, { "key", "value" });
+    auto count = d.Group("pair", 1, 16, Direction::Input, { "key", "value" });
     for (int i = 0; i < count; ++i)
     {
         d.Input("key." + std::to_string(i), "Key", K);

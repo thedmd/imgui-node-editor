@@ -10,6 +10,7 @@
 # include <cstdio>
 # include <limits>
 # include <memory>
+# include <optional>
 # include <span>
 # include <string>
 # include <utility>
@@ -1066,4 +1067,21 @@ TEST_CASE(FlowReroutes, "library.flow_goes_past_flow_reroutes_without_a_step_of_
     auto named  = looped.m_Diagnostics.empty() ? std::string() : std::string(looped.m_Diagnostics.back().m_Error.Message());
     test::Check(!looped.m_Program && looped.m_Diagnostics.size() == 1 && looped.m_Diagnostics.back().m_Node == begin && named.find("loop of reroutes") != std::string::npos,
         "and a loop of reroutes alone is an error, once, where Start's flow enters it: %s", named.c_str());
+}
+
+TEST_CASE(GroupSides, "library.a_groups_pins_are_on_its_side_even_while_it_has_none", nullptr, test::TestFlags_None)
+{
+    Fixture f;
+    auto side = [&f](Id node) -> std::optional<Direction>
+    {
+        auto found = f.m_Graph.FindNode(node);
+        if (!found || found->m_Groups.size() != 1)
+            return std::nullopt;
+        return found->m_Groups[0].m_Direction;
+    };
+    auto event = f.Add("CustomEvent"), sequence = f.Add("Sequence"), add = f.Add("Add");
+    auto params = f.m_Graph.FindNode(event);
+    test::Check(params && std::none_of(params->m_Pins.begin(), params->m_Pins.end(), [](const Pin& pin) { return pin.m_Key.starts_with("param."); }) && side(event) == Direction::Output,
+        "a Custom Event without parameters has its parameters' group on its outputs' side");
+    test::Check(side(sequence) == Direction::Output && side(add) == Direction::Input, "Sequence's Then pins are outputs, Add's inputs are inputs");
 }

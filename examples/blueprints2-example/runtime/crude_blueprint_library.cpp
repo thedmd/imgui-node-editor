@@ -38,7 +38,7 @@ struct CustomEventNode final : NodeType
     void Declare(NodeDeclaration& declaration, const NodeConfig&, const Bindings&) const override
     {
         declaration.FlowOutput("then");
-        auto count = declaration.Group("param", 0, 8);
+        auto count = declaration.Group("param", 0, 8, Direction::Output);
         for (int i = 0; i < count; ++i)
         {
             auto index = std::to_string(i);
@@ -724,7 +724,7 @@ struct BreakArrayNode final : NodeType
     {
         auto T = declaration.Variable("T");
         declaration.Input("array", "Array", ArrayOf(T));
-        auto count = declaration.Group("out", 1, 16);
+        auto count = declaration.Group("out", 1, 16, Direction::Output);
         for (int i = 0; i < count; ++i)
             declaration.Output("out." + std::to_string(i), std::to_string(i), T);
     }
@@ -851,7 +851,7 @@ struct MakeMapNode final : NodeType
     {
         auto K     = Keys(declaration);
         auto V     = declaration.Variable("V");
-        auto count = declaration.Group("entry", 1, 16, { "key", "value" });
+        auto count = declaration.Group("entry", 1, 16, Direction::Input, { "key", "value" });
         for (int i = 0; i < count; ++i)
         {
             declaration.Input("key." + std::to_string(i), "Key " + std::to_string(i), K);
@@ -1118,7 +1118,7 @@ struct SequenceNode final : NodeType
     void Declare(NodeDeclaration& declaration, const NodeConfig&, const Bindings&) const override
     {
         declaration.FlowInput("enter");
-        auto count = declaration.Group("then", 2, 16);
+        auto count = declaration.Group("then", 2, 16, Direction::Output);
         for (int i = 0; i < count; ++i)
             declaration.FlowOutput("then." + std::to_string(i), "Then " + std::to_string(i));
     }
@@ -1145,7 +1145,7 @@ struct SwitchOnIntNode final : NodeType
     {
         declaration.FlowInput("enter");
         declaration.Input("selection", "Selection", Int32Type());
-        auto count = declaration.Group("case", 1, 16);
+        auto count = declaration.Group("case", 1, 16, Direction::Output);
         for (int i = 0; i < count; ++i)
             declaration.FlowOutput("case." + std::to_string(i), std::to_string(i));
         declaration.FlowOutput("default", "Default");
@@ -1172,7 +1172,7 @@ struct SwitchOnTypeNode final : NodeType
     {
         declaration.FlowInput("enter");
         declaration.Input("value", "Value", declaration.Variable("V"));
-        auto count = declaration.Group("case", 1, 16, { "is", "as" });
+        auto count = declaration.Group("case", 1, 16, Direction::Output, { "is", "as" });
         for (int i = 0; i < count; ++i)
         {
             auto variable = "C" + std::to_string(i);
