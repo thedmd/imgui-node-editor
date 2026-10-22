@@ -1555,21 +1555,36 @@ void blueprint_editor_utilities::CanvasActions::Gesture(const char* name, const 
     m_Entries.push_back({ std::string(name) + ": " + gesture, active });
 }
 
-void blueprint_editor_utilities::CanvasActions::Draw(ImVec2 canvasMin, ImVec2 canvasMax) const
+void blueprint_editor_utilities::CanvasActions::Draw(ImVec2 canvasMin, ImVec2 canvasMax, bool inactive) const
 {
     ImGui::PushFont(nullptr, ImGui::GetFontSize() * 0.75f);
-    auto& style  = ImGui::GetStyle();
-    auto  height = static_cast<float>(m_Entries.size()) * ImGui::GetTextLineHeightWithSpacing();
-    auto  y      = ImMax(canvasMin.y, canvasMax.y - height - style.ItemSpacing.y);
-    ImGui::PushClipRect(canvasMin, canvasMax, true);
+    auto&      style = ImGui::GetStyle();
+    const auto line  = ImGui::GetTextLineHeightWithSpacing();
+
+    // In columns as tall as the canvas holds, the last one on the right, each entry right-aligned
+    // in its column, and the whole list in the canvas's bottom-right corner.
+    std::vector<const Entry*> shown;
     for (auto& entry : m_Entries)
+        if (inactive || entry.m_Active)
+            shown.push_back(&entry);
+    const auto rows    = static_cast<size_t>(ImMax(1.0f, (canvasMax.y - canvasMin.y - style.ItemSpacing.y) / line));
+    const auto columns = (shown.size() + rows - 1) / rows;
+    std::vector<float> rights(columns, 0.0f); // each column's width, then its right edge
+    for (size_t i = 0; i < shown.size(); ++i)
+        rights[i / rows] = ImMax(rights[i / rows], ImGui::CalcTextSize(shown[i]->m_Text.c_str()).x);
+    auto right = canvasMax.x - style.ItemSpacing.x;
+    for (size_t column = columns; column-- > 0;)
+        right -= std::exchange(rights[column], right) + style.ItemSpacing.x * 2.0f;
+    const auto top = ImMax(canvasMin.y, canvasMax.y - static_cast<float>(ImMin(rows, shown.size())) * line - style.ItemSpacing.y);
+
+    ImGui::PushClipRect(canvasMin, canvasMax, true);
+    for (size_t i = 0; i < shown.size(); ++i)
     {
-        auto width = ImGui::CalcTextSize(entry.m_Text.c_str()).x;
-        ImGui::SetCursorScreenPos(ImVec2(canvasMax.x - style.ItemSpacing.x - width, y));
-        ImGui::BeginDisabled(!entry.m_Active);
-        ImGui::TextUnformatted(entry.m_Text.c_str());
+        auto width = ImGui::CalcTextSize(shown[i]->m_Text.c_str()).x;
+        ImGui::SetCursorScreenPos(ImVec2(rights[i / rows] - width, top + static_cast<float>(i % rows) * line));
+        ImGui::BeginDisabled(!shown[i]->m_Active);
+        ImGui::TextUnformatted(shown[i]->m_Text.c_str());
         ImGui::EndDisabled();
-        y += ImGui::GetTextLineHeightWithSpacing();
     }
     ImGui::PopClipRect();
     ImGui::PopFont();

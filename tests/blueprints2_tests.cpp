@@ -562,6 +562,42 @@ TEST_CASE(CanvasActionsFire, "blueprints2.only_the_first_active_canvas_action_fi
     test::Check(chord == 1, "Ctrl+Shift+D fires once, for Ctrl+Shift and D, not for Ctrl and D: %d", chord);
 }
 
+TEST_CASE(CanvasActionsInactive, "blueprints2.canvas_actions_list_inactive_ones_if_asked_in_as_many_columns_as_they_take", nullptr, test::TestFlags_None)
+{
+    // Ten gestures, the last one active, listed on a canvas tall enough for them, and on one too
+    // short, which takes them in columns.
+    test::Session session(UnnamedConfig());
+    float height   = 500.0f;
+    bool  inactive = false;
+    session.AfterEditor = [&]
+    {
+        CanvasActions actions(true);
+        for (int i = 0; i < 10; ++i)
+            actions.Gesture("Gesture", "Click", i == 9);
+        actions.Draw(ImVec2(100.0f, 100.0f), ImVec2(600.0f, 100.0f + height), inactive);
+    };
+    auto draw = [&](float canvasHeight, bool withInactive)
+    {
+        height   = canvasHeight;
+        inactive = withInactive;
+        session.Frame();
+        return test::Capture(session.DrawList);
+    };
+    const auto text   = ImGui::GetStyle().Colors[ImGuiCol_Text];
+    const auto bright = ImGui::ColorConvertFloat4ToU32(text);
+    const auto dimmed = ImGui::ColorConvertFloat4ToU32(ImVec4(text.x, text.y, text.z, text.w * ImGui::GetStyle().DisabledAlpha));
+
+    auto count = [](const test::Geometry& geometry, ImU32 color) { return std::count(geometry.Colors.begin(), geometry.Colors.end(), color); };
+
+    const auto active = draw(500.0f, false);
+    const auto all    = draw(500.0f, true);
+    const auto low    = draw(60.0f, true);
+    test::Check(count(active, bright) > 0 && count(active, dimmed) == 0, "by default, only the active gesture shows");
+    test::Check(count(all, bright) == count(active, bright) && count(all, dimmed) == 9 * count(active, bright), "asked for the inactive ones too, the nine others show dimmed");
+    test::Check(count(low, bright) == count(all, bright) && count(low, dimmed) == count(all, dimmed), "and on a canvas too short for a column of them, all of them still show: %d and %d of %d and %d",
+        static_cast<int>(count(low, bright)), static_cast<int>(count(low, dimmed)), static_cast<int>(count(all, bright)), static_cast<int>(count(all, dimmed)));
+}
+
 TEST_CASE(GroupPinEdits, "blueprints2.group_pins_are_added_and_removed_in_undo_steps", nullptr, test::TestFlags_None)
 {
     // The example's Add has in.0, from For Loop's index, and in.1, from the Constant.

@@ -635,6 +635,7 @@ private:
                 menuAction(m_View_ToggleProblems);
                 ImGui::Separator();
                 ImGui::MenuItem("Show Actions", nullptr, &m_ShowActions);
+                ImGui::MenuItem("Show Disabled Actions", nullptr, &m_ShowDisabledActions, m_ShowActions);
                 ImGui::MenuItem("Show Panels", nullptr, &m_ShowPanels);
 
                 ImGui::EndMenu();
@@ -2505,7 +2506,7 @@ private:
                 action->Execute();
 
         if (m_ShowActions)
-            actions.Draw(canvasMin, canvasMax);
+            actions.Draw(canvasMin, canvasMax, m_ShowDisabledActions);
 
         auto doubleClicked = graph.FindNode(static_cast<Id>(ed::GetDoubleClickedNode().Get()));
         if (doubleClicked && IsComment(*doubleClicked))
@@ -3086,8 +3087,9 @@ private:
     std::unordered_set<Id>    m_Bubbles;    // nodes whose problems show
     std::unordered_set<Id>    m_RunBubbles; // nodes whose bubble a run's error opened
     std::optional<LinkQuery>  m_LinkQuery;
-    bool                      m_ShowActions  = true;
-    bool                      m_ShowPanels   = true;
+    bool                      m_ShowActions         = true;
+    bool                      m_ShowDisabledActions = false;
+    bool                      m_ShowPanels          = true;
     float                     m_PanelsHeight = 0.0f;   // as the bar above the panels left it; 0 until they first show
     std::string               m_PanelRequest;          // the panel to choose as the panels show next
     size_t                    m_ProblemIndex = SIZE_MAX; // the problem chosen last

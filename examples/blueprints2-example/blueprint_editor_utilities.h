@@ -260,9 +260,9 @@ std::vector<Id> GetSelectedNodes();
 std::vector<Id> GetSelectedLinks();
 
 // The example's own interactions on the canvas, declared each frame in priority order, and listed
-// in its bottom-right corner, with those that don't apply now dimmed. A press fires through
-// ImGui::Shortcut(): only the first active one whose chord is pressed, and only over the canvas
-// unless it's global. A gesture is the node editor's or a widget's, and only listed.
+// in its bottom-right corner. A press fires through ImGui::Shortcut(): only the first active one
+// whose chord is pressed, and only over the canvas unless it's global. A gesture is the node
+// editor's or a widget's, and only listed.
 struct CanvasActions
 {
     explicit CanvasActions(bool overCanvas): m_OverCanvas(overCanvas) {}
@@ -270,7 +270,9 @@ struct CanvasActions
     bool Press(const char* name, ImGuiKeyChord chord, bool active, bool global = false);
     void Gesture(const char* name, const char* gesture, bool active);
 
-    void Draw(ImVec2 canvasMin, ImVec2 canvasMax) const;
+    // The actions that apply now, and with 'inactive' the others too, dimmed, in as many columns
+    // as the canvas's height takes.
+    void Draw(ImVec2 canvasMin, ImVec2 canvasMax, bool inactive) const;
 
 private:
     struct Entry
