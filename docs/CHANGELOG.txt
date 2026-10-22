@@ -676,6 +676,10 @@ v0.10.0 (WIP):
         Links and the background are hit by the mouse position, so a right-click on a popup over the canvas closed it and
         opened the menu of what lay under it.
 
+    BUGFIX: Editor: Keep the view of a canvas resized frame by frame from creeping
+        Each frame of a resize centered the view on the previous one moved to whole pixels, so it crept by up to a pixel a
+        frame, and a graph slid aside while a panel's bar was dragged.
+
 v0.9.3 (2023-10-14):
 
     CHANGE: Canvas: Use ImDrawCallback_ImCanvas macro as draw callback sentinel (#256), thanks @nspitko

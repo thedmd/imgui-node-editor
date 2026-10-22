@@ -1047,9 +1047,11 @@ void ed::EditorContext::Begin(const char* id, const ImVec2& size)
     else
         m_NavigateAction.StopMoveOverEdge();
 
-    // A frozen frame leaves the canvas as the last visible frame set it up.
+    // A frozen frame leaves the canvas as the last visible frame set it up. The previous view is
+    // the one set, not the one moved to whole pixels that the canvas showed.
     auto previousSize        = m_Canvas.Rect().GetSize();
-    auto previousVisibleRect = m_Canvas.ViewRect();
+    auto previousView        = m_Canvas.View();
+    auto previousVisibleRect = ImRect(previousView.Origin() * -previousView.InvScale(), (previousSize - previousView.Origin()) * previousView.InvScale());
     if (!m_IsFrozen)
         m_Canvas.Begin(id, canvasSize);
     m_IsCanvasVisible = !m_IsFrozen && m_Canvas.IsVisible();

@@ -116,3 +116,31 @@ TEST_CASE(ZoomedTextOff, "view.text_keeps_its_density_without_rasterize_text_for
     test::Skip("needs Dear ImGui 1.92, which rasterizes glyphs on demand");
 # endif
 }
+
+TEST_CASE(ResizedViewStaysCentered, "view.a_canvas_resized_frame_by_frame_keeps_the_center_of_its_view", nullptr, test::TestFlags_None)
+{
+    // Its height shrinks by a pixel a frame, as when a bar is dragged over its bottom edge, and
+    // grows back.
+    test::Storage storage;
+    test::Session session(test::MakeConfig(&storage));
+    session.EditorSize = ImVec2(600.0f, 400.0f);
+    session.Run(3);
+    auto center = [&]
+    {
+        const auto state = session.Use([] { return ed::GetViewState(); });
+        return (state.VisibleMin + state.VisibleMax) * 0.5f;
+    };
+    const auto before = center();
+    for (int i = 0; i < 120; ++i)
+    {
+        session.EditorSize.y -= 1.0f;
+        session.Run(1);
+    }
+    for (int i = 0; i < 120; ++i)
+    {
+        session.EditorSize.y += 1.0f;
+        session.Run(1);
+    }
+    const auto after = center();
+    test::Check(ImFabs(after.x - before.x) < 1.0f && ImFabs(after.y - before.y) < 1.0f, "the view's center stays at (%g, %g): it is at (%g, %g)", before.x, before.y, after.x, after.y);
+}
