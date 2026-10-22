@@ -58,6 +58,9 @@ find_package(imgui REQUIRED COMPONENTS ${IMGUI_NODE_EDITOR_EXAMPLES_BACKEND} ${I
 find_package(stb REQUIRED COMPONENTS image)
 target_link_libraries(application PUBLIC imgui)
 target_link_libraries(application PRIVATE imgui::${IMGUI_NODE_EDITOR_EXAMPLES_BACKEND} imgui::${IMGUI_NODE_EDITOR_EXAMPLES_RENDERER} stb::image)
+if (WIN32)
+    target_link_libraries(application PRIVATE dwmapi)
+endif()
 
 if (OpenGL_FOUND)
     set(HAVE_OPENGL YES)

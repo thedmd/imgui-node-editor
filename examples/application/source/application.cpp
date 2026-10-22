@@ -9,6 +9,7 @@
 #     define NOMINMAX
 #     define WIN32_LEAN_AND_MEAN
 #     include <windows.h>
+#     include <dwmapi.h>
 # elif PLATFORM(MACOS)
 #     include <mach-o/dyld.h>
 #     include <climits>
@@ -113,6 +114,18 @@ bool Application::Create(int width /*= -1*/, int height /*= -1*/)
         ShowError(m_Name, "Could not open the window.");
         return false;
     }
+
+# if PLATFORM(WINDOWS)
+    // The title bar is dark as the examples are, from before the window shows.
+    // DWMWA_USE_IMMERSIVE_DARK_MODE is 20 from Windows 10 20H1 on and 19 before, and SDKs
+    // older than 10.0.22000 don't name it.
+    if (auto window = static_cast<HWND>(m_Platform->GetMainWindowHandle()))
+    {
+        const BOOL dark = TRUE;
+        if (FAILED(DwmSetWindowAttribute(window, 20, &dark, sizeof(dark))))
+            DwmSetWindowAttribute(window, 19, &dark, sizeof(dark));
+    }
+# endif
 
     if (!m_Renderer->Create(*m_Platform))
     {
