@@ -121,9 +121,12 @@ struct Action
 
     Action() = default;
     Action(std::string_view name, OnTriggeredEvent::Delegate delegate = {});
+    Action(std::string_view name, ImGuiKeyChord shortcut, OnTriggeredEvent::Delegate delegate);
 
     void SetName(std::string_view name);
     const std::string& GetName() const;
+
+    ImGuiKeyChord GetShortcut() const; // shown wherever the action is; ImGuiKey_None for none
 
     void SetEnabled(bool set);
     bool IsEnabled() const;
@@ -134,12 +137,19 @@ struct Action
     OnTriggeredEvent    OnTriggered;
 
 private:
-    std::string m_Name;
-    bool        m_IsEnabled = true;
+    std::string   m_Name;
+    ImGuiKeyChord m_Shortcut  = ImGuiKey_None;
+    bool          m_IsEnabled = true;
 };
 
 Action::Action(std::string_view name, OnTriggeredEvent::Delegate delegate)
+    : Action(name, ImGuiKey_None, std::move(delegate))
+{
+}
+
+Action::Action(std::string_view name, ImGuiKeyChord shortcut, OnTriggeredEvent::Delegate delegate)
     : m_Name(name)
+    , m_Shortcut(shortcut)
 {
     if (delegate)
         OnTriggered += std::move(delegate);
@@ -158,6 +168,11 @@ void Action::SetName(std::string_view name)
 const std::string& Action::GetName() const
 {
     return m_Name;
+}
+
+ImGuiKeyChord Action::GetShortcut() const
+{
+    return m_Shortcut;
 }
 
 void Action::SetEnabled(bool set)
@@ -399,6 +414,7 @@ struct BlueprintEditorExample
                 m_RunBubbles.clear();
         }
         UpdateActions();
+        PressShortcuts();
         UpdateTitle();
 
         ShowMainMenu();
@@ -519,6 +535,9 @@ private:
 
         m_View_NavigateBackward.SetEnabled(hasDocument && m_HistoryIndex > 0);
         m_View_NavigateForward.SetEnabled(hasDocument && m_HistoryIndex + 1 < m_History.size());
+        m_View_NextProblem.SetEnabled(hasDocument && !m_Problems.Problems().empty());
+        m_View_PreviousProblem.SetEnabled(hasDocument && !m_Problems.Problems().empty());
+        m_View_ToggleProblems.SetEnabled(hasDocument && !m_Problems.Problems().empty());
         m_Blueprint_AddFunction.SetEnabled(hasDocument);
         m_Blueprint_AddVariable.SetEnabled(hasDocument);
 
@@ -529,13 +548,24 @@ private:
         m_Blueprint_Step.SetEnabled(m_Debugger.IsActive() ? !m_Debugger.IsRunning() : canStart);
         m_Blueprint_Stop.SetEnabled(m_Debugger.IsActive());
         m_Blueprint_Run.SetEnabled(canStart && !m_Debugger.IsRunning());
+        m_Blueprint_ToggleBreakpoint.SetEnabled(hasDocument && !BreakpointNodes().empty());
+    }
+
+    // The keys of the actions in the File and Edit menus; a field typed in keeps its own. The
+    // canvas's actions take theirs with their hints.
+    void PressShortcuts()
+    {
+        for (auto action : { &m_File_New, &m_File_Open, &m_File_SaveAs, &m_File_Save, &m_Edit_Undo, &m_Edit_Redo })
+            if (action->IsEnabled() && ImGui::Shortcut(action->GetShortcut(), ImGuiInputFlags_RouteGlobal))
+                action->Execute();
     }
 
     void ShowMainMenu()
     {
         auto menuAction = [](Action& action)
         {
-            if (ImGui::MenuItem(action.GetName().c_str(), nullptr, nullptr, action.IsEnabled()))
+            const auto shortcut = action.GetShortcut() != ImGuiKey_None ? ImGui::GetKeyChordName(action.GetShortcut()) : nullptr;
+            if (ImGui::MenuItem(action.GetName().c_str(), shortcut, nullptr, action.IsEnabled()))
             {
                 action.Execute();
             }
@@ -597,10 +627,12 @@ private:
                 menuAction(m_View_NavigateBackward);
                 menuAction(m_View_NavigateForward);
                 ImGui::Separator();
+                menuAction(m_View_NextProblem);
+                menuAction(m_View_PreviousProblem);
+                menuAction(m_View_ToggleProblems);
+                ImGui::Separator();
                 ImGui::MenuItem("Show Actions", nullptr, &m_ShowActions);
                 ImGui::MenuItem("Show Panels", nullptr, &m_ShowPanels);
-                if (ImGui::MenuItem("Show or Hide All Problems", "Ctrl+Shift+D", false, File_IsOpen() && !m_Problems.Problems().empty()))
-                    ToggleBubbles();
 
                 ImGui::EndMenu();
             }
@@ -612,6 +644,8 @@ private:
                 menuAction(m_Blueprint_Stop);
                 ImGui::Separator();
                 menuAction(m_Blueprint_Run);
+                ImGui::Separator();
+                menuAction(m_Blueprint_ToggleBreakpoint);
                 ImGui::Separator();
                 menuAction(m_Blueprint_AddFunction);
                 menuAction(m_Blueprint_AddVariable);
@@ -632,6 +666,8 @@ private:
             {
                 action.Execute();
             }
+            if (action.GetShortcut() != ImGuiKey_None)
+                ImGui::SetItemTooltip("%s", ImGui::GetKeyChordName(action.GetShortcut()));
         };
 
         toolbarAction(m_File_Open);
@@ -1953,32 +1989,10 @@ private:
         actions.Gesture("Edit Signature", "Double-Click", !pin && node && SignatureNodeOf(document.GetBlueprint(), *node).m_Function);
         actions.Gesture("Create Node", "Space", background && !typing);
         actions.Gesture("Create Node", "Right-Click", background);
-        if (actions.Press("Show or Hide All Problems", ImGuiMod_Ctrl | ImGuiMod_Shift | ImGuiKey_D, !m_Problems.Problems().empty()))
-            ToggleBubbles();
-        const auto problems = m_Problems.Problems().size();
-        const auto current  = m_ProblemIndex < problems;
-        if (actions.Press("Next Problem", ImGuiKey_F8, problems > 0, true))
-            GoToProblem(current ? (m_ProblemIndex + 1) % problems : 0);
-        if (actions.Press("Previous Problem", ImGuiMod_Shift | ImGuiKey_F8, problems > 0, true))
-            GoToProblem(current ? (m_ProblemIndex + problems - 1) % problems : problems - 1);
-        if (actions.Press("Run", ImGuiKey_F5, m_Blueprint_Run.IsEnabled(), true))
-            m_Blueprint_Run.Execute();
-        if (actions.Press("Step", ImGuiKey_F10, m_Blueprint_Step.IsEnabled(), true))
-            m_Blueprint_Step.Execute();
-        if (actions.Press("Stop", ImGuiMod_Shift | ImGuiKey_F5, m_Blueprint_Stop.IsEnabled(), true))
-            m_Blueprint_Stop.Execute();
-        if (actions.Press("Navigate Backward", ImGuiMod_Alt | ImGuiKey_LeftArrow, m_View_NavigateBackward.IsEnabled(), true))
-            m_View_NavigateBackward.Execute();
-        if (actions.Press("Navigate Forward", ImGuiMod_Alt | ImGuiKey_RightArrow, m_View_NavigateForward.IsEnabled(), true))
-            m_View_NavigateForward.Execute();
-        auto selected = GetSelectedNodes();
-        if (actions.Press("Toggle Breakpoint", ImGuiKey_F9, owner || !selected.empty(), true))
-        {
-            auto nodes   = owner ? std::vector<Id>{ owner->m_Id } : selected;
-            auto enabled = !m_Debugger.HasBreakpoint(nodes.front());
-            for (auto node : nodes)
-                m_Debugger.SetBreakpoint(node, enabled);
-        }
+        for (auto action : { &m_View_ToggleProblems, &m_View_NextProblem, &m_View_PreviousProblem, &m_Blueprint_Run, &m_Blueprint_Step, &m_Blueprint_Stop,
+                             &m_View_NavigateBackward, &m_View_NavigateForward, &m_Blueprint_ToggleBreakpoint })
+            if (actions.Press(action->GetName().c_str(), action->GetShortcut(), action->IsEnabled(), true))
+                action->Execute();
 
         if (m_ShowActions)
             actions.Draw(canvasMin, canvasMax);
@@ -2382,6 +2396,39 @@ private:
         m_PendingRemember = false;
     }
 
+    // From the problem chosen last, or from the first or the last one.
+    void View_GoToProblem(bool next)
+    {
+        const auto problems = m_Problems.Problems().size();
+        if (problems == 0)
+            return;
+        if (m_ProblemIndex >= problems)
+            GoToProblem(next ? 0 : problems - 1);
+        else
+            GoToProblem(next ? (m_ProblemIndex + 1) % problems : (m_ProblemIndex + problems - 1) % problems);
+    }
+
+    // The node under the mouse, or the one of a pin under it, or else the selected ones.
+    std::vector<Id> BreakpointNodes()
+    {
+        auto& graph = m_Document->GetGraph();
+        auto  node  = graph.FindNode(static_cast<Id>(ed::GetHoveredNode().Get()));
+        if (auto pin = graph.FindPin(static_cast<Id>(ed::GetHoveredPin().Get())); !node && pin)
+            node = graph.NodeOf(pin->m_Id);
+        return node ? std::vector<Id>{ node->m_Id } : GetSelectedNodes();
+    }
+
+    // On for all of them, unless the first has one: then off.
+    void Blueprint_ToggleBreakpoint()
+    {
+        auto nodes = BreakpointNodes();
+        if (nodes.empty())
+            return;
+        const auto enabled = !m_Debugger.HasBreakpoint(nodes.front());
+        for (auto node : nodes)
+            m_Debugger.SetBreakpoint(node, enabled);
+    }
+
     // A function of a free name, with its entry linked to a return, shown in its tab: one undo step.
     void Blueprint_AddFunction()
     {
@@ -2490,15 +2537,15 @@ private:
     LinkContextMenu  m_LinkContextMenu;
     LinkDropMenu     m_LinkDropMenu;
 
-    Action m_File_New       = { "New",          [this] { File_New();    } };
-    Action m_File_Open       = { "Open...",      [this] { File_Open();   } };
-    Action m_File_SaveAs     = { "Save As...",   [this] { File_SaveAs(); } };
-    Action m_File_Save       = { "Save",         [this] { File_Save();   } };
+    Action m_File_New        = { "New",          ImGuiMod_Ctrl | ImGuiKey_N,                  [this] { File_New();    } };
+    Action m_File_Open       = { "Open...",      ImGuiMod_Ctrl | ImGuiKey_O,                  [this] { File_Open();   } };
+    Action m_File_SaveAs     = { "Save As...",   ImGuiMod_Ctrl | ImGuiMod_Shift | ImGuiKey_S, [this] { File_SaveAs(); } };
+    Action m_File_Save       = { "Save",         ImGuiMod_Ctrl | ImGuiKey_S,                  [this] { File_Save();   } };
     Action m_File_Close      = { "Close",        [this] { File_Close();  } };
     Action m_File_Exit       = { "Exit",         [this] { File_Exit();   } };
 
-    Action m_Edit_Undo       = { "Undo",         [this] { Edit_Undo();      } };
-    Action m_Edit_Redo       = { "Redo",         [this] { Edit_Redo();      } };
+    Action m_Edit_Undo       = { "Undo",         ImGuiMod_Ctrl | ImGuiKey_Z, [this] { Edit_Undo();      } };
+    Action m_Edit_Redo       = { "Redo",         ImGuiMod_Ctrl | ImGuiKey_Y, [this] { Edit_Redo();      } };
     Action m_Edit_Cut        = { "Cut",          [this] { Edit_Cut();       } };
     Action m_Edit_Copy       = { "Copy",         [this] { Edit_Copy();      } };
     Action m_Edit_Paste      = { "Paste",        [this] { Edit_Paste();     } };
@@ -2506,13 +2553,17 @@ private:
     Action m_Edit_Delete     = { "Delete",       [this] { Edit_Delete();    } };
     Action m_Edit_SelectAll  = { "Select All",   [this] { Edit_SelectAll(); } };
 
-    Action m_View_NavigateBackward = { "Navigate Backward", [this] { View_NavigateBackward(); } };
-    Action m_View_NavigateForward  = { "Navigate Forward",  [this] { View_NavigateForward();  } };
+    Action m_View_NavigateBackward = { "Navigate Backward",         ImGuiMod_Alt | ImGuiKey_LeftArrow,           [this] { View_NavigateBackward(); } };
+    Action m_View_NavigateForward  = { "Navigate Forward",          ImGuiMod_Alt | ImGuiKey_RightArrow,          [this] { View_NavigateForward();  } };
+    Action m_View_NextProblem      = { "Next Problem",              ImGuiKey_F8,                                 [this] { View_GoToProblem(true);  } };
+    Action m_View_PreviousProblem  = { "Previous Problem",          ImGuiMod_Shift | ImGuiKey_F8,                [this] { View_GoToProblem(false); } };
+    Action m_View_ToggleProblems   = { "Show or Hide All Problems", ImGuiMod_Ctrl | ImGuiMod_Shift | ImGuiKey_D, [this] { ToggleBubbles();          } };
 
     Action m_Blueprint_Start = { "Start",        [this] { Blueprint_Start(); } };
-    Action m_Blueprint_Step  = { "Step",         [this] { Blueprint_Step();  } };
-    Action m_Blueprint_Stop  = { "Stop",         [this] { Blueprint_Stop();  } };
-    Action m_Blueprint_Run   = { "Run",          [this] { Blueprint_Run();   } };
+    Action m_Blueprint_Step  = { "Step",         ImGuiKey_F10,                 [this] { Blueprint_Step();  } };
+    Action m_Blueprint_Stop  = { "Stop",         ImGuiMod_Shift | ImGuiKey_F5, [this] { Blueprint_Stop();  } };
+    Action m_Blueprint_Run   = { "Run",          ImGuiKey_F5,                  [this] { Blueprint_Run();   } };
+    Action m_Blueprint_ToggleBreakpoint = { "Toggle Breakpoint", ImGuiKey_F9, [this] { Blueprint_ToggleBreakpoint(); } };
     Action m_Blueprint_AddFunction = { "Add Function", [this] { Blueprint_AddFunction(); } };
     Action m_Blueprint_AddVariable = { "Add Variable", [this] { AddVariable(*m_Document); } };
 };
