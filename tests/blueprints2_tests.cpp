@@ -1630,3 +1630,40 @@ TEST_CASE(RerouteInserts, "blueprints2.a_reroute_put_into_a_link_takes_the_sourc
     test::Check(found && found->m_Type->m_Name == "crude.FlowReroute" && example.LinkBetween(body, example.Pin(flow, "in")) && example.LinkBetween(example.Pin(flow, "out"), enter),
         "a flow link takes a flow reroute");
 }
+
+TEST_CASE(RerouteRemovals, "blueprints2.a_dissolved_reroute_joins_its_links_and_a_removed_one_takes_them_away", nullptr, test::TestFlags_None)
+{
+    using namespace blueprint_editor_utilities;
+    test::Session session(UnnamedConfig());
+    OverlayLog    log;
+    Example       example(session);
+    auto& document = example.m_Document;
+    const auto sum = example.Node("crude.Add"), print = example.Node("crude.Print"), loop = example.Node("crude.ForLoop");
+    const auto result = example.Pin(sum, "result"), text = example.Pin(print, "text");
+    const auto body   = example.Pin(loop, "body"), enter = example.Pin(print, "enter");
+    const auto cast   = example.LinkBetween(result, text), flowing = example.LinkBetween(body, enter);
+    if (!cast || cast->m_Cast.empty() || !flowing)
+        return test::Check(false, "the example's sum reaches the Print's text through a cast, and its loop's body the Print");
+    const auto castLink = cast->m_Id, flowLink = flowing->m_Id;
+
+    // A reroute in the cast link, dissolved as a deletion does it.
+    const auto reroute = session.Use([&] { return InsertReroute(document, castLink, ImVec2(600.0f, 200.0f)); });
+    session.Use([&]
+    {
+        auto transaction = document.BeginUndoTransaction("Dissolve Reroute");
+        DissolveReroute(document.GetGraph(), reroute);
+        transaction->AddAction("dissolved");
+    });
+    auto joined = example.LinkBetween(result, text);
+    test::Check(reroute && !document.GetGraph().FindNode(reroute) && joined && !joined->m_Cast.empty(), "dissolved, a reroute gives the cast link back");
+
+    // A flow reroute in the loop's body, removed with its links, and the removal undone.
+    const auto flow = session.Use([&] { return InsertReroute(document, flowLink, ImVec2(500.0f, 100.0f)); });
+    session.Use([&] { RemoveReroute(document, flow); });
+    const auto links = document.GetGraph().Links();
+    test::Check(flow && !document.GetGraph().FindNode(flow) && std::none_of(links.begin(), links.end(), [body, enter](const Link& link) { return link.m_From == body || link.m_To == enter; }),
+        "removed, it takes its links with it");
+    session.Use([&] { document.Undo(); });
+    test::Check(document.GetGraph().FindNode(flow) && example.LinkBetween(body, example.Pin(flow, "in")) && example.LinkBetween(example.Pin(flow, "out"), enter),
+        "and undone, it is back with them");
+}

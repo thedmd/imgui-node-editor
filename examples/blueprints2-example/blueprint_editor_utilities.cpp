@@ -744,6 +744,50 @@ blueprint_editor_utilities::Id blueprint_editor_utilities::InsertReroute(Documen
     return reroute.GetValue();
 }
 
+void blueprint_editor_utilities::DissolveReroute(Graph& graph, Id reroute)
+{
+    auto node = graph.FindNode(reroute);
+    auto in   = node && IsReroute(*node) ? node->FindPin("in") : nullptr;
+    auto out  = node && IsReroute(*node) ? node->FindPin("out") : nullptr;
+    if (!in || !out)
+        return;
+    struct End { Id m_Pin; LinkMode m_Mode; };
+    std::vector<End> sources, targets;
+    for (auto& link : graph.Links())
+    {
+        if (link.m_To == in->m_Id)
+            sources.push_back({ link.m_From, ModeOf(link) });
+        if (link.m_From == out->m_Id)
+            targets.push_back({ link.m_To, ModeOf(link) });
+    }
+    if (!graph.RemoveNode(reroute))
+        return;
+
+    // A cast or a force on either side holds for the link joined, as does a link kept disabled.
+    for (auto& source : sources)
+        for (auto& target : targets)
+        {
+            auto either = [&](LinkMode mode) { return source.m_Mode == mode || target.m_Mode == mode; };
+            const auto mode = either(LinkMode::Cast) ? LinkMode::Cast : either(LinkMode::Force) ? LinkMode::Force : either(LinkMode::Keep) ? LinkMode::Keep : LinkMode::Plain;
+            Reconnect(graph, source.m_Pin, target.m_Pin, mode);
+        }
+}
+
+void blueprint_editor_utilities::RemoveReroute(Document& document, Id reroute)
+{
+    auto node = document.GetGraph().FindNode(reroute);
+    if (!node || !IsReroute(*node))
+        return;
+    const auto name = node->Name();
+    auto transaction = document.BeginUndoTransaction("Remove Reroute");
+    if (!document.GetGraph().RemoveNode(reroute))
+    {
+        transaction->Discard();
+        return;
+    }
+    transaction->AddAction("%s removed with its links", name.c_str());
+}
+
 void blueprint_editor_utilities::RenamePin(Document& document, Id pin, std::string name)
 {
     auto& graph = document.GetGraph();
@@ -2085,6 +2129,18 @@ void blueprint_editor_utilities::NodeContextMenu::Show(Document& document, Debug
 
         // The change is made once the menu is drawn.
         std::function<void()> change;
+        if (node && IsReroute(*node))
+        {
+            if (ImGui::MenuItem("Dissolve", "Delete"))
+                change = [&document, id = node->m_Id, name = node->Name()]
+                {
+                    auto transaction = document.BeginUndoTransaction("Dissolve Reroute");
+                    DissolveReroute(document.GetGraph(), id);
+                    transaction->AddAction("%s dissolved", name.c_str());
+                };
+            if (ImGui::MenuItem("Remove With Links", "Alt+Click"))
+                change = [&document, id = node->m_Id] { RemoveReroute(document, id); };
+        }
         auto signature = node ? SignatureNodeOf(document.GetBlueprint(), *node) : SignatureNode();
         if (signature.m_Function && signature.m_Entry)
         {

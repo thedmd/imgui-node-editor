@@ -2055,12 +2055,16 @@ private:
 
         auto deferredTransaction = document.GetDeferredUndoTransaction("Destroy Action");
 
-        std::vector<Id> nodesToDelete;
+        // A reroute's links stay to be joined past it, once the other nodes are gone.
+        std::vector<Id> nodesToDelete, reroutesToDissolve;
         while (auto nodeDeleter = itemDeleter.QueryDeletedNode())
         {
             deferredTransaction->Begin("Delete Item");
-            if (nodeDeleter->Accept(true))
-                nodesToDelete.push_back(static_cast<Id>(nodeDeleter->m_NodeId.Get()));
+            const auto id       = static_cast<Id>(nodeDeleter->m_NodeId.Get());
+            const auto found    = graph.FindNode(id);
+            const auto dissolve = found && IsReroute(*found);
+            if (nodeDeleter->Accept(!dissolve))
+                (dissolve ? reroutesToDissolve : nodesToDelete).push_back(id);
         }
 
         int brokenLinkCount = 0;
@@ -2077,6 +2081,9 @@ private:
             if (graph.RemoveNode(node))
                 LOGV("[HandleDestroyAction] %s", name.c_str());
         }
+        for (auto reroute : reroutesToDissolve)
+            DissolveReroute(graph, reroute);
+        nodesToDelete.insert(nodesToDelete.end(), reroutesToDissolve.begin(), reroutesToDissolve.end());
 
         if (!nodesToDelete.empty() || brokenLinkCount)
         {
@@ -2145,6 +2152,7 @@ private:
         const auto pinSplits  = pin && (SplittableStruct(*pin) || !SplitOf(*graph.NodeOf(pin->m_Id), pin->m_Key).empty());
 
         auto owner   = node ? node : pin ? graph.NodeOf(pin->m_Id) : nullptr;
+        auto reroute = owner && IsReroute(*owner) ? owner : nullptr;
         auto canGrow = false, canShrink = false;
         if (owner)
         {
@@ -2160,7 +2168,13 @@ private:
         actions.Gesture("Create Link", "Drag Pin to Pin", pin != nullptr);
         actions.Gesture("Create Linked Node", "Drag Pin to Canvas", pin != nullptr);
         actions.Gesture("Insert Reroute", "Double-Click", link != nullptr);
-        if (actions.Press("Break Pin's Links", ImGuiMod_Alt | ImGuiKey_MouseLeft, pinLinked))
+        actions.Gesture("Dissolve Reroute", "Delete", reroute != nullptr);
+        if (actions.Press("Remove Reroute", ImGuiMod_Alt | ImGuiKey_MouseLeft, reroute != nullptr))
+        {
+            RemoveReroute(document, reroute->m_Id);
+            return;
+        }
+        if (actions.Press("Break Pin's Links", ImGuiMod_Alt | ImGuiKey_MouseLeft, pinLinked && !reroute))
             ed::BreakLinks(ed::PinId(pin->m_Id));
         if (actions.Press("Watch Pin", ImGuiMod_Ctrl | ImGuiKey_MouseLeft, pin && !pin->m_Flow))
             m_Debugger.SetWatched(pin->m_Id, !m_Debugger.IsWatched(pin->m_Id));

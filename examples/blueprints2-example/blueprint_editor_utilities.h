@@ -149,6 +149,11 @@ void SetCommentText(Document& document, Id node, std::string text);
 // A reroute put into a link, centered on a point of the canvas: the link's first half plain, so the
 // reroute takes the source's type, and its second the link's own cast or force. Gives the reroute.
 Id   InsertReroute(Document& document, Id link, ImVec2 center);
+// A reroute's links joined past it, keeping their casts and forces, and it removed, as one step of
+// the edit going on; a link that no longer fits stays, disabled. Removed with its links, it's an
+// undo step of its own.
+void DissolveReroute(Graph& graph, Id reroute);
+void RemoveReroute(Document& document, Id reroute);
 void RenamePin(Document& document, Id pin, std::string name);    // in its node's config; an empty name gives back the declared one
 
 // Edits of the blueprint's variables, one undo step each. One the blueprint refuses is logged.
