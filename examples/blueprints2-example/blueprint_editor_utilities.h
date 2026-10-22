@@ -136,6 +136,35 @@ void AddTypeParameter(Document& document, Id graph); // named T, U, V..., the fi
 void ToggleAllowedType(Document& document, Id graph, size_t index, const ValueType* head);
 // A type parameter that a pin's type has can't go.
 void RemoveTypeParameter(Document& document, Id graph, int index);
+
+// How a node grows by a pin: its group's next index, or its function's next input, on its entry, or
+// output, on its return; on the side its pins are. None for a node that doesn't.
+struct PinGrowth
+{
+    Direction   m_Direction = Direction::Input;
+    std::string m_Group;            // the group's name; empty for a function's
+    Id          m_Function = 0;     // the function's graph, for its entry or return
+    bool        m_Enabled  = false; // the group is under its maximum
+
+    explicit operator bool() const { return !m_Group.empty() || m_Function; }
+};
+PinGrowth GrowthOf(const Blueprint& blueprint, const Node& node);
+void      GrowPins(Document& document, Id node, const PinGrowth& growth); // one undo step
+
+// How a pin goes: its group's index, while the group is over its minimum, or its function's input or
+// output. None for a pin that can't.
+struct PinRemoval
+{
+    std::string m_Group;        // the group's name; empty for a function's
+    int         m_Index    = -1;
+    Id          m_Function = 0; // the function's graph, for its entry's or return's pin
+    bool        m_Input    = false;
+    std::string m_Key;          // the function's input's or output's
+
+    explicit operator bool() const { return m_Index >= 0 || m_Function; }
+};
+PinRemoval RemovalOf(const Blueprint& blueprint, const Node& node, const Pin& pin);
+void       RemovePin(Document& document, Id node, const PinRemoval& removal); // one undo step
 const SignaturePin* TypeParameterUser(const Signature& signature, int index); // the first pin whose type has it
 
 // What a signature's pin may be of: each value type of no type arguments, each type parameter, and
@@ -176,7 +205,13 @@ void  ProblemSign(ImDrawList* drawList, ImVec2 center, float radius, Severity se
 bool LatentMark(std::string_view waiting);
 
 bool SquareButton(const char* label);      // As wide as it's high, a line's height: for a sign such as + or -.
-bool GroupButton(const char* id, bool plus, bool enabled); // A node's + or -, a line's height, drawn a shade off the node's body.
+// A node's + or - on a square darker than the canvas and lighter than a node's body, outlined, so it
+// shows on either: lighter while hot, greyed while disabled; the square and the sign as opaque as
+// their alphas say.
+void DrawSign(ImDrawList* drawList, ImVec2 min, ImVec2 max, bool plus, bool enabled, bool hot, float squareAlpha, float signAlpha);
+// A + or - button from min to max, as DrawSign() draws it, that takes no room where it is and leaves
+// the last item as it was: a node it's in doesn't grow for it. Its sign is faint unless lit or hovered.
+bool SignButton(const char* id, ImVec2 min, ImVec2 max, bool plus, bool lit, float faint, bool* hovered = nullptr);
 std::string ValueText(const Value& value); // "true", "12", "1.5", a string as it is, else as its type formats it
 bool DrawValue(const Value& value);        // Draws a value; false for none.
 // An editor of a value. A number's - and + change it, the editor staying; Enter ends the edit.

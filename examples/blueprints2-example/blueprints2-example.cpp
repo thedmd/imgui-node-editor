@@ -758,6 +758,117 @@ private:
         ed::EndGroupHint();
     }
 
+    // A node's "+" is a pin of the editor's alone, of an ID no blueprint gives out: the node's, with
+    // its top bit set.
+    static constexpr uintptr_t c_GrowTabBit = 0x80000000u;
+    static ed::PinId GrowTabId(Id node) { return ed::PinId(c_GrowTabBit | node); }
+    static Id        GrowTabNode(ed::PinId pin)
+    {
+        const auto id = pin.Get();
+        return id > c_GrowTabBit && id <= 0xFFFFFFFFu ? static_cast<Id>(id - c_GrowTabBit) : 0;
+    }
+
+    // The node whose pins' "+" and "-" show at full: the one the mouse is on, or on a pin or the "+"
+    // of, for as long as the mouse stays within a line and a half of its edges, where its "-" are.
+    void UpdateControlsNode(const Graph& graph)
+    {
+        auto hovered = graph.FindNode(static_cast<Id>(ed::GetHoveredNode().Get()));
+        if (!hovered)
+            hovered = graph.NodeOf(static_cast<Id>(ed::GetHoveredPin().Get()));
+        if (!hovered)
+            hovered = graph.FindNode(GrowTabNode(ed::GetHoveredPin()));
+        if (hovered)
+        {
+            m_ControlsNode = hovered->m_Id;
+            return;
+        }
+        const auto reach = ImVec2(1.0f, 1.0f) * ImGui::GetTextLineHeight() * 1.5f;
+        const auto min   = m_ControlsNode ? ed::GetNodePosition(m_ControlsNode) : ImVec2(FLT_MAX, FLT_MAX);
+        if (min.x == FLT_MAX || !graph.FindNode(m_ControlsNode) || !ImRect(min - reach, min + ed::GetNodeSize(m_ControlsNode) + reach).Contains(ImGui::GetMousePos()))
+            m_ControlsNode = 0;
+    }
+
+    // A node that grows by pins has a "+" on its bottom edge, under the column they're added to:
+    // faint until the node is hovered or selected. A click on it adds a pin. Each pin the node can
+    // lose has a "-" beside it, outside the node, while the node is hovered: faint until the pin or
+    // the "-" is. Neither takes room in the node. Called once the node's layout ends, its padding
+    // given.
+    void ShowPinControls(Document& document, const Node& node, ImVec4 padding, std::function<void()>& edit)
+    {
+        auto&      blueprint = document.GetBlueprint();
+        const auto shown     = node.m_Id == m_ControlsNode;
+        const auto line      = ImGui::GetTextLineHeight();
+        const auto faint     = 0.35f;
+        const auto position  = ed::GetNodePosition(node.m_Id);
+        const auto right     = position.x + ed::GetNodeSize(node.m_Id).x;
+        const auto content   = ImRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
+        auto       tooltip   = [](const char* text)
+        {
+            ed::Suspend();
+            ImGui::SetTooltip("%s", text);
+            ed::Resume();
+        };
+
+        if (auto growth = GrowthOf(blueprint, node))
+        {
+            // Under the icons of the column, or the node's edge padded while the column has none.
+            const auto input = growth.m_Direction == Direction::Input;
+            auto       x     = input ? position.x + padding.x + line * 0.5f : right - padding.z - line * 0.5f;
+            for (auto& pin : node.m_Pins)
+            {
+                auto icon = m_PinIcons.find(pin.m_Id);
+                if (pin.m_Direction == growth.m_Direction && icon != m_PinIcons.end())
+                {
+                    x = icon->second.GetCenter().x;
+                    break;
+                }
+            }
+            const auto tab    = GrowTabId(node.m_Id);
+            const auto center = ImVec2(x, content.Max.y + padding.w);
+            const auto rect   = ImRect(center - ImVec2(line, line) * 0.5f, center + ImVec2(line, line) * 0.5f);
+
+            // The tab's own item, empty, goes where the content starts, which keeps the node as it is.
+            ImGui::SetCursorScreenPos(content.Min);
+            ed::PushStyleVar(input ? ed::StyleVar_TargetDirection : ed::StyleVar_SourceDirection, ImVec2(0.0f, 1.0f));
+            ed::BeginPin(tab, input ? ed::PinKind::Input : ed::PinKind::Output);
+            ed::PinRect(rect.Min, rect.Max);
+            ed::PinPivotRect(center, center);
+            ed::EndPin();
+            ed::PopStyleVar();
+
+            const auto  hot = ed::GetHoveredPin() == tab;
+            const auto& io  = ImGui::GetIO();
+            const auto lit = shown || hot || ed::IsNodeSelected(node.m_Id);
+            DrawSign(ImGui::GetWindowDrawList(), rect.Min, rect.Max, true, growth.m_Enabled, hot, lit ? 1.0f : faint, lit ? 1.0f : faint);
+            if (hot)
+                tooltip(!growth.m_Group.empty() ? "Add Pin" : input ? "Add Output" : "Add Input");
+            if (hot && growth.m_Enabled && ImGui::IsMouseReleased(ImGuiMouseButton_Left) && rect.Contains(io.MouseClickedPos[ImGuiMouseButton_Left]) && !ImGui::IsMouseDragPastThreshold(ImGuiMouseButton_Left))
+                edit = [&document, id = node.m_Id, growth] { GrowPins(document, id, growth); };
+        }
+
+        if (!shown)
+            return;
+        std::unordered_set<int> indices; // an index's first pin has its "-"
+        for (auto& pin : node.m_Pins)
+        {
+            const auto removal = RemovalOf(blueprint, node, pin);
+            const auto icon    = m_PinIcons.find(pin.m_Id);
+            if (!removal || icon == m_PinIcons.end() || (removal.m_Index >= 0 && !indices.insert(removal.m_Index).second))
+                continue;
+            const auto gap  = ImGui::GetStyle().ItemInnerSpacing.x;
+            const auto x    = pin.m_Direction == Direction::Input ? position.x - gap - line : right + gap;
+            const auto y    = icon->second.GetCenter().y - line * 0.5f;
+            const auto rect = ImRect(ImVec2(x, y), ImVec2(x + line, y + line));
+            ImGui::PushID(static_cast<int>(pin.m_Id));
+            auto hovered = false;
+            if (SignButton("-", rect.Min, rect.Max, false, ed::GetHoveredPin() == ed::PinId(pin.m_Id), 0.55f, &hovered))
+                edit = [&document, id = node.m_Id, removal] { RemovePin(document, id, removal); };
+            if (hovered)
+                tooltip(!removal.m_Function ? "Remove Pin" : removal.m_Input ? "Remove Input" : "Remove Output");
+            ImGui::PopID();
+        }
+    }
+
     // Where a link meets a pin on the canvas, as the editor last placed it: a reroute's center, the
     // center of the pin's icon as the nodes last drew, or the middle of its node's edge on the pin's
     // side; none for a node not placed.
@@ -969,6 +1080,7 @@ private:
         const auto current = m_Debugger.IsActive() ? m_Debugger.CurrentNode() : 0;
         const auto next    = m_Debugger.IsActive() ? m_Debugger.NextNode() : 0;
         const auto hovered = static_cast<Id>(ed::GetHoveredNode().Get());
+        UpdateControlsNode(graph);
         for (auto& node : graph.Nodes())
         {
             if (IsComment(node))
@@ -1009,7 +1121,8 @@ private:
                     if (pin.m_Direction == Direction::Output)
                         look.m_Stripe = ImGui::GetColorU32(PinColor(pin));
 
-            ed::PushStyleVar(ed::StyleVar_NodePadding, NodePadding(look));
+            const auto padding = NodePadding(look);
+            ed::PushStyleVar(ed::StyleVar_NodePadding, padding);
             ed::BeginNode(node.m_Id);
             ed::PopStyleVar();
 
@@ -1079,8 +1192,8 @@ private:
                 ImGui::Dummy(ImVec2(100.0f, 0.0f)); // For minimum node width
             }
 
-            // An operator's symbol stands between its inputs and outputs, its group's + and - under
-            // it. Rows are a line apart, and the columns are centered on one another.
+            // An operator's symbol stands between its inputs and outputs. Rows are a line apart, and
+            // the columns are centered on one another.
             const auto spacing    = ImGui::GetStyle().ItemSpacing.y;
             const auto lineHeight = ImGui::GetTextLineHeight();
             const auto pitch      = lineHeight + 2.0f * spacing;
@@ -1091,7 +1204,7 @@ private:
             };
             const auto glyphs       = std::count_if(symbol.begin(), symbol.end(), [](char c) { return (static_cast<unsigned char>(c) & 0xC0) != 0x80; });
             const auto symbolScale  = glyphs == 1 ? 2.0f : 1.25f; // a sign large, a word less so
-            const auto symbolHeight = symbol.empty() ? 0.0f : ImGui::GetTextLineHeight() * symbolScale + (node.m_Groups.empty() ? 0.0f : 2.0f * spacing + lineHeight);
+            const auto symbolHeight = symbol.empty() ? 0.0f : ImGui::GetTextLineHeight() * symbolScale;
             const auto inputsHeight = rowsHeight(Direction::Input), outputsHeight = rowsHeight(Direction::Output);
             const auto middle       = ImMax(spacing + ImMax(inputsHeight, outputsHeight) * 0.5f, symbolHeight * 0.5f);
             const auto bodyTop      = ImGui::GetCursorScreenPos().y;
@@ -1104,31 +1217,6 @@ private:
             crude_layout::Grid layout;
             layout.Begin(node.m_Id, symbol.empty() ? 2 : 3, bodyWidth);
             layout.SetColumnAlignment(0.0f);
-
-            // A group's [+] and [-] follow its last pin, or end the inputs while it has none.
-            std::map<const GroupDeclaration*, const Pin*> lastOfGroup;
-            for (auto& pin : node.m_Pins)
-                if (auto group = FindGroup(node, pin.m_Key))
-                    lastOfGroup[group] = &pin;
-            auto groupButtons = [&](const GroupDeclaration& group)
-            {
-                const auto count = GroupCount(group, node.m_Config);
-                ImGui::Spacing();
-                ImGui::PushID(group.m_Name.c_str());
-                if (GroupButton("+", true, count < group.m_Max))
-                    edit = [&document, id = node.m_Id, name = group.m_Name] { AddGroupPin(document, id, name); };
-                ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
-                if (GroupButton("-", false, count > group.m_Min))
-                    edit = [&document, id = node.m_Id, name = group.m_Name, index = count - 1] { RemoveGroupPin(document, id, name, index); };
-                ImGui::PopID();
-                layout.NextRow();
-            };
-            auto groupButtonsAfter = [&](const Pin& pin)
-            {
-                for (auto& [group, last] : lastOfGroup)
-                    if (last == &pin)
-                        groupButtons(*group);
-            };
 
             // Draw column with input pins.
             startAt(middle - inputsHeight * 0.5f - spacing);
@@ -1198,33 +1286,7 @@ private:
                 ed::EndPin();
 
                 layout.NextRow();
-                if (symbol.empty())
-                    groupButtonsAfter(pin);
             }
-            if (symbol.empty())
-            {
-                for (auto& group : node.m_Groups)
-                    if (!lastOfGroup.contains(&group))
-                        groupButtons(group);
-            }
-
-            // A function's return adds its outputs, and its entry its inputs, with [+] at their end.
-            const auto signature    = SignatureNodeOf(document.GetBlueprint(), node);
-            auto       addPinButton = [&](bool input)
-            {
-                ImGui::Spacing();
-                if (GroupButton("+", true, true))
-                    edit = [&document, graph = signature.m_Function->m_Graph, input] { AddSignaturePin(document, graph, input); };
-                if (ImGui::IsItemHovered())
-                {
-                    ed::Suspend();
-                    ImGui::SetTooltip(input ? "Add Input" : "Add Output");
-                    ed::Resume();
-                }
-                layout.NextRow();
-            };
-            if (signature.m_Function && !signature.m_Entry)
-                addPinButton(false);
 
             if (!symbol.empty())
             {
@@ -1237,8 +1299,6 @@ private:
                 ImGui::PopStyleColor();
                 ImGui::PopFont();
                 layout.NextRow();
-                for (auto& group : node.m_Groups)
-                    groupButtons(group);
             }
 
             layout.SetColumnAlignment(1.0f);
@@ -1308,12 +1368,10 @@ private:
                 ed::EndPin();
 
                 layout.NextRow();
-                groupButtonsAfter(pin);
             }
-            if (signature.m_Function && signature.m_Entry)
-                addPinButton(true);
 
             layout.End();
+            ShowPinControls(document, node, padding, edit);
 
             ed::EndNode();
 
@@ -2148,6 +2206,13 @@ private:
         }
         else if (auto nodeBuilder = itemBuilder.QueryNewNode())
         {
+            // A link dragged from a "+" makes no node.
+            if (GrowTabNode(nodeBuilder->m_PinId))
+            {
+                nodeBuilder->Reject();
+                return;
+            }
+
             // Arguably creation of node is simpler than a link.
             ed::Suspend();
             ImGui::SetTooltip("Create Node...");
@@ -2243,7 +2308,10 @@ private:
         if (ed::ShowPinContextMenu(&contextPinId))
         {
             ed::Suspend();
-            m_PinContextMenu.Open(static_cast<Id>(contextPinId.Get()));
+            if (auto tab = GrowTabNode(contextPinId))
+                m_NodeContextMenu.Open(tab);
+            else
+                m_PinContextMenu.Open(static_cast<Id>(contextPinId.Get()));
             ed::Resume();
         }
 
@@ -2273,18 +2341,13 @@ private:
         const auto pinTyped   = pin && PinVariable(graph, *pin);
         const auto pinSplits  = pin && (SplittableStruct(*pin) || !SplitOf(*graph.NodeOf(pin->m_Id), pin->m_Key).empty());
 
-        auto owner   = node ? node : pin ? graph.NodeOf(pin->m_Id) : nullptr;
-        auto reroute = owner && IsReroute(*owner) ? owner : nullptr;
-        auto canGrow = false, canShrink = false;
-        if (owner)
-        {
-            for (auto& group : owner->m_Groups)
-            {
-                const auto count = GroupCount(group, owner->m_Config);
-                canGrow   = canGrow || count < group.m_Max;
-                canShrink = canShrink || count > group.m_Min;
-            }
-        }
+        auto owner = node ? node : pin ? graph.NodeOf(pin->m_Id) : nullptr;
+        if (auto tab = GrowTabNode(ed::GetHoveredPin()); !owner && tab)
+            owner = graph.FindNode(tab);
+        auto&      blueprint = document.GetBlueprint();
+        const auto reroute   = owner && IsReroute(*owner) ? owner : nullptr;
+        const auto canGrow   = owner && GrowthOf(blueprint, *owner).m_Enabled;
+        const auto canShrink = owner && std::any_of(owner->m_Pins.begin(), owner->m_Pins.end(), [&blueprint, owner](const Pin& candidate) { return static_cast<bool>(RemovalOf(blueprint, *owner, candidate)); });
 
         CanvasActions actions(overCanvas);
         actions.Gesture("Create Link", "Drag Pin to Pin", pin != nullptr);
@@ -2305,7 +2368,7 @@ private:
         actions.Gesture("Edit Value", "Click", pinValue);
         actions.Gesture("Show Node's Problems", "Click Count", owner && (m_Problems.Count(Severity::Error, owner->m_Id) > 0 || m_Problems.Count(Severity::Warning, owner->m_Id) > 0));
         actions.Gesture("Add Pin", "Click +", canGrow);
-        actions.Gesture("Remove Pin", "Click -", canShrink);
+        actions.Gesture("Remove Pin", "Click - Beside It", canShrink);
         actions.Gesture("Choose Type", "Right-Click", pinTyped);
         actions.Gesture("Split or Recombine", "Double-Click", pinSplits);
         actions.Gesture("Open Function", "Double-Click", !pin && CalledFunction(document, node));
@@ -2863,6 +2926,7 @@ private:
     Id                        m_PendingDelete   = 0;     // a function's graph, to delete as the next frame begins
     Id                        m_FollowedNode    = 0;     // the run's next node, as its graph last showed for it
     std::unordered_map<Id, ImRect> m_PinIcons;           // where the shown graph's pins' icons are, as its nodes last drew
+    Id                             m_ControlsNode = 0;   // the node whose pins' + and - show at full
     std::unordered_map<Id, ImRect> m_LastPinIcons;       // the frame before's
     std::unordered_map<Id, ImVec2> m_PinSides;           // sides links meet pins on other than their kind's: reroutes'
     Id                        m_RenamedFunction = 0;     // its graph's ID

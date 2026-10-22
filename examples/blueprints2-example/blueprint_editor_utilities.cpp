@@ -506,6 +506,67 @@ void blueprint_editor_utilities::RetypeSignaturePin(Document& document, Id graph
     });
 }
 
+blueprint_editor_utilities::PinGrowth blueprint_editor_utilities::GrowthOf(const Blueprint& blueprint, const Node& node)
+{
+    PinGrowth growth;
+    if (!node.m_Groups.empty())
+    {
+        auto& group = node.m_Groups.front();
+        growth.m_Direction = group.m_Direction;
+        growth.m_Group     = group.m_Name;
+        growth.m_Enabled   = GroupCount(group, node.m_Config) < group.m_Max;
+    }
+    else if (auto signature = SignatureNodeOf(blueprint, node); signature.m_Function)
+    {
+        growth.m_Direction = signature.m_Entry ? Direction::Output : Direction::Input;
+        growth.m_Function  = signature.m_Function->m_Graph;
+        growth.m_Enabled   = true;
+    }
+    return growth;
+}
+
+void blueprint_editor_utilities::GrowPins(Document& document, Id node, const PinGrowth& growth)
+{
+    if (!growth.m_Group.empty())
+        AddGroupPin(document, node, growth.m_Group);
+    else if (growth.m_Function)
+        AddSignaturePin(document, growth.m_Function, growth.m_Direction == Direction::Output);
+}
+
+blueprint_editor_utilities::PinRemoval blueprint_editor_utilities::RemovalOf(const Blueprint& blueprint, const Node& node, const Pin& pin)
+{
+    PinRemoval removal;
+    int index = -1;
+    if (auto group = FindGroup(node, pin.m_Key, &index))
+    {
+        if (GroupCount(*group, node.m_Config) > group->m_Min)
+        {
+            removal.m_Group = group->m_Name;
+            removal.m_Index = index;
+        }
+        return removal;
+    }
+    auto signature = SignatureNodeOf(blueprint, node);
+    if (!signature.m_Function)
+        return removal;
+    auto& pins = signature.m_Entry ? signature.m_Function->m_Signature.m_Inputs : signature.m_Function->m_Signature.m_Outputs;
+    if (std::any_of(pins.begin(), pins.end(), [&pin](const SignaturePin& other) { return other.m_Key == pin.m_Key; }))
+    {
+        removal.m_Function = signature.m_Function->m_Graph;
+        removal.m_Input    = signature.m_Entry;
+        removal.m_Key      = pin.m_Key;
+    }
+    return removal;
+}
+
+void blueprint_editor_utilities::RemovePin(Document& document, Id node, const PinRemoval& removal)
+{
+    if (removal.m_Index >= 0)
+        RemoveGroupPin(document, node, removal.m_Group, removal.m_Index);
+    else if (removal.m_Function)
+        RemoveSignaturePin(document, removal.m_Function, removal.m_Input, removal.m_Key);
+}
+
 void blueprint_editor_utilities::RemoveSignaturePin(Document& document, Id graph, bool input, std::string key)
 {
     ChangeSignature(document, graph, input ? "Remove Input" : "Remove Output", [input, &key](Signature& changed)
@@ -1079,22 +1140,37 @@ bool blueprint_editor_utilities::SquareButton(const char* label)
     return pressed;
 }
 
-bool blueprint_editor_utilities::GroupButton(const char* id, bool plus, bool enabled)
+void blueprint_editor_utilities::DrawSign(ImDrawList* drawList, ImVec2 min, ImVec2 max, bool plus, bool enabled, bool hot, float squareAlpha, float signAlpha)
 {
-    const auto size = ImGui::GetTextLineHeight();
-    ImGui::BeginDisabled(!enabled);
-    const auto pressed = ImGui::InvisibleButton(id, ImVec2(size, size));
-    ImGui::EndDisabled();
-
-    const auto fill = !enabled ? IM_COL32(37, 38, 43, 255) : ImGui::IsItemActive() ? IM_COL32(76, 79, 88, 255) : ImGui::IsItemHovered() ? IM_COL32(62, 64, 71, 255) : IM_COL32(49, 50, 55, 255);
-    const auto ink  = enabled ? IM_COL32(228, 230, 235, 255) : IM_COL32(100, 102, 107, 255);
-    const auto min  = ImGui::GetItemRectMin(), max = ImGui::GetItemRectMax(), center = (min + max) * 0.5f;
-    const auto arm  = size * 0.3f;
-    auto drawList = ImGui::GetWindowDrawList();
-    drawList->AddRectFilled(min, max, fill, 3.0f);
-    drawList->AddLine(ImVec2(center.x - arm, center.y), ImVec2(center.x + arm, center.y), ink, 1.5f);
+    const auto rect  = ImRect(min, max);
+    auto       faded = [](ImU32 color, float alpha) { return (color & ~IM_COL32_A_MASK) | (static_cast<ImU32>(((color & IM_COL32_A_MASK) >> IM_COL32_A_SHIFT) * alpha + 0.5f) << IM_COL32_A_SHIFT); };
+    const auto fill    = !enabled ? IM_COL32(37, 38, 43, 255) : hot ? IM_COL32(62, 64, 71, 255) : IM_COL32(40, 41, 47, 255);
+    const auto outline = IM_COL32(255, 255, 255, 60);
+    const auto ink     = enabled ? IM_COL32(228, 230, 235, 255) : IM_COL32(100, 102, 107, 255);
+    const auto center  = rect.GetCenter();
+    const auto arm     = rect.GetHeight() * 0.3f;
+    drawList->AddRectFilled(rect.Min, rect.Max, faded(fill, squareAlpha), 3.0f);
+    drawList->AddRect(rect.Min, rect.Max, faded(outline, squareAlpha), 3.0f);
+    drawList->AddLine(ImVec2(center.x - arm, center.y), ImVec2(center.x + arm, center.y), faded(ink, signAlpha), 1.5f);
     if (plus)
-        drawList->AddLine(ImVec2(center.x, center.y - arm), ImVec2(center.x, center.y + arm), ink, 1.5f);
+        drawList->AddLine(ImVec2(center.x, center.y - arm), ImVec2(center.x, center.y + arm), faded(ink, signAlpha), 1.5f);
+}
+
+bool blueprint_editor_utilities::SignButton(const char* id, ImVec2 min, ImVec2 max, bool plus, bool lit, float faint, bool* hovered)
+{
+    // EndGroup() takes in the last item's rectangle (Dear ImGui #7543).
+    const auto last   = GImGui->LastItemData;
+    const auto rect   = ImRect(min, max);
+    const auto itemId = ImGui::GetID(id);
+    bool hover = false, held = false, pressed = false;
+    if (ImGui::ItemAdd(rect, itemId))
+    {
+        pressed = ImGui::ButtonBehavior(rect, itemId, &hover, &held);
+        DrawSign(ImGui::GetWindowDrawList(), min, max, plus, true, hover || held, 1.0f, lit || hover ? 1.0f : faint);
+    }
+    GImGui->LastItemData = last;
+    if (hovered)
+        *hovered = hover;
     return pressed;
 }
 

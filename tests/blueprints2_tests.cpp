@@ -1706,3 +1706,26 @@ TEST_CASE(RerouteDirections, "blueprints2.links_run_through_a_reroute_along_the_
     test::Check(is(RerouteDirection(center, rightBelow, rightAbove), 0.0f, -1.0f) && is(RerouteDirection(center, rightAbove, rightBelow), 0.0f, 1.0f), "turning back at it, they pass through it a quarter turn round, up or down as they go");
     test::Check(is(RerouteDirection(center, right, {}), -1.0f, 0.0f) && is(RerouteDirection(center, {}, above), 0.0f, -1.0f) && is(RerouteDirection(center, {}, {}), 1.0f, 0.0f), "one side linked, they run as from or toward it; unlinked, right");
 }
+
+TEST_CASE(PinGrowths, "blueprints2.a_node_grows_by_a_pin_of_its_group_and_loses_one_over_its_minimum", nullptr, test::TestFlags_None)
+{
+    using namespace blueprint_editor_utilities;
+    test::Session session(UnnamedConfig());
+    OverlayLog    log;
+    Example       example(session);
+    auto& document  = example.m_Document;
+    auto& blueprint = document.GetBlueprint();
+    auto  node      = [&document](Id id) { return document.GetGraph().FindNode(id); };
+    const auto sum  = example.Node("crude.Add");
+
+    const auto growth = GrowthOf(blueprint, *node(sum));
+    test::Check(growth && growth.m_Group == "in" && growth.m_Direction == Direction::Input && growth.m_Enabled, "Add grows by an input of its group");
+    test::Check(!RemovalOf(blueprint, *node(sum), *node(sum)->FindPin("in.0")), "at its minimum of two, it loses none");
+
+    session.Use([&] { GrowPins(document, sum, growth); });
+    const auto third   = node(sum)->FindPin("in.2");
+    const auto removal = third ? RemovalOf(blueprint, *node(sum), *third) : PinRemoval();
+    test::Check(third && removal && removal.m_Index == 2, "grown, it has a third input, which it can lose");
+    session.Use([&] { RemovePin(document, sum, removal); });
+    test::Check(!node(sum)->FindPin("in.2"), "and loses it");
+}
