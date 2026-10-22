@@ -1011,3 +1011,59 @@ TEST_CASE(Comments, "library.a_comment_never_runs_and_keeps_its_text", nullptr, 
             text = found->second.AsString();
     test::Check(text == "Greets", "and a file keeps its text: \"%s\"", text.c_str());
 }
+
+TEST_CASE(Reroutes, "library.a_reroute_passes_its_value_on_of_the_type_its_links_decide", nullptr, test::TestFlags_None)
+{
+    // A String Constant into a reroute, which two Prints read.
+    Fixture f;
+    auto start = f.Add("Start"), print = f.Add("Print"), again = f.Add("Print"), reroute = f.Add("Reroute"), text = f.Constant(Value::String("hi"));
+    f.Link(start, "then", print, "enter");
+    f.Link(print, "then", again, "enter");
+    f.Link(text, "value", reroute, "in");
+    f.Link(reroute, "out", print, "text");
+    f.Link(reroute, "out", again, "text");
+    auto printed = f.Run();
+    test::Check(printed == "hi hi" && f.Type(reroute, "in") == "String" && f.Type(reroute, "out") == "String", "both Prints read it, and it is of String: %s", printed.c_str());
+
+    // Unfed, it gives a warning and its type's default.
+    Fixture unfed;
+    auto first = unfed.Add("Start"), shows = unfed.Add("Print"), alone = unfed.Add("Reroute");
+    unfed.Link(first, "then", shows, "enter");
+    unfed.Link(alone, "out", shows, "text");
+    auto compiled = Compile(unfed.m_Blueprint);
+    auto warned   = std::any_of(compiled.m_Diagnostics.begin(), compiled.m_Diagnostics.end(), [alone](const Diagnostic& diagnostic) { return diagnostic.m_Severity == Severity::Warning && diagnostic.m_Node == alone; });
+    auto empty    = unfed.Run();
+    test::Check(compiled.m_Program && warned && empty.empty(), "unfed, it warns, and passes \"\": \"%s\"", empty.c_str());
+}
+
+TEST_CASE(FlowReroutes, "library.flow_goes_past_flow_reroutes_without_a_step_of_theirs", nullptr, test::TestFlags_None)
+{
+    // Start through two flow reroutes into Print.
+    Fixture f;
+    auto start = f.Add("Start"), first = f.Add("FlowReroute"), second = f.Add("FlowReroute"), print = f.Add("Print");
+    f.Link(start, "then", first, "in");
+    f.Link(first, "out", second, "in");
+    f.Link(second, "out", print, "enter");
+    if (auto set = f.m_Graph.SetValue(f.Pin(print, "text"), Value::String("hi")); !set)
+        test::Check(false, "the text is set: %s", Message(set).c_str());
+    auto printed  = f.Run();
+    auto compiled = Compile(f.m_Blueprint);
+    auto program  = compiled.m_Program;
+    auto target   = -2;
+    if (program)
+        for (auto& pin : program->Nodes()[static_cast<size_t>(program->FindNode(start))].m_Pins)
+            if (pin.m_Key == "then")
+                target = pin.m_Target;
+    test::Check(printed == "hi" && program && target == program->FindNode(print), "Start's flow goes on to Print itself: %s", printed.c_str());
+
+    // A loop of reroutes alone leads nowhere.
+    Fixture loop;
+    auto begin = loop.Add("Start"), a = loop.Add("FlowReroute"), b = loop.Add("FlowReroute");
+    loop.Link(begin, "then", a, "in");
+    loop.Link(a, "out", b, "in");
+    loop.Link(b, "out", a, "in");
+    auto looped = Compile(loop.m_Blueprint);
+    auto named  = looped.m_Diagnostics.empty() ? std::string() : std::string(looped.m_Diagnostics.back().m_Error.Message());
+    test::Check(!looped.m_Program && looped.m_Diagnostics.size() == 1 && looped.m_Diagnostics.back().m_Node == begin && named.find("loop of reroutes") != std::string::npos,
+        "and a loop of reroutes alone is an error, once, where Start's flow enters it: %s", named.c_str());
+}

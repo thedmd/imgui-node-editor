@@ -1452,6 +1452,53 @@ struct WaitSignalNode final : NodeType
     const FlowPin               m_Then   = FlowOutput("then");
 };
 
+// A point links bend around: it passes its value on, of the type its links decide. Without an
+// input link, it passes its type's default, with a warning.
+struct RerouteNode final : NodeType
+{
+    RerouteNode(): NodeType("crude.Reroute", "Reroute", "Layout") {}
+
+    bool IsReroute() const override
+    {
+        return true;
+    }
+
+    void Declare(NodeDeclaration& declaration, const NodeConfig&, const Bindings&) const override
+    {
+        auto T = declaration.Variable("T");
+        declaration.Input("in", "", T, { .m_Default = {}, .m_Requirement = Requirement::Recommended });
+        declaration.Output("out", "", T);
+    }
+
+    Result<void> Evaluate(EvalContext& context) const override
+    {
+        auto value = context.Get("in");
+        if (!value)
+            return value.GetError();
+        context.Set("out", value.GetValue());
+        return {};
+    }
+};
+
+// A point flow links bend around, which a program sends the flow past.
+struct FlowRerouteNode final : NodeType
+{
+    FlowRerouteNode(): NodeType("crude.FlowReroute", "Flow Reroute", "Layout") {}
+
+    bool IsReroute() const override
+    {
+        return true;
+    }
+
+    Result<Exit> Execute(ExecContext&, std::string_view) const override
+    {
+        return Exit::To(m_Out);
+    }
+
+    const FlowPin m_In  = FlowInput("in");
+    const FlowPin m_Out = FlowOutput("out");
+};
+
 // A note over part of a graph, which the editor shows as a group. Its config's "text" says what it
 // notes; without pins, it never runs.
 struct CommentNode final : NodeType
@@ -1594,6 +1641,8 @@ crude_blueprint::Result<void> crude_blueprint::RegisterLibrary(Registry& registr
         std::make_unique<FlipFlopNode>(),
         std::make_unique<DelayNode>(),
         std::make_unique<WaitSignalNode>(),
+        std::make_unique<RerouteNode>(),
+        std::make_unique<FlowRerouteNode>(),
         std::make_unique<CommentNode>(),
     };
     for (auto& type : types)

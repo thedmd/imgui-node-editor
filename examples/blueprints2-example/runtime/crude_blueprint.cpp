@@ -2756,6 +2756,11 @@ bool crude_blueprint::NodeType::IsLatent() const
     return false;
 }
 
+bool crude_blueprint::NodeType::IsReroute() const
+{
+    return false;
+}
+
 int crude_blueprint::Program::FindNode(Id node) const
 {
     for (size_t i = 0; i < m_Nodes.size(); ++i)
@@ -2947,6 +2952,33 @@ crude_blueprint::CompileResult crude_blueprint::Compile(const Blueprint& bluepri
                     compiled.m_Constant = pin.m_Default;
                 else if (!HasParameter(pin.m_DecidedType))
                     compiled.m_Constant = pin.m_DecidedType->m_Head->Default(*pin.m_DecidedType);
+            }
+        }
+    }
+
+    // A flow output leading into flow reroutes goes on past them to the node they lead to, and the
+    // flow ends where they lead nowhere. A loop of reroutes alone is an error where a node's flow
+    // enters it.
+    for (auto& node : program->m_Nodes)
+    {
+        for (auto& pin : node.m_Pins)
+        {
+            if (!pin.m_Flow || pin.m_Direction != Direction::Output)
+                continue;
+            for (size_t steps = 0; pin.m_Target >= 0 && program->m_Nodes[pin.m_Target].m_Type->IsReroute(); ++steps)
+            {
+                auto& reroute = program->m_Nodes[pin.m_Target];
+                auto  out     = std::find_if(reroute.m_Pins.begin(), reroute.m_Pins.end(), [](const ProgramPin& candidate) { return candidate.m_Flow && candidate.m_Direction == Direction::Output; });
+                if (out == reroute.m_Pins.end() || steps > program->m_Nodes.size())
+                {
+                    if (out != reroute.m_Pins.end() && !node.m_Type->IsReroute())
+                        error(Error(BlueprintError::Unsupported, node.m_Name + " leads into a loop of reroutes, which leads nowhere"), node.m_Graph, node.m_Id, pin.m_Id);
+                    pin.m_Target    = -1;
+                    pin.m_TargetPin = -1;
+                    break;
+                }
+                pin.m_Target    = out->m_Target;
+                pin.m_TargetPin = out->m_TargetPin;
             }
         }
     }

@@ -731,6 +731,10 @@ struct NodeType
     // A latent node may suspend its fiber. Other nodes can't.
     virtual bool IsLatent() const;
 
+    // A reroute passes what reaches its input on to its output, and a program sends flow straight
+    // past a flow one. Other nodes aren't reroutes.
+    virtual bool IsReroute() const;
+
     // Makes a node that an older version of this node type saved, as a file holds it, one this
     // version reads. Unsupported unless the node type has it.
     virtual Result<void> Upgrade(crude_json::value& node, uint32_t version) const;
