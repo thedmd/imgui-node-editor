@@ -1449,3 +1449,52 @@ TEST_CASE(SignatureSteps, "blueprints2.a_signature_edit_is_one_undo_step_and_non
     session.Use([&] { blueprint_editor_utilities::RemoveSignaturePin(document, graph, true, "x"); });
     test::Check(signature().m_Inputs.empty() && steps() == before + 8, "and a removed input is one step");
 }
+
+TEST_CASE(RightClicksPastMenus, "blueprints2.a_right_click_outside_a_menu_closes_it_and_opens_the_menu_it_is_over", nullptr, test::TestFlags_None)
+{
+    // A node whose right-click opens a menu, as the example's do, and the canvas's own menu.
+    test::Session session(UnnamedConfig());
+    session.BeforeHost = [] { blueprint_editor_utilities::ClosePopupsOnClickOutside(); };
+    ImVec2 node;
+    int    nodeMenus = 0, backgroundMenus = 0;
+    bool   shown = false;
+    session.DefaultContent = [&](int frame)
+    {
+        if (frame == 0)
+            ed::SetNodePosition(1, ImVec2(100.0f, 100.0f));
+        ed::BeginNode(1);
+        ImGui::TextUnformatted("Node");
+        ed::EndNode();
+        node = ed::CanvasToScreen(ed::GetNodePosition(1) + ImVec2(10.0f, 10.0f));
+        ed::NodeId id;
+        const auto nodeMenu = ed::ShowNodeContextMenu(&id);
+        backgroundMenus += ed::ShowBackgroundContextMenu() ? 1 : 0;
+        ed::Suspend();
+        if (nodeMenu)
+        {
+            ++nodeMenus;
+            ImGui::OpenPopup("##node-menu");
+        }
+        shown = ImGui::BeginPopup("##node-menu");
+        if (shown)
+        {
+            ImGui::TextUnformatted("Menu");
+            ImGui::EndPopup();
+        }
+        ed::Resume();
+    };
+    session.Run(3);
+    session.Click(node, 1);
+    test::Check(nodeMenus == 1 && shown, "a right-click on the node opens its menu");
+
+    // A hand's click moves the mouse a little.
+    test::MouseMove(ImVec2(700.0f, 500.0f));
+    session.Run(2);
+    test::MouseButton(1, true);
+    session.Run(2);
+    test::MouseMove(ImVec2(702.0f, 499.0f));
+    session.Run(2);
+    test::MouseButton(1, false);
+    session.Run(2);
+    test::Check(!shown && backgroundMenus == 1, "a right-click on the canvas that moves 2 px closes it and opens the canvas's: %d", backgroundMenus);
+}
