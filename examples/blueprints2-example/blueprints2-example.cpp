@@ -1,6 +1,7 @@
 # define IMGUI_DEFINE_MATH_OPERATORS
 # include <application.h>
 # include <imgui_internal.h>
+# include <splitter.h>
 # include <tinyfiledialogs.h>
 
 # include "crude_logger.h"
@@ -194,8 +195,10 @@ struct BlueprintEditorExample
         auto& editor = m_Editors[graph];
         if (!editor)
         {
+            // The panels' bar covers or uncovers the canvas's bottom, and leaves the graph where it is.
             ed::Config config;
-            config.SettingsName = nullptr;
+            config.SettingsName   = nullptr;
+            config.CanvasSizeMode = ed::CanvasSizeMode::KeepTopLeft;
             editor = ed::CreateEditor(&config);
 
             // Nodes draw their own fills, borders and rings, on their cut outlines. The editor
@@ -408,9 +411,20 @@ struct BlueprintEditorExample
         {
             ShowGraphTabs(*m_Document);
 
+            // The panels keep their height as the window's changes, and the bar above them moves it.
             auto& style  = ImGui::GetStyle();
-            auto  strip  = m_ShowPanels ? ImGui::GetTextLineHeightWithSpacing() * 5.0f + ImGui::GetFrameHeightWithSpacing() + style.WindowPadding.y * 2.0f : 0.0f;
-            auto  canvas = ImGui::GetContentRegionAvail().y - (m_ShowPanels ? strip + style.ItemSpacing.y : 0.0f);
+            auto  canvas = ImGui::GetContentRegionAvail().y;
+            auto  panels = 0.0f;
+            if (m_ShowPanels)
+            {
+                const auto least = ImGui::GetFrameHeightWithSpacing() + ImGui::GetTextLineHeightWithSpacing() + style.WindowPadding.y * 2.0f;
+                if (m_PanelsHeight <= 0.0f)
+                    m_PanelsHeight = least + ImGui::GetTextLineHeightWithSpacing() * 4.0f;
+                panels = ImClamp(m_PanelsHeight, least, ImMax(least, canvas - style.ItemSpacing.y - least));
+                canvas -= panels + style.ItemSpacing.y;
+                Splitter(false, style.ItemSpacing.y, &canvas, &panels, least, least);
+                m_PanelsHeight = panels;
+            }
             ed::Begin("###main_editor", ImVec2(0.0f, ImMax(canvas, 1.0f)));
 
             CommitBlueprintNodes(*m_Document);
@@ -433,7 +447,7 @@ struct BlueprintEditorExample
             ShowBubbles(*m_Document, canvasMin, canvasMax);
             DeclareActions(*m_Document, canvasMin, canvasMax);
             if (m_ShowPanels)
-                ShowPanels(*m_Document, ImVec2(canvasMin.x, canvasMax.y + style.ItemSpacing.y), ImVec2(canvasMax.x - canvasMin.x, strip));
+                ShowPanels(*m_Document, ImVec2(canvasMin.x, canvasMax.y + style.ItemSpacing.y), ImVec2(canvasMax.x - canvasMin.x, panels));
 
             RecordEdits(*m_Document);
         }
@@ -2466,6 +2480,7 @@ private:
     std::optional<LinkQuery>  m_LinkQuery;
     bool                      m_ShowActions  = true;
     bool                      m_ShowPanels   = true;
+    float                     m_PanelsHeight = 0.0f;   // as the bar above the panels left it; 0 until they first show
     std::string               m_PanelRequest;          // the panel to choose as the panels show next
     size_t                    m_ProblemIndex = SIZE_MAX; // the problem chosen last
 
