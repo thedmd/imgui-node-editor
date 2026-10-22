@@ -530,8 +530,8 @@ private:
         m_Edit_Copy.SetEnabled(hasDocument && false);
         m_Edit_Paste.SetEnabled(hasDocument && false);
         m_Edit_Duplicate.SetEnabled(hasDocument && false);
-        m_Edit_Delete.SetEnabled(hasDocument && false);
-        m_Edit_SelectAll.SetEnabled(hasDocument && false);
+        m_Edit_Delete.SetEnabled(hasDocument && ed::GetSelectedObjectCount() > 0);
+        m_Edit_SelectAll.SetEnabled(hasDocument && !m_Document->GetGraph().Nodes().empty());
 
         m_View_NavigateBackward.SetEnabled(hasDocument && m_HistoryIndex > 0);
         m_View_NavigateForward.SetEnabled(hasDocument && m_HistoryIndex + 1 < m_History.size());
@@ -552,10 +552,10 @@ private:
     }
 
     // The keys of the actions in the File and Edit menus; a field typed in keeps its own. The
-    // canvas's actions take theirs with their hints.
+    // canvas's actions take theirs with their hints, and the editor takes Delete.
     void PressShortcuts()
     {
-        for (auto action : { &m_File_New, &m_File_Open, &m_File_SaveAs, &m_File_Save, &m_Edit_Undo, &m_Edit_Redo })
+        for (auto action : { &m_File_New, &m_File_Open, &m_File_SaveAs, &m_File_Save, &m_Edit_Undo, &m_Edit_Redo, &m_Edit_SelectAll })
             if (action->IsEnabled() && ImGui::Shortcut(action->GetShortcut(), ImGuiInputFlags_RouteGlobal))
                 action->Execute();
     }
@@ -2372,12 +2372,19 @@ private:
     {
     }
 
+    // As the Delete key deletes them.
     void Edit_Delete()
     {
+        for (auto node : GetSelectedNodes())
+            ed::DeleteNode(node);
+        for (auto link : GetSelectedLinks())
+            ed::DeleteLink(link);
     }
 
     void Edit_SelectAll()
     {
+        for (auto& node : m_Document->GetGraph().Nodes())
+            ed::SelectNode(node.m_Id, true);
     }
 
     void View_NavigateBackward()
@@ -2550,8 +2557,8 @@ private:
     Action m_Edit_Copy       = { "Copy",         [this] { Edit_Copy();      } };
     Action m_Edit_Paste      = { "Paste",        [this] { Edit_Paste();     } };
     Action m_Edit_Duplicate  = { "Duplicate",    [this] { Edit_Duplicate(); } };
-    Action m_Edit_Delete     = { "Delete",       [this] { Edit_Delete();    } };
-    Action m_Edit_SelectAll  = { "Select All",   [this] { Edit_SelectAll(); } };
+    Action m_Edit_Delete     = { "Delete",       ImGuiKey_Delete,            [this] { Edit_Delete();    } };
+    Action m_Edit_SelectAll  = { "Select All",   ImGuiMod_Ctrl | ImGuiKey_A, [this] { Edit_SelectAll(); } };
 
     Action m_View_NavigateBackward = { "Navigate Backward",         ImGuiMod_Alt | ImGuiKey_LeftArrow,           [this] { View_NavigateBackward(); } };
     Action m_View_NavigateForward  = { "Navigate Forward",          ImGuiMod_Alt | ImGuiKey_RightArrow,          [this] { View_NavigateForward();  } };
