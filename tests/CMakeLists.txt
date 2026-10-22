@@ -150,6 +150,11 @@ if (IMGUI_NODE_EDITOR_TESTS_BLUEPRINTS2)
     target_include_directories(blueprints2_for_tests PUBLIC ${_Blueprints2Dir})
     target_link_libraries(blueprints2_for_tests PUBLIC blueprints2_runtime)
 
+    # The names of the icons the example's nodes show, without the font, which the tests don't draw.
+    list(APPEND CMAKE_MODULE_PATH ${IMGUI_NODE_EDITOR_ROOT_DIR}/examples/cmake)
+    find_package(FontAwesome REQUIRED)
+    target_link_libraries(blueprints2_for_tests PUBLIC FontAwesome)
+
     set(_RuntimeTestSources
         blueprints2_context_tests.cpp
         blueprints2_core_tests.cpp

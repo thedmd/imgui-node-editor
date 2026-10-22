@@ -35,6 +35,9 @@ std::string AllowedText(const VariableDeclaration& parameter); // "Int32, Float"
 // fiber teal, a function's entry and returns violet, its calls blue, Print and Assert amber, other
 // pure nodes green, and the rest slate.
 ImVec4   HeaderColor(const Blueprint& blueprint, const Node& node);
+// What a node is, by Font Awesome's icon before its title: its own, or its category's; null for
+// none, as for Layout's.
+const char* NodeIcon(const Blueprint& blueprint, const Node& node);
 
 // What an input without a link reads: the value the user typed, the default its node declares,
 // or its type's. None while its type is undecided.

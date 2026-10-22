@@ -4,6 +4,7 @@
 # include "crude_logger.h"
 # include <imgui_internal.h>
 # include "imgui_extras.h"
+# include <IconsFontAwesome7.h>
 # include <algorithm>
 # include <cmath>
 # include <cstdint>
@@ -52,6 +53,60 @@ ImVec4 blueprint_editor_utilities::HeaderColor(const Blueprint& blueprint, const
     if (std::none_of(node.m_Pins.begin(), node.m_Pins.end(), [](const Pin& pin) { return pin.m_Flow; }))
         return rgb(0x3C8A52);
     return rgb(0x5A6270);
+}
+
+const char* blueprint_editor_utilities::NodeIcon(const Blueprint& blueprint, const Node& node)
+{
+    static const std::pair<std::string_view, const char*> c_Types[] =
+    {
+        { "crude.Print",        ICON_FA_TERMINAL     },
+        { "crude.Assert",       ICON_FA_CIRCLE_CHECK },
+        { "crude.Branch",       ICON_FA_CODE_BRANCH  },
+        { "crude.Sequence",     ICON_FA_LIST_OL      },
+        { "crude.ForLoop",      ICON_FA_REPEAT       },
+        { "crude.ForEach",      ICON_FA_REPEAT       },
+        { "crude.ForEachEntry", ICON_FA_REPEAT       },
+        { "crude.WhileLoop",    ICON_FA_REPEAT       },
+        { "crude.SwitchOnInt",  ICON_FA_SHUFFLE      },
+        { "crude.SwitchOnType", ICON_FA_SHUFFLE      },
+        { "crude.DoOnce",       ICON_FA_1            },
+        { "crude.DoN",          ICON_FA_HASHTAG      },
+        { "crude.Gate",         ICON_FA_DOOR_OPEN    },
+        { "crude.FlipFlop",     ICON_FA_TOGGLE_ON    },
+        { "crude.Delay",        ICON_FA_STOPWATCH    },
+        { "crude.WaitSignal",   ICON_FA_BELL         },
+        { "crude.Random",       ICON_FA_DICE         },
+        { "crude.Select",       ICON_FA_FILTER       },
+    };
+    static const std::pair<std::string_view, const char*> c_Categories[] =
+    {
+        { "Flow",       ICON_FA_DIAGRAM_PROJECT    },
+        { "Math",       ICON_FA_CALCULATOR         },
+        { "Logic",      ICON_FA_CIRCLE_HALF_STROKE },
+        { "Text",       ICON_FA_FONT               },
+        { "Arrays",     ICON_FA_LIST               },
+        { "Maps",       ICON_FA_TABLE_LIST         },
+        { "Structs",    ICON_FA_CUBES              },
+        { "Values",     ICON_FA_CUBE               },
+        { "Variables",  ICON_FA_DATABASE           },
+        { "Coroutines", ICON_FA_HOURGLASS_HALF     },
+        { "Debugging",  ICON_FA_BUG                },
+    };
+
+    auto& type = *node.m_Type;
+    if (!type.EventName(node.m_Config).empty())
+        return ICON_FA_BOLT;
+    if (blueprint.FunctionOf(type))
+        return type.m_Name.starts_with("entry:") ? ICON_FA_RIGHT_TO_BRACKET : type.m_Name.starts_with("return:") ? ICON_FA_RIGHT_FROM_BRACKET : ICON_FA_FLORIN_SIGN;
+    if (type.m_Name.starts_with("set:"))
+        return ICON_FA_PEN_TO_SQUARE;
+    for (auto& [name, icon] : c_Types)
+        if (type.m_Name == name)
+            return icon;
+    for (auto& [category, icon] : c_Categories)
+        if (type.m_Category == category)
+            return icon;
+    return nullptr;
 }
 
 // Arrays take their items' colors, and maps their values'. Other types without a color of their

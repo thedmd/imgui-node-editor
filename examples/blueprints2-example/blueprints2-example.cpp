@@ -3,6 +3,7 @@
 # include <imgui_internal.h>
 # include <splitter.h>
 # include <tinyfiledialogs.h>
+# include <IconsFontAwesome7.h>
 
 # include "crude_logger.h"
 # include "crude_blueprint.h"
@@ -120,12 +121,13 @@ struct Action
     using OnTriggeredEvent  = Event<>;
 
     Action() = default;
-    Action(std::string_view name, OnTriggeredEvent::Delegate delegate = {});
-    Action(std::string_view name, ImGuiKeyChord shortcut, OnTriggeredEvent::Delegate delegate);
+    Action(const char* icon, std::string_view name, OnTriggeredEvent::Delegate delegate = {});
+    Action(const char* icon, std::string_view name, ImGuiKeyChord shortcut, OnTriggeredEvent::Delegate delegate);
 
     void SetName(std::string_view name);
     const std::string& GetName() const;
 
+    const char*   GetIcon() const;     // Font Awesome's, before the name in menus
     ImGuiKeyChord GetShortcut() const; // shown wherever the action is; ImGuiKey_None for none
 
     void SetEnabled(bool set);
@@ -137,18 +139,20 @@ struct Action
     OnTriggeredEvent    OnTriggered;
 
 private:
+    const char*   m_Icon = nullptr;
     std::string   m_Name;
     ImGuiKeyChord m_Shortcut  = ImGuiKey_None;
     bool          m_IsEnabled = true;
 };
 
-Action::Action(std::string_view name, OnTriggeredEvent::Delegate delegate)
-    : Action(name, ImGuiKey_None, std::move(delegate))
+Action::Action(const char* icon, std::string_view name, OnTriggeredEvent::Delegate delegate)
+    : Action(icon, name, ImGuiKey_None, std::move(delegate))
 {
 }
 
-Action::Action(std::string_view name, ImGuiKeyChord shortcut, OnTriggeredEvent::Delegate delegate)
-    : m_Name(name)
+Action::Action(const char* icon, std::string_view name, ImGuiKeyChord shortcut, OnTriggeredEvent::Delegate delegate)
+    : m_Icon(icon)
+    , m_Name(name)
     , m_Shortcut(shortcut)
 {
     if (delegate)
@@ -168,6 +172,11 @@ void Action::SetName(std::string_view name)
 const std::string& Action::GetName() const
 {
     return m_Name;
+}
+
+const char* Action::GetIcon() const
+{
+    return m_Icon;
 }
 
 ImGuiKeyChord Action::GetShortcut() const
@@ -565,13 +574,19 @@ private:
 
     void ShowMainMenu()
     {
+        // A menu's icons stand in a column of their own, before the labels.
         auto menuAction = [](Action& action)
         {
             const auto shortcut = action.GetShortcut() != ImGuiKey_None ? ImGui::GetKeyChordName(action.GetShortcut()) : nullptr;
-            if (ImGui::MenuItem(action.GetName().c_str(), shortcut, nullptr, action.IsEnabled()))
+            if (ImGui::MenuItemEx(action.GetName().c_str(), action.GetIcon(), shortcut, false, action.IsEnabled()))
             {
                 action.Execute();
             }
+        };
+        auto menuToggle = [](const char* icon, const char* label, bool& value, bool enabled = true)
+        {
+            if (ImGui::MenuItemEx(label, icon, nullptr, value, enabled))
+                value = !value;
         };
 
         if (ImGui::BeginMenuBar())
@@ -583,7 +598,7 @@ private:
                 menuAction(m_File_New);
                 ImGui::Separator();
                 menuAction(m_File_Open);
-                if (ImGui::BeginMenu("Open Recent", !mostRecentlyOpenFiles.GetList().empty()))
+                if (ImGui::BeginMenuEx("Open Recent", ICON_FA_CLOCK_ROTATE_LEFT, !mostRecentlyOpenFiles.GetList().empty()))
                 {
                     // Opening a file moves it to the front of the list.
                     std::string clickedPath;
@@ -591,7 +606,7 @@ private:
                         if (ImGui::MenuItem(entry.c_str()))
                             clickedPath = entry;
                     ImGui::Separator();
-                    if (ImGui::MenuItem("Clear Recently Opened"))
+                    if (ImGui::MenuItemEx("Clear Recently Opened", ICON_FA_BROOM))
                         mostRecentlyOpenFiles.Clear();
                     ImGui::EndMenu();
 
@@ -634,9 +649,9 @@ private:
                 menuAction(m_View_PreviousProblem);
                 menuAction(m_View_ToggleProblems);
                 ImGui::Separator();
-                ImGui::MenuItem("Show Actions", nullptr, &m_ShowActions);
-                ImGui::MenuItem("Show Disabled Actions", nullptr, &m_ShowDisabledActions, m_ShowActions);
-                ImGui::MenuItem("Show Panels", nullptr, &m_ShowPanels);
+                menuToggle(ICON_FA_KEYBOARD, "Show Actions", m_ShowActions);
+                menuToggle(ICON_FA_EYE_SLASH, "Show Disabled Actions", m_ShowDisabledActions, m_ShowActions);
+                menuToggle(ICON_FA_TABLE_COLUMNS, "Show Panels", m_ShowPanels);
 
                 ImGui::EndMenu();
             }
@@ -1207,6 +1222,11 @@ private:
                 look.m_Band = ImGui::GetColorU32(HeaderColor(document.GetBlueprint(), node));
                 ImGui::BeginGroup();
                 ImGui::PushFont(HeaderFont(), HeaderFont()->LegacySize);
+                if (auto icon = NodeIcon(document.GetBlueprint(), node))
+                {
+                    ImGui::TextUnformatted(icon);
+                    ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
+                }
                 ImGui::TextUnformatted(title.data(), title.data() + title.size());
                 ImGui::PopFont();
                 look.m_TitleRight = ImGui::GetItemRectMax().x;
@@ -3100,36 +3120,36 @@ private:
     LinkContextMenu  m_LinkContextMenu;
     LinkDropMenu     m_LinkDropMenu;
 
-    Action m_File_New        = { "New",          ImGuiMod_Ctrl | ImGuiKey_N,                  [this] { File_New();    } };
-    Action m_File_Open       = { "Open...",      ImGuiMod_Ctrl | ImGuiKey_O,                  [this] { File_Open();   } };
-    Action m_File_SaveAs     = { "Save As...",   ImGuiMod_Ctrl | ImGuiMod_Shift | ImGuiKey_S, [this] { File_SaveAs(); } };
-    Action m_File_Save       = { "Save",         ImGuiMod_Ctrl | ImGuiKey_S,                  [this] { File_Save();   } };
-    Action m_File_Close      = { "Close",        [this] { File_Close();  } };
-    Action m_File_Exit       = { "Exit",         [this] { File_Exit();   } };
+    Action m_File_New        = { ICON_FA_FILE,        "New",          ImGuiMod_Ctrl | ImGuiKey_N,                  [this] { File_New();    } };
+    Action m_File_Open       = { ICON_FA_FOLDER_OPEN, "Open...",      ImGuiMod_Ctrl | ImGuiKey_O,                  [this] { File_Open();   } };
+    Action m_File_SaveAs     = { ICON_FA_FILE_EXPORT, "Save As...",   ImGuiMod_Ctrl | ImGuiMod_Shift | ImGuiKey_S, [this] { File_SaveAs(); } };
+    Action m_File_Save       = { ICON_FA_FLOPPY_DISK, "Save",         ImGuiMod_Ctrl | ImGuiKey_S,                  [this] { File_Save();   } };
+    Action m_File_Close      = { ICON_FA_XMARK,       "Close",        [this] { File_Close();  } };
+    Action m_File_Exit       = { ICON_FA_POWER_OFF,   "Exit",         [this] { File_Exit();   } };
 
-    Action m_Edit_Undo       = { "Undo",         ImGuiMod_Ctrl | ImGuiKey_Z, [this] { Edit_Undo();      } };
-    Action m_Edit_Redo       = { "Redo",         ImGuiMod_Ctrl | ImGuiKey_Y, [this] { Edit_Redo();      } };
-    Action m_Edit_Cut        = { "Cut",          [this] { Edit_Cut();       } };
-    Action m_Edit_Copy       = { "Copy",         [this] { Edit_Copy();      } };
-    Action m_Edit_Paste      = { "Paste",        [this] { Edit_Paste();     } };
-    Action m_Edit_Duplicate  = { "Duplicate",    [this] { Edit_Duplicate(); } };
-    Action m_Edit_Delete     = { "Delete",       ImGuiKey_Delete,            [this] { Edit_Delete();    } };
-    Action m_Edit_SelectAll  = { "Select All",   ImGuiMod_Ctrl | ImGuiKey_A, [this] { Edit_SelectAll(); } };
+    Action m_Edit_Undo       = { ICON_FA_ROTATE_LEFT,  "Undo",         ImGuiMod_Ctrl | ImGuiKey_Z, [this] { Edit_Undo();      } };
+    Action m_Edit_Redo       = { ICON_FA_ROTATE_RIGHT, "Redo",         ImGuiMod_Ctrl | ImGuiKey_Y, [this] { Edit_Redo();      } };
+    Action m_Edit_Cut        = { ICON_FA_SCISSORS,     "Cut",          [this] { Edit_Cut();       } };
+    Action m_Edit_Copy       = { ICON_FA_COPY,         "Copy",         [this] { Edit_Copy();      } };
+    Action m_Edit_Paste      = { ICON_FA_PASTE,        "Paste",        [this] { Edit_Paste();     } };
+    Action m_Edit_Duplicate  = { ICON_FA_CLONE,        "Duplicate",    [this] { Edit_Duplicate(); } };
+    Action m_Edit_Delete     = { ICON_FA_TRASH,        "Delete",       ImGuiKey_Delete,            [this] { Edit_Delete();    } };
+    Action m_Edit_SelectAll  = { ICON_FA_OBJECT_GROUP, "Select All",   ImGuiMod_Ctrl | ImGuiKey_A, [this] { Edit_SelectAll(); } };
 
-    Action m_View_NavigateBackward = { "Navigate Backward",         ImGuiMod_Alt | ImGuiKey_LeftArrow,           [this] { View_NavigateBackward(); } };
-    Action m_View_NavigateForward  = { "Navigate Forward",          ImGuiMod_Alt | ImGuiKey_RightArrow,          [this] { View_NavigateForward();  } };
-    Action m_View_NextProblem      = { "Next Problem",              ImGuiKey_F8,                                 [this] { View_GoToProblem(true);  } };
-    Action m_View_PreviousProblem  = { "Previous Problem",          ImGuiMod_Shift | ImGuiKey_F8,                [this] { View_GoToProblem(false); } };
-    Action m_View_ToggleProblems   = { "Show or Hide All Problems", ImGuiMod_Ctrl | ImGuiMod_Shift | ImGuiKey_D, [this] { ToggleBubbles();          } };
+    Action m_View_NavigateBackward = { ICON_FA_ARROW_LEFT,           "Navigate Backward",         ImGuiMod_Alt | ImGuiKey_LeftArrow,           [this] { View_NavigateBackward(); } };
+    Action m_View_NavigateForward  = { ICON_FA_ARROW_RIGHT,          "Navigate Forward",          ImGuiMod_Alt | ImGuiKey_RightArrow,          [this] { View_NavigateForward();  } };
+    Action m_View_NextProblem      = { ICON_FA_ARROW_DOWN,           "Next Problem",              ImGuiKey_F8,                                 [this] { View_GoToProblem(true);  } };
+    Action m_View_PreviousProblem  = { ICON_FA_ARROW_UP,             "Previous Problem",          ImGuiMod_Shift | ImGuiKey_F8,                [this] { View_GoToProblem(false); } };
+    Action m_View_ToggleProblems   = { ICON_FA_TRIANGLE_EXCLAMATION, "Show or Hide All Problems", ImGuiMod_Ctrl | ImGuiMod_Shift | ImGuiKey_D, [this] { ToggleBubbles();          } };
 
-    Action m_Blueprint_Start = { "Start",        [this] { Blueprint_Start(); } };
-    Action m_Blueprint_Step  = { "Step",         ImGuiKey_F10,                 [this] { Blueprint_Step();  } };
-    Action m_Blueprint_Stop  = { "Stop",         ImGuiMod_Shift | ImGuiKey_F5, [this] { Blueprint_Stop();  } };
-    Action m_Blueprint_Run   = { "Run",          ImGuiKey_F5,                  [this] { Blueprint_Run();   } };
-    Action m_Blueprint_ToggleBreakpoint = { "Toggle Breakpoint", ImGuiKey_F9, [this] { Blueprint_ToggleBreakpoint(); } };
-    Action m_Blueprint_AddFunction = { "Add Function", [this] { Blueprint_AddFunction(); } };
-    Action m_Blueprint_RemoveOrphans = { "Remove All Orphaned Pins", [this] { RemoveOrphans(*m_Document, 0); } };
-    Action m_Blueprint_AddVariable = { "Add Variable", [this] { AddVariable(*m_Document); } };
+    Action m_Blueprint_Start = { ICON_FA_CIRCLE_PLAY,  "Start",        [this] { Blueprint_Start(); } };
+    Action m_Blueprint_Step  = { ICON_FA_FORWARD_STEP, "Step",         ImGuiKey_F10,                 [this] { Blueprint_Step();  } };
+    Action m_Blueprint_Stop  = { ICON_FA_STOP,         "Stop",         ImGuiMod_Shift | ImGuiKey_F5, [this] { Blueprint_Stop();  } };
+    Action m_Blueprint_Run   = { ICON_FA_PLAY,         "Run",          ImGuiKey_F5,                  [this] { Blueprint_Run();   } };
+    Action m_Blueprint_ToggleBreakpoint = { ICON_FA_CIRCLE_DOT, "Toggle Breakpoint", ImGuiKey_F9, [this] { Blueprint_ToggleBreakpoint(); } };
+    Action m_Blueprint_AddFunction = { ICON_FA_FLORIN_SIGN, "Add Function", [this] { Blueprint_AddFunction(); } };
+    Action m_Blueprint_RemoveOrphans = { ICON_FA_LINK_SLASH, "Remove All Orphaned Pins", [this] { RemoveOrphans(*m_Document, 0); } };
+    Action m_Blueprint_AddVariable = { ICON_FA_DATABASE, "Add Variable", [this] { AddVariable(*m_Document); } };
 };
 
 
