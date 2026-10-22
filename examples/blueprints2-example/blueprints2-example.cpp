@@ -758,39 +758,96 @@ private:
         ed::EndGroupHint();
     }
 
+    // Where a link meets a pin on the canvas, as the editor last placed it: a reroute's center, the
+    // center of the pin's icon as the nodes last drew, or the middle of its node's edge on the pin's
+    // side; none for a node not placed.
+    std::optional<ImVec2> LinkEnd(const Graph& graph, Id pin) const
+    {
+        auto owner = graph.NodeOf(pin);
+        auto found = graph.FindPin(pin);
+        const auto position = owner ? ed::GetNodePosition(owner->m_Id) : ImVec2(FLT_MAX, FLT_MAX);
+        if (!found || position.x == FLT_MAX)
+            return std::nullopt;
+        if (IsReroute(*owner))
+            return position + ImVec2(RerouteSize(), RerouteSize()) * 0.5f;
+        if (auto icon = m_LastPinIcons.find(pin); icon != m_LastPinIcons.end())
+            return icon->second.GetCenter();
+        const auto size = ed::GetNodeSize(owner->m_Id);
+        return position + ImVec2(found->m_Direction == Direction::Output ? size.x : 0.0f, size.y * 0.5f);
+    }
+
+    // The side of its icon links meet a pin on: an input's left, an output's right, a reroute's the
+    // ones it was last drawn with.
+    ImVec2 PinSide(const Pin& pin) const
+    {
+        auto side = m_PinSides.find(pin.m_Id);
+        return side != m_PinSides.end() ? side->second : ImVec2(pin.m_Direction == Direction::Input ? -1.0f : 1.0f, 0.0f);
+    }
+
     // A reroute is a disc of its type's color, filled while linked, with a cast's two colors or a
-    // disabled link's slash as a pin's icon has them. Its left half takes the link in, its right half
-    // gives links out, and the rim around it moves it, as Ctrl+drag does anywhere on it. Links meet at
-    // its center.
-    void ShowReroute(const Node& node, const std::unordered_set<Id>& linked, const std::unordered_set<Id>& disabled, const std::unordered_map<Id, ImVec4>& castFrom)
+    // disabled link's slash as a pin's icon has them. Links run through its center the way
+    // RerouteDirection() gives: of its square, the quarter they come in on is its input, the one
+    // they go out on its output, and the two across the way move it, as Ctrl+drag does anywhere on it.
+    void ShowReroute(const Graph& graph, const Node& node, const std::unordered_set<Id>& linked, const std::unordered_set<Id>& disabled, const std::unordered_map<Id, ImVec4>& castFrom)
     {
         auto in  = node.FindPin("in");
         auto out = node.FindPin("out");
         if (!in || !out)
             return;
         const auto size   = RerouteSize();
-        const auto radius = size * 0.25f; // a rim as wide around it to move the node by
-        const auto moving = ImGui::GetIO().KeyCtrl;
+        const auto radius = size * 0.25f;
+
+        std::vector<ImVec2> sources, targets;
+        for (auto& link : graph.Links())
+        {
+            if (auto end = link.m_To == in->m_Id ? LinkEnd(graph, link.m_From) : std::nullopt)
+                sources.push_back(*end);
+            if (auto end = link.m_From == out->m_Id ? LinkEnd(graph, link.m_To) : std::nullopt)
+                targets.push_back(*end);
+        }
+        const auto position = ed::GetNodePosition(node.m_Id);
+        const auto way      = position.x != FLT_MAX ? RerouteDirection(position + ImVec2(size, size) * 0.5f, sources, targets) : ImVec2(1.0f, 0.0f);
+        m_PinSides[in->m_Id]  = -way;
+        m_PinSides[out->m_Id] = way;
 
         ed::PushStyleVar(ed::StyleVar_NodePadding, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
+        ed::PushStyleVar(ed::StyleVar_SourceDirection, way);
+        ed::PushStyleVar(ed::StyleVar_TargetDirection, -way);
         ed::BeginNode(node.m_Id);
         ImGui::Dummy(ImVec2(size, size));
         const auto center = ImGui::GetItemRectMin() + ImVec2(size, size) * 0.5f;
 
+        // The editor hit-tests a pin by its rectangle, which a quarter isn't: while the mouse is in a
+        // quarter across the way, or Ctrl is down, the pins have none, and the node takes the mouse.
+        // While a button is down from an earlier frame, they keep their halves, so a link dragged
+        // from one stays alive.
+        const auto offset = ImGui::GetMousePos() - center;
+        const auto inside = ImFabs(offset.x) <= size * 0.5f && ImFabs(offset.y) <= size * 0.5f;
+        const auto across = way.x != 0.0f ? ImFabs(offset.y) >= ImFabs(offset.x) : ImFabs(offset.x) >= ImFabs(offset.y);
+        auto held = false;
+        for (int button = 0; button < ImGuiMouseButton_COUNT; ++button)
+            held = held || (ImGui::IsMouseDown(button) && !ImGui::IsMouseClicked(button));
+        const auto grip = !held && ((inside && across) || ImGui::GetIO().KeyCtrl);
+        if (grip && inside && ed::GetHoveredNode() == ed::NodeId(node.m_Id))
+            ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeAll);
+
         // The pins' own items, empty, go in the node's corner, which keeps the node square.
         ImGui::SetCursorScreenPos(ImGui::GetItemRectMin());
-        auto half = [&](const Pin& pin, ed::PinKind kind, ImVec2 min, ImVec2 max)
+        auto half = [&](const Pin& pin, ed::PinKind kind, ImVec2 side)
         {
+            const auto extent = size * 0.5f;
+            const auto min    = center + ImVec2(side.x > 0.0f ? 0.0f : -extent, side.y > 0.0f ? 0.0f : -extent);
+            const auto max    = center + ImVec2(side.x < 0.0f ? 0.0f : extent, side.y < 0.0f ? 0.0f : extent);
             ed::BeginPin(pin.m_Id, kind);
-            ed::PinRect(min, moving ? min : max);
+            ed::PinRect(min, grip ? min : max);
             ed::PinPivotRect(center, center);
             ed::EndPin();
             m_PinIcons[pin.m_Id] = ImRect(center - ImVec2(radius, radius), center + ImVec2(radius, radius));
         };
-        half(*in, ed::PinKind::Input, center - ImVec2(radius, radius), center + ImVec2(0.0f, radius));
-        half(*out, ed::PinKind::Output, center - ImVec2(0.0f, radius), center + ImVec2(radius, radius));
+        half(*in, ed::PinKind::Input, -way);
+        half(*out, ed::PinKind::Output, way);
         ed::EndNode();
-        ed::PopStyleVar();
+        ed::PopStyleVar(3);
 
         auto drawList = ed::GetNodeBackgroundDrawList(node.m_Id);
         if (!drawList)
@@ -806,9 +863,10 @@ private:
             drawList->AddCircle(center, radius + 3.0f, IM_COL32(255, 255, 255, 80), 0, 1.5f);
         if (auto cast = castFrom.find(in->m_Id); cast != castFrom.end())
         {
-            drawList->PathArcTo(center, radius, IM_PI * 0.5f, IM_PI * 1.5f);
+            const auto inside = ImAtan2(-way.y, -way.x) - IM_PI * 0.5f; // where the half the link comes in on starts
+            drawList->PathArcTo(center, radius, inside, inside + IM_PI);
             drawList->PathFillConvex(ImGui::GetColorU32(cast->second));
-            drawList->PathArcTo(center, radius, -IM_PI * 0.5f, IM_PI * 0.5f);
+            drawList->PathArcTo(center, radius, inside + IM_PI, inside + 2.0f * IM_PI);
             drawList->PathFillConvex(color);
         }
         else if (linked.contains(in->m_Id) || linked.contains(out->m_Id))
@@ -878,7 +936,9 @@ private:
 
         // An edit made with a node's widgets, done once the nodes are drawn.
         std::function<void()> edit;
+        m_LastPinIcons.swap(m_PinIcons);
         m_PinIcons.clear();
+        m_PinSides.clear();
 
         // Without frame padding above and below, a value's editor keeps the line of the pin's label.
         auto valueEditor = [&edit, &document](Id pin, Value value)
@@ -918,7 +978,7 @@ private:
             }
             if (IsReroute(node))
             {
-                ShowReroute(node, linked, disabled, castFrom);
+                ShowReroute(graph, node, linked, disabled, castFrom);
                 continue;
             }
 
@@ -1311,10 +1371,10 @@ private:
         if (!pin || icon == m_PinIcons.end())
             return;
         const auto scale     = ed::CanvasToScreen(ImVec2(1.0f, 0.0f)).x - ed::CanvasToScreen(ImVec2(0.0f, 0.0f)).x;
-        const auto output    = pin->m_Direction == Direction::Output;
-        const auto start     = ed::CanvasToScreen(ImVec2(output ? icon->second.Max.x : icon->second.Min.x, icon->second.GetCenter().y));
+        const auto side      = PinSide(*pin);
+        const auto start     = ed::CanvasToScreen(icon->second.GetCenter() + side * icon->second.GetSize() * 0.5f);
         const auto end       = ed::CanvasToScreen(m_CreateNodeDialog.GetDropPoint());
-        const auto direction = ImVec2(output ? 1.0f : -1.0f, 0.0f) * ed::GetStyle().LinkStrength * scale;
+        const auto direction = side * ed::GetStyle().LinkStrength * scale;
         auto drawList = ImGui::GetWindowDrawList();
         drawList->PushClipRect(canvasMin, canvasMax, true);
         drawList->AddBezierCubic(start, start + direction, end - direction, end, ImColor(PinColor(*pin)), (pin->m_Flow ? 2.5f : 1.5f) * scale);
@@ -1378,8 +1438,9 @@ private:
             const auto min   = ed::CanvasToScreen(icon->second.Min), max = ed::CanvasToScreen(icon->second.Max);
             const auto inner = text.empty() ? ImVec2(fontSize, fontSize) : font->CalcTextSizeA(fontSize, FLT_MAX, 0.0f, text.c_str());
             const auto size  = inner + padding * 2.0f;
-            const auto y     = (min.y + max.y - size.y) * 0.5f;
-            const auto a     = ImVec2(pin.m_Direction == Direction::Input ? min.x - gap - size.x : max.x + gap, y);
+            const auto side  = PinSide(pin);
+            const auto a     = side.x != 0.0f ? ImVec2(side.x < 0.0f ? min.x - gap - size.x : max.x + gap, (min.y + max.y - size.y) * 0.5f)
+                                              : ImVec2((min.x + max.x - size.x) * 0.5f, side.y < 0.0f ? min.y - gap - size.y : max.y + gap);
             drawList->AddRectFilled(a, a + size, (color & ~IM_COL32_A_MASK) | IM_COL32(0, 0, 0, 128), 4.0f * scale);
             drawList->AddRect(a, a + size, ImGui::GetColorU32(ImGuiCol_Text, 0.5f), 4.0f * scale);
             if (text.empty())
@@ -2746,6 +2807,8 @@ private:
     Id                        m_PendingDelete   = 0;     // a function's graph, to delete as the next frame begins
     Id                        m_FollowedNode    = 0;     // the run's next node, as its graph last showed for it
     std::unordered_map<Id, ImRect> m_PinIcons;           // where the shown graph's pins' icons are, as its nodes last drew
+    std::unordered_map<Id, ImRect> m_LastPinIcons;       // the frame before's
+    std::unordered_map<Id, ImVec2> m_PinSides;           // sides links meet pins on other than their kind's: reroutes'
     Id                        m_RenamedFunction = 0;     // its graph's ID
     bool                      m_RenameFocus     = false; // the rename popup opens, its name focused
     char                      m_RenameText[64]  = {};

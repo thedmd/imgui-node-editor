@@ -52,6 +52,10 @@ bool  IsCustomEvent(const Node& node);
 // A reroute, data or flow, shows as a disc that links bend around; its node is RerouteSize() square.
 bool  IsReroute(const Node& node);
 float RerouteSize();
+// The way links run through a reroute, given its center and their other ends on the canvas: the
+// axis nearest the way they travel, from what feeds it to it and on to what it feeds, so a link that
+// turns back at it passes through it a quarter turn round. A unit vector along x or y; unlinked, +x.
+ImVec2 RerouteDirection(ImVec2 center, std::span<const ImVec2> sources, std::span<const ImVec2> targets);
 // The link, and the links after it past flow reroutes, as a program takes them at once.
 std::vector<Id> FlowChain(const Graph& graph, Id link);
 // A comment, which the editor shows as a group over part of a graph, holds its text in its config.

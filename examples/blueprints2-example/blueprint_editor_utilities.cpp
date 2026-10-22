@@ -161,6 +161,27 @@ float blueprint_editor_utilities::RerouteSize()
     return ImGui::GetTextLineHeight() * 1.5f;
 }
 
+ImVec2 blueprint_editor_utilities::RerouteDirection(ImVec2 center, std::span<const ImVec2> sources, std::span<const ImVec2> targets)
+{
+    auto unitToward = [center](std::span<const ImVec2> points, float sign)
+    {
+        ImVec2 sum;
+        for (auto& point : points)
+            sum += point;
+        const auto way    = (sum / static_cast<float>(points.size()) - center) * sign;
+        const auto length = ImSqrt(way.x * way.x + way.y * way.y);
+        return length > 0.0f ? way / length : ImVec2();
+    };
+    ImVec2 way;
+    if (!sources.empty())
+        way += unitToward(sources, -1.0f);
+    if (!targets.empty())
+        way += unitToward(targets, 1.0f);
+    if (ImFabs(way.x) >= ImFabs(way.y))
+        return ImVec2(way.x < 0.0f ? -1.0f : 1.0f, 0.0f);
+    return ImVec2(0.0f, way.y < 0.0f ? -1.0f : 1.0f);
+}
+
 std::vector<blueprint_editor_utilities::Id> blueprint_editor_utilities::FlowChain(const Graph& graph, Id link)
 {
     std::vector<Id> chain;

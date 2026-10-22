@@ -1693,3 +1693,16 @@ TEST_CASE(RerouteFlows, "blueprints2.a_run_goes_past_a_flow_reroute_and_flows_bo
     test::Check(debugger.CurrentNode() == loop && debugger.NextNode() == print, "the run paused after For Loop, with Print next, past the reroute");
     test::Check(into && onto && chain == std::vector<Id>{ into->m_Id, onto->m_Id }, "the link it took is the one into the reroute, which flows with the one out of it");
 }
+
+TEST_CASE(RerouteDirections, "blueprints2.links_run_through_a_reroute_along_the_axis_nearest_their_way", nullptr, test::TestFlags_None)
+{
+    using blueprint_editor_utilities::RerouteDirection;
+    const ImVec2 center(300.0f, 300.0f), left[] = { ImVec2(100.0f, 300.0f) }, right[] = { ImVec2(500.0f, 300.0f) };
+    const ImVec2 above[] = { ImVec2(300.0f, 100.0f) }, below[] = { ImVec2(300.0f, 500.0f) };
+    const ImVec2 rightAbove[] = { ImVec2(600.0f, 250.0f) }, rightBelow[] = { ImVec2(600.0f, 350.0f) };
+    auto is = [](ImVec2 way, float x, float y) { return way.x == x && way.y == y; };
+    test::Check(is(RerouteDirection(center, left, right), 1.0f, 0.0f) && is(RerouteDirection(center, right, left), -1.0f, 0.0f), "fed from the left for the right, links run right; the other way, left");
+    test::Check(is(RerouteDirection(center, above, below), 0.0f, 1.0f) && is(RerouteDirection(center, below, above), 0.0f, -1.0f), "from above to below, they run down; the other way, up");
+    test::Check(is(RerouteDirection(center, rightBelow, rightAbove), 0.0f, -1.0f) && is(RerouteDirection(center, rightAbove, rightBelow), 0.0f, 1.0f), "turning back at it, they pass through it a quarter turn round, up or down as they go");
+    test::Check(is(RerouteDirection(center, right, {}), -1.0f, 0.0f) && is(RerouteDirection(center, {}, above), 0.0f, -1.0f) && is(RerouteDirection(center, {}, {}), 1.0f, 0.0f), "one side linked, they run as from or toward it; unlinked, right");
+}
