@@ -1108,6 +1108,19 @@ private:
         const auto next    = m_Debugger.IsActive() ? m_Debugger.NextNode() : 0;
         const auto hovered = static_cast<Id>(ed::GetHoveredNode().Get());
         UpdateControlsNode(graph);
+
+        // A pin hovered that a disabled link ends at lights the node at the link's other end, and the
+        // link.
+        std::unordered_set<Id> litNodes, litLinks;
+        const auto hoveredPin = static_cast<Id>(ed::GetHoveredPin().Get());
+        for (auto& link : graph.Links())
+        {
+            if (!hoveredPin || link.m_Active || (link.m_From != hoveredPin && link.m_To != hoveredPin))
+                continue;
+            litLinks.insert(link.m_Id);
+            if (auto other = EndNode(graph, link.m_From == hoveredPin ? link.m_To : link.m_From))
+                litNodes.insert(other->m_Id);
+        }
         for (auto& node : graph.Nodes())
         {
             if (IsComment(node))
@@ -1139,6 +1152,11 @@ private:
             {
                 look.m_Border      = ProblemColor(Severity::Error);
                 look.m_BorderWidth = 1.5f;
+            }
+            if (litNodes.contains(node.m_Id))
+            {
+                look.m_Border      = IM_COL32(255, 255, 255, 200);
+                look.m_BorderWidth = 2.0f;
             }
 
             // A Constant's and a variable Get's stripe is of their value's color; an operator has none.
@@ -1468,7 +1486,8 @@ private:
         {
             if (!link.m_Active)
             {
-                ed::Link(link.m_Id, link.m_From, link.m_To, ImVec4(0.5f, 0.5f, 0.5f, 0.4f), 1.0f);
+                const auto lit = litLinks.contains(link.m_Id);
+                ed::Link(link.m_Id, link.m_From, link.m_To, lit ? ImVec4(0.8f, 0.8f, 0.8f, 0.9f) : ImVec4(0.5f, 0.5f, 0.5f, 0.4f), lit ? 2.5f : 1.0f);
                 continue;
             }
             auto from = graph.FindPin(link.m_From);
@@ -2067,14 +2086,26 @@ private:
         ImGui::EndTable();
     }
 
-    // Selects the problem's node, and brings it into view, in its graph.
+    // Selects the problem's node, and brings it into view, in its graph: a link's problem's, both
+    // nodes at the link's ends, in the graph shown.
     void GoToProblem(size_t index)
     {
         auto problems = m_Problems.Problems();
         if (index >= problems.size())
             return;
         m_ProblemIndex = index;
-        if (auto node = problems[index].m_Node)
+        auto& diagnostic = problems[index].m_Diagnostic;
+        auto& graph      = m_Document->GetGraph();
+        auto  link       = diagnostic.m_Link && diagnostic.m_Graph == graph.GetId() ? graph.FindLink(diagnostic.m_Link) : nullptr;
+        auto  from       = link ? EndNode(graph, link->m_From) : nullptr;
+        auto  to         = link ? EndNode(graph, link->m_To) : nullptr;
+        if (from && to)
+        {
+            ed::SelectNode(from->m_Id);
+            ed::SelectNode(to->m_Id, true);
+            ed::NavigateToSelection();
+        }
+        else if (auto node = problems[index].m_Node)
             GoToNode(node);
     }
 
@@ -2474,14 +2505,28 @@ private:
             InsertReroute(document, clicked->m_Id, ed::ScreenToCanvas(ImGui::GetMousePos()));
             return;
         }
-        if (auto clicked = graph.FindPin(static_cast<Id>(ed::GetDoubleClickedPin().Get())))
+        // A pin a disabled link ends at, or an orphan, double-clicked goes to the link's other end,
+        // unless it's a struct pin, which splits, or a field, which recombines.
+        const auto clickedId     = static_cast<Id>(ed::GetDoubleClickedPin().Get());
+        const auto disabledOther = [&graph, clickedId]() -> Id
+        {
+            for (auto& link : graph.Links())
+                if (!link.m_Active && (link.m_From == clickedId || link.m_To == clickedId))
+                    return link.m_From == clickedId ? link.m_To : link.m_From;
+            return 0;
+        };
+        if (auto clicked = graph.FindPin(clickedId))
         {
             const auto owner = graph.NodeOf(clicked->m_Id)->m_Id;
             if (SplittableStruct(*clicked))
                 SplitStructPin(document, owner, clicked->m_Key, true);
             else if (auto splitOf = SplitOf(*graph.NodeOf(clicked->m_Id), clicked->m_Key); !splitOf.empty())
                 SplitStructPin(document, owner, splitOf, false);
+            else if (auto other = disabledOther())
+                GoToEnd(graph, other);
         }
+        else if (auto other = clickedId && graph.NodeOfOrphan(clickedId) ? disabledOther() : Id(0))
+            GoToEnd(graph, other);
     }
 
     void ShowDialogs(Document& document)

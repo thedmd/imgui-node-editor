@@ -209,6 +209,30 @@ std::string blueprint_editor_utilities::OrphanName(const Node& node, const Orpha
     return orphan.m_Key;
 }
 
+const blueprint_editor_utilities::Node* blueprint_editor_utilities::EndNode(const Graph& graph, Id pin)
+{
+    auto node = graph.NodeOf(pin);
+    return node ? node : graph.NodeOfOrphan(pin);
+}
+
+std::string blueprint_editor_utilities::EndText(const Graph& graph, Id pin)
+{
+    if (auto found = graph.FindPin(pin))
+        return graph.NodeOf(pin)->Name() + "." + found->m_Key;
+    auto node   = graph.NodeOfOrphan(pin);
+    auto orphan = node ? node->FindOrphan(pin) : nullptr;
+    return orphan ? node->Name() + "." + orphan->m_Key : "pin " + std::to_string(pin);
+}
+
+void blueprint_editor_utilities::GoToEnd(const Graph& graph, Id pin)
+{
+    if (auto node = EndNode(graph, pin))
+    {
+        ax::NodeEditor::SelectNode(node->m_Id);
+        ax::NodeEditor::NavigateToSelection();
+    }
+}
+
 bool blueprint_editor_utilities::IsComment(const Node& node)
 {
     return node.m_Type->m_Name == "crude.Comment";
@@ -2639,6 +2663,18 @@ void blueprint_editor_utilities::PinContextMenu::Show(Document& document, Debugg
         if (ImGui::MenuItem("Break Links", nullptr, nullptr, ax::NodeEditor::HasAnyLinks(ax::NodeEditor::PinId(m_Pin))))
             ax::NodeEditor::BreakLinks(ax::NodeEditor::PinId(m_Pin));
 
+        std::vector<Id> others; // the other ends of its links
+        for (auto& link : graph.Links())
+            if (link.m_From == m_Pin || link.m_To == m_Pin)
+                others.push_back(link.m_From == m_Pin ? link.m_To : link.m_From);
+        if (ImGui::BeginMenu("Go To", !others.empty()))
+        {
+            for (auto other : others)
+                if (ImGui::MenuItem(EndText(graph, other).c_str()))
+                    GoToEnd(graph, other);
+            ImGui::EndMenu();
+        }
+
         int  index  = -1;
         auto group  = pin ? FindGroup(*node, pin->m_Key, &index) : nullptr;
         auto remove = group && ImGui::MenuItem("Remove Pin", nullptr, nullptr, GroupCount(*group, node->m_Config) > group->m_Min);
@@ -2817,6 +2853,15 @@ void blueprint_editor_utilities::LinkContextMenu::Show(Document& document)
         {
             auto reason = link->m_Reason.Message();
             ImGui::TextDisabled("Disabled: %.*s", static_cast<int>(reason.size()), reason.data());
+            ImGui::Separator();
+        }
+
+        if (link)
+        {
+            auto& graph = document.GetGraph();
+            for (auto end : { link->m_From, link->m_To })
+                if (ImGui::MenuItem(("Go To " + EndText(graph, end)).c_str()))
+                    GoToEnd(graph, end);
             ImGui::Separator();
         }
 

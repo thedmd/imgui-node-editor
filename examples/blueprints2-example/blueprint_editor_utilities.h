@@ -61,6 +61,11 @@ std::vector<Id> FlowChain(const Graph& graph, Id link);
 // An orphan pin's name, as it was: its config's, a split field's as its struct pin names it
 // ("Vector2 x"), or its key.
 std::string OrphanName(const Node& node, const OrphanPin& orphan);
+// A link's end, a pin or an orphan: its node; its name, as menus give it ("Add#7.in.0"); and its
+// node selected and brought into view.
+const Node* EndNode(const Graph& graph, Id pin);
+std::string EndText(const Graph& graph, Id pin);
+void        GoToEnd(const Graph& graph, Id pin);
 // A comment, which the editor shows as a group over part of a graph, holds its text in its config.
 bool        IsComment(const Node& node);
 std::string CommentText(const Node& node); // "Comment" for one without any
