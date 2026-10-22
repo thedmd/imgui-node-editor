@@ -1085,3 +1085,32 @@ TEST_CASE(GroupSides, "library.a_groups_pins_are_on_its_side_even_while_it_has_n
         "a Custom Event without parameters has its parameters' group on its outputs' side");
     test::Check(side(sequence) == Direction::Output && side(add) == Direction::Input, "Sequence's Then pins are outputs, Add's inputs are inputs");
 }
+
+TEST_CASE(UnwrittenReads, "library.a_read_of_what_the_readers_flow_never_runs_is_an_error", nullptr, test::TestFlags_None)
+{
+    // Start runs For Loop, whose body prints the index; Poke runs the same Print, without For Loop.
+    Fixture f;
+    NodeConfig config;
+    config.m_Data["event"] = Value::String("Poke");
+    auto start = f.Add("Start"), loop = f.Add("ForLoop"), print = f.Add("Print"), poke = f.Add("CustomEvent", config);
+    f.Link(start, "then", loop, "enter");
+    f.Link(loop, "body", print, "enter");
+    f.Link(loop, "index", print, "text", LinkMode::Cast);
+    f.Link(poke, "then", print, "enter");
+    auto compiled = Compile(f.m_Blueprint);
+    auto found    = std::find_if(compiled.m_Diagnostics.begin(), compiled.m_Diagnostics.end(), [](const Diagnostic& diagnostic) { return diagnostic.m_Error.Is(BlueprintError::NotRun); });
+    auto message  = found != compiled.m_Diagnostics.end() ? std::string(found->m_Error.Message()) : std::string();
+    test::Check(!compiled.m_Program && found != compiled.m_Diagnostics.end() && found->m_Node == print && found->m_Pin == f.Pin(print, "text") && message == f.Name(print) + ".text reads " + f.Name(loop) + ".index, but the flow from " + f.Name(poke) + " never runs " + f.Name(loop),
+        "Print's text reads For Loop's index, which Poke's flow never runs: %s", message.c_str());
+
+    // Through Sequence, the first branch's For Loop runs before the second reads its index.
+    Fixture g;
+    auto first = g.Add("Start"), sequence = g.Add("Sequence"), counting = g.Add("ForLoop"), shows = g.Add("Print");
+    g.Link(first, "then", sequence, "enter");
+    g.Link(sequence, "then.0", counting, "enter");
+    g.Link(sequence, "then.1", shows, "enter");
+    g.Link(counting, "index", shows, "text", LinkMode::Cast);
+    auto sequenced = Compile(g.m_Blueprint);
+    test::Check(std::none_of(sequenced.m_Diagnostics.begin(), sequenced.m_Diagnostics.end(), [](const Diagnostic& diagnostic) { return diagnostic.m_Error.Is(BlueprintError::NotRun); }),
+        "a sequence's second step reads what its first ran");
+}

@@ -210,6 +210,7 @@ enum class BlueprintError : uint16_t
     Unsupported,    // what a node or a fiber can't do now, such as a node type that doesn't run
     BadFile,        // a file that isn't a blueprint this runtime reads
     TooDeep,        // pure nodes computed in the inputs of others, nested deeper than the runtime goes
+    NotRun,         // a read of what a node of flow writes, where the reader's flow never runs the node
 };
 
 constexpr ErrorCategory CategoryOf(BlueprintError) { return ErrorCategory::Blueprint; }

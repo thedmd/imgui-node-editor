@@ -3093,6 +3093,70 @@ crude_blueprint::CompileResult crude_blueprint::Compile(const Blueprint& bluepri
         }
     }
 
+    // What a node of flow writes, a node reads through pure nodes only in a fiber that ran the writer:
+    // from an event, or a function's entry, whose flow runs the reader but never the writer, the
+    // read is of nothing written. A writer that may run, as in a branch, or a sequence's earlier
+    // step, is the reader's to rely on. Each pin reading so is named once.
+    std::vector<int> entries;
+    for (auto& [name, node] : program->m_Events)
+        entries.push_back(node);
+    for (auto& function : program->m_Functions)
+        if (function.m_Entry >= 0)
+            entries.push_back(function.m_Entry);
+    std::set<std::pair<Id, int>> named; // a reading pin, and the writer it reads
+    for (auto entry : entries)
+    {
+        std::vector<char> runs(program->m_Nodes.size(), 0);
+        std::vector<int>  pending{ entry };
+        runs[entry] = 1;
+        while (!pending.empty())
+        {
+            auto node = pending.back();
+            pending.pop_back();
+            for (auto& pin : program->m_Nodes[node].m_Pins)
+            {
+                if (!pin.m_Flow || pin.m_Direction != Direction::Output || pin.m_Target < 0 || runs[pin.m_Target])
+                    continue;
+                runs[pin.m_Target] = 1;
+                pending.push_back(pin.m_Target);
+            }
+        }
+
+        std::vector<char> read(program->m_Nodes.size(), 0);
+        for (size_t reader = 0; reader < program->m_Nodes.size(); ++reader)
+            if (runs[reader] && !read[reader])
+            {
+                read[reader] = 1;
+                pending.push_back(static_cast<int>(reader));
+            }
+        while (!pending.empty())
+        {
+            auto  node  = pending.back();
+            auto& owner = program->m_Nodes[node];
+            pending.pop_back();
+            for (auto& pin : owner.m_Pins)
+            {
+                if (pin.m_Flow || pin.m_Direction != Direction::Input || pin.m_Source < 0)
+                    continue;
+                auto [writer, output] = program->m_Slots[pin.m_Source];
+                auto& wrote = program->m_Nodes[writer];
+                if (wrote.m_Pure)
+                {
+                    if (!read[writer])
+                    {
+                        read[writer] = 1;
+                        pending.push_back(writer);
+                    }
+                    continue;
+                }
+                if (runs[writer] || !named.emplace(pin.m_Id, writer).second)
+                    continue;
+                error(Error(BlueprintError::NotRun, owner.m_Name + "." + pin.m_Key + " reads " + wrote.m_Name + "." + wrote.m_Pins[output].m_Key + ", but the flow from " + program->m_Nodes[entry].m_Name + " never runs " + wrote.m_Name),
+                    owner.m_Graph, owner.m_Id, pin.m_Id);
+            }
+        }
+    }
+
     if (!failed)
         result.m_Program = std::move(program);
     return result;
