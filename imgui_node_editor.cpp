@@ -1064,8 +1064,8 @@ void ed::EditorContext::Begin(const char* id, const ImVec2& size)
 
     m_IsFocused = ImGui::IsWindowFocused();
 
-    // Handle canvas size change. Scale to Y axis, center on X.
-    if (!m_IsFrozen && !ImRect_IsEmpty(previousVisibleRect) && previousSize != canvasSize)
+    // Handle canvas size change, as Config::CanvasSizeMode says.
+    if (!m_IsFrozen && !ImRect_IsEmpty(previousVisibleRect) && previousSize != canvasSize && m_Config.CanvasSizeMode != ax::NodeEditor::CanvasSizeMode::KeepTopLeft)
     {
         m_NavigateAction.FinishNavigation();
 

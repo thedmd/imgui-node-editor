@@ -144,3 +144,27 @@ TEST_CASE(ResizedViewStaysCentered, "view.a_canvas_resized_frame_by_frame_keeps_
     const auto after = center();
     test::Check(ImFabs(after.x - before.x) < 1.0f && ImFabs(after.y - before.y) < 1.0f, "the view's center stays at (%g, %g): it is at (%g, %g)", before.x, before.y, after.x, after.y);
 }
+
+TEST_CASE(ResizedViewKeepsTopLeft, "view.a_canvas_that_keeps_its_top_left_shows_its_content_where_it_was", nullptr, test::TestFlags_None)
+{
+    // With CanvasSizeMode::KeepTopLeft, a canvas resized at its bottom and right edges, as by a
+    // panel's bar over it, neither moves nor zooms what it shows.
+    test::Storage storage;
+    auto config = test::MakeConfig(&storage);
+    config.CanvasSizeMode = ed::CanvasSizeMode::KeepTopLeft;
+    test::Session session(config);
+    session.EditorSize = ImVec2(600.0f, 400.0f);
+    session.Run(3);
+    auto shown = [&] { return session.Use([] { return ed::CanvasToScreen(ImVec2(100.0f, 50.0f)); }); };
+    auto zoom  = [&] { return session.Use([] { return ed::GetCurrentZoom(); }); };
+    const auto before     = shown();
+    const auto zoomBefore = zoom();
+    for (int i = 0; i < 60; ++i)
+    {
+        session.EditorSize += ImVec2(1.0f, -2.0f);
+        session.Run(1);
+    }
+    const auto after     = shown();
+    const auto zoomAfter = zoom();
+    test::Check(after.x == before.x && after.y == before.y && zoomAfter == zoomBefore, "a point shown at (%g, %g), zoom %g, stays: (%g, %g), zoom %g", before.x, before.y, zoomBefore, after.x, after.y, zoomAfter);
+}

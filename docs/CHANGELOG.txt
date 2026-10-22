@@ -680,6 +680,10 @@ v0.10.0 (WIP):
         Each frame of a resize centered the view on the previous one moved to whole pixels, so it crept by up to a pixel a
         frame, and a graph slid aside while a panel's bar was dragged.
 
+    NEW: Editor: Add CanvasSizeMode::KeepTopLeft
+        A resized canvas keeps its view's top left corner and zoom, so a panel resized over its bottom or right edge covers
+        part of the content instead of moving it.
+
 v0.9.3 (2023-10-14):
 
     CHANGE: Canvas: Use ImDrawCallback_ImCanvas macro as draw callback sentinel (#256), thanks @nspitko

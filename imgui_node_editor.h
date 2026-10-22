@@ -63,6 +63,7 @@ enum class CanvasSizeMode
     FitVerticalView,        // Previous view will be scaled to fit new view on Y axis
     FitHorizontalView,      // Previous view will be scaled to fit new view on X axis
     CenterOnly,             // Previous view will be centered on new view
+    KeepTopLeft,            // Previous view keeps its top left corner and zoom, so the content stays in place
 };
 
 enum class EditType
