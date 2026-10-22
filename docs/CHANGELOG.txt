@@ -694,6 +694,12 @@ v0.10.0 (WIP):
         power of it from any zoom navigation set, so the wheel comes back to the same zooms; at 2^(1/4) they are those text
         is rasterized at, where glyph bitmaps map 1:1 onto pixels. Fractions of a notch still zoom smoothly.
 
+    BUGFIX: Examples: Draw text on whole pixels at fractional display scales
+        At 150% Dear ImGui lays text out on whole units, every other one half a pixel off the pixel grid, where glyphs
+        were blurred. The examples patch the Dear ImGui they fetch to move each glyph onto the pixel grid where its
+        bitmap maps 1:1 onto pixels; scaled from its bake, as in a zoomed canvas, glyphs would each move differently.
+        Text with glyphs moved starts on a whole pixel, so it looks the same wherever it is drawn.
+
 v0.9.3 (2023-10-14):
 
     CHANGE: Canvas: Use ImDrawCallback_ImCanvas macro as draw callback sentinel (#256), thanks @nspitko

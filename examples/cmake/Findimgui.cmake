@@ -1,10 +1,21 @@
 include(FetchContent)
 
 if (NOT TARGET imgui)
+    find_package(Git REQUIRED)
+
+    # The patch goes to the fetched sources: a directory in FETCHCONTENT_SOURCE_DIR_IMGUI is used as it is.
+    # git apply takes it with LF line endings, which a checkout with core.autocrlf doesn't keep.
+    file(READ "${CMAKE_CURRENT_LIST_DIR}/patches/imgui-glyphs-on-whole-pixels.patch" _ImGuiPatch)
+    string(REPLACE "\r\n" "\n" _ImGuiPatch "${_ImGuiPatch}")
+    string(SHA256 _ImGuiPatchHash "${_ImGuiPatch}")
+    file(WRITE "${CMAKE_BINARY_DIR}/imgui-glyphs-on-whole-pixels.patch" "${_ImGuiPatch}")
+
     FetchContent_Declare(
         imgui
         GIT_REPOSITORY      https://github.com/thedmd/imgui.git
         GIT_TAG             9172446182e4519cfc1827453b32ece876c8f05f # combined-docking: Dear ImGui 1.93.0 docking with Stack Layout v2.2
+        # With the hash in the command, a changed patch is applied again.
+        PATCH_COMMAND       ${CMAKE_COMMAND} "-DGIT_EXECUTABLE=${GIT_EXECUTABLE}" "-DPATCH=${CMAKE_BINARY_DIR}/imgui-glyphs-on-whole-pixels.patch" -DPATCH_SHA256=${_ImGuiPatchHash} -P "${CMAKE_CURRENT_LIST_DIR}/ApplyPatch.cmake"
     )
 
     FetchContent_MakeAvailable(imgui)

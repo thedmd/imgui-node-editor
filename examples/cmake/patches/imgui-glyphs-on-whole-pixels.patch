@@ -1,0 +1,99 @@
+From 33aa6fd42d93796871058ccb0aa1e9babf38264b Mon Sep 17 00:00:00 2001
+From: thedmd <michcic@gmail.com>
+Date: Thu, 22 Oct 2026 23:06:55 +0200
+Subject: [PATCH] Fonts: snap glyphs to whole pixels at a fractional pixel
+ density.
+
+At a pixel density of 1.5 (a 150% display scale) text is laid out on whole
+units, every other one half a pixel off the pixel grid, where glyph bitmaps
+baked at that density were drawn between pixels and blurred. RenderText() and
+RenderChar() now move each glyph quad onto the pixel grid, keeping its size,
+unless ImDrawFlags_TextNoPixelSnap is set. Text layout and measurement, and
+whole densities, are unaffected.
+
+Only glyphs whose bitmap maps 1:1 onto pixels move: text drawn at another
+scale than its bake's, as in a zoomed canvas, is resampled anyway, and its
+glyphs, each a different fraction of a pixel off the grid, would move by
+different amounts.
+
+Text whose glyphs move starts on a whole pixel rather than a whole unit,
+which alternates between whole and half pixels: each glyph rounds its own
+way from the origin, so text moved by a pixel showed its letters a pixel
+apart from where they had been.
+---
+ imgui_draw.cpp | 39 +++++++++++++++++++++++++++++++++++++--
+ 1 file changed, 37 insertions(+), 2 deletions(-)
+
+diff --git a/imgui_draw.cpp b/imgui_draw.cpp
+index 2ae133c..526e7fb 100644
+--- a/imgui_draw.cpp
++++ b/imgui_draw.cpp
+@@ -7571,6 +7571,34 @@ ImVec2 ImFont::CalcTextSizeA(float size, float max_width, float wrap_width, cons
+     return ImFontCalcTextSizeEx(this, size, max_width, wrap_width, text_begin, text_end, text_end, out_remaining, NULL, ImDrawTextFlags_None);
+ }
+ 
++// Whether glyph bitmaps of the bake, drawn at the scale, map 1:1 onto the draw list's pixels. Only then are glyph quads snapped:
++// drawn at another scale, a bitmap is resampled anyway, and its glyphs, each a different fraction of a pixel off the grid, would
++// snap by different amounts, a letter a pixel above or beside its neighbors.
++static inline bool ImFontGlyphsMapToPixels(const ImDrawList* draw_list, const ImFontBaked* baked, float scale)
++{
++    return ImAbs(scale * draw_list->_InvFringeScale - baked->RasterizerDensity) <= baked->RasterizerDensity * 0.001f;
++}
++
++// The origin of text whose glyphs are snapped: on a whole pixel, which a whole unit isn't at a fractional density. Each glyph rounds
++// its own way from it, the same way wherever the text is.
++static inline void ImFontSnapOriginToPixels(float pixel_density, const ImVec2& pos, float* x, float* y)
++{
++    *x = ImFloor(pos.x * pixel_density + 0.49f) / pixel_density;
++    *y = ImFloor(pos.y * pixel_density + 0.49f) / pixel_density;
++}
++
++// At a fractional pixel density, whole units are not whole pixels: snap each glyph quad to the pixel grid, keeping its size.
++// Half a pixel rounds down: a corner computed at exactly half a pixel lands just above or below it, and must not round both ways.
++static inline void ImFontSnapGlyphToPixels(float pixel_density, float* x1, float* y1, float* x2, float* y2)
++{
++    const float dx = ImFloor(*x1 * pixel_density + 0.49f) / pixel_density - *x1;
++    const float dy = ImFloor(*y1 * pixel_density + 0.49f) / pixel_density - *y1;
++    *x1 += dx;
++    *x2 += dx;
++    *y1 += dy;
++    *y2 += dy;
++}
++
+ // Note: as with every ImDrawList drawing function, this expects that the font atlas texture is bound.
+ void ImFont::RenderChar(ImDrawList* draw_list, float size, const ImVec2& pos, ImU32 col, ImWchar c, const ImVec4* cpu_fine_clip)
+ {
+@@ -7591,10 +7619,12 @@ void ImFont::RenderChar(ImDrawList* draw_list, float size, const ImVec2& pos, Im
+ 
+     float x1 = x + glyph->X0 * scale;
+     float x2 = x + glyph->X1 * scale;
+-    if (cpu_fine_clip && (x1 > cpu_fine_clip->z || x2 < cpu_fine_clip->x))
+-        return;
+     float y1 = y + glyph->Y0 * scale;
+     float y2 = y + glyph->Y1 * scale;
++    if ((draw_list->Flags & ImDrawFlags_TextNoPixelSnap) == 0 && !draw_list->_FringeScaleIsInteger && ImFontGlyphsMapToPixels(draw_list, baked, scale))
++        ImFontSnapGlyphToPixels(draw_list->_InvFringeScale, &x1, &y1, &x2, &y2);
++    if (cpu_fine_clip && (x1 > cpu_fine_clip->z || x2 < cpu_fine_clip->x))
++        return;
+     float u1 = glyph->U0;
+     float v1 = glyph->V0;
+     float u2 = glyph->U1;
+@@ -7639,6 +7669,9 @@ begin:
+     ImFontBaked* baked = GetFontBaked(size);
+ 
+     const float scale = size / baked->Size;
++    const bool snap_to_pixels = (flags & ImDrawFlags_TextNoPixelSnap) == 0 && !draw_list->_FringeScaleIsInteger && ImFontGlyphsMapToPixels(draw_list, baked, scale);
++    if (snap_to_pixels)
++        ImFontSnapOriginToPixels(draw_list->_InvFringeScale, pos, &x, &y);
+     const float origin_x = x;
+     const bool word_wrap_enabled = (wrap_width > 0.0f);
+ 
+@@ -7747,6 +7780,8 @@ begin:
+             float x2 = x + glyph->X1 * scale;
+             float y1 = y + glyph->Y0 * scale;
+             float y2 = y + glyph->Y1 * scale;
++            if (snap_to_pixels)
++                ImFontSnapGlyphToPixels(draw_list->_InvFringeScale, &x1, &y1, &x2, &y2);
+             if (x1 <= clip_rect.z && x2 >= clip_rect.x)
+             {
+                 // Render a character

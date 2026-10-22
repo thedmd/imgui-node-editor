@@ -61,7 +61,7 @@ Changes land on the `develop` branch, which `master` follows at releases. Pull r
  * [Font Awesome Free](https://fontawesome.com)'s solid font, which the examples' fonts take their icons from, and its icons' names from [IconFontCppHeaders](https://github.com/juliettef/IconFontCppHeaders)
  * [nativefiledialog-extended](https://github.com/btzy/nativefiledialog-extended), for the file dialogs of blueprints2-example
 
-CMake fetches all of them at revisions pinned in [examples/cmake](../examples/cmake). An installed GLFW package is used when found.
+CMake fetches all of them at revisions pinned in [examples/cmake](../examples/cmake). An installed GLFW package is used when found. Dear ImGui gets [a patch](../examples/cmake/patches/imgui-glyphs-on-whole-pixels.patch) that draws text on whole pixels at display scales like 150%, where it was blurred.
 
 ## Building / Installing
 
@@ -83,7 +83,7 @@ sudo apt-get install libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libx
 ```
 `-DNFD_PORTAL=ON` opens the file dialogs through xdg-desktop-portal instead, which needs `libdbus-1-dev` in place of GTK 3. On macOS, the Xcode command line tools are enough.
 
-To build offline or against a local checkout of a dependency, point FetchContent at it, for example `-DFETCHCONTENT_SOURCE_DIR_IMGUI=<path>`. `FETCHCONTENT_SOURCE_DIR_STB`, `FETCHCONTENT_SOURCE_DIR_GLFW` and `FETCHCONTENT_SOURCE_DIR_NFD` work the same way, and so do `FETCHCONTENT_SOURCE_DIR_ICONFONTCPPHEADERS`, a directory holding `IconsFontAwesome7.h`, and `FETCHCONTENT_SOURCE_DIR_FONTAWESOME_SOLID`, one holding the solid font as `FontAwesome_solid.otf`.
+To build offline or against a local checkout of a dependency, point FetchContent at it, for example `-DFETCHCONTENT_SOURCE_DIR_IMGUI=<path>`. `FETCHCONTENT_SOURCE_DIR_STB`, `FETCHCONTENT_SOURCE_DIR_GLFW` and `FETCHCONTENT_SOURCE_DIR_NFD` work the same way, and so do `FETCHCONTENT_SOURCE_DIR_ICONFONTCPPHEADERS`, a directory holding `IconsFontAwesome7.h`, and `FETCHCONTENT_SOURCE_DIR_FONTAWESOME_SOLID`, one holding the solid font as `FontAwesome_solid.otf`. A directory given this way is used as it is: Dear ImGui's patch isn't applied to it.
 
 ### Tests
 The headless [test suite](../tests) runs with CTest:
