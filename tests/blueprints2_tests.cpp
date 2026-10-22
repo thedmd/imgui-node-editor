@@ -1596,6 +1596,44 @@ TEST_CASE(EmptyValueBoxes, "blueprints2.an_empty_values_box_is_half_a_line_wide_
         box.x, box.y, std::string(empty.AsString()).c_str());
 }
 
+TEST_CASE(StructEdits, "blueprints2.a_structs_fields_are_edited_in_turn_in_one_editor", nullptr, test::TestFlags_None)
+{
+    // A Vector2 with its editor, in the host window above the canvas: x is typed into, then y
+    // stepped twice by its +, which keeps the editor open.
+    using blueprint_editor_utilities::DrawValueWithEditor;
+    test::Session session(UnnamedConfig());
+    auto   registry = ExampleRegistry();
+    auto   head     = registry->FindValueType("example.Vector2");
+    auto   vector   = head->Default(head->AsType());
+    ImRect vectorRect;
+    session.BeforeEditor = [&]
+    {
+        ImGui::SetCursorScreenPos(ImVec2(100.0f, 100.0f));
+        DrawValueWithEditor(1, vector);
+        vectorRect = ImRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
+    };
+    const auto elsewhere = ImVec2(700.0f, 500.0f);
+    session.Run(3);
+
+    const auto line = vectorRect.GetHeight();
+    session.Click(vectorRect.GetCenter());
+    session.Run(2);
+    for (auto c : { '1', '.', '5' })
+        ImGui::GetIO().AddInputCharacter(static_cast<unsigned>(c));
+    session.Run(2);
+    const auto rows = vectorRect.GetHeight() > line * 1.5f;
+    const auto row  = (vectorRect.GetHeight() - ImGui::GetStyle().ItemSpacing.y) * 0.5f;
+    const auto plus = ImVec2(vectorRect.Max.x - row * 0.5f, vectorRect.Max.y - row * 0.5f);
+    session.Click(plus);
+    session.Click(plus);
+    const auto open   = vectorRect.GetHeight() > line * 1.5f;
+    const auto fields = vector.AsStruct();
+    test::Check(rows && open && fields[0].AsFloat() == 1.5f && fields[1].AsFloat() == 2.0f, "a Vector2's editor has a row for each field, and keeps x typed and y stepped: %s",
+        blueprint_editor_utilities::ValueText(vector).c_str());
+    session.Click(elsewhere);
+    test::Check(vectorRect.GetHeight() == line, "and a click elsewhere closes it: %g high, %g before", vectorRect.GetHeight(), line);
+}
+
 TEST_CASE(CommentTexts, "blueprints2.a_comments_text_is_edited_in_one_undo_step", nullptr, test::TestFlags_None)
 {
     test::Session session(UnnamedConfig());

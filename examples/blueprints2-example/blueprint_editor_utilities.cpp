@@ -1438,6 +1438,50 @@ blueprint_editor_utilities::ValueEdit blueprint_editor_utilities::EditValue(Valu
         value = Value::String(std::move(text));
         return ValueEdit::Done;
     }
+    if (auto structType = type ? Cast<StructType>(type->m_Head) : nullptr)
+    {
+        // A field on each line, after its name, in its type's editor, but for a Bool's checkbox and
+        // the text of a value with no editor. The struct's edit ends where a field's does and none
+        // of its fields is active then, so going on to another field, or a number's - or +, keeps
+        // it going.
+        const auto declared = structType->Fields();
+        auto       fields   = std::vector<Value>(value.AsStruct().begin(), value.AsStruct().end());
+        auto       names    = 0.0f;
+        for (auto& field : declared)
+            names = ImMax(names, ImGui::CalcTextSize(field.m_Name.c_str()).x);
+        auto changed = false, ended = false;
+        ImGui::BeginGroup();
+        for (size_t i = 0; i < fields.size() && i < declared.size(); ++i)
+        {
+            ImGui::PushID(static_cast<int>(i));
+            ImGui::AlignTextToFramePadding();
+            ImGui::TextUnformatted(declared[i].m_Name.c_str());
+            ImGui::SameLine(names + ImGui::GetStyle().ItemSpacing.x);
+            const auto before = fields[i];
+            const auto head   = fields[i].GetType() ? fields[i].GetType()->m_Head : nullptr;
+            if (head == &BoolValueType())
+            {
+                auto checked = fields[i].AsBool();
+                if (ImGui::Checkbox("##field", &checked))
+                    fields[i] = Value::Bool(checked);
+            }
+            else if (head == &Int32ValueType() || head == &FloatValueType() || head == &StringValueType() || IsA<StructType>(head))
+                ended = EditValue(fields[i], focus && i == 0) == ValueEdit::Done || ended;
+            else
+            {
+                ImGui::BeginDisabled();
+                DrawValue(fields[i]);
+                ImGui::EndDisabled();
+            }
+            changed = changed || !(fields[i] == before);
+            ImGui::PopID();
+        }
+        ImGui::EndGroup();
+        const auto done = ended && !ImGui::IsItemActive();
+        if (changed)
+            value = Value::Struct(*type, std::move(fields));
+        return done ? ValueEdit::Done : changed ? ValueEdit::Changed : ValueEdit::None;
+    }
 
     // Values of other types have no editor yet.
     return ValueEdit::Done;

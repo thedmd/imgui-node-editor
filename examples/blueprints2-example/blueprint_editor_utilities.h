@@ -236,7 +236,8 @@ std::string ValueText(const Value& value); // "true", "12", "1.5", a string as i
 bool DrawValue(const Value& value);        // Draws a value; false for none.
 // An editor of a value. A number's - and + change it, the editor staying; Enter ends the edit.
 // A field ends its edit when it stops being active, keeping what was typed, but for a click on a
-// number's - or +, which steps it. 'focus' makes the field active.
+// number's - or +, which steps it. 'focus' makes the field active. A struct's fields are edited
+// each in its type's editor, the struct's edit going on while one of them is active.
 enum class ValueEdit { None, Changed, Done };
 ValueEdit EditValue(Value& value, bool focus = false);
 
