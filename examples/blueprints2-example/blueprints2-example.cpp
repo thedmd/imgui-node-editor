@@ -701,6 +701,15 @@ private:
         std::function<void()> edit;
         m_PinIcons.clear();
 
+        // Without frame padding above and below, a value's editor keeps the line of the pin's label.
+        auto valueEditor = [&edit, &document](Id pin, Value value)
+        {
+            ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(ImGui::GetStyle().FramePadding.x, 0.0f));
+            if (DrawValueWithEditor(pin, value))
+                edit = [&document, pin, value] { SetPinValue(document, pin, value); };
+            ImGui::PopStyleVar();
+        };
+
         // Where the run's fibers wait: at their nodes, and in the calls they're in.
         std::unordered_map<Id, std::string> waits;
         if (auto context = m_Debugger.GetContext())
@@ -897,9 +906,7 @@ private:
                 if (HasValueEditor(graph, pin))
                 {
                     ImGui::SameLine();
-                    auto value = InputValue(graph, pin);
-                    if (DrawValueWithEditor(pin.m_Id, value))
-                        edit = [&document, id = pin.m_Id, value] { SetPinValue(document, id, value); };
+                    valueEditor(pin.m_Id, InputValue(graph, pin));
                 }
                 else if (auto kept = KeptValue(graph, pin); kept.IsValid())
                 {
@@ -969,9 +976,7 @@ private:
                 // A Constant shows its value, and an editor once clicked, before its pin.
                 if (HasValueEditor(graph, pin))
                 {
-                    auto value = ConstantValue(node, pin);
-                    if (DrawValueWithEditor(pin.m_Id, value))
-                        edit = [&document, id = pin.m_Id, value] { SetPinValue(document, id, value); };
+                    valueEditor(pin.m_Id, ConstantValue(node, pin));
                     ImGui::SameLine();
                 }
                 else if (auto kept = KeptValue(graph, pin); kept.IsValid())
