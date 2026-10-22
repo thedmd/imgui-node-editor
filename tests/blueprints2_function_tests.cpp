@@ -532,6 +532,27 @@ TEST_CASE(DebuggingCalls, "function.the_debugger_reads_a_call_in_progress", null
     test::Check(stepped && returned && returned.GetValue().m_Value == Value::Int32(7) && context.Fibers()[0].m_Calls.empty() && context.Fibers()[0].m_State == FiberState::Done, "and once it returned, the call's y is 7");
 }
 
+TEST_CASE(UnreachedReturns, "function.returns_no_flow_reaches_leave_the_outputs_defaults", nullptr, test::TestFlags_None)
+{
+    // Two(): y: Int32, whose entry's flow goes nowhere, and two returns, of 5 and 7, that no flow reaches.
+    Fixture f;
+    Signature two;
+    two.m_Outputs = { { "y", "Y", Int32Type() } };
+    auto& body  = f.Function("Two", two);
+    auto  first = f.In(body, "return:Two"), second = f.In(body, "return:Two");
+    f.In(body, "entry:Two");
+    f.Assign(body, first, "y", Value::Int32(5));
+    f.Assign(body, second, "y", Value::Int32(7));
+
+    auto start = f.Add("Start"), call = f.Call("Two"), print = f.Add("Print");
+    f.Link(start, "then", call, "enter");
+    f.Link(call, "then", print, "enter");
+    f.Link(call, "y", print, "text", LinkMode::Cast);
+    auto end     = FiberState::Ready;
+    auto printed = f.Run(&end);
+    test::Check(printed == "0" && end == FiberState::Done, "it compiles, and its call gives the default: %s", printed.c_str());
+}
+
 TEST_CASE(CompilingFunctions, "function.compiling_checks_entries_returns_and_pure_bodies", nullptr, test::TestFlags_None)
 {
     auto compiled = [](Fixture& f) { auto result = Compile(f.m_Blueprint); return result.m_Program ? std::string() : std::string(result.m_Diagnostics.back().m_Error.Message()); };
