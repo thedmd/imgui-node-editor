@@ -27,7 +27,7 @@ if (NOT IMGUI_DIR)
     FetchContent_Declare(
         imgui
         GIT_REPOSITORY https://github.com/thedmd/imgui.git
-        GIT_TAG        b085dd8feac1595915d85243b5515af34a10a394 # tag layout-external-v2.1: Dear ImGui 1.93.0 WIP with Stack Layout v2.1
+        GIT_TAG        9172446182e4519cfc1827453b32ece876c8f05f # combined-docking: Dear ImGui 1.93.0 docking with Stack Layout v2.2
     )
     FetchContent_MakeAvailable(imgui)
     set(IMGUI_DIR ${imgui_SOURCE_DIR})

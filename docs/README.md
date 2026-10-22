@@ -51,12 +51,12 @@ Changes land on the `develop` branch, which `master` follows at releases. Pull r
 
 ## Dependencies
 
- * Dear ImGui 1.89 (November 2022) or newer, tested up to 1.93.0 WIP
+ * Dear ImGui 1.89 (November 2022) or newer, tested up to 1.93.0
  * C++14
 
 ### Dependencies for examples:
 
- * [thedmd/imgui feature/layout-external](https://github.com/thedmd/imgui/tree/feature/layout-external) (Dear ImGui 1.93.0 WIP with Stack Layout, used in blueprints sample)
+ * [thedmd/imgui combined-docking](https://github.com/thedmd/imgui/tree/combined-docking) (Dear ImGui 1.93.0 docking with Stack Layout, used in blueprints sample)
  * stb, and GLFW on macOS, Linux, and Windows with the GLFW backend
  * [Font Awesome Free](https://fontawesome.com)'s solid font, which the examples' fonts take their icons from, and its icons' names from [IconFontCppHeaders](https://github.com/juliettef/IconFontCppHeaders)
  * [nativefiledialog-extended](https://github.com/btzy/nativefiledialog-extended), for the file dialogs of blueprints2-example

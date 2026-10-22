@@ -8,7 +8,7 @@ v0.10.0 (WIP):
     BREAKING: Canvas: Minimum supported version is now Dear ImGui 1.89 (November 2022)
 
     BREAKING: Examples: Build only against the Dear ImGui revision they pin
-        thedmd/imgui feature/layout-external: Dear ImGui 1.93.0 WIP with Stack Layout.
+        thedmd/imgui combined-docking: Dear ImGui 1.93.0 docking with Stack Layout.
 
     RESTRUCTURE:
         Removed local copy of all dependencies in favor of auto checkout. This should also reduce
@@ -50,8 +50,8 @@ v0.10.0 (WIP):
         With ImGui 1.93 the selection border was hidden and grid lines were blurred.
 
     CHANGE: Examples: Pin ImGui, stb and GLFW revisions
-        Examples build against thedmd/imgui feature/layout-external (Dear ImGui 1.93.0 WIP
-        with Stack Layout v2.1) and need CMake 3.24.
+        Examples build against thedmd/imgui combined-docking (Dear ImGui 1.93.0 docking
+        with Stack Layout v2.2) and need CMake 3.24.
 
     BUGFIX: Examples: Treat ImTextureID as an opaque value
 
