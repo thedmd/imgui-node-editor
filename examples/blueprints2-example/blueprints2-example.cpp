@@ -2382,6 +2382,7 @@ private:
         const auto reroute   = owner && IsReroute(*owner) ? owner : nullptr;
         const auto canGrow   = owner && GrowthOf(blueprint, *owner).m_Enabled;
         const auto canShrink = owner && std::any_of(owner->m_Pins.begin(), owner->m_Pins.end(), [&blueprint, owner](const Pin& candidate) { return static_cast<bool>(RemovalOf(blueprint, *owner, candidate)); });
+        const auto removal   = pin ? RemovalOf(blueprint, *graph.NodeOf(pin->m_Id), *pin) : PinRemoval();
 
         CanvasActions actions(overCanvas);
         actions.Gesture("Create Link", "Drag Pin to Pin", pin != nullptr);
@@ -2395,6 +2396,11 @@ private:
         }
         if (actions.Press("Break Pin's Links", ImGuiMod_Alt | ImGuiKey_MouseLeft, pinLinked && !reroute))
             ed::BreakLinks(ed::PinId(pin->m_Id));
+        if (actions.Press("Remove Pin", ImGuiMod_Alt | ImGuiKey_MouseLeft, removal && !pinLinked))
+        {
+            RemovePin(document, graph.NodeOf(pin->m_Id)->m_Id, removal);
+            return;
+        }
         if (actions.Press("Watch Pin", ImGuiMod_Ctrl | ImGuiKey_MouseLeft, pin && !pin->m_Flow))
             m_Debugger.SetWatched(pin->m_Id, !m_Debugger.IsWatched(pin->m_Id));
         actions.Gesture("Break Link", "Alt+Click", link != nullptr);
