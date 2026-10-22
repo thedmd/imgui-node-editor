@@ -3,6 +3,7 @@
 # include "platform.h"
 # include "renderer.h"
 # include "stb_image.h"
+# include <FontAwesome_solid.generated.h>
 # include <imgui_internal.h>
 # include <cstdio>
 # if PLATFORM(WINDOWS)
@@ -197,8 +198,21 @@ void Application::LoadFonts()
     ImFontConfig play = config;
     play.GlyphOffset.y = -1.0f;
 
+    // Font Awesome's solid icons, merged into each font, each as wide as the font's size, so the
+    // labels after them line up.
+    auto mergeIcons = [&io, &config](float size)
+    {
+        ImFontConfig icons = config;
+        icons.MergeMode            = true;
+        icons.FontDataOwnedByAtlas = false;
+        icons.GlyphMinAdvanceX     = size;
+        io.Fonts->AddFontFromMemoryTTF(const_cast<unsigned char*>(FontAwesome::c_solidFontData), static_cast<int>(FontAwesome::c_solidFontSize), size * 0.8f, &icons);
+    };
+
     m_DefaultFont = io.Fonts->AddFontFromFileTTF(ResolvePath("data/Play-Regular.ttf").c_str(), 18.0f, &play);
+    mergeIcons(18.0f);
     m_HeaderFont  = io.Fonts->AddFontFromFileTTF(ResolvePath("data/Cuprum-Bold.ttf").c_str(),  20.0f, &config);
+    mergeIcons(20.0f);
 }
 
 void Application::Frame()
