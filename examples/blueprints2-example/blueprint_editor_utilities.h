@@ -155,9 +155,14 @@ bool SquareButton(const char* label);      // As wide as it's high, a line's hei
 std::string ValueText(const Value& value); // "true", "12", "1.5", a string as it is, else as its type formats it
 bool DrawValue(const Value& value);        // Draws a value; false for none.
 // An editor of a value. A number's - and + change it, the editor staying; Enter ends the edit.
+// A field ends its edit when it stops being active, keeping what was typed, but for a click on a
+// number's - or +, which steps it. 'focus' makes the field active.
 enum class ValueEdit { None, Changed, Done };
-ValueEdit EditValue(Value& value);
-bool DrawValueWithEditor(Id id, Value& value); // Draws a value, or its editor once clicked; true when an edit changed it.
+ValueEdit EditValue(Value& value, bool focus = false);
+
+// Draws a value, or its editor once clicked, its field active; true when an edit changed it. The
+// editor closes when its edit ends, and on a click elsewhere.
+bool DrawValueWithEditor(Id id, Value& value);
 
 // A popup of a name's field, which opens while 'open' is set, its field focused, and clears it.
 // Enter gives the name typed, unless a problem with it shows under the field. Escape closes it,

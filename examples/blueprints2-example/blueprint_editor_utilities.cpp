@@ -911,18 +911,24 @@ bool blueprint_editor_utilities::DrawValue(const Value& value)
 }
 
 // Files can't hold NaN or an infinity, so a Float editor takes only finite numbers.
-blueprint_editor_utilities::ValueEdit blueprint_editor_utilities::EditValue(Value& value)
+blueprint_editor_utilities::ValueEdit blueprint_editor_utilities::EditValue(Value& value, bool focus)
 {
     ImEx::ScopedItemWidth scopedItemWidth{120};
 
-    // A number's field, then its - and +, laid out as ImGui::InputScalar() lays out its own.
-    auto number = [](ImGuiDataType type, void* data, const char* format) -> ValueEdit
+    // A number's field, then its - and +, laid out as ImGui::InputScalar() lays out its own, which
+    // applies what was typed in it when it stops being active.
+    auto number = [focus](ImGuiDataType type, void* data, const char* format) -> ValueEdit
     {
         const auto spacing = ImGui::GetStyle().ItemInnerSpacing.x;
         const auto button  = ImGui::GetFrameHeight();
         ImGui::SetNextItemWidth(ImMax(1.0f, ImGui::CalcItemWidth() - (button + spacing) * 2.0f));
-        if (ImGui::InputScalar("##editor", type, data, nullptr, nullptr, format, ImGuiInputTextFlags_EnterReturnsTrue))
-            return ValueEdit::Done;
+        if (focus)
+            ImGui::SetKeyboardFocusHere();
+        ImGui::InputScalar("##editor", type, data, nullptr, nullptr, format);
+        const auto stepsMin = ImVec2(ImGui::GetItemRectMax().x, ImGui::GetItemRectMin().y);
+        const auto stepsMax = ImGui::GetItemRectMax() + ImVec2((button + spacing) * 2.0f, 0.0f);
+        const auto typed    = ImGui::IsItemDeactivated();
+        const auto ended    = typed && !(ImGui::IsMouseClicked(ImGuiMouseButton_Left) && ImGui::IsMouseHoveringRect(stepsMin, stepsMax));
         auto step = 0;
         ImGui::SameLine(0.0f, spacing);
         if (ImGui::Button("-", ImVec2(button, button)))
@@ -930,8 +936,10 @@ blueprint_editor_utilities::ValueEdit blueprint_editor_utilities::EditValue(Valu
         ImGui::SameLine(0.0f, spacing);
         if (ImGui::Button("+", ImVec2(button, button)))
             step = 1;
+        if (ended)
+            return ValueEdit::Done;
         if (step == 0)
-            return ValueEdit::None;
+            return typed ? ValueEdit::Changed : ValueEdit::None;
         if (type == ImGuiDataType_S32)
         {
             auto& integer = *static_cast<int32_t*>(data);
@@ -981,7 +989,10 @@ blueprint_editor_utilities::ValueEdit blueprint_editor_utilities::EditValue(Valu
             }
             return 0;
         };
-        if (!ImGui::InputText("##editor", text.data(), text.size() + 1, ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_CallbackResize, resize, &text))
+        if (focus)
+            ImGui::SetKeyboardFocusHere();
+        ImGui::InputText("##editor", text.data(), text.size() + 1, ImGuiInputTextFlags_AutoSelectAll | ImGuiInputTextFlags_CallbackResize, resize, &text);
+        if (!ImGui::IsItemDeactivated())
             return ValueEdit::None;
         text.resize(strlen(text.c_str()));
         value = Value::String(std::move(text));
@@ -994,15 +1005,20 @@ blueprint_editor_utilities::ValueEdit blueprint_editor_utilities::EditValue(Valu
 
 bool blueprint_editor_utilities::DrawValueWithEditor(Id id, Value& value)
 {
-    auto storage = ImGui::GetStateStorage();
+    auto storage  = ImGui::GetStateStorage();
+    auto focusKey = ImGui::GetID("PinValueEditor_Focus");
     auto activeId = static_cast<Id>(storage->GetInt(ImGui::GetID("PinValueEditor_ActivePinId"), 0));
 
     bool changed = false;
     if (activeId == id)
     {
         const auto before = value;
-        const auto edit   = EditValue(value);
-        if (edit == ValueEdit::Done)
+        ImGui::BeginGroup();
+        const auto edit = EditValue(value, storage->GetBool(focusKey));
+        ImGui::EndGroup();
+        storage->SetBool(focusKey, false);
+        const auto clicked = ImGui::IsMouseClicked(ImGuiMouseButton_Left) || ImGui::IsMouseClicked(ImGuiMouseButton_Right);
+        if (edit == ValueEdit::Done || (clicked && !ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem)))
             activeId = 0;
         changed = edit != ValueEdit::None && !(value == before);
     }
@@ -1026,7 +1042,10 @@ bool blueprint_editor_utilities::DrawValueWithEditor(Id id, Value& value)
         ImGui::SetCursorScreenPos(itemMin);
 
         if (ImGui::InvisibleButton("###pin_value_editor", itemSize))
+        {
             activeId = id;
+            storage->SetBool(focusKey, true);
+        }
     }
 
     storage->SetInt(ImGui::GetID("PinValueEditor_ActivePinId"), static_cast<int>(activeId));

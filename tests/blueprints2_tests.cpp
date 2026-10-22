@@ -1498,3 +1498,65 @@ TEST_CASE(RightClicksPastMenus, "blueprints2.a_right_click_outside_a_menu_closes
     session.Run(2);
     test::Check(!shown && backgroundMenus == 1, "a right-click on the canvas that moves 2 px closes it and opens the canvas's: %d", backgroundMenus);
 }
+
+TEST_CASE(ValueEditsEnd, "blueprints2.a_value_edit_ends_on_a_click_elsewhere_keeping_what_was_typed", nullptr, test::TestFlags_None)
+{
+    // A text and a number with their editors, in the host window above the canvas.
+    using blueprint_editor_utilities::DrawValueWithEditor;
+    test::Session session(UnnamedConfig());
+    auto   text = Value::String("Done"), number = Value::Int32(10);
+    ImRect textRect, numberRect;
+    session.BeforeEditor = [&]
+    {
+        ImGui::SetCursorScreenPos(ImVec2(100.0f, 100.0f));
+        ImGui::PushID(1);
+        DrawValueWithEditor(1, text);
+        ImGui::PopID();
+        textRect = ImRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
+        ImGui::SetCursorScreenPos(ImVec2(100.0f, 160.0f));
+        ImGui::PushID(2);
+        DrawValueWithEditor(2, number);
+        ImGui::PopID();
+        numberRect = ImRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
+    };
+    auto type = [&](const char* typed)
+    {
+        for (auto c = typed; *c; ++c)
+            ImGui::GetIO().AddInputCharacter(static_cast<unsigned>(*c));
+        session.Run(2);
+    };
+    const auto elsewhere = ImVec2(700.0f, 500.0f);
+    session.Run(3);
+    const auto chip = textRect.GetWidth();
+
+    session.Click(textRect.GetCenter());
+    session.Run(2);
+    type("hi");
+    const auto editing = textRect.GetWidth() > chip;
+    session.Click(elsewhere);
+    test::Check(editing && text.AsString() == "hi" && textRect.GetWidth() < chip, "a text's editor opens with its field active, and a click elsewhere keeps what was typed and closes it: \"%s\"", std::string(text.AsString()).c_str());
+
+    session.Click(textRect.GetCenter());
+    session.Run(2);
+    type("x");
+    test::Key(ImGuiKey_Escape, true);
+    session.Run(1);
+    test::Key(ImGuiKey_Escape, false);
+    session.Run(2);
+    test::Check(text.AsString() == "hi" && textRect.GetWidth() < chip, "Escape closes it without the edit: \"%s\"", std::string(text.AsString()).c_str());
+
+    session.Click(numberRect.GetCenter());
+    session.Run(2);
+    const auto plus = ImVec2(numberRect.Max.x - numberRect.GetHeight() * 0.5f, numberRect.GetCenter().y);
+    session.Click(plus);
+    session.Click(plus);
+    const auto open = numberRect.GetWidth() > numberRect.GetHeight() * 3.0f;
+    session.Click(elsewhere);
+    test::Check(open && number.AsInt32() == 12 && numberRect.GetWidth() < numberRect.GetHeight() * 3.0f, "a number's + steps it with the editor kept open, and a click elsewhere closes it: %d", number.AsInt32());
+
+    session.Click(numberRect.GetCenter());
+    session.Run(2);
+    type("7");
+    session.Click(elsewhere);
+    test::Check(number.AsInt32() == 7, "a number typed is kept too: %d", number.AsInt32());
+}
