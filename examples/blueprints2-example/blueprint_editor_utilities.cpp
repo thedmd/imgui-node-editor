@@ -201,6 +201,8 @@ std::vector<blueprint_editor_utilities::Id> blueprint_editor_utilities::FlowChai
 
 std::string blueprint_editor_utilities::OrphanName(const Node& node, const OrphanPin& orphan)
 {
+    if (!orphan.m_Name.empty())
+        return orphan.m_Name;
     if (auto named = node.m_Config.m_Names.find(orphan.m_Key); named != node.m_Config.m_Names.end())
         return named->second;
     if (auto dot = orphan.m_Key.rfind('.'); dot != std::string::npos)

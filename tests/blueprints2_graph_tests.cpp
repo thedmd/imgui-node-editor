@@ -936,12 +936,14 @@ TEST_CASE(OrphanPins, "graph.a_pin_gone_that_links_name_is_an_orphan_of_its_node
     auto make  = f.Add("MakeVector2"), add = f.Add("Add");
     auto split = f.m_Graph.SplitPin(make, "value", true);
     auto field = f.Pin(make, "value.x");
+    auto named = f.m_Graph.FindPin(field) ? f.m_Graph.FindPin(field)->m_Name : std::string();
     auto link  = f.Link(make, "value.x", add, "in.0");
     auto whole = f.m_Graph.SplitPin(make, "value", false);
     auto node  = f.m_Graph.FindNode(make);
     auto alone = node && node->m_Orphans.size() == 1 ? &node->m_Orphans[0] : nullptr;
     test::Check(split && whole && alone && alone->m_Id == field && alone->m_Key == "value.x" && alone->m_Direction == Direction::Output && !alone->m_Flow && f.m_Graph.NodeOfOrphan(field) == node,
         "recombined, the field it links stays, an orphan output of Make Vector2");
+    test::Check(alone && !named.empty() && alone->m_Name == named, "named as the field was: %s", alone ? alone->m_Name.c_str() : "");
 
     auto diagnostics = f.m_Graph.Diagnostics();
     auto found       = std::find_if(diagnostics.begin(), diagnostics.end(), [link](const Diagnostic& diagnostic) { return diagnostic.m_Link == link; });

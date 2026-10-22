@@ -2134,7 +2134,9 @@ void crude_blueprint::Graph::Update()
             if (!node || node->FindOrphan(end))
                 continue;
             auto known = FindPin(other);
-            MutableNode(node->m_Id)->m_Orphans.push_back({ end, std::move(key), direction, known && known->m_Flow });
+            auto named = node->m_KeyNames.find(key);
+            auto name  = named != node->m_KeyNames.end() ? named->second : std::string();
+            MutableNode(node->m_Id)->m_Orphans.push_back({ end, std::move(key), std::move(name), direction, known && known->m_Flow });
         }
     }
     Diagnose();
@@ -2177,6 +2179,7 @@ void crude_blueprint::Graph::Declare()
             static_cast<PinDeclaration&>(pin) = std::move(declared);
             pin.m_Id   = it->second;
             pin.m_Node = node.m_Id;
+            node.m_KeyNames[pin.m_Key] = pin.m_Name;
             m_PinIndex[pin.m_Id] = { i, node.m_Pins.size() };
             node.m_Pins.push_back(std::move(pin));
         }

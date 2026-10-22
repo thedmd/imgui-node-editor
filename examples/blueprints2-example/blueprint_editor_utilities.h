@@ -58,8 +58,8 @@ float RerouteSize();
 ImVec2 RerouteDirection(ImVec2 center, std::span<const ImVec2> sources, std::span<const ImVec2> targets);
 // The link, and the links after it past flow reroutes, as a program takes them at once.
 std::vector<Id> FlowChain(const Graph& graph, Id link);
-// An orphan pin's name, as it was: its config's, a split field's as its struct pin names it
-// ("Vector2 x"), or its key.
+// An orphan pin's name, as it was: its pin's last, its config's, a split field's as its struct pin
+// names it ("Vector2 x"), or its key.
 std::string OrphanName(const Node& node, const OrphanPin& orphan);
 // A link's end, a pin or an orphan: its node; its name, as menus give it ("Add#7.in.0"); and its
 // node selected and brought into view.

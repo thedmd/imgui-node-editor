@@ -837,6 +837,7 @@ struct OrphanPin
 {
     Id          m_Id = 0;
     std::string m_Key;
+    std::string m_Name;      // its pin's last, as Node::m_KeyNames has it; empty for none
     Direction   m_Direction = Direction::Input;
     bool        m_Flow      = false; // the links' other ends are flow pins
 };
@@ -849,6 +850,9 @@ struct Node
 
     // Every key the node has had: a pin that goes and comes back keeps its ID, and so its links.
     std::map<std::string, Id, std::less<>> m_KeyIds;
+    // The name each key's pin last had while the node declared it, since the graph was made or
+    // loaded: unsaved.
+    std::map<std::string, std::string, std::less<>> m_KeyNames;
 
     // What the user typed into inputs, by pin. A value stays while its pin's type is undecided,
     // and is reset once the type is decided as another.
