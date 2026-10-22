@@ -838,6 +838,14 @@ struct NavigateAction final: EditorAction
     void StopNavigation();
     void FinishNavigation();
 
+    // What F and Shift+F go to without a selection: the object the mouse is over, a pin's node,
+    // or the group around the mouse over the background.
+    Object* FocusObject(const Control& control);
+
+    // Where F goes, or Shift+F, withMargin: the selection, else the object, else the content. F
+    // again goes to the content.
+    NavigationReason FocusTarget(Object* object, bool withMargin) const;
+
     bool MoveOverEdge(const ImVec2& canvasSize);
     bool IsSettled() const { return !m_IsActive && !m_Animation.IsPlaying() && !m_MovingOverEdge; }
     void StopMoveOverEdge();
@@ -1521,6 +1529,8 @@ struct EditorContext
     void EnableShortcuts(bool enable);
     bool AreShortcutsEnabled();
 
+    ActionInfo GetActionInfo(Action action);
+
     NodeId GetHoveredNode()            const { return m_HoveredNode;             }
     PinId  GetHoveredPin()             const { return m_HoveredPin;              }
     LinkId GetHoveredLink()            const { return m_HoveredLink;             }
@@ -1567,6 +1577,8 @@ private:
     void FreeDeletedObjects();
 
     Control BuildControl(bool allowOffscreen);
+
+    void UpdateActionInfo(const Control& control);
 
     void ShowMetrics(const Control& control);
 
@@ -1632,6 +1644,10 @@ private:
     LinkId              m_DoubleClickedLink;
     int                 m_BackgroundClickButtonIndex;
     int                 m_BackgroundDoubleClickButtonIndex;
+
+    const char*         m_ActionNames[static_cast<int>(Action::Count)];         // as the last End() left them
+    bool                m_ActionAvailable[static_cast<int>(Action::Count)];
+    char                m_ActionTriggers[static_cast<int>(Action::Count)][24]; // returned by GetActionInfo()
 
     bool                m_IsSettingsLoaded;
     bool                m_IsInitialized;

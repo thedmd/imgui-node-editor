@@ -775,6 +775,11 @@ void ax::NodeEditor::EndShortcut()
     return CurrentEditor()->GetShortcut().End();
 }
 
+ax::NodeEditor::ActionInfo ax::NodeEditor::GetActionInfo(Action action)
+{
+    return CurrentEditor()->GetActionInfo(action);
+}
+
 float ax::NodeEditor::GetCurrentZoom()
 {
     return CurrentEditor()->GetView().Scale();

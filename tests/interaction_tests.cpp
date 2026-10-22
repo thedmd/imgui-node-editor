@@ -1285,3 +1285,227 @@ TEST_CASE(RightClickOnPopupOverCanvas, "interaction.a_right_click_on_a_popup_ove
     session.Click(ImVec2(900.0f, 600.0f), 1);
     test::Check(!shown && backgroundMenus == 1, "one on the canvas beside it closes it, and opens the canvas menu: %d", backgroundMenus);
 }
+
+namespace {
+
+// Each action's trigger, or the names of those available, joined by ", ".
+std::string ActionTexts(test::Session& session, bool triggers)
+{
+    return session.Use([triggers]
+    {
+        std::string text;
+        for (int i = 0; i < static_cast<int>(ed::Action::Count); ++i)
+        {
+            const auto info = ed::GetActionInfo(static_cast<ed::Action>(i));
+            if (!triggers && !info.Available)
+                continue;
+            text += text.empty() ? "" : ", ";
+            text += triggers ? info.Trigger : info.Name;
+        }
+        return text;
+    });
+}
+
+// Node 1 at (100, 100) with output pin 12 linked to input pin 21 of node 2 at (400, 100),
+// group 3 at (100, 300), and a text field in node 4 at (100, 600).
+struct ActionScene
+{
+    ImVec2 NodeTitle, InputPin, LinkMiddle, GroupHeader, GroupEdge, TextField, Background;
+    char   Text[16] = "";
+
+    void Submit(int frame)
+    {
+        if (frame == 0)
+        {
+            ed::SetNodePosition(1, ImVec2(100.0f, 100.0f));
+            ed::SetNodePosition(2, ImVec2(400.0f, 100.0f));
+            ed::SetNodePosition(3, ImVec2(100.0f, 300.0f));
+            ed::SetNodePosition(4, ImVec2(100.0f, 600.0f));
+        }
+        auto center = [] { return ed::CanvasToScreen((ImGui::GetItemRectMin() + ImGui::GetItemRectMax()) * 0.5f); };
+
+        ed::BeginNode(1);
+        ImGui::TextUnformatted("Node");
+        NodeTitle = center();
+        ed::BeginPin(12, ed::PinKind::Output);
+        ImGui::TextUnformatted("Out");
+        const auto output = center();
+        ed::EndPin();
+        ed::EndNode();
+
+        ed::BeginNode(2);
+        ImGui::TextUnformatted("Node");
+        ed::BeginPin(21, ed::PinKind::Input);
+        ImGui::TextUnformatted("In");
+        InputPin = center();
+        ed::EndPin();
+        ed::EndNode();
+        ed::Link(100, 12, 21);
+        LinkMiddle = (output + InputPin) * 0.5f;
+
+        ed::BeginNode(3);
+        ImGui::TextUnformatted("Group");
+        ed::Group(ImVec2(300.0f, 150.0f));
+        ed::EndNode();
+        GroupHeader = ed::CanvasToScreen(ed::GetNodePosition(3) + ImVec2(40.0f, 12.0f));
+        GroupEdge   = ed::CanvasToScreen(ed::GetNodePosition(3) + ImVec2(ed::GetNodeSize(3).x - 2.0f, ed::GetNodeSize(3).y * 0.5f));
+
+        ed::BeginNode(4);
+        ImGui::SetNextItemWidth(100.0f);
+        ImGui::InputText("##text", Text, sizeof(Text));
+        TextField = center();
+        ed::EndNode();
+
+        Background = ed::CanvasToScreen(ImVec2(600.0f, 250.0f));
+    }
+};
+
+} // namespace
+
+TEST_CASE(ActionTriggers, "interaction.action_info_tells_keys_and_the_mouse_buttons_of_the_config", nullptr, test::TestFlags_None)
+{
+# if IMGUI_VERSION_NUM < 18920 && defined(__APPLE__)
+    const std::string ctrl = "Cmd";
+# else
+    const std::string ctrl = "Ctrl";
+# endif
+# if IMGUI_VERSION_NUM >= 19070
+    const ImGuiKeyChord shortcutMod = ImGuiMod_Ctrl;
+# else
+    const ImGuiKeyChord shortcutMod = ImGuiMod_Shortcut;
+# endif
+
+    {
+        test::Storage storage;
+        test::Session session(&storage);
+        session.HostContext.Context->IO.ConfigMacOSXBehaviors = false;
+        session.DefaultContent = SmallNode;
+        session.Run(2);
+        const auto triggers = ActionTexts(session, true);
+        const auto expected = "F, Shift+F, Right-Drag, Wheel, Click, Ctrl+Click, Click, Drag, Ctrl+Drag, Shift+Drag, Alt+Drag, Drag, Alt+Drag, Shift+Drag, Drag, Drag, Delete, Alt+Click, "
+            + ctrl + "+X, " + ctrl + "+C, " + ctrl + "+V, " + ctrl + "+D, Space, Right-Click";
+        test::Check(triggers == expected, "the default config's triggers: %s", triggers.c_str());
+
+        const auto chords = session.Use([] { return std::vector<ImGuiKeyChord>{ ed::GetActionInfo(ed::Action::Frame).KeyChord, ed::GetActionInfo(ed::Action::Copy).KeyChord, ed::GetActionInfo(ed::Action::Pan).KeyChord }; });
+        test::Check(chords[0] == (ImGuiMod_Shift | ImGuiKey_F) && chords[1] == (shortcutMod | ImGuiKey_C) && chords[2] == 0, "Frame's chord is Shift+F, Copy's the shortcut modifier's C, and Pan has none");
+
+        session.HostContext.Context->IO.ConfigMacOSXBehaviors = true;
+        const auto mac = session.Use([] { return std::string(ed::GetActionInfo(ed::Action::ToggleSelection).Trigger) + ", " + ed::GetActionInfo(ed::Action::Cut).Trigger; });
+# if IMGUI_VERSION_NUM < 18920
+        test::Check(mac == "Cmd+Click, " + ctrl + "+X", "with io.ConfigMacOSXBehaviors, Cmd clicks: %s", mac.c_str());
+# else
+        test::Check(mac == "Cmd+Click, Cmd+X", "with io.ConfigMacOSXBehaviors, Cmd clicks and cuts: %s", mac.c_str());
+# endif
+    }
+
+    {
+        ed::Config config;
+        config.SettingsName           = nullptr;
+        config.DragButtonIndex        = 2;
+        config.SelectButtonIndex      = 0;
+        config.NavigateButtonIndex    = 1;
+        config.ContextMenuButtonIndex = 2;
+        test::Session session(config);
+        session.DefaultContent = SmallNode;
+        session.Run(2);
+        const auto moves = session.Use([] { return std::string(ed::GetActionInfo(ed::Action::Move).Trigger) + ", " + ed::GetActionInfo(ed::Action::MoveWithoutSnapping).Trigger + ", " + ed::GetActionInfo(ed::Action::ContextMenu).Trigger; });
+        test::Check(moves == "Middle-Drag, Alt+Middle-Drag, Middle-Click", "the config's buttons: %s", moves.c_str());
+    }
+}
+
+TEST_CASE(ActionAvailability, "interaction.action_info_follows_what_the_mouse_is_over_and_the_selection", nullptr, test::TestFlags_None)
+{
+    test::Storage storage;
+    test::Session session(&storage);
+    ActionScene scene;
+    session.DefaultContent = [&](int frame) { scene.Submit(frame); };
+    session.Run(3);
+
+    session.Click(scene.Background);
+    auto over = [&](ImVec2 position)
+    {
+        test::MouseMove(position);
+        session.Run(2);
+        return ActionTexts(session, false);
+    };
+
+    const auto background = over(scene.Background);
+    const auto node       = over(scene.NodeTitle);
+    const auto pin        = over(scene.InputPin);
+    const auto link       = over(scene.LinkMiddle);
+    const auto header     = over(scene.GroupHeader);
+    const auto edge       = over(scene.GroupEdge);
+    test::Check(background == "Zoom to Content, Zoom to Content, Pan, Zoom, Select Nodes, Add to Selection, Select Groups, Select Links, Paste, Create Node, Context Menu",
+        "over the background: %s", background.c_str());
+    test::Check(node == "Center on Node, Zoom to Node, Pan, Zoom, Select, Toggle Selection, Move, Move Without Snapping, Cut, Copy, Paste, Duplicate, Create Node, Context Menu",
+        "over a node: %s", node.c_str());
+    test::Check(pin == "Center on Node, Zoom to Node, Pan, Zoom, Select, Toggle Selection, Create Link, Paste, Create Node, Context Menu",
+        "over a pin: %s", pin.c_str());
+    test::Check(link == "Center on Link, Zoom to Link, Pan, Zoom, Select, Toggle Selection, Delete Link, Cut, Copy, Paste, Duplicate, Create Node, Context Menu",
+        "over a link: %s", link.c_str());
+    test::Check(header == "Center on Group, Zoom to Group, Pan, Zoom, Select, Toggle Selection, Move, Move Without Snapping, Move Group Alone, Paste, Create Node, Context Menu",
+        "over a group's header: %s", header.c_str());
+    test::Check(edge == "Center on Group, Zoom to Group, Pan, Zoom, Select, Toggle Selection, Resize Without Snapping, Resize Group, Paste, Create Node, Context Menu",
+        "over a group's edge: %s", edge.c_str());
+
+    session.Click(scene.TextField);
+    const auto typing = over(scene.NodeTitle);
+    session.Click(scene.Background);
+    test::Check(typing.empty(), "while a text field is active, none: %s", typing.c_str());
+
+    session.Click(scene.NodeTitle);
+    const auto selected = over(scene.Background);
+    session.PressKey(ImGuiKey_F);
+    const auto centered = ActionTexts(session, false);
+    session.Run(40);
+    test::Check(selected == "Center on Selection, Zoom to Selection, Pan, Zoom, Clear Selection, Select Nodes, Add to Selection, Select Groups, Select Links, Delete Selection, Cut, Copy, Paste, Duplicate, Create Node, Context Menu",
+        "with node 1 selected, over the background: %s", selected.c_str());
+    test::Check(centered.find("Zoom to Content, Zoom to Selection, ") == 0, "once F centered it, F zooms to the content: %s", centered.c_str());
+
+    session.Use([] { ed::EnableShortcuts(false); });
+    const auto disabled = over(scene.LinkMiddle);
+    session.Use([] { ed::EnableShortcuts(true); });
+    test::Check(disabled == "Pan, Zoom, Select, Toggle Selection, Context Menu", "without shortcuts, over a link: %s", disabled.c_str());
+
+    test::MouseMove(scene.NodeTitle);
+    session.Run(2);
+    test::MouseButton(0, true);
+    session.Run(2);
+    test::MouseMove(scene.NodeTitle + ImVec2(30.0f, 20.0f));
+    session.Run(2);
+    const auto dragging = ActionTexts(session, false);
+    test::MouseButton(0, false);
+    session.Run(2);
+    test::Check(dragging == "Zoom to Content, Zoom to Selection, Pan, Zoom", "while a node is dragged, F and the mouse's view actions only: %s", dragging.c_str());
+}
+
+TEST_CASE(ActionsWithoutFocus, "interaction.action_info_without_the_focus_leaves_the_keys_out", nullptr, test::TestFlags_None)
+{
+    test::Storage storage;
+    test::Session session(&storage);
+    session.HostSize = ImVec2(700.0f, 640.0f);
+    ActionScene scene;
+    session.DefaultContent = [&](int frame) { scene.Submit(frame); };
+    session.AfterHost = [&]
+    {
+        ImGui::SetNextWindowPos(ImVec2(800.0f, 40.0f));
+        ImGui::SetNextWindowSize(ImVec2(400.0f, 400.0f));
+        ImGui::Begin("Other", nullptr, session.HostFlags);
+        ImGui::End();
+    };
+    session.Run(3);
+    session.Click(ImVec2(900.0f, 200.0f));
+
+    test::MouseMove(scene.NodeTitle);
+    session.Run(2);
+    const auto node = ActionTexts(session, false);
+    test::Check(node == "Pan, Zoom, Select, Toggle Selection, Move, Move Without Snapping, Context Menu", "over a node of an editor without the focus: %s", node.c_str());
+
+    // A right-drag pans an editor without the focus, as its press gives it.
+    auto origin = [&] { return session.Use([] { return ed::CanvasToScreen(ImVec2(0.0f, 0.0f)); }); };
+    const auto start = origin();
+    session.Drag(scene.Background, scene.Background + ImVec2(60.0f, 30.0f), 1);
+    const auto panned = origin() - start;
+    session.AfterHost = nullptr;
+    test::Check(panned.x == 60.0f && panned.y == 30.0f, "and a right-drag over its background pans it: by (%g, %g)", panned.x, panned.y);
+}

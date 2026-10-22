@@ -43,6 +43,7 @@ struct PinId;
 struct NodeState;
 struct ViewState;
 struct Edit;
+struct ActionInfo;
 
 
 //------------------------------------------------------------------------------
@@ -72,6 +73,40 @@ enum class EditType
     Resize,                 // a group resized
     Select,                 // the selection changed
     Navigate                // the view moved or zoomed, with Config::ReportNavigationEdits
+};
+
+// The editor's own actions, which GetActionInfo() describes. Their keys are fixed, their mouse
+// buttons Config's; Ctrl is Cmd with io.ConfigMacOSXBehaviors. The application carries some of
+// them out: Cut to CreateNode through BeginShortcut(), CreateLink through BeginCreate(),
+// DeleteSelection and DeleteLink through BeginDelete(), ContextMenu through Show*ContextMenu().
+enum class Action
+{
+    Center,                 // F: centers the selection, else what the mouse is over; again, or without either, zooms to the content
+    Frame,                  // Shift+F: zooms to the selection, else what the mouse is over, else the content
+    Pan,                    // drags the view
+    Zoom,                   // the mouse wheel
+    Select,                 // a click on a node or a link selects it alone
+    ToggleSelection,        // Ctrl+click adds a node or a link to the selection, or takes it out
+    ClearSelection,         // a click on the background
+    SelectNodes,            // a drag over the background selects the nodes in its rectangle
+    AddToSelection,         // Ctrl+drag adds them to the selection
+    SelectGroups,           // Shift+drag selects the groups in it instead
+    SelectLinks,            // Alt+drag selects the links in it instead
+    Move,                   // a drag of a node moves it, with the selection it's in and the nodes in a group, on the grid
+    MoveWithoutSnapping,    // Alt+drag moves, or resizes a group, off the grid
+    MoveGroupAlone,         // Shift+drag moves a group without the nodes in it
+    ResizeGroup,            // a drag of a group's edge or corner
+    CreateLink,             // a drag from a pin
+    DeleteSelection,        // Delete
+    DeleteLink,             // Alt+click on a link
+    Cut,                    // Ctrl+X
+    Copy,                   // Ctrl+C
+    Paste,                  // Ctrl+V
+    Duplicate,              // Ctrl+D
+    CreateNode,             // Space
+    ContextMenu,            // a right-click
+
+    Count
 };
 
 
@@ -486,6 +521,10 @@ IMGUI_NODE_EDITOR_API int  GetActionContextNodes(NodeId* nodes, int size);
 IMGUI_NODE_EDITOR_API int  GetActionContextLinks(LinkId* links, int size);
 IMGUI_NODE_EDITOR_API void EndShortcut();
 
+// For the frame the last End() ended, as GetHoveredNode(): to list the editor's own actions in
+// help, menus or hints. Trigger lasts until the next call for the same action.
+IMGUI_NODE_EDITOR_API ActionInfo GetActionInfo(Action action);
+
 // Zoom factor of the view: 2 at 200%, as in Config::CustomZoomLevels.
 IMGUI_NODE_EDITOR_API float GetCurrentZoom();
 
@@ -628,6 +667,15 @@ struct Edit
     SelectionState   SelectionAfter;
     ViewState        ViewBefore;            // Navigate
     ViewState        ViewAfter;
+};
+
+// What GetActionInfo() tells of an action. Name and Trigger are in English.
+struct ActionInfo
+{
+    const char*   Name      = "";    // what it would do now: "Center on Selection", or "Zoom to Content" for F pressed again
+    const char*   Trigger   = "";    // its key chord, or its mouse gesture with Config's buttons: "Shift+F", "Ctrl+Click", "Right-Drag"
+    ImGuiKeyChord KeyChord  = 0;     // a key's action's chord, as the editor takes it; 0 for the mouse's actions
+    bool          Available = false; // it would act now, on what the mouse is over and on the selection
 };
 
 

@@ -202,6 +202,36 @@ static bool IsShortcutModDown()
     return io.KeyCtrl;
 }
 
+// What GetActionInfo() names each action until End() names those that follow the frame.
+static const char* const c_ActionNames[] =
+{
+    "Zoom to Content",          // Center
+    "Zoom to Content",          // Frame
+    "Pan",
+    "Zoom",
+    "Select",
+    "Toggle Selection",
+    "Clear Selection",
+    "Select Nodes",
+    "Add to Selection",
+    "Select Groups",
+    "Select Links",
+    "Move",
+    "Move Without Snapping",
+    "Move Group Alone",
+    "Resize Group",
+    "Create Link",
+    "Delete Selection",
+    "Delete Link",
+    "Cut",
+    "Copy",
+    "Paste",
+    "Duplicate",
+    "Create Node",
+    "Context Menu",
+};
+static_assert(IM_ARRAYSIZE(c_ActionNames) == static_cast<int>(ax::NodeEditor::Action::Count), "c_ActionNames names every action.");
+
 
 //------------------------------------------------------------------------------
 // Since ImGui 1.91, EndGroup() also reaches the last item, which a group without
@@ -939,6 +969,13 @@ ed::EditorContext::EditorContext(const ax::NodeEditor::Config* config)
 {
     IM_ASSERT(m_SettingsName.find_first_of("\r\n") == string::npos && "Config::SettingsName must fit on one line of imgui.ini.");
     m_Config.SettingsName = m_SettingsName.empty() ? nullptr : m_SettingsName.c_str();
+
+    for (int i = 0; i < static_cast<int>(Action::Count); ++i)
+    {
+        m_ActionNames[i]       = c_ActionNames[i];
+        m_ActionAvailable[i]   = false;
+        m_ActionTriggers[i][0] = 0;
+    }
 }
 
 ed::EditorContext::~EditorContext()
@@ -1262,6 +1299,8 @@ void ed::EditorContext::End()
         if (m_CurrentAction && possibleAction)
             possibleAction->Reject();
     }
+
+    UpdateActionInfo(control);
 
     RecordSelectionEdit(selectionBefore);
     RecordNavigationEdit();
@@ -2851,6 +2890,156 @@ bool ed::EditorContext::AreShortcutsEnabled()
     return m_ShortcutsEnabled;
 }
 
+// Each action's availability follows the conditions its Accept() checks. The mouse's actions
+// don't wait for focus, which their press gives the window.
+void ed::EditorContext::UpdateActionInfo(const Control& control)
+{
+    auto set = [this](Action action, bool available)
+    {
+        m_ActionAvailable[static_cast<int>(action)] = available;
+    };
+    auto name = [this](Action action, const char* text)
+    {
+        m_ActionNames[static_cast<int>(action)] = text;
+    };
+
+    // F and Shift+F name where they'd go.
+    const auto object = m_SelectedObjects.empty() ? m_NavigateAction.FocusObject(control) : nullptr;
+    auto focusName = [this, object](bool withMargin)
+    {
+        switch (m_NavigateAction.FocusTarget(object, withMargin))
+        {
+            case NavigateAction::NavigationReason::Selection:
+                return withMargin ? "Zoom to Selection" : "Center on Selection";
+            case NavigateAction::NavigationReason::Object:
+                if (object->AsLink())
+                    return withMargin ? "Zoom to Link" : "Center on Link";
+                if (IsGroup(object->AsNode()))
+                    return withMargin ? "Zoom to Group" : "Center on Group";
+                return withMargin ? "Zoom to Node" : "Center on Node";
+            default:
+                return "Zoom to Content";
+        }
+    };
+
+    const auto keys     = !m_IsFrozen && m_ShortcutsEnabled && !IsOtherItemActive();
+    const auto focusing = keys && !m_NavigateAction.m_IsActive && CanAcceptUserInput();
+    set(Action::Center, focusing);
+    set(Action::Frame,  focusing);
+    name(Action::Center, focusName(false));
+    name(Action::Frame,  focusName(true));
+
+    // Links and the background are hit by the mouse position, also through a window over the canvas.
+    const auto overWindow = ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByPopup | ImGuiHoveredFlags_AllowWhenBlockedByActiveItem);
+    const auto node       = control.HotNode;
+    const auto link       = overWindow ? control.HotLink : nullptr;
+    const auto background = overWindow && control.BackgroundHot;
+    const auto over       = !m_IsFrozen && (node || link || background);
+    set(Action::Pan,  over && !m_NavigateAction.m_IsActive);
+    set(Action::Zoom, !m_IsFrozen && (m_IsHoveredWithoutOverlapp || (m_CurrentAction && m_CurrentAction->IsDragging())));
+
+    // The other actions start only while none goes on.
+    const auto idle      = over && m_IsCanvasVisible && !m_CurrentAction;
+    const auto region    = node ? node->GetRegion(ImGui::GetMousePos()) : NodeRegion::None;
+    const auto group     = IsGroup(node);
+    const auto groupEdge = idle && group && region != NodeRegion::None && region != NodeRegion::Header && region != NodeRegion::Center;
+    const auto movable   = idle && node && !control.HotPin && (!group || region == NodeRegion::Header);
+    const auto selection = !m_SelectedObjects.empty();
+    set(Action::Select,              idle && (node || link));
+    set(Action::ToggleSelection,     idle && (node || link));
+    set(Action::ClearSelection,      idle && background && selection);
+    set(Action::SelectNodes,         idle && background);
+    set(Action::AddToSelection,      idle && background);
+    set(Action::SelectGroups,        idle && background);
+    set(Action::SelectLinks,         idle && background);
+    set(Action::Move,                movable);
+    set(Action::MoveWithoutSnapping, movable || groupEdge);
+    name(Action::MoveWithoutSnapping, groupEdge ? "Resize Without Snapping" : "Move Without Snapping");
+    set(Action::MoveGroupAlone,      movable && group);
+    set(Action::ResizeGroup,         groupEdge);
+    set(Action::CreateLink,          idle && control.HotPin);
+    set(Action::DeleteSelection,     idle && keys && CanAcceptUserInput() && selection);
+    set(Action::DeleteLink,          idle && link && m_ShortcutsEnabled);
+    set(Action::ContextMenu,         idle);
+
+    // Shortcuts need the focus, not the mouse; without a selection, they take the object the mouse is over.
+    const auto shortcuts = keys && m_IsFocused && m_IsCanvasVisible && !m_CurrentAction;
+    const auto hotObject = control.HotObject && control.HotObject->IsSelectable() && !IsGroup(control.HotObject->AsNode());
+    set(Action::Cut,        shortcuts && (selection || hotObject));
+    set(Action::Copy,       shortcuts && (selection || hotObject));
+    set(Action::Paste,      shortcuts);
+    set(Action::Duplicate,  shortcuts && (selection || hotObject));
+    set(Action::CreateNode, shortcuts);
+}
+
+ax::NodeEditor::ActionInfo ed::EditorContext::GetActionInfo(Action action)
+{
+    const auto index = static_cast<int>(action);
+    IM_ASSERT(index >= 0 && index < static_cast<int>(Action::Count) && "GetActionInfo() takes one of the actions.");
+    if (index < 0 || index >= static_cast<int>(Action::Count))
+        return ActionInfo();
+
+    // Ctrl is Cmd where ImGui takes Cmd for it: in chords before 1.89.2 on Apple's platforms, else with
+    // io.ConfigMacOSXBehaviors, as in clicks.
+    const auto& io = ImGui::GetIO();
+# if IMGUI_VERSION_NUM < 18920 && defined(__APPLE__)
+    const char* chordCtrl = "Cmd";
+# elif IMGUI_VERSION_NUM < 18920
+    const char* chordCtrl = "Ctrl";
+# else
+    const char* chordCtrl = io.ConfigMacOSXBehaviors ? "Cmd" : "Ctrl";
+# endif
+    const char* clickCtrl = io.ConfigMacOSXBehaviors ? "Cmd+" : "Ctrl+";
+
+    ActionInfo info;
+    info.Name      = m_ActionNames[index];
+    info.Available = m_ActionAvailable[index];
+
+    auto& trigger = m_ActionTriggers[index];
+    auto  key     = [&info, &trigger](ImGuiKeyChord chord, const char* modifier, const char* name)
+    {
+        info.KeyChord = chord;
+        ImFormatString(trigger, sizeof(trigger), "%s%s%s", modifier ? modifier : "", modifier ? "+" : "", name);
+    };
+    auto mouse = [&trigger](const char* modifier, int button, const char* gesture)
+    {
+        static const char* const c_Buttons[] = { "", "Right-", "Middle-" };
+        ImFormatString(trigger, sizeof(trigger), "%s%s%s", modifier, button >= 1 && button <= 2 ? c_Buttons[button] : "", gesture);
+    };
+
+    switch (action)
+    {
+        case Action::Center:              key(ImGuiKey_F, nullptr, "F"); break;
+        case Action::Frame:               key(ImGuiMod_Shift | ImGuiKey_F, "Shift", "F"); break;
+        case Action::Pan:                 mouse("", m_Config.NavigateButtonIndex, "Drag"); break;
+        case Action::Zoom:                mouse("", 0, "Wheel"); break;
+        case Action::Select:              mouse("", m_Config.SelectButtonIndex, "Click"); break;
+        case Action::ToggleSelection:     mouse(clickCtrl, m_Config.SelectButtonIndex, "Click"); break;
+        case Action::ClearSelection:      mouse("", m_Config.SelectButtonIndex, "Click"); break;
+        case Action::SelectNodes:         mouse("", m_Config.SelectButtonIndex, "Drag"); break;
+        case Action::AddToSelection:      mouse(clickCtrl, m_Config.SelectButtonIndex, "Drag"); break;
+        case Action::SelectGroups:        mouse("Shift+", m_Config.SelectButtonIndex, "Drag"); break;
+        case Action::SelectLinks:         mouse("Alt+", m_Config.SelectButtonIndex, "Drag"); break;
+        case Action::Move:                mouse("", m_Config.DragButtonIndex, "Drag"); break;
+        case Action::MoveWithoutSnapping: mouse("Alt+", m_Config.DragButtonIndex, "Drag"); break;
+        case Action::MoveGroupAlone:      mouse("Shift+", m_Config.DragButtonIndex, "Drag"); break;
+        case Action::ResizeGroup:         mouse("", m_Config.DragButtonIndex, "Drag"); break;
+        case Action::CreateLink:          mouse("", m_Config.DragButtonIndex, "Drag"); break;
+        case Action::DeleteSelection:     key(ImGuiKey_Delete, nullptr, "Delete"); break;
+        case Action::DeleteLink:          mouse("Alt+", m_Config.SelectButtonIndex, "Click"); break;
+        case Action::Cut:                 key(c_ShortcutMod | ImGuiKey_X, chordCtrl, "X"); break;
+        case Action::Copy:                key(c_ShortcutMod | ImGuiKey_C, chordCtrl, "C"); break;
+        case Action::Paste:               key(c_ShortcutMod | ImGuiKey_V, chordCtrl, "V"); break;
+        case Action::Duplicate:           key(c_ShortcutMod | ImGuiKey_D, chordCtrl, "D"); break;
+        case Action::CreateNode:          key(ImGuiKey_Space, nullptr, "Space"); break;
+        case Action::ContextMenu:         mouse("", m_Config.ContextMenuButtonIndex, "Click"); break;
+        default:                          trigger[0] = 0; break;
+    }
+    info.Trigger = trigger;
+
+    return info;
+}
+
 ed::Control ed::EditorContext::BuildControl(bool allowOffscreen)
 {
     m_IsHovered = false;
@@ -4050,60 +4239,29 @@ ed::EditorAction::AcceptResult ed::NavigateAction::Accept(const Control& control
         m_Scroll           = m_ScrollStart - m_ScrollDelta * m_Zoom;
     }
 
-    auto& io = ImGui::GetIO();
-
     const auto isFocusPressed           = IsShortcutPressed(ImGuiKey_F);
     const auto isFocusWithMarginPressed = IsShortcutPressed(ImGuiMod_Shift | ImGuiKey_F);
     if ((isFocusPressed || isFocusWithMarginPressed) && Editor->CanAcceptUserInput() && Editor->AreShortcutsEnabled() && !Editor->IsOtherItemActive())
     {
         const auto zoomMode = isFocusWithMarginPressed ? NavigateAction::ZoomMode::WithMargin : NavigateAction::ZoomMode::None;
 
-        auto findHotObjectToZoom = [this, &control, &io]() -> Object*
+        auto object = FocusObject(control);
+        switch (FocusTarget(object, isFocusWithMarginPressed))
         {
-            if (control.HotObject)
-            {
-                if (auto pin = control.HotObject->AsPin())
-                    return pin->m_Node;
-                else
-                    return control.HotObject;
-            }
-            else if (control.BackgroundHot)
-            {
-                auto node = Editor->FindNodeAt(io.MousePos);
-                if (IsGroup(node))
-                    return node;
-            }
-
-            return nullptr;
-        };
-
-        bool navigateToContent = false;
-        if (!Editor->GetSelectedObjects().empty())
-        {
-            if (m_Reason != NavigationReason::Selection || m_LastSelectionId != Editor->GetSelectionId() || (zoomMode != NavigateAction::ZoomMode::None))
-            {
+            case NavigationReason::Selection:
                 m_LastSelectionId = Editor->GetSelectionId();
                 NavigateTo(Editor->GetSelectionBounds(), zoomMode, -1.0f, NavigationReason::Selection);
-            }
-            else
-                navigateToContent = true;
-        }
-        else if(auto hotObject = findHotObjectToZoom())
-        {
-            if (m_Reason != NavigationReason::Object || m_LastObject != hotObject || (zoomMode != NavigateAction::ZoomMode::None))
-            {
-                m_LastObject = hotObject;
-                auto bounds = hotObject->GetBounds();
-                NavigateTo(bounds, zoomMode, -1.0f, NavigationReason::Object);
-            }
-            else
-                navigateToContent = true;
-        }
-        else
-            navigateToContent = true;
+                break;
 
-        if (navigateToContent)
-            NavigateTo(Editor->GetContentBounds(), NavigateAction::ZoomMode::WithMargin, -1.0f, NavigationReason::Content);
+            case NavigationReason::Object:
+                m_LastObject = object;
+                NavigateTo(object->GetBounds(), zoomMode, -1.0f, NavigationReason::Object);
+                break;
+
+            default:
+                NavigateTo(Editor->GetContentBounds(), NavigateAction::ZoomMode::WithMargin, -1.0f, NavigationReason::Content);
+                break;
+        }
     }
 
     auto visibleRect = GetViewRect();
@@ -4124,6 +4282,36 @@ ed::EditorAction::AcceptResult ed::NavigateAction::Accept(const Control& control
         return True;
 
     return m_IsActive ? True : False;
+}
+
+ed::Object* ed::NavigateAction::FocusObject(const Control& control)
+{
+    if (control.HotObject)
+        return control.HotPin ? control.HotPin->m_Node : control.HotObject;
+
+    if (control.BackgroundHot)
+    {
+        auto node = Editor->FindNodeAt(ImGui::GetMousePos());
+        if (IsGroup(node))
+            return node;
+    }
+
+    return nullptr;
+}
+
+ed::NavigateAction::NavigationReason ed::NavigateAction::FocusTarget(Object* object, bool withMargin) const
+{
+    if (!Editor->GetSelectedObjects().empty())
+    {
+        if (!withMargin && m_Reason == NavigationReason::Selection && m_LastSelectionId == Editor->GetSelectionId())
+            return NavigationReason::Content;
+        return NavigationReason::Selection;
+    }
+
+    if (!object || (!withMargin && m_Reason == NavigationReason::Object && m_LastObject == object))
+        return NavigationReason::Content;
+
+    return NavigationReason::Object;
 }
 
 bool ed::NavigateAction::Process(const Control& control)

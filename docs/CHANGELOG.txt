@@ -684,6 +684,11 @@ v0.10.0 (WIP):
         A resized canvas keeps its view's top left corner and zoom, so a panel resized over its bottom or right edge covers
         part of the content instead of moving it.
 
+    NEW: Editor: Add GetActionInfo(), which tells what the editor's own actions are
+        For each Action, such as F, Shift+F or Alt+click on a link: its name, its key chord or its mouse gesture with
+        Config's buttons, and whether it would act on what the mouse is over and on the selection. F's name tells where it
+        would go. An application can list them in help, menus or hints.
+
 v0.9.3 (2023-10-14):
 
     CHANGE: Canvas: Use ImDrawCallback_ImCanvas macro as draw callback sentinel (#256), thanks @nspitko
