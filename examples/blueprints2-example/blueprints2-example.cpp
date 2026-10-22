@@ -886,15 +886,11 @@ private:
                 const auto count = GroupCount(group, node.m_Config);
                 ImGui::Spacing();
                 ImGui::PushID(group.m_Name.c_str());
-                ImGui::BeginDisabled(count >= group.m_Max);
-                if (SquareButton("+"))
+                if (GroupButton("+", true, count < group.m_Max))
                     edit = [&document, id = node.m_Id, name = group.m_Name] { AddGroupPin(document, id, name); };
-                ImGui::EndDisabled();
-                ImGui::SameLine();
-                ImGui::BeginDisabled(count <= group.m_Min);
-                if (SquareButton("-"))
+                ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
+                if (GroupButton("-", false, count > group.m_Min))
                     edit = [&document, id = node.m_Id, name = group.m_Name, index = count - 1] { RemoveGroupPin(document, id, name, index); };
-                ImGui::EndDisabled();
                 ImGui::PopID();
                 layout.NextRow();
             };
@@ -983,7 +979,7 @@ private:
             auto       addPinButton = [&](bool input)
             {
                 ImGui::Spacing();
-                if (SquareButton("+"))
+                if (GroupButton("+", true, true))
                     edit = [&document, graph = signature.m_Function->m_Graph, input] { AddSignaturePin(document, graph, input); };
                 if (ImGui::IsItemHovered())
                 {

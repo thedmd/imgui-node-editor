@@ -152,6 +152,7 @@ void  ProblemSign(ImDrawList* drawList, ImVec2 center, float radius, Severity se
 bool LatentMark(std::string_view waiting);
 
 bool SquareButton(const char* label);      // As wide as it's high, a line's height: for a sign such as + or -.
+bool GroupButton(const char* id, bool plus, bool enabled); // A node's + or -, a line's height, drawn a shade off the node's body.
 std::string ValueText(const Value& value); // "true", "12", "1.5", a string as it is, else as its type formats it
 bool DrawValue(const Value& value);        // Draws a value; false for none.
 // An editor of a value. A number's - and + change it, the editor staying; Enter ends the edit.

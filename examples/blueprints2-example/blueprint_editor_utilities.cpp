@@ -883,6 +883,25 @@ bool blueprint_editor_utilities::SquareButton(const char* label)
     return pressed;
 }
 
+bool blueprint_editor_utilities::GroupButton(const char* id, bool plus, bool enabled)
+{
+    const auto size = ImGui::GetTextLineHeight();
+    ImGui::BeginDisabled(!enabled);
+    const auto pressed = ImGui::InvisibleButton(id, ImVec2(size, size));
+    ImGui::EndDisabled();
+
+    const auto fill = !enabled ? IM_COL32(37, 38, 43, 255) : ImGui::IsItemActive() ? IM_COL32(76, 79, 88, 255) : ImGui::IsItemHovered() ? IM_COL32(62, 64, 71, 255) : IM_COL32(49, 50, 55, 255);
+    const auto ink  = enabled ? IM_COL32(228, 230, 235, 255) : IM_COL32(100, 102, 107, 255);
+    const auto min  = ImGui::GetItemRectMin(), max = ImGui::GetItemRectMax(), center = (min + max) * 0.5f;
+    const auto arm  = size * 0.3f;
+    auto drawList = ImGui::GetWindowDrawList();
+    drawList->AddRectFilled(min, max, fill, 3.0f);
+    drawList->AddLine(ImVec2(center.x - arm, center.y), ImVec2(center.x + arm, center.y), ink, 1.5f);
+    if (plus)
+        drawList->AddLine(ImVec2(center.x, center.y - arm), ImVec2(center.x, center.y + arm), ink, 1.5f);
+    return pressed;
+}
+
 std::string blueprint_editor_utilities::ValueText(const Value& value)
 {
     auto type = value.GetType();
