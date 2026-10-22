@@ -151,6 +151,19 @@ bool blueprint_editor_utilities::IsCustomEvent(const Node& node)
     return node.m_Type->m_Name == "crude.CustomEvent";
 }
 
+bool blueprint_editor_utilities::IsComment(const Node& node)
+{
+    return node.m_Type->m_Name == "crude.Comment";
+}
+
+std::string blueprint_editor_utilities::CommentText(const Node& node)
+{
+    auto text = node.m_Config.m_Data.find("text");
+    if (text == node.m_Config.m_Data.end() || text->second.GetType() != &StringType() || text->second.AsString().empty())
+        return "Comment";
+    return std::string(text->second.AsString());
+}
+
 bool blueprint_editor_utilities::IsCompact(const Node& node)
 {
     return IsConstant(node) || !GetterVariable(node).empty() || !node.m_Type->m_CompactTitle.empty();
@@ -195,6 +208,19 @@ void OutlinePath(ImDrawList* drawList, ImVec2 a, ImVec2 b, bool compact, float g
     }
     else
         drawList->PathLineTo(ImVec2(a.x, b.y));
+}
+
+// The border, stroked inside the outline, and the selection's ring outside it, past a gap.
+void StrokeOutline(ImDrawList* drawList, ImVec2 min, ImVec2 max, const NodeLook& look)
+{
+    OutlinePath(drawList, min, max, look.m_Compact);
+    drawList->PathStroke(look.m_Border, look.m_BorderWidth, ImDrawFlags_Closed | ImDrawFlags_StrokeInside);
+    if (look.m_Selected)
+    {
+        // 2 px wide, 2 px out: the inside stroke of the outline grown by both.
+        OutlinePath(drawList, min, max, look.m_Compact, 4.0f);
+        drawList->PathStroke(IM_COL32(255, 255, 255, 220), 2.0f, ImDrawFlags_Closed | ImDrawFlags_StrokeInside);
+    }
 }
 
 } } // namespace blueprint_editor_utilities { namespace {
@@ -250,14 +276,20 @@ void blueprint_editor_utilities::DrawNodeLook(ImDrawList* drawList, ImVec2 min, 
         drawList->AddLineH(min.x, max.x, bottom, IM_COL32(0, 0, 0, 90));
     }
 
-    OutlinePath(drawList, min, max, look.m_Compact);
-    drawList->PathStroke(look.m_Border, look.m_BorderWidth, ImDrawFlags_Closed | ImDrawFlags_StrokeInside);
-    if (look.m_Selected)
-    {
-        // 2 px wide, 2 px out: the inside stroke of the outline grown by both.
-        OutlinePath(drawList, min, max, look.m_Compact, 4.0f);
-        drawList->PathStroke(IM_COL32(255, 255, 255, 220), 2.0f, ImDrawFlags_Closed | ImDrawFlags_StrokeInside);
-    }
+    StrokeOutline(drawList, min, max, look);
+}
+
+void blueprint_editor_utilities::DrawCommentLook(ImDrawList* drawList, ImVec2 min, ImVec2 max, float headerBottom, const NodeLook& look)
+{
+    OutlinePath(drawList, min, max, false);
+    drawList->PathFillConvex(IM_COL32(255, 255, 255, 18));
+    drawList->PathLineTo(ImVec2(min.x, min.y + c_Cut));
+    drawList->PathLineTo(ImVec2(min.x + c_Cut, min.y));
+    drawList->PathLineTo(ImVec2(max.x, min.y));
+    drawList->PathLineTo(ImVec2(max.x, headerBottom));
+    drawList->PathLineTo(ImVec2(min.x, headerBottom));
+    drawList->PathFillConvex(IM_COL32(255, 255, 255, 22));
+    StrokeOutline(drawList, min, max, look);
 }
 
 float blueprint_editor_utilities::BandEnd(float titleRight, float bandHeight)
@@ -628,6 +660,25 @@ void blueprint_editor_utilities::RenameEvent(Document& document, Id node, std::s
         return;
     }
     transaction->AddAction("%s renamed %s", old.c_str(), name.c_str());
+}
+
+void blueprint_editor_utilities::SetCommentText(Document& document, Id node, std::string text)
+{
+    auto& graph = document.GetGraph();
+    auto  found = graph.FindNode(node);
+    if (!found || CommentText(*found) == text)
+        return;
+    auto config = found->m_Config;
+    config.m_Data["text"] = Value::String(text);
+    auto transaction = document.BeginUndoTransaction("Edit Comment");
+    if (auto set = graph.SetConfig(node, std::move(config)); !set)
+    {
+        auto message = set.GetError().Message();
+        LOGW("[Comment] %s: %.*s", found->Name().c_str(), static_cast<int>(message.size()), message.data());
+        transaction->Discard();
+        return;
+    }
+    transaction->AddAction("%s says \"%s\"", graph.FindNode(node)->Name().c_str(), text.c_str());
 }
 
 void blueprint_editor_utilities::RenamePin(Document& document, Id pin, std::string name)
@@ -1902,9 +1953,23 @@ void blueprint_editor_utilities::NodeContextMenu::Open(Id node)
     ImGui::OpenPopup("##node-context-menu");
 }
 
+void blueprint_editor_utilities::NodeContextMenu::EditComment(const Node& comment)
+{
+    m_EditedComment  = comment.m_Id;
+    m_EditingComment = true;
+    std::snprintf(m_CommentText, sizeof(m_CommentText), "%s", CommentText(comment).c_str());
+}
+
+void blueprint_editor_utilities::NodeContextMenu::ShowCommentText(Document& document)
+{
+    if (auto text = NamePopup("##comment-text", m_EditingComment, m_CommentText, document.GetGraph().FindNode(m_EditedComment) != nullptr))
+        SetCommentText(document, m_EditedComment, *text);
+}
+
 void blueprint_editor_utilities::NodeContextMenu::Show(Document& document, Debugger& debugger)
 {
     ShowRename(document);
+    ShowCommentText(document);
     ShowRenameParameter(document);
     ShowArguments(document, debugger);
     if (!ImGui::IsPopupOpen("##node-context-menu"))
@@ -1914,7 +1979,9 @@ void blueprint_editor_utilities::NodeContextMenu::Show(Document& document, Debug
 
     if (ImGui::BeginPopup("##node-context-menu"))
     {
-        if (ImGui::MenuItem("Breakpoint", "F9", debugger.HasBreakpoint(m_Node), node != nullptr))
+        if (node && IsComment(*node) && ImGui::MenuItem("Edit Comment..."))
+            EditComment(*node);
+        if (ImGui::MenuItem("Breakpoint", "F9", debugger.HasBreakpoint(m_Node), node && !IsComment(*node)))
         {
             const auto enabled = !debugger.HasBreakpoint(m_Node);
             if (!ax::NodeEditor::IsNodeSelected(m_Node))

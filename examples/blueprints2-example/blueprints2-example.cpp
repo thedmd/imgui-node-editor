@@ -222,6 +222,8 @@ struct BlueprintEditorExample
             ed::SetCurrentEditor(editor);
             auto& style = ed::GetStyle();
             style.NodeBorderWidth         = 0.0f;
+            style.GroupBorderWidth        = 0.0f;
+            style.Colors[ed::StyleColor_GroupBg].w = 0.0f;
             style.HoveredNodeBorderWidth  = 0.0f;
             style.SelectedNodeBorderWidth = 0.0f;
             style.Colors[ed::StyleColor_NodeBg].w = 0.0f;
@@ -722,6 +724,72 @@ private:
         }
     }
 
+    // A comment shows its text in its header, over an editor group. Zoomed out, the text shows above
+    // it as well, at the size of text outside the canvas.
+    void ShowComment(const Node& comment, bool hovered)
+    {
+        NodeLook look;
+        look.m_Selected    = ed::IsNodeSelected(comment.m_Id);
+        look.m_Border      = hovered ? IM_COL32(255, 255, 255, 80) : IM_COL32(255, 255, 255, 38);
+        look.m_BorderWidth = hovered ? 1.5f : 1.0f;
+
+        const auto text = CommentText(comment);
+        ed::BeginNode(comment.m_Id);
+        ImGui::PushFont(HeaderFont(), HeaderFont()->LegacySize);
+        ImGui::TextUnformatted(text.c_str());
+        ImGui::PopFont();
+        const auto headerBottom = ImGui::GetItemRectMax().y + ImGui::GetStyle().ItemSpacing.y * 0.5f;
+        ed::Group(ImVec2(320.0f, 180.0f));
+        ed::EndNode();
+
+        if (auto drawList = ed::GetNodeBackgroundDrawList(comment.m_Id))
+        {
+            const auto min = ed::GetNodePosition(comment.m_Id);
+            DrawCommentLook(drawList, min, min + ed::GetNodeSize(comment.m_Id), headerBottom, look);
+        }
+
+        if (ed::BeginGroupHint(comment.m_Id))
+        {
+            ImGui::PushFont(HeaderFont(), HeaderFont()->LegacySize);
+            ImGui::SetCursorScreenPos(ed::GetGroupMin() - ImVec2(0.0f, ImGui::GetTextLineHeightWithSpacing() + 4.0f));
+            ImGui::TextUnformatted(text.c_str());
+            ImGui::PopFont();
+        }
+        ed::EndGroupHint();
+    }
+
+    // A comment over the selected nodes, their group inside it a margin away from them: one undo step.
+    void CommentSelection(Document& document)
+    {
+        auto nodes = GetSelectedNodes();
+        if (nodes.empty())
+            return;
+        ImRect bounds(ImVec2(FLT_MAX, FLT_MAX), ImVec2(-FLT_MAX, -FLT_MAX));
+        for (auto node : nodes)
+        {
+            bounds.Add(ed::GetNodePosition(node));
+            bounds.Add(ed::GetNodePosition(node) + ed::GetNodeSize(node));
+        }
+
+        auto& style       = ImGui::GetStyle();
+        auto  padding     = ed::GetStyle().NodePadding;
+        auto  margin      = ImVec2(24.0f, 24.0f);
+        ImGui::PushFont(HeaderFont(), HeaderFont()->LegacySize);
+        auto  header      = ImGui::GetTextLineHeight() + style.ItemSpacing.y;
+        ImGui::PopFont();
+
+        auto transaction = document.BeginUndoTransaction("Comment Selection");
+        auto comment     = document.GetGraph().AddNode("crude.Comment");
+        if (!comment)
+        {
+            transaction->Discard();
+            return;
+        }
+        ed::SetNodePosition(comment.GetValue(), bounds.Min - margin - ImVec2(padding.x, padding.y + header));
+        ed::SetGroupSize(comment.GetValue(), bounds.GetSize() + margin * 2.0f);
+        transaction->AddAction("%s around %d nodes", document.GetGraph().FindNode(comment.GetValue())->Name().c_str(), static_cast<int>(nodes.size()));
+    }
+
     // Iterate over the graph's nodes and commit them to node editor.
     void CommitBlueprintNodes(Document& document)
     {
@@ -782,6 +850,12 @@ private:
         const auto hovered = static_cast<Id>(ed::GetHoveredNode().Get());
         for (auto& node : graph.Nodes())
         {
+            if (IsComment(node))
+            {
+                ShowComment(node, node.m_Id == hovered);
+                continue;
+            }
+
             const auto errors   = m_Problems.Count(Severity::Error, node.m_Id);
             const auto warnings = m_Problems.Count(Severity::Warning, node.m_Id);
             const auto stepped  = node.m_Id == next || node.m_Id == current;
@@ -2035,6 +2109,9 @@ private:
         actions.Gesture("Edit Signature", "Double-Click", !pin && node && SignatureNodeOf(document.GetBlueprint(), *node).m_Function);
         actions.Gesture("Create Node", "Space", background && !typing);
         actions.Gesture("Create Node", "Right-Click", background);
+        actions.Gesture("Edit Comment", "Double-Click", node && IsComment(*node));
+        if (actions.Press("Comment Selection", ImGuiKey_C, ed::GetSelectedObjectCount() > 0 && !typing))
+            CommentSelection(document);
         for (auto action : { &m_View_ToggleProblems, &m_View_NextProblem, &m_View_PreviousProblem, &m_Blueprint_Run, &m_Blueprint_Step, &m_Blueprint_Stop,
                              &m_View_NavigateBackward, &m_View_NavigateForward, &m_Blueprint_ToggleBreakpoint })
             if (actions.Press(action->GetName().c_str(), action->GetShortcut(), action->IsEnabled(), true))
@@ -2044,7 +2121,9 @@ private:
             actions.Draw(canvasMin, canvasMax);
 
         auto doubleClicked = graph.FindNode(static_cast<Id>(ed::GetDoubleClickedNode().Get()));
-        if (auto function = CalledFunction(document, doubleClicked))
+        if (doubleClicked && IsComment(*doubleClicked))
+            m_NodeContextMenu.EditComment(*doubleClicked);
+        else if (auto function = CalledFunction(document, doubleClicked))
             m_PendingGraph = function->m_Graph;
         else if (doubleClicked && SignatureNodeOf(document.GetBlueprint(), *doubleClicked).m_Function)
             RequestPanel("Signature");
@@ -2083,6 +2162,8 @@ private:
         auto hoveredNode = graph.FindNode(static_cast<Id>(ed::GetHoveredNode().Get()));
         if (!hoveredNode && hoveredPin)
             hoveredNode = graph.NodeOf(hoveredPin->m_Id);
+        if (hoveredNode && IsComment(*hoveredNode))
+            return;
 
         auto pinTooltip = [this, &document, &graph](const char* label, const Pin& pin, bool showNode)
         {
@@ -2468,7 +2549,11 @@ private:
         auto  node  = graph.FindNode(static_cast<Id>(ed::GetHoveredNode().Get()));
         if (auto pin = graph.FindPin(static_cast<Id>(ed::GetHoveredPin().Get())); !node && pin)
             node = graph.NodeOf(pin->m_Id);
-        return node ? std::vector<Id>{ node->m_Id } : GetSelectedNodes();
+        if (node && IsComment(*node))
+            node = nullptr;
+        auto nodes = node ? std::vector<Id>{ node->m_Id } : GetSelectedNodes();
+        std::erase_if(nodes, [&graph](Id id) { auto found = graph.FindNode(id); return !found || IsComment(*found); });
+        return nodes;
     }
 
     // On for all of them, unless the first has one: then off.

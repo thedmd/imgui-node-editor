@@ -1560,3 +1560,31 @@ TEST_CASE(ValueEditsEnd, "blueprints2.a_value_edit_ends_on_a_click_elsewhere_kee
     session.Click(elsewhere);
     test::Check(number.AsInt32() == 7, "a number typed is kept too: %d", number.AsInt32());
 }
+
+TEST_CASE(CommentTexts, "blueprints2.a_comments_text_is_edited_in_one_undo_step", nullptr, test::TestFlags_None)
+{
+    test::Session session(UnnamedConfig());
+    OverlayLog    log;
+    Example       example(session);
+    auto& document = example.m_Document;
+    auto  comment  = Id(0);
+    session.Use([&]
+    {
+        auto transaction = document.BeginUndoTransaction("Add Comment");
+        auto added = document.GetGraph().AddNode("crude.Comment");
+        if (added)
+            transaction->AddAction("Comment added");
+        comment = added.ValueOr(0);
+    });
+    auto text = [&] { auto found = document.GetGraph().FindNode(comment); return found ? blueprint_editor_utilities::CommentText(*found) : std::string(); };
+    test::Check(comment && text() == "Comment" && document.m_Undo.size() == 1, "a new comment says \"Comment\": %s", text().c_str());
+
+    session.Use([&]
+    {
+        blueprint_editor_utilities::SetCommentText(document, comment, "Greets");
+        blueprint_editor_utilities::SetCommentText(document, comment, "Greets");
+    });
+    test::Check(text() == "Greets" && document.m_Undo.size() == 2, "its text is one undo step, and the same text none: %s", text().c_str());
+    session.Use([&] { document.Undo(); });
+    test::Check(text() == "Comment", "undone, it says what it said: %s", text().c_str());
+}

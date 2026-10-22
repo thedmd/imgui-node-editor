@@ -49,6 +49,9 @@ bool  IsConstant(const Node& node);
 Value ConstantValue(const Node& node, const Pin& pin);
 // A Custom Event's config holds its event's name, and the names of its parameters.
 bool  IsCustomEvent(const Node& node);
+// A comment, which the editor shows as a group over part of a graph, holds its text in its config.
+bool        IsComment(const Node& node);
+std::string CommentText(const Node& node); // "Comment" for one without any
 // A Constant, and a variable's Get, show as a row of their own, without a header; a Get's row names
 // its variable. An operator, a node type with a compact title, shows it instead of a header.
 bool             IsCompact(const Node& node);
@@ -71,6 +74,9 @@ struct NodeLook
     bool  m_Selected    = false;
 };
 void   DrawNodeLook(ImDrawList* drawList, ImVec2 min, ImVec2 max, const NodeLook& look);
+// A comment's look on a node's outline: a translucent body, a stronger header behind its text, down
+// to headerBottom, and the border and the selection's ring of a node.
+void   DrawCommentLook(ImDrawList* drawList, ImVec2 min, ImVec2 max, float headerBottom, const NodeLook& look);
 float  BandEnd(float titleRight, float bandHeight); // where the band's slant starts, at its top
 ImVec2 CutCenter(bool compact);                    // the middle of a node's top-left cut, from its top-left
 ImVec4 NodePadding(const NodeLook& look);          // the editor's, a compact node's from inside its stripe
@@ -136,6 +142,7 @@ void RenameFunction(Document& document, Id graph, std::string name);
 void RemoveFunction(Document& document, Id graph); // with the calls of it in other graphs
 void RenameTypeParameter(Document& document, Id graph, size_t index, std::string name);
 void RenameEvent(Document& document, Id node, std::string name); // a Custom Event's
+void SetCommentText(Document& document, Id node, std::string text);
 void RenamePin(Document& document, Id pin, std::string name);    // in its node's config; an empty name gives back the declared one
 
 // Edits of the blueprint's variables, one undo step each. One the blueprint refuses is logged.
@@ -456,15 +463,17 @@ struct RunArguments
 // and edits its type parameters, their names and the types each allows, and whether it's pure; it
 // and a return ask for the whole signature to show. An event's node runs the event, and a Custom
 // Event's renames it. A run that takes arguments asks for them in a popup, which offers those of
-// the last run of the same event or function.
+// the last run of the same event or function. A comment's edits its text, in a popup of its own.
 struct NodeContextMenu
 {
     void Open(Id node = 0);
     void Show(Document& document, Debugger& debugger);
     bool TakeSignatureRequest() { return std::exchange(m_SignatureRequested, false); }
+    void EditComment(const Node& comment); // opens its text's popup
 
 private:
     void ShowRename(Document& document);
+    void ShowCommentText(Document& document);
     void ShowRenameParameter(Document& document);
     void ShowArguments(Document& document, Debugger& debugger);
 
@@ -472,6 +481,10 @@ private:
     Id   m_RenamedEvent  = 0; // the Custom Event whose name the rename popup edits
     bool m_Renaming      = false;
     char m_EventName[64] = {};
+
+    Id   m_EditedComment    = 0; // the comment whose text the popup edits
+    bool m_EditingComment   = false;
+    char m_CommentText[256] = {};
 
     Id     m_ParameterGraph    = 0; // the function whose type parameter the rename popup edits
     size_t m_Parameter         = 0;
