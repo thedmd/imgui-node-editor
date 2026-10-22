@@ -921,6 +921,56 @@ void blueprint_editor_utilities::RemoveReroute(Document& document, Id reroute)
     transaction->AddAction("%s removed with its links", name.c_str());
 }
 
+std::string blueprint_editor_utilities::SplitAgainKey(const Node& node, const OrphanPin& orphan)
+{
+    const auto dot = orphan.m_Key.rfind('.');
+    if (dot == std::string::npos)
+        return {};
+    auto whole = node.FindPin(std::string_view(orphan.m_Key).substr(0, dot));
+    return whole && SplittableStruct(*whole) ? whole->m_Key : std::string();
+}
+
+void blueprint_editor_utilities::MoveOrphanLinks(Document& document, Id orphan, Id pin)
+{
+    auto& graph  = document.GetGraph();
+    auto  target = graph.FindPin(pin);
+    if (!graph.NodeOfOrphan(orphan) || !target)
+        return;
+
+    struct Moved { Id m_Link; Id m_Other; LinkMode m_Mode; };
+    std::vector<Moved> moved;
+    for (auto& link : graph.Links())
+        if (link.m_From == orphan || link.m_To == orphan)
+            moved.push_back({ link.m_Id, link.m_From == orphan ? link.m_To : link.m_From, !link.m_Cast.empty() ? LinkMode::Cast : link.m_Forced > 0 ? LinkMode::Force : LinkMode::Plain });
+    const auto output = target->m_Direction == Direction::Output;
+    const auto from   = EndText(graph, orphan), onto = EndText(graph, pin);
+    auto transaction = document.BeginUndoTransaction("Move Links");
+    for (auto& link : moved)
+        if (graph.Disconnect(link.m_Link))
+            Reconnect(graph, output ? pin : link.m_Other, output ? link.m_Other : pin, link.m_Mode);
+    transaction->AddAction("%s's links moved to %s", from.c_str(), onto.c_str());
+}
+
+void blueprint_editor_utilities::RemoveOrphans(Document& document, Id node)
+{
+    auto& graph    = document.GetGraph();
+    auto  orphaned = [&graph, node](Id pin) { auto owner = graph.NodeOfOrphan(pin); return owner && (!node || owner->m_Id == node); };
+    std::vector<Id> links;
+    for (auto& link : graph.Links())
+        if (orphaned(link.m_From) || orphaned(link.m_To))
+            links.push_back(link.m_Id);
+    if (links.empty())
+        return;
+    auto transaction = document.BeginUndoTransaction("Remove Orphaned Pins");
+    for (auto link : links)
+        if (auto broken = graph.Disconnect(link); !broken)
+        {
+            auto message = broken.GetError().Message();
+            LOGW("%.*s", static_cast<int>(message.size()), message.data());
+        }
+    transaction->AddAction("%d link%s of pins gone broken", static_cast<int>(links.size()), links.size() != 1 ? "s" : "");
+}
+
 void blueprint_editor_utilities::RenamePin(Document& document, Id pin, std::string name)
 {
     auto& graph = document.GetGraph();
@@ -2301,6 +2351,8 @@ void blueprint_editor_utilities::NodeContextMenu::Show(Document& document, Debug
     {
         if (node && IsComment(*node) && ImGui::MenuItem("Edit Comment..."))
             EditComment(*node);
+        if (node && !node->m_Orphans.empty() && ImGui::MenuItem("Remove Orphaned Pins"))
+            RemoveOrphans(document, node->m_Id);
         if (ImGui::MenuItem("Breakpoint", "F9", debugger.HasBreakpoint(m_Node), node && !IsComment(*node) && !IsReroute(*node)))
         {
             const auto enabled = !debugger.HasBreakpoint(m_Node);
@@ -2663,6 +2715,23 @@ void blueprint_editor_utilities::PinContextMenu::Show(Document& document, Debugg
         if (ImGui::MenuItem("Break Links", nullptr, nullptr, ax::NodeEditor::HasAnyLinks(ax::NodeEditor::PinId(m_Pin))))
             ax::NodeEditor::BreakLinks(ax::NodeEditor::PinId(m_Pin));
 
+        // An orphan: its struct pin split again, or its links moved to a pin of its node.
+        auto orphanNode = pin ? nullptr : graph.NodeOfOrphan(m_Pin);
+        auto orphan     = orphanNode ? orphanNode->FindOrphan(m_Pin) : nullptr;
+        std::function<void()> mend;
+        if (orphan)
+        {
+            if (auto whole = SplitAgainKey(*orphanNode, *orphan); !whole.empty() && ImGui::MenuItem("Split Again"))
+                mend = [&document, node = orphanNode->m_Id, whole] { SplitStructPin(document, node, whole, true); };
+            if (ImGui::BeginMenu("Move Links To"))
+            {
+                for (auto& candidate : orphanNode->m_Pins)
+                    if (candidate.m_Direction == orphan->m_Direction && candidate.m_Flow == orphan->m_Flow && ImGui::MenuItem(candidate.m_Key.c_str()))
+                        mend = [&document, from = m_Pin, to = candidate.m_Id] { MoveOrphanLinks(document, from, to); };
+                ImGui::EndMenu();
+            }
+        }
+
         std::vector<Id> others; // the other ends of its links
         for (auto& link : graph.Links())
             if (link.m_From == m_Pin || link.m_To == m_Pin)
@@ -2739,6 +2808,8 @@ void blueprint_editor_utilities::PinContextMenu::Show(Document& document, Debugg
             SplitStructPin(document, node->m_Id, split ? pin->m_Key : splitOf, split);
         else if (edit)
             edit();
+        else if (mend)
+            mend();
 
         ImGui::EndPopup();
     }

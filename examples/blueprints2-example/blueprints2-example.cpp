@@ -551,6 +551,7 @@ private:
         m_Blueprint_Stop.SetEnabled(m_Debugger.IsActive());
         m_Blueprint_Run.SetEnabled(canStart && !m_Debugger.IsRunning());
         m_Blueprint_ToggleBreakpoint.SetEnabled(hasDocument && !BreakpointNodes().empty());
+        m_Blueprint_RemoveOrphans.SetEnabled(hasDocument && std::any_of(m_Document->GetGraph().Nodes().begin(), m_Document->GetGraph().Nodes().end(), [](const Node& node) { return !node.m_Orphans.empty(); }));
     }
 
     // The keys of the actions in the File and Edit menus; a field typed in keeps its own. The
@@ -648,6 +649,7 @@ private:
                 menuAction(m_Blueprint_Run);
                 ImGui::Separator();
                 menuAction(m_Blueprint_ToggleBreakpoint);
+                menuAction(m_Blueprint_RemoveOrphans);
                 ImGui::Separator();
                 menuAction(m_Blueprint_AddFunction);
                 menuAction(m_Blueprint_AddVariable);
@@ -3112,6 +3114,7 @@ private:
     Action m_Blueprint_Run   = { "Run",          ImGuiKey_F5,                  [this] { Blueprint_Run();   } };
     Action m_Blueprint_ToggleBreakpoint = { "Toggle Breakpoint", ImGuiKey_F9, [this] { Blueprint_ToggleBreakpoint(); } };
     Action m_Blueprint_AddFunction = { "Add Function", [this] { Blueprint_AddFunction(); } };
+    Action m_Blueprint_RemoveOrphans = { "Remove All Orphaned Pins", [this] { RemoveOrphans(*m_Document, 0); } };
     Action m_Blueprint_AddVariable = { "Add Variable", [this] { AddVariable(*m_Document); } };
 };
 

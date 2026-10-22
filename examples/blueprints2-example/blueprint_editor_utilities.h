@@ -66,6 +66,14 @@ std::string OrphanName(const Node& node, const OrphanPin& orphan);
 const Node* EndNode(const Graph& graph, Id pin);
 std::string EndText(const Graph& graph, Id pin);
 void        GoToEnd(const Graph& graph, Id pin);
+// The struct pin an orphan is a field of, which splitting again makes the orphan a pin again; empty
+// for one that isn't, or whose struct pin the node doesn't split.
+std::string SplitAgainKey(const Node& node, const OrphanPin& orphan);
+// Edits of one undo step each: an orphan's links moved to a pin of its node, each in its cast or
+// force, and kept, disabled, where it doesn't fit; and the links of a node's orphans broken, or of
+// all the graph's for node 0.
+void MoveOrphanLinks(Document& document, Id orphan, Id pin);
+void RemoveOrphans(Document& document, Id node);
 // A comment, which the editor shows as a group over part of a graph, holds its text in its config.
 bool        IsComment(const Node& node);
 std::string CommentText(const Node& node); // "Comment" for one without any

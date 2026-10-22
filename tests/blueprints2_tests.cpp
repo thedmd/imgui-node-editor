@@ -1748,3 +1748,50 @@ TEST_CASE(PinDrops, "blueprints2.a_link_dropped_on_a_nodes_plus_adds_a_pin_linke
     test::Check(third && example.LinkBetween(value, third->m_Id) && document.m_Undo.size() == steps + 1, "dropped on it, the link adds the third input, linked, in one undo step");
     test::Check(!CanLinkNewGroupPin(document.GetGraph(), sum, "in", example.Pin(example.Node("crude.Print"), "then")), "a flow output's link doesn't fit a new input of Add");
 }
+
+TEST_CASE(OrphanMending, "blueprints2.an_orphan_is_split_again_its_links_moved_or_its_links_broken", nullptr, test::TestFlags_None)
+{
+    using namespace blueprint_editor_utilities;
+    test::Session session(UnnamedConfig());
+    OverlayLog    log;
+    Example       example(session);
+    auto& document = example.m_Document;
+    auto& graph    = document.GetGraph();
+    const auto value = example.Pin(example.Node("crude.Constant"), "value");
+
+    // A function's input renamed: a call keeps the old one, an orphan, which moves its link to the new.
+    Signature before, after;
+    before.m_Inputs = { { "t", "T", Int32Type() } };
+    after.m_Inputs  = { { "u", "U", Int32Type() } };
+    auto function   = document.GetBlueprint().AddFunction("Scale", before);
+    auto call       = session.Use([&] { return graph.AddNode("call:Scale"); });
+    const auto t    = call ? example.Pin(call.GetValue(), "t") : 0;
+    auto linked     = graph.Connect(value, t);
+    auto renamed    = function ? document.GetBlueprint().SetSignature(function.GetValue()->GetId(), after) : Result<void>(BlueprintError::NotFound);
+    const auto u    = call ? example.Pin(call.GetValue(), "u") : 0;
+    test::Check(function && call && linked && renamed && graph.NodeOfOrphan(t), "renamed, the call's old input stays, an orphan, with its link");
+    const auto steps = document.m_Undo.size();
+    session.Use([&] { MoveOrphanLinks(document, t, u); });
+    auto moved = example.LinkBetween(value, u);
+    test::Check(moved && moved->m_Active && !graph.NodeOfOrphan(t) && document.m_Undo.size() == steps + 1, "its link moves to the new input, active, and the orphan goes: one undo step");
+
+    // A split output's field linked on, then recombined: split again, the field is a pin again.
+    auto make   = session.Use([&] { return graph.AddNode("make:example.Vector2"); });
+    auto other  = session.Use([&] { return graph.AddNode("make:example.Vector2"); });
+    auto split  = make ? graph.SplitPin(make.GetValue(), "struct", true) : Result<void>(BlueprintError::NotFound);
+    const auto field = make ? example.Pin(make.GetValue(), "struct.x") : 0;
+    auto fed    = other ? graph.Connect(field, example.Pin(other.GetValue(), "x")) : Result<Id>(BlueprintError::NotFound);
+    auto whole  = make ? graph.SplitPin(make.GetValue(), "struct", false) : Result<void>(BlueprintError::NotFound);
+    auto node   = make ? graph.FindNode(make.GetValue()) : nullptr;
+    auto orphan = node ? node->FindOrphan(field) : nullptr;
+    test::Check(split && fed && whole && orphan && SplitAgainKey(*node, *orphan) == "struct", "recombined, its field is an orphan its struct pin splits again into");
+
+    // The call's input renamed again, an orphan of its own: a node's orphans' links broken, then all.
+    Signature again;
+    again.m_Inputs = { { "v", "V", Int32Type() } };
+    auto renamedAgain = document.GetBlueprint().SetSignature(function.GetValue()->GetId(), again);
+    session.Use([&] { RemoveOrphans(document, make.GetValue()); });
+    test::Check(renamedAgain && graph.FindNode(make.GetValue())->m_Orphans.empty() && !graph.FindLink(fed.GetValue()) && graph.NodeOfOrphan(u), "a node's orphans' links broken, it has none, and the call keeps its own");
+    session.Use([&] { RemoveOrphans(document, 0); });
+    test::Check(std::all_of(graph.Nodes().begin(), graph.Nodes().end(), [](const Node& node) { return node.m_Orphans.empty(); }), "and all the graph's broken, no node has one");
+}
