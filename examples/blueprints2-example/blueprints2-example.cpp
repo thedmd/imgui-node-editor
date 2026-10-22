@@ -488,6 +488,9 @@ struct BlueprintEditorExample
         m_OverlayLogger.Update(ImGui::GetIO().DeltaTime);
         m_OverlayLogger.Draw(canvasMin, canvasMax);
 
+        ShowClosePrompt();
+        ShowOpenFailure();
+
         ed::SetCurrentEditor(nullptr);
     }
 
@@ -501,7 +504,7 @@ struct BlueprintEditorExample
 
     bool CanClose() override
     {
-        return File_Close();
+        return File_Close([this] { Close(); });
     }
 
 private:
@@ -2720,7 +2723,7 @@ private:
 
     void File_New()
     {
-        if (!File_Close())
+        if (!File_Close([this] { File_New(); }))
             return;
 
         LOGI("[File] New");
@@ -2743,7 +2746,7 @@ private:
             return false;
         }
 
-        if (!File_Close())
+        if (!File_Close([this, opened = std::string(path)] { File_Open(opened); }))
             return false;
 
         LOGI("[File] Open \"%s\"", std::string(path).c_str());
@@ -2796,12 +2799,8 @@ private:
         std::string error;
         if (!File_Open(path, &error) && !error.empty())
         {
-            tinyfd_messageBox(
-                (std::string(GetName()) + " - Open Blueprint...").c_str(),
-                "The blueprint could not be loaded. The log says which file failed.",
-                "ok", "error", 1);
-
             LOGE("%s", error.c_str());
+            m_OpenFailure = error;
 
             return false;
         }
@@ -2809,28 +2808,26 @@ private:
         return true;
     }
 
-    bool File_Close()
+    // Closes the document now, but for one with changes not saved: a popup asks whether to save
+    // them, and once the document closed, 'then' goes on with what closing it was for.
+    bool File_Close(std::function<void()> then = {})
     {
         if (!File_IsOpen())
             return true;
 
         if (File_IsModified())
         {
-            auto dialogResult = tinyfd_messageBox(
-                GetName().c_str(),
-                "Do you want to save changes to this blueprint before closing?",
-                "yesnocancel", "question", 1);
-            if (dialogResult == 1) // yes
-            {
-                if (!File_Save())
-                    return false;
-            }
-            else if (dialogResult == 0) // cancel
-            {
-                return false;
-            }
+            m_CloseRequest = std::move(then);
+            return false;
         }
 
+        CloseDocument();
+
+        return true;
+    }
+
+    void CloseDocument()
+    {
         LOGI("[File] Close");
 
         m_Debugger.Stop();
@@ -2845,8 +2842,70 @@ private:
         DestroyEditors();
 
         UpdateTitle();
+    }
 
-        return true;
+    // A modal popup that doesn't dim the window behind it: the pinned Dear ImGui asserts as it dims
+    // at a fractional framebuffer scale, where it anti-aliases the edges of the dim's rect.
+    static bool BeginPrompt(const char* title)
+    {
+        ImGui::PushStyleColor(ImGuiCol_ModalWindowDimBg, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
+        const auto open = ImGui::BeginPopupModal(title, nullptr, ImGuiWindowFlags_AlwaysAutoResize);
+        ImGui::PopStyleColor();
+        return open;
+    }
+
+    void ShowClosePrompt()
+    {
+        const auto title = "Save Changes?###ClosePrompt";
+        if (m_CloseRequest && !ImGui::IsPopupOpen(title))
+            ImGui::OpenPopup(title);
+        if (!BeginPrompt(title))
+            return;
+
+        ImGui::TextUnformatted("Do you want to save changes to this blueprint before closing it?");
+        ImGui::Spacing();
+        auto close = [this](bool save)
+        {
+            auto then = std::exchange(m_CloseRequest, std::nullopt);
+            ImGui::CloseCurrentPopup();
+            if (!m_Document || (save && !File_Save()))
+                return;
+            CloseDocument();
+            if (then && *then)
+                (*then)();
+        };
+        if (ImGui::Button("Save"))
+            close(true);
+        ImGui::SameLine();
+        if (ImGui::Button("Don't Save"))
+            close(false);
+        ImGui::SameLine();
+        if (ImGui::Button("Cancel") || ImGui::IsKeyPressed(ImGuiKey_Escape))
+        {
+            m_CloseRequest.reset();
+            ImGui::CloseCurrentPopup();
+        }
+
+        ImGui::EndPopup();
+    }
+
+    void ShowOpenFailure()
+    {
+        const auto title = "Open Blueprint###OpenFailure";
+        if (!m_OpenFailure.empty() && !ImGui::IsPopupOpen(title))
+            ImGui::OpenPopup(title);
+        if (!BeginPrompt(title))
+            return;
+
+        ImGui::TextUnformatted(m_OpenFailure.c_str());
+        ImGui::Spacing();
+        if (ImGui::Button("OK") || ImGui::IsKeyPressed(ImGuiKey_Enter) || ImGui::IsKeyPressed(ImGuiKey_Escape))
+        {
+            m_OpenFailure.clear();
+            ImGui::CloseCurrentPopup();
+        }
+
+        ImGui::EndPopup();
     }
 
     bool File_SaveAsEx(std::string_view path)
@@ -3107,6 +3166,8 @@ private:
     std::unordered_set<Id>    m_Bubbles;    // nodes whose problems show
     std::unordered_set<Id>    m_RunBubbles; // nodes whose bubble a run's error opened
     std::optional<LinkQuery>  m_LinkQuery;
+    std::optional<std::function<void()>> m_CloseRequest; // the close the popup asks about, and what follows it
+    std::string               m_OpenFailure;             // shown in a popup
     bool                      m_ShowActions         = true;
     bool                      m_ShowDisabledActions = false;
     bool                      m_ShowPanels          = true;
