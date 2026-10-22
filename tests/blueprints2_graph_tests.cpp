@@ -876,7 +876,7 @@ TEST_CASE(PlainLinkDisablingAnother, "graph.a_plain_link_that_would_disable_anot
     auto typing = f.Connect(make, "value", split, "value");
     auto fromX  = f.Connect(split, "x", add, "in.0");
     auto plain  = f.Connect(floats, "value", split, "value");
-    auto expected = f.Name(split) + ".x -> " + f.Name(add) + ".in.0 would be disabled: its pin isn't on the node now";
+    auto expected = f.Name(split) + ".x -> " + f.Name(add) + ".in.0 would be disabled: x isn't on " + f.Name(split) + " now";
     test::Check(typing && fromX && !plain && plain.GetError().Is(BlueprintError::NoPin) && Message(plain) == expected, "the plain link is refused, for the link it would disable: %s", Message(plain).c_str());
     test::Check(IsActive(f.m_Graph, typing) && IsActive(f.m_Graph, fromX) && f.PinCount(split) == 3, "and the graph is as it was");
     auto forced = f.Connect(floats, "value", split, "value", LinkMode::Force);
@@ -928,6 +928,32 @@ TEST_CASE(SplitPins, "graph.a_struct_pin_splits_into_its_fields", nullptr, test:
 
     auto input = f.m_Graph.SplitPin(split, "value", true);
     test::Check(input && f.Keys(split) == "value.x value.y x y" && f.Type(split, "value.y") == "Float", "an input splits too: %s", f.Keys(split).c_str());
+}
+
+TEST_CASE(OrphanPins, "graph.a_pin_gone_that_links_name_is_an_orphan_of_its_node", nullptr, test::TestFlags_None)
+{
+    Fixture f;
+    auto make  = f.Add("MakeVector2"), add = f.Add("Add");
+    auto split = f.m_Graph.SplitPin(make, "value", true);
+    auto field = f.Pin(make, "value.x");
+    auto link  = f.Link(make, "value.x", add, "in.0");
+    auto whole = f.m_Graph.SplitPin(make, "value", false);
+    auto node  = f.m_Graph.FindNode(make);
+    auto alone = node && node->m_Orphans.size() == 1 ? &node->m_Orphans[0] : nullptr;
+    test::Check(split && whole && alone && alone->m_Id == field && alone->m_Key == "value.x" && alone->m_Direction == Direction::Output && !alone->m_Flow && f.m_Graph.NodeOfOrphan(field) == node,
+        "recombined, the field it links stays, an orphan output of Make Vector2");
+
+    auto diagnostics = f.m_Graph.Diagnostics();
+    auto found       = std::find_if(diagnostics.begin(), diagnostics.end(), [link](const Diagnostic& diagnostic) { return diagnostic.m_Link == link; });
+    auto message     = found != diagnostics.end() ? std::string(found->m_Error.Message()) : std::string();
+    test::Check(found != diagnostics.end() && found->m_Node == make && found->m_Pin == field && message == f.Name(make) + ".value.x -> " + f.Name(add) + ".in.0: value.x isn't on " + f.Name(make) + " now",
+        "its link's problem is Make Vector2's, and names both ends: %s", message.c_str());
+
+    auto again = f.m_Graph.SplitPin(make, "value", true);
+    test::Check(again && f.m_Graph.FindNode(make)->m_Orphans.empty() && IsActive(f.m_Graph, link), "split again, the field is a pin again, and its link active");
+    auto back  = f.m_Graph.SplitPin(make, "value", false);
+    auto unlinked = f.m_Graph.Disconnect(link);
+    test::Check(back && unlinked && f.m_Graph.FindNode(make)->m_Orphans.empty(), "and once its link goes, the orphan goes");
 }
 
 TEST_CASE(SplitPinDefaults, "graph.split_fields_take_the_struct_pins_default_and_requirement", nullptr, test::TestFlags_None)

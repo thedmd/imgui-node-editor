@@ -1982,6 +1982,33 @@ std::string crude_blueprint::Graph::TypeText(Id pin) const
     return found->m_DecidedType ? found->m_DecidedType->m_Name : found->m_Wildcard;
 }
 
+const crude_blueprint::OrphanPin* crude_blueprint::Node::FindOrphan(Id pin) const
+{
+    auto found = std::find_if(m_Orphans.begin(), m_Orphans.end(), [pin](const OrphanPin& orphan) { return orphan.m_Id == pin; });
+    return found != m_Orphans.end() ? &*found : nullptr;
+}
+
+const crude_blueprint::Node* crude_blueprint::Graph::NodeOfOrphan(Id pin) const
+{
+    auto found = std::find_if(m_Nodes.begin(), m_Nodes.end(), [pin](const Node& node) { return node.FindOrphan(pin) != nullptr; });
+    return found != m_Nodes.end() ? &*found : nullptr;
+}
+
+std::pair<const crude_blueprint::Node*, std::string> crude_blueprint::Graph::Remembered(Id pin) const
+{
+    for (auto& node : m_Nodes)
+        for (auto& [key, id] : node.m_KeyIds)
+            if (id == pin)
+                return { &node, key };
+    return { nullptr, std::string() };
+}
+
+std::string crude_blueprint::Graph::EndName(Id pin) const
+{
+    auto [node, key] = Remembered(pin);
+    return node ? node->Name() + "." + key : "pin " + std::to_string(pin);
+}
+
 std::string crude_blueprint::Graph::PinName(const Pin& pin) const
 {
     return NodeOf(pin.m_Id)->Name() + "." + pin.m_Key;
@@ -2094,6 +2121,21 @@ void crude_blueprint::Graph::Update()
             auto pin = FindPin(entry.first);
             return pin && pin->m_DecidedType && pin->m_DecidedType != entry.second.GetType();
         });
+        node.m_Orphans.clear();
+    }
+
+    for (auto& link : m_Links)
+    {
+        for (auto [end, other, direction] : { std::tuple(link.m_From, link.m_To, Direction::Output), std::tuple(link.m_To, link.m_From, Direction::Input) })
+        {
+            if (FindPin(end))
+                continue;
+            auto [node, key] = Remembered(end);
+            if (!node || node->FindOrphan(end))
+                continue;
+            auto known = FindPin(other);
+            MutableNode(node->m_Id)->m_Orphans.push_back({ end, std::move(key), direction, known && known->m_Flow });
+        }
     }
     Diagnose();
 }
@@ -2194,7 +2236,9 @@ std::vector<int> crude_blueprint::Graph::Resolve(TypeResolution& resolution)
         auto to   = FindPin(link.m_To);
         if (!from || !to)
         {
-            disable(link, Error(BlueprintError::NoPin, "its pin isn't on the node now"));
+            auto [node, key] = Remembered(!from ? link.m_From : link.m_To);
+            auto gone        = node ? key + " isn't on " + node->Name() + " now" : "its pin is on no node";
+            disable(link, Error(BlueprintError::NoPin, gone));
             continue;
         }
         if (auto check = CheckLink(*from, *to); !check)
@@ -2260,9 +2304,22 @@ void crude_blueprint::Graph::Diagnose()
     m_Diagnostics.clear();
     for (auto& problem : m_Problems)
         m_Diagnostics.push_back({ problem.m_Error, Severity::Error, m_Id, problem.m_Node, 0, 0 });
+    // A link whose pin is gone is the problem of the node the pin is gone from, the output's when both
+    // are, and is named by its ends, which no pin can name.
     for (auto& link : m_Links)
-        if (!link.m_Active)
+    {
+        if (link.m_Active)
+            continue;
+        if (!link.m_Reason.Is(BlueprintError::NoPin))
+        {
             m_Diagnostics.push_back({ link.m_Reason, Severity::Error, m_Id, 0, 0, link.m_Id });
+            continue;
+        }
+        const auto gone  = FindPin(link.m_From) ? link.m_To : link.m_From;
+        const auto owner = Remembered(gone).first;
+        auto       named = Error(link.m_Reason.m_Category, link.m_Reason.m_Code, EndName(link.m_From) + " -> " + EndName(link.m_To) + ": " + std::string(link.m_Reason.Message()));
+        m_Diagnostics.push_back({ std::move(named), Severity::Error, m_Id, owner ? owner->m_Id : 0, owner ? gone : 0, link.m_Id });
+    }
 
     std::unordered_set<Id> linked;
     for (auto& link : m_Links)
@@ -2358,12 +2415,16 @@ crude_blueprint::Result<void> crude_blueprint::Blueprint::SetSignature(Id graph,
         return Error(BlueprintError::NotFound, "graph " + std::to_string(graph) + " isn't a function's");
     if (auto check = CheckSignature(signature); !check)
         return check;
+    // The entry's and the return's pins the signature loses go with their links, as the edit removed
+    // them, and so do a call's flow pins, as making a function pure does; a call's other pins stay,
+    // orphans, with their links.
     std::set<Id> before;
     for (auto& other : m_Graphs)
         for (auto& node : other->Nodes())
             if (auto role = Cast<FunctionNodeType>(node.m_Type); role && role->m_Function == *function)
                 for (auto& pin : node.m_Pins)
-                    before.insert(pin.m_Id);
+                    if (role->m_Role != FunctionNodeType::Role::Call || pin.m_Flow)
+                        before.insert(pin.m_Id);
     (*function)->m_Signature = std::move(signature);
     SetParameters(**function);
     for (auto& other : m_Graphs)

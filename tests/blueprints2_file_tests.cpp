@@ -135,7 +135,7 @@ std::unique_ptr<Blueprint> Loaded(const std::string& text, std::shared_ptr<const
     return loaded;
 }
 
-// Its pins' names and types, its links' states and its diagnostics.
+// Its pins' names and types, its orphans, its links' states and its diagnostics.
 std::string Describe(const Graph& graph)
 {
     std::string text = graph.GetName() + "\n";
@@ -146,6 +146,8 @@ std::string Describe(const Graph& graph)
             text += " " + pin.m_Key + "#" + std::to_string(pin.m_Id) + "'" + pin.m_Name + "'=" + (pin.m_Flow ? std::string(">") : graph.TypeText(pin.m_Id));
         for (auto& [pin, value] : node.m_Values)
             text += " value#" + std::to_string(pin) + "=" + value.GetType()->m_Head->Format(value);
+        for (auto& orphan : node.m_Orphans)
+            text += " orphan " + orphan.m_Key + "#" + std::to_string(orphan.m_Id) + (orphan.m_Direction == Direction::Input ? " in" : " out");
         text += "\n";
     }
     for (auto& link : graph.Links())

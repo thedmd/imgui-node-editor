@@ -830,6 +830,17 @@ struct SplitPin
     Direction   m_Direction = Direction::Input;
 };
 
+// A pin its node no longer declares that links still name, as a split pin's field once it's
+// recombined, or a call's input its function lost: of the direction of the links' end. It goes when
+// they do, and is a pin again, with them, when the node declares its key again.
+struct OrphanPin
+{
+    Id          m_Id = 0;
+    std::string m_Key;
+    Direction   m_Direction = Direction::Input;
+    bool        m_Flow      = false; // the links' other ends are flow pins
+};
+
 struct Node
 {
     Id              m_Id   = 0;
@@ -849,8 +860,10 @@ struct Node
     std::vector<Pin>                 m_Pins;
     std::vector<SplitPin>            m_Splits;
     Bindings                         m_Bindings;
+    std::vector<OrphanPin>           m_Orphans;
 
-    const Pin* FindPin(std::string_view key) const;
+    const Pin*       FindPin(std::string_view key) const;
+    const OrphanPin* FindOrphan(Id pin) const;
 
     // As messages name it: "Add#7".
     std::string Name() const;
@@ -957,6 +970,7 @@ public:
     std::span<const Node>       Nodes() const       { return m_Nodes; }
     std::span<const Link>       Links() const       { return m_Links; }
     std::span<const Diagnostic> Diagnostics() const { return m_Diagnostics; }
+    const Node*                 NodeOfOrphan(Id pin) const; // the node an orphan pin is of
 
     // With an error diagnostic, the graph can be edited and saved, but not run.
     bool IsBroken() const;
@@ -993,6 +1007,8 @@ private:
     std::string      PinName(const Pin& pin) const;
     std::string      LinkName(const Link& link) const; // of an active link, whose pins are on their nodes
     std::string      LinkName(const Pin& from, const Pin& to) const;
+    std::pair<const Node*, std::string> Remembered(Id pin) const; // the node remembering a pin's ID, and its key
+    std::string      EndName(Id pin) const;                       // a link's end's, declared or not: "Add#7.in.0"
 
     Blueprint*                                         m_Blueprint;
     Id                                                 m_Id;

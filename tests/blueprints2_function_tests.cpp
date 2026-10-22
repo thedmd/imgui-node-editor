@@ -284,6 +284,7 @@ TEST_CASE(SignatureChanges, "function.call_nodes_follow_their_functions_signatur
     auto& lerp   = f.Function("Lerp", Lerp());
     auto  floats = f.Constant(FloatType()), call = f.Call("Lerp");
     auto  link   = f.Link(floats, "value", call, "t");
+    auto  input  = f.Pin(call, "t");
 
     auto grown = Lerp();
     grown.m_Inputs.push_back({ "c", "C", T() });
@@ -293,10 +294,13 @@ TEST_CASE(SignatureChanges, "function.call_nodes_follow_their_functions_signatur
     auto shrunk = Lerp();
     shrunk.m_Inputs.pop_back();
     set = f.m_Blueprint.SetSignature(lerp.GetId(), shrunk);
-    test::Check(set && f.Keys(call) == "enter then a b value" && !f.m_Graph.FindLink(link) && !f.m_Graph.IsBroken(), "and the link of a removed one goes with it");
+    auto kept = f.m_Graph.FindLink(link);
+    test::Check(set && f.Keys(call) == "enter then a b value" && kept && !kept->m_Active && f.m_Graph.FindNode(call)->FindOrphan(input) && f.m_Graph.IsBroken(),
+        "and the link of a removed one stays, disabled, its pin an orphan of the call");
 
     set = f.m_Blueprint.SetSignature(lerp.GetId(), Lerp());
-    test::Check(set && f.Keys(call) == "enter then a b t value" && f.m_Graph.Links().empty(), "the pin comes back without it");
+    kept = f.m_Graph.FindLink(link);
+    test::Check(set && f.Keys(call) == "enter then a b t value" && kept && kept->m_Active && f.m_Graph.FindNode(call)->m_Orphans.empty(), "the pin comes back with it");
     auto missing = f.m_Blueprint.SetSignature(f.m_Graph.GetId(), Lerp());
     test::Check(!missing && missing.GetError().Is(BlueprintError::NotFound), "an event graph has no signature: %s", Message(missing).c_str());
 }
