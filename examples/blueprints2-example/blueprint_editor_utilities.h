@@ -49,6 +49,9 @@ bool  IsConstant(const Node& node);
 Value ConstantValue(const Node& node, const Pin& pin);
 // A Custom Event's config holds its event's name, and the names of its parameters.
 bool  IsCustomEvent(const Node& node);
+// A reroute, data or flow, shows as a disc that links bend around; its node is RerouteSize() square.
+bool  IsReroute(const Node& node);
+float RerouteSize();
 // A comment, which the editor shows as a group over part of a graph, holds its text in its config.
 bool        IsComment(const Node& node);
 std::string CommentText(const Node& node); // "Comment" for one without any
@@ -143,6 +146,9 @@ void RemoveFunction(Document& document, Id graph); // with the calls of it in ot
 void RenameTypeParameter(Document& document, Id graph, size_t index, std::string name);
 void RenameEvent(Document& document, Id node, std::string name); // a Custom Event's
 void SetCommentText(Document& document, Id node, std::string text);
+// A reroute put into a link, centered on a point of the canvas: the link's first half plain, so the
+// reroute takes the source's type, and its second the link's own cast or force. Gives the reroute.
+Id   InsertReroute(Document& document, Id link, ImVec2 center);
 void RenamePin(Document& document, Id pin, std::string name);    // in its node's config; an empty name gives back the declared one
 
 // Edits of the blueprint's variables, one undo step each. One the blueprint refuses is logged.

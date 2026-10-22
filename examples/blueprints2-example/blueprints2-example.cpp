@@ -758,6 +758,67 @@ private:
         ed::EndGroupHint();
     }
 
+    // A reroute is a disc of its type's color, filled while linked, with a cast's two colors or a
+    // disabled link's slash as a pin's icon has them. Its left half takes the link in, its right half
+    // gives links out, and the rim around it moves it, as Ctrl+drag does anywhere on it. Links meet at
+    // its center.
+    void ShowReroute(const Node& node, const std::unordered_set<Id>& linked, const std::unordered_set<Id>& disabled, const std::unordered_map<Id, ImVec4>& castFrom)
+    {
+        auto in  = node.FindPin("in");
+        auto out = node.FindPin("out");
+        if (!in || !out)
+            return;
+        const auto size   = RerouteSize();
+        const auto radius = size * 0.25f; // a rim as wide around it to move the node by
+        const auto moving = ImGui::GetIO().KeyCtrl;
+
+        ed::PushStyleVar(ed::StyleVar_NodePadding, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
+        ed::BeginNode(node.m_Id);
+        ImGui::Dummy(ImVec2(size, size));
+        const auto center = ImGui::GetItemRectMin() + ImVec2(size, size) * 0.5f;
+
+        // The pins' own items, empty, go in the node's corner, which keeps the node square.
+        ImGui::SetCursorScreenPos(ImGui::GetItemRectMin());
+        auto half = [&](const Pin& pin, ed::PinKind kind, ImVec2 min, ImVec2 max)
+        {
+            ed::BeginPin(pin.m_Id, kind);
+            ed::PinRect(min, moving ? min : max);
+            ed::PinPivotRect(center, center);
+            ed::EndPin();
+            m_PinIcons[pin.m_Id] = ImRect(center - ImVec2(radius, radius), center + ImVec2(radius, radius));
+        };
+        half(*in, ed::PinKind::Input, center - ImVec2(radius, radius), center + ImVec2(0.0f, radius));
+        half(*out, ed::PinKind::Output, center - ImVec2(0.0f, radius), center + ImVec2(radius, radius));
+        ed::EndNode();
+        ed::PopStyleVar();
+
+        auto drawList = ed::GetNodeBackgroundDrawList(node.m_Id);
+        if (!drawList)
+            return;
+        const auto hovered  = ed::GetHoveredNode() == ed::NodeId(node.m_Id) || ed::GetHoveredPin() == ed::PinId(in->m_Id) || ed::GetHoveredPin() == ed::PinId(out->m_Id);
+        const auto errors   = m_Problems.Count(Severity::Error, node.m_Id), warnings = m_Problems.Count(Severity::Warning, node.m_Id);
+        const auto color    = ImGui::GetColorU32(PinColor(*out));
+        if (ed::IsNodeSelected(node.m_Id))
+            drawList->AddCircle(center, radius + 4.0f, IM_COL32(255, 255, 255, 220), 0, 2.0f);
+        else if (errors > 0 || warnings > 0)
+            drawList->AddCircle(center, radius + 3.5f, ImGui::GetColorU32(ProblemColor(errors > 0 ? Severity::Error : Severity::Warning)), 0, 2.0f);
+        else if (hovered)
+            drawList->AddCircle(center, radius + 3.0f, IM_COL32(255, 255, 255, 80), 0, 1.5f);
+        if (auto cast = castFrom.find(in->m_Id); cast != castFrom.end())
+        {
+            drawList->PathArcTo(center, radius, IM_PI * 0.5f, IM_PI * 1.5f);
+            drawList->PathFillConvex(ImGui::GetColorU32(cast->second));
+            drawList->PathArcTo(center, radius, -IM_PI * 0.5f, IM_PI * 0.5f);
+            drawList->PathFillConvex(color);
+        }
+        else if (linked.contains(in->m_Id) || linked.contains(out->m_Id))
+            drawList->AddCircleFilled(center, radius, color);
+        else
+            drawList->AddCircle(center, radius, color, 0, 2.0f);
+        if (disabled.contains(in->m_Id))
+            drawList->AddLine(center + ImVec2(-radius, radius), center + ImVec2(radius, -radius), IM_COL32(255, 96, 96, 255), 2.0f);
+    }
+
     // A comment over the selected nodes, their group inside it a margin away from them: one undo step.
     void CommentSelection(Document& document)
     {
@@ -853,6 +914,11 @@ private:
             if (IsComment(node))
             {
                 ShowComment(node, node.m_Id == hovered);
+                continue;
+            }
+            if (IsReroute(node))
+            {
+                ShowReroute(node, linked, disabled, castFrom);
                 continue;
             }
 
@@ -2093,6 +2159,7 @@ private:
         CanvasActions actions(overCanvas);
         actions.Gesture("Create Link", "Drag Pin to Pin", pin != nullptr);
         actions.Gesture("Create Linked Node", "Drag Pin to Canvas", pin != nullptr);
+        actions.Gesture("Insert Reroute", "Double-Click", link != nullptr);
         if (actions.Press("Break Pin's Links", ImGuiMod_Alt | ImGuiKey_MouseLeft, pinLinked))
             ed::BreakLinks(ed::PinId(pin->m_Id));
         if (actions.Press("Watch Pin", ImGuiMod_Ctrl | ImGuiKey_MouseLeft, pin && !pin->m_Flow))
@@ -2127,6 +2194,11 @@ private:
             m_PendingGraph = function->m_Graph;
         else if (doubleClicked && SignatureNodeOf(document.GetBlueprint(), *doubleClicked).m_Function)
             RequestPanel("Signature");
+        if (auto clicked = graph.FindLink(static_cast<Id>(ed::GetDoubleClickedLink().Get())))
+        {
+            InsertReroute(document, clicked->m_Id, ed::ScreenToCanvas(ImGui::GetMousePos()));
+            return;
+        }
         if (auto clicked = graph.FindPin(static_cast<Id>(ed::GetDoubleClickedPin().Get())))
         {
             const auto owner = graph.NodeOf(clicked->m_Id)->m_Id;
@@ -2549,10 +2621,10 @@ private:
         auto  node  = graph.FindNode(static_cast<Id>(ed::GetHoveredNode().Get()));
         if (auto pin = graph.FindPin(static_cast<Id>(ed::GetHoveredPin().Get())); !node && pin)
             node = graph.NodeOf(pin->m_Id);
-        if (node && IsComment(*node))
+        if (node && (IsComment(*node) || IsReroute(*node)))
             node = nullptr;
         auto nodes = node ? std::vector<Id>{ node->m_Id } : GetSelectedNodes();
-        std::erase_if(nodes, [&graph](Id id) { auto found = graph.FindNode(id); return !found || IsComment(*found); });
+        std::erase_if(nodes, [&graph](Id id) { auto found = graph.FindNode(id); return !found || IsComment(*found) || IsReroute(*found); });
         return nodes;
     }
 

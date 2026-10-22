@@ -88,6 +88,15 @@ struct Example
         return pin ? pin->m_Id : 0;
     }
 
+    // The link from one pin into another; nullptr for none.
+    const Link* LinkBetween(Id from, Id to) const
+    {
+        for (auto& link : m_Document.GetGraph().Links())
+            if (link.m_From == from && link.m_To == to)
+                return &link;
+        return nullptr;
+    }
+
     Document m_Document{ ExampleRegistry(), std::make_shared<TypeTable>() };
 };
 
@@ -1587,4 +1596,37 @@ TEST_CASE(CommentTexts, "blueprints2.a_comments_text_is_edited_in_one_undo_step"
     test::Check(text() == "Greets" && document.m_Undo.size() == 2, "its text is one undo step, and the same text none: %s", text().c_str());
     session.Use([&] { document.Undo(); });
     test::Check(text() == "Comment", "undone, it says what it said: %s", text().c_str());
+}
+
+TEST_CASE(RerouteInserts, "blueprints2.a_reroute_put_into_a_link_takes_the_sources_type_and_the_links_cast", nullptr, test::TestFlags_None)
+{
+    using namespace blueprint_editor_utilities;
+    test::Session session(UnnamedConfig());
+    OverlayLog    log;
+    Example       example(session);
+    auto& document = example.m_Document;
+    const auto sum = example.Node("crude.Add"), print = example.Node("crude.Print"), loop = example.Node("crude.ForLoop");
+    const auto result = example.Pin(sum, "result"), text = example.Pin(print, "text");
+    const auto body   = example.Pin(loop, "body"), enter = example.Pin(print, "enter");
+    const auto cast   = example.LinkBetween(result, text), flowing = example.LinkBetween(body, enter);
+    if (!cast || cast->m_Cast.empty() || !flowing)
+        return test::Check(false, "the example's sum reaches the Print's text through a cast, and its loop's body the Print");
+    const auto castLink = cast->m_Id, flowLink = flowing->m_Id;
+
+    // Into the cast link, at (600, 200).
+    const auto steps   = document.m_Undo.size();
+    const auto reroute = session.Use([&] { return InsertReroute(document, castLink, ImVec2(600.0f, 200.0f)); });
+    const auto in = example.Pin(reroute, "in"), out = example.Pin(reroute, "out");
+    auto first  = example.LinkBetween(result, in);
+    auto second = example.LinkBetween(out, text);
+    test::Check(first && first->m_Cast.empty() && second && !second->m_Cast.empty() && !example.LinkBetween(result, text) && document.GetGraph().TypeText(out) == "Int32" && document.m_Undo.size() == steps + 1,
+        "put into the link, a reroute takes the sum's Int32 plainly and casts it on: one undo step");
+    const auto center = session.Use([&] { return ed::GetNodePosition(reroute) + ImVec2(RerouteSize(), RerouteSize()) * 0.5f; });
+    test::Check(ImFabs(center.x - 600.0f) < 0.5f && ImFabs(center.y - 200.0f) < 0.5f, "centered where it was put: (%g, %g)", center.x, center.y);
+
+    // Into the loop's body, a flow reroute.
+    const auto flow  = session.Use([&] { return InsertReroute(document, flowLink, ImVec2(500.0f, 100.0f)); });
+    const auto found = document.GetGraph().FindNode(flow);
+    test::Check(found && found->m_Type->m_Name == "crude.FlowReroute" && example.LinkBetween(body, example.Pin(flow, "in")) && example.LinkBetween(example.Pin(flow, "out"), enter),
+        "a flow link takes a flow reroute");
 }

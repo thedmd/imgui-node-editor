@@ -151,6 +151,16 @@ bool blueprint_editor_utilities::IsCustomEvent(const Node& node)
     return node.m_Type->m_Name == "crude.CustomEvent";
 }
 
+bool blueprint_editor_utilities::IsReroute(const Node& node)
+{
+    return node.m_Type->IsReroute();
+}
+
+float blueprint_editor_utilities::RerouteSize()
+{
+    return ImGui::GetTextLineHeight() * 1.5f;
+}
+
 bool blueprint_editor_utilities::IsComment(const Node& node)
 {
     return node.m_Type->m_Name == "crude.Comment";
@@ -679,6 +689,59 @@ void blueprint_editor_utilities::SetCommentText(Document& document, Id node, std
         return;
     }
     transaction->AddAction("%s says \"%s\"", graph.FindNode(node)->Name().c_str(), text.c_str());
+}
+
+namespace blueprint_editor_utilities { namespace {
+
+// How a link would be made again: a disabled one is kept so.
+LinkMode ModeOf(const Link& link)
+{
+    return !link.m_Cast.empty() ? LinkMode::Cast : link.m_Forced > 0 ? LinkMode::Force : link.m_Active ? LinkMode::Plain : LinkMode::Keep;
+}
+
+// A link made again in its mode, or kept, disabled, when it no longer fits.
+void Reconnect(Graph& graph, Id from, Id to, LinkMode mode)
+{
+    if (graph.Connect(from, to, mode))
+        return;
+    if (auto kept = graph.Connect(from, to, LinkMode::Keep); !kept)
+    {
+        auto message = kept.GetError().Message();
+        auto pin     = graph.FindPin(from);
+        LOGW("[Reroute] %s not linked: %.*s", pin ? DescribePin(graph, *pin).c_str() : "?", static_cast<int>(message.size()), message.data());
+    }
+}
+
+} } // namespace blueprint_editor_utilities { namespace {
+
+blueprint_editor_utilities::Id blueprint_editor_utilities::InsertReroute(Document& document, Id link, ImVec2 center)
+{
+    auto& graph = document.GetGraph();
+    auto  found = graph.FindLink(link);
+    auto  from  = found ? graph.FindPin(found->m_From) : nullptr;
+    if (!from)
+        return 0;
+    const auto source = found->m_From, target = found->m_To;
+    const auto mode   = ModeOf(*found);
+    auto transaction = document.BeginUndoTransaction("Insert Reroute");
+    auto reroute     = graph.AddNode(from->m_Flow ? "crude.FlowReroute" : "crude.Reroute");
+    if (!reroute)
+    {
+        transaction->Discard();
+        return 0;
+    }
+    auto node = graph.FindNode(reroute.GetValue());
+    const auto in = node->FindPin("in")->m_Id, out = node->FindPin("out")->m_Id;
+    if (!graph.Disconnect(link))
+    {
+        transaction->Discard();
+        return 0;
+    }
+    Reconnect(graph, source, in, LinkMode::Plain);
+    Reconnect(graph, out, target, mode);
+    ax::NodeEditor::SetNodePosition(reroute.GetValue(), center - ImVec2(RerouteSize(), RerouteSize()) * 0.5f);
+    transaction->AddAction("%s put into a link", graph.FindNode(reroute.GetValue())->Name().c_str());
+    return reroute.GetValue();
 }
 
 void blueprint_editor_utilities::RenamePin(Document& document, Id pin, std::string name)
@@ -1877,10 +1940,11 @@ void blueprint_editor_utilities::CreateNodeDialog::Update(Document& document)
         for (auto type : types)
             m_Entries.push_back({ type, {}, {} });
     }
-    auto order = [](const NewNodeFit& entry)
+    // For a link dropped on the canvas, a reroute comes first.
+    auto order = [dropped = m_FromPin != 0](const NewNodeFit& entry)
     {
         const auto cast = !entry.m_Cast.empty();
-        return std::tuple(cast, cast ? std::string_view() : std::string_view(entry.m_Type->m_Category), std::string_view(entry.m_Type->m_Title));
+        return std::tuple(cast, !(dropped && entry.m_Type->IsReroute()), cast ? std::string_view() : std::string_view(entry.m_Type->m_Category), std::string_view(entry.m_Type->m_Title));
     };
     std::stable_sort(m_Entries.begin(), m_Entries.end(), [&order](const NewNodeFit& lhs, const NewNodeFit& rhs) { return order(lhs) < order(rhs); });
 }
@@ -1981,7 +2045,7 @@ void blueprint_editor_utilities::NodeContextMenu::Show(Document& document, Debug
     {
         if (node && IsComment(*node) && ImGui::MenuItem("Edit Comment..."))
             EditComment(*node);
-        if (ImGui::MenuItem("Breakpoint", "F9", debugger.HasBreakpoint(m_Node), node && !IsComment(*node)))
+        if (ImGui::MenuItem("Breakpoint", "F9", debugger.HasBreakpoint(m_Node), node && !IsComment(*node) && !IsReroute(*node)))
         {
             const auto enabled = !debugger.HasBreakpoint(m_Node);
             if (!ax::NodeEditor::IsNodeSelected(m_Node))
@@ -2498,6 +2562,7 @@ void blueprint_editor_utilities::LinkContextMenu::Show(Document& document)
         return;
 
     auto link = document.GetGraph().FindLink(m_Link);
+    std::optional<ImVec2> insert; // where the reroute chosen goes, once the menu is drawn
 
     if (ImGui::BeginPopup("##link-context-menu"))
     {
@@ -2507,6 +2572,9 @@ void blueprint_editor_utilities::LinkContextMenu::Show(Document& document)
             ImGui::TextDisabled("Disabled: %.*s", static_cast<int>(reason.size()), reason.data());
             ImGui::Separator();
         }
+
+        if (ImGui::MenuItem("Insert Reroute", "Double-Click"))
+            insert = ax::NodeEditor::ScreenToCanvas(ImGui::GetMousePosOnOpeningCurrentPopup());
 
         if (ImGui::MenuItem("Break"))
         {
@@ -2519,6 +2587,9 @@ void blueprint_editor_utilities::LinkContextMenu::Show(Document& document)
 
         ImGui::EndPopup();
     }
+
+    if (insert)
+        InsertReroute(document, m_Link, *insert);
 }
 
 
