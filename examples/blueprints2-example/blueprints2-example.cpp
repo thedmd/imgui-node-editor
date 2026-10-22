@@ -2,8 +2,8 @@
 # include <application.h>
 # include <imgui_internal.h>
 # include <splitter.h>
-# include <tinyfiledialogs.h>
 # include <IconsFontAwesome7.h>
+# include <nfd.hpp>
 
 # include "crude_logger.h"
 # include "crude_blueprint.h"
@@ -378,10 +378,17 @@ struct BlueprintEditorExample
             m_OverlayLogger.AddKeyword(type->m_Title);
 
         ed::SetCurrentEditor(nullptr);
+
+        m_HasFileDialogs = NFD::Init() == NFD_OKAY;
+        if (!m_HasFileDialogs)
+            LOGE("[File] No file dialogs: %s", NFD::GetError());
     }
 
     void OnStop() override
     {
+        if (std::exchange(m_HasFileDialogs, false))
+            NFD::Quit();
+
         DestroyEditors();
     }
 
@@ -2766,38 +2773,35 @@ private:
         return true;
     }
 
-    // On Linux and macOS the dialogs build shell command lines from their arguments, and
-    // a shell expands '$' and '`' in them, so text from files stays out: the error message
-    // is fixed, and a dialog starts in the document's directory only when its name has none
-    // of those characters.
+    // The dialogs start in the directory of the document's file, and show blueprints alone. A
+    // dialog that failed tells the log why; one the user cancelled doesn't.
     static std::string DialogDirectory(std::string_view documentPath)
     {
         auto separator = documentPath.find_last_of("\\/");
         if (separator == std::string_view::npos)
             return {};
 
-        auto directory = std::string(documentPath.substr(0, separator + 1));
-# if !defined(_WIN32)
-        if (directory.find_first_of("$`\"'\\") != std::string::npos)
-            return {};
-# endif
-        return directory;
+        return std::string(documentPath.substr(0, separator + 1));
+    }
+
+    static constexpr nfdu8filteritem_t c_BlueprintFiles[] = { { "Blueprint Files", "bp" } };
+
+    static bool DialogPicked(nfdresult_t result)
+    {
+        if (result == NFD_ERROR)
+            LOGE("[File] The file dialog failed: %s", NFD::GetError());
+        return result == NFD_OKAY;
     }
 
     bool File_Open()
     {
-        const char* filterPatterns[1] = { "*.bp" };
         auto directory = m_Document ? DialogDirectory(m_Document->m_Path) : std::string();
-        auto path = tinyfd_openFileDialog(
-            "Open Blueprint...",
-            directory.empty() ? nullptr : directory.c_str(),
-            1, filterPatterns,
-            "Blueprint Files (*.bp)", 0);
-        if (!path)
+        NFD::UniquePathU8 path;
+        if (!DialogPicked(NFD::OpenDialog(path, c_BlueprintFiles, 1, directory.empty() ? nullptr : directory.c_str())))
             return false;
 
         std::string error;
-        if (!File_Open(path, &error) && !error.empty())
+        if (!File_Open(path.get(), &error) && !error.empty())
         {
             LOGE("%s", error.c_str());
             m_OpenFailure = error;
@@ -2935,20 +2939,16 @@ private:
 
     bool File_SaveAs()
     {
-        const char* filterPatterns[1] = { "*.bp" };
         auto directory = DialogDirectory(m_Document->m_Path);
-        auto path = tinyfd_saveFileDialog(
-            "Save Blueprint...",
-            directory.empty() ? nullptr : directory.c_str(),
-            1, filterPatterns,
-            "Blueprint Files (*.bp)");
-        if (!path)
+        auto name      = m_Document->m_Path.substr(directory.size());
+        NFD::UniquePathU8 path;
+        if (!DialogPicked(NFD::SaveDialog(path, c_BlueprintFiles, 1, directory.empty() ? nullptr : directory.c_str(), name.empty() ? nullptr : name.c_str())))
             return false;
 
-        if (!File_SaveAsEx(path))
+        if (!File_SaveAsEx(path.get()))
             return false;
 
-        m_Document->SetPath(path);
+        m_Document->SetPath(path.get());
 
         UpdateTitle();
 
@@ -3168,6 +3168,7 @@ private:
     std::optional<LinkQuery>  m_LinkQuery;
     std::optional<std::function<void()>> m_CloseRequest; // the close the popup asks about, and what follows it
     std::string               m_OpenFailure;             // shown in a popup
+    bool                      m_HasFileDialogs = false;
     bool                      m_ShowActions         = true;
     bool                      m_ShowDisabledActions = false;
     bool                      m_ShowPanels          = true;

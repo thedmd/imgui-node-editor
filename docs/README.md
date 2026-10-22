@@ -59,6 +59,7 @@ Changes land on the `develop` branch, which `master` follows at releases. Pull r
  * [thedmd/imgui feature/layout-external](https://github.com/thedmd/imgui/tree/feature/layout-external) (Dear ImGui 1.93.0 WIP with Stack Layout, used in blueprints sample)
  * stb, and GLFW on macOS, Linux, and Windows with the GLFW backend
  * [Font Awesome Free](https://fontawesome.com)'s solid font, which the examples' fonts take their icons from, and its icons' names from [IconFontCppHeaders](https://github.com/juliettef/IconFontCppHeaders)
+ * [nativefiledialog-extended](https://github.com/btzy/nativefiledialog-extended), for the file dialogs of blueprints2-example
 
 CMake fetches all of them at revisions pinned in [examples/cmake](../examples/cmake). An installed GLFW package is used when found.
 
@@ -76,13 +77,13 @@ CMake uses the platform's default generator; `-G Ninja` or `-G Xcode` picks anot
 
 On Windows the examples use Win32 and DirectX 11. `-DIMGUI_NODE_EDITOR_EXAMPLES_BACKEND=glfw -DIMGUI_NODE_EDITOR_EXAMPLES_RENDERER=opengl3` builds them with GLFW and OpenGL instead.
 
-On Linux, GLFW needs the X11, Wayland and OpenGL development packages, for example on Ubuntu:
+On Linux, GLFW needs the X11, Wayland and OpenGL development packages, and the file dialogs GTK 3's, for example on Ubuntu:
 ```
-sudo apt-get install libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libxext-dev libwayland-dev libxkbcommon-dev libgl1-mesa-dev
+sudo apt-get install libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libxext-dev libwayland-dev libxkbcommon-dev libgl1-mesa-dev libgtk-3-dev
 ```
-On macOS, the Xcode command line tools are enough.
+`-DNFD_PORTAL=ON` opens the file dialogs through xdg-desktop-portal instead, which needs `libdbus-1-dev` in place of GTK 3. On macOS, the Xcode command line tools are enough.
 
-To build offline or against a local checkout of a dependency, point FetchContent at it, for example `-DFETCHCONTENT_SOURCE_DIR_IMGUI=<path>`. `FETCHCONTENT_SOURCE_DIR_STB` and `FETCHCONTENT_SOURCE_DIR_GLFW` work the same way, and so do `FETCHCONTENT_SOURCE_DIR_ICONFONTCPPHEADERS`, a directory holding `IconsFontAwesome7.h`, and `FETCHCONTENT_SOURCE_DIR_FONTAWESOME_SOLID`, one holding the solid font as `FontAwesome_solid.otf`.
+To build offline or against a local checkout of a dependency, point FetchContent at it, for example `-DFETCHCONTENT_SOURCE_DIR_IMGUI=<path>`. `FETCHCONTENT_SOURCE_DIR_STB`, `FETCHCONTENT_SOURCE_DIR_GLFW` and `FETCHCONTENT_SOURCE_DIR_NFD` work the same way, and so do `FETCHCONTENT_SOURCE_DIR_ICONFONTCPPHEADERS`, a directory holding `IconsFontAwesome7.h`, and `FETCHCONTENT_SOURCE_DIR_FONTAWESOME_SOLID`, one holding the solid font as `FontAwesome_solid.otf`.
 
 ### Tests
 The headless [test suite](../tests) runs with CTest:
