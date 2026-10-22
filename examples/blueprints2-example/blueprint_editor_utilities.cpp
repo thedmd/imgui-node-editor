@@ -199,6 +199,16 @@ std::vector<blueprint_editor_utilities::Id> blueprint_editor_utilities::FlowChai
     return chain;
 }
 
+std::string blueprint_editor_utilities::OrphanName(const Node& node, const OrphanPin& orphan)
+{
+    if (auto named = node.m_Config.m_Names.find(orphan.m_Key); named != node.m_Config.m_Names.end())
+        return named->second;
+    if (auto dot = orphan.m_Key.rfind('.'); dot != std::string::npos)
+        if (auto whole = node.FindPin(std::string_view(orphan.m_Key).substr(0, dot)); whole && !whole->m_Name.empty())
+            return whole->m_Name + " " + orphan.m_Key.substr(dot + 1);
+    return orphan.m_Key;
+}
+
 bool blueprint_editor_utilities::IsComment(const Node& node)
 {
     return node.m_Type->m_Name == "crude.Comment";
@@ -1845,7 +1855,7 @@ std::string blueprint_editor_utilities::ProblemList::Text(const Blueprint& bluep
     auto& diagnostic = problem.m_Diagnostic;
     auto  graph      = blueprint.FindGraph(diagnostic.m_Graph);
     auto  link       = graph && diagnostic.m_Link ? graph->FindLink(diagnostic.m_Link) : nullptr;
-    auto  input      = link ? graph->FindPin(link->m_To) : nullptr;
+    auto  input      = link && !diagnostic.m_Error.Is(BlueprintError::NoPin) ? graph->FindPin(link->m_To) : nullptr; // a gone pin's names its ends
     auto  message    = std::string(diagnostic.m_Error.Message());
     return input ? input->m_Key + ": " + message : message;
 }
@@ -2626,7 +2636,7 @@ void blueprint_editor_utilities::PinContextMenu::Show(Document& document, Debugg
         if (ImGui::MenuItem("Watch", "Ctrl+Click", debugger.IsWatched(m_Pin), pin != nullptr && !pin->m_Flow))
             debugger.SetWatched(m_Pin, !debugger.IsWatched(m_Pin));
 
-        if (ImGui::MenuItem("Break Links", nullptr, nullptr, pin != nullptr && ax::NodeEditor::HasAnyLinks(ax::NodeEditor::PinId(m_Pin))))
+        if (ImGui::MenuItem("Break Links", nullptr, nullptr, ax::NodeEditor::HasAnyLinks(ax::NodeEditor::PinId(m_Pin))))
             ax::NodeEditor::BreakLinks(ax::NodeEditor::PinId(m_Pin));
 
         int  index  = -1;

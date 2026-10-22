@@ -58,6 +58,9 @@ float RerouteSize();
 ImVec2 RerouteDirection(ImVec2 center, std::span<const ImVec2> sources, std::span<const ImVec2> targets);
 // The link, and the links after it past flow reroutes, as a program takes them at once.
 std::vector<Id> FlowChain(const Graph& graph, Id link);
+// An orphan pin's name, as it was: its config's, a split field's as its struct pin names it
+// ("Vector2 x"), or its key.
+std::string OrphanName(const Node& node, const OrphanPin& orphan);
 // A comment, which the editor shows as a group over part of a graph, holds its text in its config.
 bool        IsComment(const Node& node);
 std::string CommentText(const Node& node); // "Comment" for one without any

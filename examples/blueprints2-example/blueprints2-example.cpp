@@ -1226,7 +1226,8 @@ private:
             const auto pitch      = lineHeight + 2.0f * spacing;
             auto       rowsHeight = [&](Direction direction)
             {
-                const auto rows = std::count_if(node.m_Pins.begin(), node.m_Pins.end(), [direction](const Pin& pin) { return pin.m_Direction == direction; });
+                const auto rows = std::count_if(node.m_Pins.begin(), node.m_Pins.end(), [direction](const Pin& pin) { return pin.m_Direction == direction; })
+                                + std::count_if(node.m_Orphans.begin(), node.m_Orphans.end(), [direction](const OrphanPin& orphan) { return orphan.m_Direction == direction; });
                 return rows > 0 ? static_cast<float>(rows - 1) * pitch + lineHeight : 0.0f;
             };
             const auto glyphs       = std::count_if(symbol.begin(), symbol.end(), [](char c) { return (static_cast<unsigned char>(c) & 0xC0) != 0x80; });
@@ -1244,6 +1245,34 @@ private:
             crude_layout::Grid layout;
             layout.Begin(node.m_Id, symbol.empty() ? 2 : 3, bodyWidth);
             layout.SetColumnAlignment(0.0f);
+
+            // A pin gone that links still name ends its column: red, its icon slashed. A compact
+            // node's shows its icon alone, as its pins do.
+            auto orphanRow = [&](const OrphanPin& orphan)
+            {
+                const auto input = orphan.m_Direction == Direction::Input;
+                const auto name  = OrphanName(node, orphan);
+                const auto color = ImGui::ColorConvertU32ToFloat4(ProblemColor(Severity::Error));
+                ImGui::Spacing();
+                ed::BeginPin(orphan.m_Id, input ? ed::PinKind::Input : ed::PinKind::Output);
+                ed::PinPivotAlignment(ImVec2(input ? 0.0f : 1.0f, 0.5f));
+                if (!input && !compact)
+                {
+                    ImGui::TextColored(color, "%s", name.c_str());
+                    ImGui::SameLine();
+                }
+                Icon(iconSize, orphan.m_Flow ? IconType::Flow : IconType::Circle, false, color);
+                const auto iconMin = ImGui::GetItemRectMin(), iconMax = ImGui::GetItemRectMax();
+                m_PinIcons[orphan.m_Id] = ImRect(iconMin, iconMax);
+                ImGui::GetWindowDrawList()->AddLine(ImVec2(iconMin.x + 1.0f, iconMax.y - 1.0f), ImVec2(iconMax.x - 1.0f, iconMin.y + 1.0f), IM_COL32(255, 96, 96, 255), 2.0f);
+                if (input && !compact)
+                {
+                    ImGui::SameLine();
+                    ImGui::TextColored(color, "%s", name.c_str());
+                }
+                ed::EndPin();
+                layout.NextRow();
+            };
 
             // Draw column with input pins.
             startAt(middle - inputsHeight * 0.5f - spacing);
@@ -1314,6 +1343,9 @@ private:
 
                 layout.NextRow();
             }
+            for (auto& orphan : node.m_Orphans)
+                if (orphan.m_Direction == Direction::Input)
+                    orphanRow(orphan);
 
             if (!symbol.empty())
             {
@@ -1396,6 +1428,9 @@ private:
 
                 layout.NextRow();
             }
+            for (auto& orphan : node.m_Orphans)
+                if (orphan.m_Direction == Direction::Output)
+                    orphanRow(orphan);
 
             layout.End();
             ShowPinControls(document, node, padding, edit);
@@ -1427,17 +1462,17 @@ private:
             return 2.0f * ImMax(0.0f, 1.0f - static_cast<float>(m_Debugger.StepCount() - it->second) / c_Steps);
         };
 
-        // Commit all links to editor. A disabled link shows, grey, until its problem is resolved;
-        // one whose pin is gone has nothing to show between.
+        // Commit all links to editor. A disabled link shows, grey, until its problem is resolved:
+        // one whose pin is gone, to the pin's orphan row.
         for (auto& link : graph.Links())
         {
-            auto from = graph.FindPin(link.m_From);
-            if (!from || !graph.FindPin(link.m_To))
-                continue;
-            if (link.m_Active)
-                ed::Link(link.m_Id, link.m_From, link.m_To, PinColor(*from), (from->m_Flow ? 2.5f : 1.5f) + takenWidth(link.m_Id));
-            else
+            if (!link.m_Active)
+            {
                 ed::Link(link.m_Id, link.m_From, link.m_To, ImVec4(0.5f, 0.5f, 0.5f, 0.4f), 1.0f);
+                continue;
+            }
+            auto from = graph.FindPin(link.m_From);
+            ed::Link(link.m_Id, link.m_From, link.m_To, PinColor(*from), (from->m_Flow ? 2.5f : 1.5f) + takenWidth(link.m_Id));
         }
 
         FlowTakenLink(m_Debugger, graph);
@@ -2370,12 +2405,13 @@ private:
         const auto overCanvas = ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem) && ImGui::IsMouseHoveringRect(canvasMin, canvasMax);
         const auto background = overCanvas && !pin && !link && !node;
         const auto typing     = ImGui::GetIO().WantTextInput;
-        const auto pinLinked  = pin && HasLinks(graph, pin->m_Id);
+        const auto orphan     = pin ? nullptr : graph.NodeOfOrphan(static_cast<Id>(ed::GetHoveredPin().Get()));
+        const auto pinLinked  = (pin && HasLinks(graph, pin->m_Id)) || orphan;
         const auto pinValue   = pin && HasValueEditor(graph, *pin);
         const auto pinTyped   = pin && PinVariable(graph, *pin);
         const auto pinSplits  = pin && (SplittableStruct(*pin) || !SplitOf(*graph.NodeOf(pin->m_Id), pin->m_Key).empty());
 
-        auto owner = node ? node : pin ? graph.NodeOf(pin->m_Id) : nullptr;
+        auto owner = node ? node : pin ? graph.NodeOf(pin->m_Id) : orphan;
         if (auto tab = GrowTabNode(ed::GetHoveredPin()); !owner && tab)
             owner = graph.FindNode(tab);
         auto&      blueprint = document.GetBlueprint();
@@ -2395,7 +2431,7 @@ private:
             return;
         }
         if (actions.Press("Break Pin's Links", ImGuiMod_Alt | ImGuiKey_MouseLeft, pinLinked && !reroute))
-            ed::BreakLinks(ed::PinId(pin->m_Id));
+            ed::BreakLinks(ed::GetHoveredPin());
         if (actions.Press("Remove Pin", ImGuiMod_Alt | ImGuiKey_MouseLeft, removal && !pinLinked))
         {
             RemovePin(document, graph.NodeOf(pin->m_Id)->m_Id, removal);
@@ -2469,10 +2505,14 @@ private:
             return;
 
         auto& graph = document.GetGraph();
-        auto hoveredPin  = graph.FindPin(static_cast<Id>(ed::GetHoveredPin().Get()));
+        const auto hoveredId = static_cast<Id>(ed::GetHoveredPin().Get());
+        auto hoveredPin  = graph.FindPin(hoveredId);
         auto hoveredNode = graph.FindNode(static_cast<Id>(ed::GetHoveredNode().Get()));
         if (!hoveredNode && hoveredPin)
             hoveredNode = graph.NodeOf(hoveredPin->m_Id);
+        auto hoveredOrphan = hoveredPin ? nullptr : graph.NodeOfOrphan(hoveredId);
+        if (!hoveredNode && hoveredOrphan)
+            hoveredNode = hoveredOrphan;
         if (hoveredNode && IsComment(*hoveredNode))
             return;
 
@@ -2545,8 +2585,18 @@ private:
                 ImGui::Separator();
                 pinTooltip("Pin", *hoveredPin, false);
             }
+            else if (auto orphan = hoveredOrphan ? hoveredOrphan->FindOrphan(hoveredId) : nullptr)
+            {
+                ImGui::Separator();
+                ImGui::TextUnformatted("Pin, gone: links name it still");
+                ImGui::Bullet(); ImGui::Text("ID: %u", static_cast<unsigned>(orphan->m_Id));
+                ImGui::Bullet(); ImGui::Text("Key: %s", orphan->m_Key.c_str());
+                ImGui::Bullet(); ImGui::Text("Name: %s", OrphanName(*hoveredOrphan, *orphan).c_str());
+                ImGui::Bullet(); ImGui::TextUnformatted(orphan->m_Direction == Direction::Input ? "input" : "output");
+            }
 
-            diagnostics(hoveredPin ? 0 : hoveredNode->m_Id, hoveredPin ? hoveredPin->m_Id : 0);
+            const auto pinId = hoveredPin || hoveredOrphan ? hoveredId : 0;
+            diagnostics(pinId ? 0 : hoveredNode->m_Id, pinId);
 
             ImGui::EndTooltip();
             ed::Resume();
