@@ -1452,6 +1452,13 @@ struct WaitSignalNode final : NodeType
     const FlowPin               m_Then   = FlowOutput("then");
 };
 
+// A note over part of a graph, which the editor shows as a group. Its config's "text" says what it
+// notes; without pins, it never runs.
+struct CommentNode final : NodeType
+{
+    CommentNode(): NodeType("crude.Comment", "Comment", "Layout") {}
+};
+
 // A struct's name without its namespace: "Vector2" of "example.Vector2".
 std::string ShortName(const StructType& type)
 {
@@ -1587,6 +1594,7 @@ crude_blueprint::Result<void> crude_blueprint::RegisterLibrary(Registry& registr
         std::make_unique<FlipFlopNode>(),
         std::make_unique<DelayNode>(),
         std::make_unique<WaitSignalNode>(),
+        std::make_unique<CommentNode>(),
     };
     for (auto& type : types)
         if (auto result = registry.AddNodeType(std::move(type)); !result)

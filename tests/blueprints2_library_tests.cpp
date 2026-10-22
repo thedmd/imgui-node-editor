@@ -3,6 +3,7 @@
 //------------------------------------------------------------------------------
 # include "blueprints2_fixture.h"
 # include "crude_blueprint_library.h"
+# include <crude_json.h>
 # include <algorithm>
 # include <chrono>
 # include <cstdint>
@@ -985,4 +986,28 @@ TEST_CASE(TypeViews, "library.as_type_and_expect_type_give_a_value_as_a_type", n
     auto other = run(Value::Float(2.5f));
     test::Check(same == "5 true 5", "a value of the type is itself, and Is: %s", same.c_str());
     test::Check(other == "0 false error: Value is of Float, not Int32", "of another, As Type gives the type's default, and Expect Type stops the fiber: %s", other.c_str());
+}
+
+TEST_CASE(Comments, "library.a_comment_never_runs_and_keeps_its_text", nullptr, test::TestFlags_None)
+{
+    // A comment beside Start -> Print.
+    Fixture f;
+    NodeConfig note;
+    note.m_Data["text"] = Value::String("Greets");
+    auto comment = f.Add("Comment", note), start = f.Add("Start"), print = f.Add("Print");
+    f.Link(start, "then", print, "enter");
+    if (auto set = f.m_Graph.SetValue(f.Pin(print, "text"), Value::String("hello")); !set)
+        test::Check(false, "the text is set: %s", Message(set).c_str());
+    auto printed = f.Run();
+    auto node    = f.m_Graph.FindNode(comment);
+    test::Check(printed == "hello" && node && node->m_Pins.empty(), "it has no pins, and the graph runs as without it: %s", printed.c_str());
+
+    Blueprint loaded(LibraryRegistry(), std::make_shared<TypeTable>());
+    auto read  = Load(loaded, Save(f.m_Blueprint));
+    auto again = read && !loaded.Graphs().empty() ? loaded.Graphs()[0]->FindNode(comment) : nullptr;
+    std::string text;
+    if (again)
+        if (auto found = again->m_Config.m_Data.find("text"); found != again->m_Config.m_Data.end())
+            text = found->second.AsString();
+    test::Check(text == "Greets", "and a file keeps its text: \"%s\"", text.c_str());
 }
