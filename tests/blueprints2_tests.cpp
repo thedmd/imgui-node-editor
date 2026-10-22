@@ -1570,6 +1570,32 @@ TEST_CASE(ValueEditsEnd, "blueprints2.a_value_edit_ends_on_a_click_elsewhere_kee
     test::Check(number.AsInt32() == 7, "a number typed is kept too: %d", number.AsInt32());
 }
 
+TEST_CASE(EmptyValueBoxes, "blueprints2.an_empty_values_box_is_half_a_line_wide_and_takes_a_click", nullptr, test::TestFlags_None)
+{
+    // An empty text with its editor, in the host window above the canvas.
+    using blueprint_editor_utilities::DrawValueWithEditor;
+    test::Session session(UnnamedConfig());
+    auto   empty = Value::String("");
+    ImRect emptyRect;
+    session.BeforeEditor = [&]
+    {
+        ImGui::SetCursorScreenPos(ImVec2(100.0f, 100.0f));
+        DrawValueWithEditor(1, empty);
+        emptyRect = ImRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
+    };
+    session.Run(3);
+
+    const auto box  = emptyRect.GetSize();
+    const auto half = box.x == box.y * 0.5f && box.x > 0.0f;
+    session.Click(emptyRect.GetCenter());
+    session.Run(2);
+    ImGui::GetIO().AddInputCharacter('a');
+    session.Run(2);
+    session.Click(ImVec2(700.0f, 500.0f));
+    test::Check(half && empty.AsString() == "a", "an empty text's box is half as wide as high, %g x %g, and a click opens its editor: \"%s\"",
+        box.x, box.y, std::string(empty.AsString()).c_str());
+}
+
 TEST_CASE(CommentTexts, "blueprints2.a_comments_text_is_edited_in_one_undo_step", nullptr, test::TestFlags_None)
 {
     test::Session session(UnnamedConfig());

@@ -1464,24 +1464,22 @@ bool blueprint_editor_utilities::DrawValueWithEditor(Id id, Value& value)
     }
     else
     {
-        // Draw pin value
+        // The value's box is half as wide as a line is high at least, the value centered in it, so
+        // that an empty or a short value takes a click as well; a click on the box opens the editor.
         PinValueBackgroundRenderer bg;
-        if (!DrawValue(value))
+        if (!value.GetType())
         {
             bg.Discard();
             return false;
         }
-
-        // Draw invisible button over pin value which triggers an editor if clicked
-        auto itemMin = ImGui::GetItemRectMin();
-        auto itemMax = ImGui::GetItemRectMax();
-        auto itemSize = itemMax - itemMin;
-        itemSize.x = ImMax(itemSize.x, 1.0f);
-        itemSize.y = ImMax(itemSize.y, 1.0f);
-
-        ImGui::SetCursorScreenPos(itemMin);
-
-        if (ImGui::InvisibleButton("###pin_value_editor", itemSize))
+        const auto text   = ValueText(value);
+        const auto width  = ImGui::CalcTextSize(text.data(), text.data() + text.size()).x;
+        const auto boxMin = ImGui::GetCursorScreenPos();
+        const auto box    = ImVec2(ImMax(width, ImGui::GetTextLineHeight() * 0.5f), ImGui::GetTextLineHeight());
+        ImGui::SetCursorScreenPos(boxMin + ImVec2(ImFloor((box.x - width) * 0.5f), 0.0f));
+        ImGui::TextUnformatted(text.data(), text.data() + text.size());
+        ImGui::SetCursorScreenPos(boxMin);
+        if (ImGui::InvisibleButton("###pin_value_editor", box))
         {
             activeId = id;
             storage->SetBool(focusKey, true);

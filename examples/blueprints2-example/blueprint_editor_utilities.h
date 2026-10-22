@@ -240,8 +240,9 @@ bool DrawValue(const Value& value);        // Draws a value; false for none.
 enum class ValueEdit { None, Changed, Done };
 ValueEdit EditValue(Value& value, bool focus = false);
 
-// Draws a value, or its editor once clicked, its field active; true when an edit changed it. The
-// editor closes when its edit ends, and on a click elsewhere.
+// Draws a value in a box half as wide as a line is high at least, or its editor once clicked, its
+// field active; true when an edit changed it. The editor closes when its edit ends, and on a click
+// elsewhere.
 bool DrawValueWithEditor(Id id, Value& value);
 
 // A popup of a name's field, which opens while 'open' is set, its field focused, and clears it.
