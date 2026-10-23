@@ -1470,6 +1470,15 @@ bool blueprint_editor_utilities::SquareButton(const char* label)
     return pressed;
 }
 
+// A combo's arrow is as wide as a frame is high.
+float blueprint_editor_utilities::ComboWidth(std::span<const std::string> texts)
+{
+    auto width = 0.0f;
+    for (auto& text : texts)
+        width = ImMax(width, ImGui::CalcTextSize(text.c_str()).x);
+    return width + ImGui::GetStyle().FramePadding.x * 2.0f + ImGui::GetFrameHeight();
+}
+
 void blueprint_editor_utilities::DrawSign(ImDrawList* drawList, ImVec2 min, ImVec2 max, bool plus, bool enabled, bool hot, float squareAlpha, float signAlpha)
 {
     const auto rect  = ImRect(min, max);
@@ -2787,6 +2796,11 @@ void blueprint_editor_utilities::NodeContextMenu::ShowArguments(Document& docume
     ImGui::PushID(m_Asked);
     if (ImGui::BeginTable("##arguments", 3, ImGuiTableFlags_SizingFixedFit))
     {
+        std::vector<std::string> names{ "none" };
+        for (auto& parameter : arguments.m_Parameters)
+            for (auto choice : RunArguments::Choices(blueprint.GetRegistry(), parameter))
+                names.push_back(choice->m_Name);
+        const auto typeWidth = ComboWidth(names);
         for (size_t i = 0; i < arguments.m_Parameters.size(); ++i)
         {
             ImGui::PushID(static_cast<int>(i));
@@ -2798,7 +2812,7 @@ void blueprint_editor_utilities::NodeContextMenu::ShowArguments(Document& docume
             ImGui::TextDisabled("type");
             ImGui::TableNextColumn();
             auto& chosen = arguments.m_Chosen[i];
-            ImGui::SetNextItemWidth(120.0f);
+            ImGui::SetNextItemWidth(typeWidth);
             if (ImGui::BeginCombo("##type", chosen ? chosen->m_Name.c_str() : "none"))
             {
                 for (auto choice : RunArguments::Choices(blueprint.GetRegistry(), arguments.m_Parameters[i]))

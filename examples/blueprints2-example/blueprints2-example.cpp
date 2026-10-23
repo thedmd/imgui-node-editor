@@ -1891,6 +1891,14 @@ private:
         if (!ImGui::BeginTable("##variables", 5, ImGuiTableFlags_SizingFixedFit))
             return;
 
+        std::vector<std::string> typeNames;
+        for (auto head : blueprint.GetRegistry().ValueTypes())
+            if (head->m_Arity == 0)
+                typeNames.push_back(head->m_Name);
+        for (auto variable : variables)
+            typeNames.push_back(variable->m_Default.GetType()->m_Name);
+        const auto typeWidth = ComboWidth(typeNames);
+
         // The change is made once the table is drawn.
         std::function<void()> change;
         for (size_t i = 0; i < variables.size(); ++i)
@@ -1908,7 +1916,7 @@ private:
 
             ImGui::TableNextColumn();
             auto type = variable.m_Default.GetType();
-            ImGui::SetNextItemWidth(ImGui::GetFontSize() * 7.0f);
+            ImGui::SetNextItemWidth(typeWidth);
             if (ImGui::BeginCombo("##type", type->m_Name.c_str()))
             {
                 for (auto head : blueprint.GetRegistry().ValueTypes())
@@ -2038,6 +2046,13 @@ private:
         }
 
         const auto choices = SignatureTypeChoices(blueprint.GetRegistry(), signature);
+        std::vector<std::string> typeTexts;
+        for (auto& choice : choices)
+            typeTexts.push_back(TermText(choice.m_Type, signature.m_Parameters));
+        for (auto pins : { &signature.m_Inputs, &signature.m_Outputs })
+            for (auto& pin : *pins)
+                typeTexts.push_back(TermText(pin.m_Type, signature.m_Parameters));
+        const auto typeWidth = ComboWidth(typeTexts);
         for (auto input : { true, false })
         {
             ImGui::PushID(input ? "inputs" : "outputs");
@@ -2052,12 +2067,12 @@ private:
                     change = [&document, graph, input, key = pin.m_Key, renamed = *renamed] { RenameSignaturePin(document, graph, input, key, renamed); };
 
                 ImGui::TableNextColumn();
-                ImGui::SetNextItemWidth(field);
+                ImGui::SetNextItemWidth(typeWidth);
                 if (ImGui::BeginCombo("##type", TermText(pin.m_Type, signature.m_Parameters).c_str()))
                 {
-                    for (auto& choice : choices)
-                        if (ImGui::Selectable(TermText(choice.m_Type, signature.m_Parameters).c_str(), choice.m_Type == pin.m_Type))
-                            change = [&document, graph, input, key = pin.m_Key, type = choice.m_Type] { RetypeSignaturePin(document, graph, input, key, type); };
+                    for (size_t i = 0; i < choices.size(); ++i)
+                        if (ImGui::Selectable(typeTexts[i].c_str(), choices[i].m_Type == pin.m_Type))
+                            change = [&document, graph, input, key = pin.m_Key, type = choices[i].m_Type] { RetypeSignaturePin(document, graph, input, key, type); };
                     ImGui::EndCombo();
                 }
 

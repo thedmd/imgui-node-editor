@@ -242,6 +242,9 @@ void  ProblemSign(ImDrawList* drawList, ImVec2 center, float radius, Severity se
 bool LatentMark(std::string_view waiting);
 
 bool SquareButton(const char* label);      // As wide as it's high, a line's height: for a sign such as + or -.
+// A combo's width that fits each of the texts as its preview, as far from the arrow as from the left
+// edge.
+float ComboWidth(std::span<const std::string> texts);
 // A node's + or - on a square darker than the canvas and lighter than a node's body, outlined, so it
 // shows on either: lighter while hot, greyed while disabled; the square and the sign as opaque as
 // their alphas say.
