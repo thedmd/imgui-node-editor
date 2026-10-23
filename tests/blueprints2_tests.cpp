@@ -1785,6 +1785,37 @@ TEST_CASE(CaseEditsInCanvas, "blueprints2.an_enumerations_list_opens_under_its_v
         list ? list->Pos.x : 0.0f, list ? list->Pos.y : 0.0f, box.Min.x, box.Max.y, blueprint_editor_utilities::ValueText(value).c_str());
 }
 
+TEST_CASE(ValueWidgetsUsed, "blueprints2.an_applications_widgets_draw_and_edit_the_values_of_its_type", nullptr, test::TestFlags_None)
+{
+    // A level whose values show as a box two lines wide, and whose editor makes it 7, in the host
+    // window above the canvas.
+    using namespace blueprint_editor_utilities;
+    static const StructType level("test.Level", { { "n", &Int32Type() } });
+    int drawn = 0;
+    ValueWidgets widgets;
+    widgets.m_Width = [](const Value&) { return ImGui::GetTextLineHeight() * 2.0f; };
+    widgets.m_Draw  = [&drawn](ImDrawList*, ImVec2, ImVec2, const Value&) { ++drawn; };
+    widgets.m_Edit  = [](Value& value, bool, bool) { value = Value::Struct(*value.GetType(), { Value::Int32(7) }); return ValueEdit::Done; };
+    SetValueWidgets(level, widgets);
+
+    test::Session session(UnnamedConfig());
+    auto   value = level.Default(level.AsType());
+    ImRect box;
+    session.BeforeEditor = [&]
+    {
+        ImGui::SetCursorScreenPos(ImVec2(100.0f, 100.0f));
+        DrawValueWithEditor(1, value);
+        box = ImRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
+    };
+    session.Run(3);
+    const auto width = box.GetWidth(), line = ImGui::GetTextLineHeight();
+    const auto drew  = drawn > 0;
+    session.Click(box.GetCenter());
+    session.Run(2);
+    SetValueWidgets(level, {});
+    test::Check(drew && width == line * 2.0f && value.AsStruct()[0].AsInt32() == 7, "its box is as wide as the widgets say, %g for a line of %g, they draw it, and a click edits it with theirs: %s", width, line, ValueText(value).c_str());
+}
+
 TEST_CASE(CommentTexts, "blueprints2.a_comments_text_is_edited_in_one_undo_step", nullptr, test::TestFlags_None)
 {
     test::Session session(UnnamedConfig());

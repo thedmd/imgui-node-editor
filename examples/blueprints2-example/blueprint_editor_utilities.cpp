@@ -1534,20 +1534,29 @@ std::string blueprint_editor_utilities::ValueText(const Value& value)
     return type == &StringType() ? std::string(value.AsString()) : type->m_Head->Format(value);
 }
 
-bool blueprint_editor_utilities::DrawValue(const Value& value)
-{
-    if (!value.GetType())
-        return false;
-    auto text = ValueText(value);
-    ImGui::TextUnformatted(text.data(), text.data() + text.size());
-    return true;
-}
-
 namespace blueprint_editor_utilities { namespace {
 
-// Set while an editor's list of cases is hovered: the list is a popup, not an item of the editor,
-// and a click on it isn't one elsewhere.
-bool s_CaseListHovered = false;
+// Set while a value editor's popup is hovered, by HoldEditorWhileHovered().
+bool s_EditorPopupHovered = false;
+
+std::map<const ValueType*, ValueWidgets>& Widgets()
+{
+    static std::map<const ValueType*, ValueWidgets> widgets;
+    return widgets;
+}
+
+// The widgets of a value's type, if it has its own drawing.
+const ValueWidgets* DrawnWidgets(const Value& value)
+{
+    auto widgets = value.GetType() ? FindValueWidgets(*value.GetType()->m_Head) : nullptr;
+    return widgets && widgets->m_Draw ? widgets : nullptr;
+}
+
+ImVec2 BoxSize(const ValueWidgets& widgets, const Value& value)
+{
+    const auto line = ImGui::GetTextLineHeight();
+    return ImVec2(widgets.m_Width ? widgets.m_Width(value) : line, line);
+}
 
 // A combo's preview, as ImGui::BeginCombo() draws it, without the list: true when clicked.
 bool ComboPreview(ImGuiID id, const char* text, bool open)
@@ -1588,13 +1597,10 @@ ValueEdit EditCase(Value& value, bool focus, bool inCanvas)
     if (ComboPreview(ImGui::GetID("##editor"), cases[current].c_str(), wasOpen) || focus)
         ImGui::OpenPopupEx(list, ImGuiPopupFlags_None);
 
-    auto under = ImRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
+    const auto [min, max] = LastItemOnScreen(inCanvas);
     if (inCanvas)
-    {
-        under = ImRect(ed::CanvasToScreen(under.Min), ed::CanvasToScreen(under.Max));
         ed::Suspend();
-    }
-    const auto open = ImGui::BeginComboPopup(list, under, ImGuiComboFlags_HeightLarge);
+    const auto open = ImGui::BeginComboPopup(list, ImRect(min, max), ImGuiComboFlags_HeightLarge);
     auto       edit = open || !wasOpen ? ValueEdit::None : ValueEdit::Done;
     storage->SetBool(list, open);
     if (open)
@@ -1614,7 +1620,7 @@ ValueEdit EditCase(Value& value, bool focus, bool inCanvas)
             ImGui::CloseCurrentPopup();
             edit = ValueEdit::Done;
         }
-        s_CaseListHovered = ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows | ImGuiHoveredFlags_AllowWhenBlockedByActiveItem);
+        HoldEditorWhileHovered();
         ImGui::EndCombo();
     }
     if (inCanvas)
@@ -1623,6 +1629,46 @@ ValueEdit EditCase(Value& value, bool focus, bool inCanvas)
 }
 
 } } // namespace blueprint_editor_utilities { namespace {
+
+bool blueprint_editor_utilities::DrawValue(const Value& value)
+{
+    if (!value.GetType())
+        return false;
+    if (auto widgets = DrawnWidgets(value))
+    {
+        ImGui::Dummy(BoxSize(*widgets, value));
+        widgets->m_Draw(ImGui::GetWindowDrawList(), ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), value);
+        return true;
+    }
+    auto text = ValueText(value);
+    ImGui::TextUnformatted(text.data(), text.data() + text.size());
+    return true;
+}
+
+void blueprint_editor_utilities::SetValueWidgets(const ValueType& type, ValueWidgets widgets)
+{
+    Widgets()[&type] = std::move(widgets);
+}
+
+const blueprint_editor_utilities::ValueWidgets* blueprint_editor_utilities::FindValueWidgets(const ValueType& type)
+{
+    auto it = Widgets().find(&type);
+    return it != Widgets().end() ? &it->second : nullptr;
+}
+
+std::pair<ImVec2, ImVec2> blueprint_editor_utilities::LastItemOnScreen(bool inCanvas)
+{
+    auto min = ImGui::GetItemRectMin(), max = ImGui::GetItemRectMax();
+    if (inCanvas)
+        return { ed::CanvasToScreen(min), ed::CanvasToScreen(max) };
+    return { min, max };
+}
+
+void blueprint_editor_utilities::HoldEditorWhileHovered()
+{
+    if (ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows | ImGuiHoveredFlags_AllowWhenBlockedByActiveItem))
+        s_EditorPopupHovered = true;
+}
 
 // Files can't hold NaN or an infinity, so a Float editor takes only finite numbers.
 blueprint_editor_utilities::ValueEdit blueprint_editor_utilities::EditValue(Value& value, bool focus, bool inCanvas)
@@ -1667,6 +1713,8 @@ blueprint_editor_utilities::ValueEdit blueprint_editor_utilities::EditValue(Valu
     };
 
     auto type = value.GetType();
+    if (auto widgets = type ? FindValueWidgets(*type->m_Head) : nullptr; widgets && widgets->m_Edit)
+        return widgets->m_Edit(value, focus, inCanvas);
     if (type == &BoolType())
     {
         value = Value::Bool(!value.AsBool());
@@ -1739,7 +1787,7 @@ blueprint_editor_utilities::ValueEdit blueprint_editor_utilities::EditValue(Valu
                 if (ImGui::Checkbox("##field", &checked))
                     fields[i] = Value::Bool(checked);
             }
-            else if (head == &Int32ValueType() || head == &FloatValueType() || head == &StringValueType() || IsA<StructType>(head) || IsA<EnumType>(head))
+            else if (head == &Int32ValueType() || head == &FloatValueType() || head == &StringValueType() || IsA<StructType>(head) || IsA<EnumType>(head) || (head && FindValueWidgets(*head)))
                 ended = EditValue(fields[i], focus && i == 0, inCanvas) == ValueEdit::Done || ended;
             else
             {
@@ -1773,13 +1821,13 @@ bool blueprint_editor_utilities::DrawValueWithEditor(Id id, Value& value, bool i
     if (activeId == id)
     {
         const auto before = value;
-        s_CaseListHovered = false;
+        s_EditorPopupHovered = false;
         ImGui::BeginGroup();
         const auto edit = EditValue(value, storage->GetBool(focusKey), inCanvas);
         ImGui::EndGroup();
         storage->SetBool(focusKey, false);
         const auto clicked = ImGui::IsMouseClicked(ImGuiMouseButton_Left) || ImGui::IsMouseClicked(ImGuiMouseButton_Right);
-        if (edit == ValueEdit::Done || (clicked && !ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem) && !s_CaseListHovered))
+        if (edit == ValueEdit::Done || (clicked && !ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem) && !s_EditorPopupHovered))
             activeId = 0;
         changed = edit != ValueEdit::None && !(value == before);
     }
@@ -1793,12 +1841,21 @@ bool blueprint_editor_utilities::DrawValueWithEditor(Id id, Value& value, bool i
             bg.Discard();
             return false;
         }
-        const auto text   = ValueText(value);
-        const auto width  = ImGui::CalcTextSize(text.data(), text.data() + text.size()).x;
         const auto boxMin = ImGui::GetCursorScreenPos();
-        const auto box    = ImVec2(ImMax(width, ImGui::GetTextLineHeight() * 0.5f), ImGui::GetTextLineHeight());
-        ImGui::SetCursorScreenPos(boxMin + ImVec2(ImFloor((box.x - width) * 0.5f), 0.0f));
-        ImGui::TextUnformatted(text.data(), text.data() + text.size());
+        auto       box    = ImVec2();
+        if (auto widgets = DrawnWidgets(value))
+        {
+            box = BoxSize(*widgets, value);
+            widgets->m_Draw(ImGui::GetWindowDrawList(), boxMin, boxMin + box, value);
+        }
+        else
+        {
+            const auto text  = ValueText(value);
+            const auto width = ImGui::CalcTextSize(text.data(), text.data() + text.size()).x;
+            box = ImVec2(ImMax(width, ImGui::GetTextLineHeight() * 0.5f), ImGui::GetTextLineHeight());
+            ImGui::SetCursorScreenPos(boxMin + ImVec2(ImFloor((box.x - width) * 0.5f), 0.0f));
+            ImGui::TextUnformatted(text.data(), text.data() + text.size());
+        }
         ImGui::SetCursorScreenPos(boxMin);
         if (ImGui::InvisibleButton("###pin_value_editor", box))
         {

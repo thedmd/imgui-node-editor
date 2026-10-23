@@ -268,6 +268,24 @@ ValueEdit EditValue(Value& value, bool focus = false, bool inCanvas = false);
 // elsewhere.
 bool DrawValueWithEditor(Id id, Value& value, bool inCanvas = false);
 
+// How the values of an application's type show, and their editor, in place of their text and of
+// the editor of their kind: a color's swatch, and its picker. Each is optional.
+struct ValueWidgets
+{
+    std::function<float(const Value& value)>                                            m_Width; // of its box, a line high
+    std::function<void(ImDrawList* drawList, ImVec2 min, ImVec2 max, const Value& value)> m_Draw;
+    std::function<ValueEdit(Value& value, bool focus, bool inCanvas)>                   m_Edit;
+};
+void                SetValueWidgets(const ValueType& type, ValueWidgets widgets);
+const ValueWidgets* FindValueWidgets(const ValueType& type);
+
+// Where the last item is on the screen, its min and max. Popups aren't in a canvas' space, so an
+// editor's popup in a canvas opens under it there, between ed::Suspend() and ed::Resume().
+std::pair<ImVec2, ImVec2> LastItemOnScreen(bool inCanvas);
+// Inside a value editor's popup, which isn't an item of the editor: while it's hovered, a click on
+// it isn't one elsewhere, which would close the editor.
+void HoldEditorWhileHovered();
+
 // A popup of a name's field, which opens while 'open' is set, its field focused, and clears it.
 // Enter gives the name typed, unless a problem with it shows under the field. Escape closes it,
 // and so does losing what the name is of.
