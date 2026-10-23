@@ -8,6 +8,7 @@
 # include "blueprint_screen.h"
 # include "crude_logger.h"
 # include <crude_json.h>
+# include <algorithm>
 # include <chrono>
 # include <initializer_list>
 # include <memory>
@@ -256,6 +257,117 @@ TEST_CASE(ScreenWindows, "screen.an_open_screens_window_shows_its_picture", null
     session.Run(2);
     auto window = ImGui::FindWindowByName("Test###screen:Test");
     test::Check(shown > 0 && window && !window->Active, "an open screen shows in a window, %d vertices, which goes once it's closed", shown);
+}
+
+TEST_CASE(KeysWaited, "screen.wait_for_key_goes_on_once_its_key_is_pressed", nullptr, test::TestFlags_None)
+{
+    // Start waits for Space, then ends.
+    Fixture f;
+    auto start = f.Add("crude.Start"), wait = f.Add("example.WaitForKey");
+    f.Chain({ start, wait });
+    auto compiled = Compile(f.m_Blueprint);
+    if (!compiled.m_Program)
+        return test::Check(false, "the blueprint compiles");
+    Context context(compiled.m_Program);
+    auto fiber = context.Start("Start");
+    context.Run(std::chrono::seconds(5));
+    auto waits = context.Fibers()[0].m_Wake;
+    context.Signal(blueprint_screen::KeySignal("Left"));
+    context.Run(std::chrono::seconds(5));
+    auto still = context.Fibers()[0].m_State;
+    context.Signal(blueprint_screen::KeySignal("Space"));
+    context.Run(std::chrono::seconds(5));
+    test::Check(fiber && waits == Wake::OnSignal("key:Space") && still == FiberState::Suspended && context.Fibers()[0].m_State == FiberState::Done, "it waits for Space's signal, which Left's doesn't end, and goes on once it comes");
+}
+
+TEST_CASE(KeysPressed, "screen.a_key_pressed_starts_its_event_with_the_key", nullptr, test::TestFlags_None)
+{
+    // Start waits for a signal that never comes, and Key Pressed keeps its key in Last.
+    test::Session session(UnnamedConfig());
+    OverlayLog    log;
+    Document      document{ ExampleRegistry(), std::make_shared<TypeTable>() };
+    auto& graph = document.GetGraph();
+    auto  key   = document.GetBlueprint().GetRegistry().FindValueType("example.Key");
+    auto  pin   = [&graph](Id node, std::string_view name) { auto found = graph.FindNode(node); auto pin = found ? found->FindPin(name) : nullptr; return pin ? pin->m_Id : 0; };
+    auto  made  = document.GetBlueprint().AddVariable({ "Last", key->Default(key->AsType()) }).IsOk();
+    auto  start = graph.AddNode("crude.Start").ValueOr(0), wait = graph.AddNode("crude.WaitSignal").ValueOr(0);
+    auto  event = graph.AddNode("example.KeyPressed").ValueOr(0), set = graph.AddNode("set:Last").ValueOr(0);
+    made = made && graph.Connect(pin(start, "then"), pin(wait, "enter")).IsOk() && graph.SetValue(pin(wait, "signal"), Value::String("never")).IsOk();
+    made = made && graph.Connect(pin(event, "then"), pin(set, "enter")).IsOk() && graph.Connect(pin(event, "key"), pin(set, "value")).IsOk();
+
+    blueprint_editor_utilities::Debugger debugger;
+    debugger.Start(document, true);
+    debugger.Update(document);
+    const Value up[] = { Value::Enum(key->AsType(), static_cast<const EnumType*>(key)->FindCase("Up")) };
+    auto fired = debugger.Fire("Key Pressed", up);
+    debugger.Update(document);
+    auto last = debugger.GetContext()->GetVariable("Last");
+    test::Check(made && fired && last && last.GetValue() == up[0], "Key Pressed starts with the key, Up: %s", last ? key->Format(last.GetValue()).c_str() : "");
+}
+
+TEST_CASE(KeySwitches, "screen.switch_on_enum_goes_on_from_the_case_of_the_key_pressed", nullptr, test::TestFlags_None)
+{
+    // Key Pressed, then Switch on Enum of its key, for Up and Down, which set Taken to their names.
+    Fixture f;
+    auto key   = f.m_Blueprint.GetRegistry().FindValueType("example.Key");
+    auto made  = f.m_Blueprint.AddVariable({ "Taken", Value::String("") }).IsOk();
+    NodeConfig config;
+    config.m_Groups["case"] = 2;
+    config.m_Data["case.0"] = Value::String("Up");
+    config.m_Data["case.1"] = Value::String("Down");
+    auto event = f.Add("example.KeyPressed"), on = f.Add("crude.SwitchOnEnum", std::move(config));
+    f.Link(event, "then", on, "enter");
+    f.Link(event, "key", on, "selection");
+    for (auto name : { "Up", "Down" })
+    {
+        auto set = f.Add("set:Taken");
+        f.Link(on, std::string(name) == "Up" ? "case.0" : "case.1", set, "enter");
+        f.Set(set, "value", Value::String(name));
+    }
+    auto most = f.m_Graph.FindNode(on)->m_Groups[0].m_Max;
+    auto compiled = Compile(f.m_Blueprint);
+    if (!compiled.m_Program)
+        return test::Check(false, "the blueprint compiles");
+    Context context(compiled.m_Program);
+    const Value up[] = { Value::Enum(key->AsType(), static_cast<const EnumType*>(key)->FindCase("Up")) };
+    auto fiber = context.Start("Key Pressed", up);
+    context.Run(std::chrono::seconds(5));
+    auto taken = context.GetVariable("Taken");
+    test::Check(made && fiber && most == static_cast<int>(blueprint_screen::ScreenKeyNames().size()) && taken && taken.GetValue() == Value::String("Up"),
+        "it takes a case for each of the %d keys at most, and goes on from the pressed key's, Up's: %s", most, taken ? std::string(taken.GetValue().AsString()).c_str() : "");
+}
+
+TEST_CASE(KeysTaken, "screen.a_focused_screen_takes_its_keys_before_the_applications_routes", nullptr, test::TestFlags_None)
+{
+    // A screen, focused once it opens, and a global route of the application's to A, which the node
+    // editor of the host, focused once the screen closes, doesn't route as it does Space.
+    test::Session session(UnnamedConfig());
+    ScreenHost    host;
+    auto screen = host.Open("Test", 100, 50);
+    auto global = 0;
+    session.AfterHost = [&]
+    {
+        host.ShowWindows(false);
+        if (ImGui::Shortcut(ImGuiKey_A, ImGuiInputFlags_RouteGlobal))
+            ++global;
+    };
+    auto press = [&session](ImGuiKey key)
+    {
+        test::Key(key, true);
+        session.Run(1);
+        test::Key(key, false);
+        session.Run(1);
+    };
+    const auto a = static_cast<int>(std::find(blueprint_screen::ScreenKeyNames().begin(), blueprint_screen::ScreenKeyNames().end(), "A") - blueprint_screen::ScreenKeyNames().begin());
+    session.Run(3);
+    press(ImGuiKey_A);
+    auto taken = host.TakeKeys();
+    test::Check(taken == std::vector<int>{ a } && global == 0, "a key pressed on the focused screen is its own, the application's route doesn't fire: %d taken, %d global", static_cast<int>(taken.size()), global);
+
+    screen->m_Open = false;
+    session.Run(2);
+    press(ImGuiKey_A);
+    test::Check(host.TakeKeys().empty() && global == 1, "with the screen closed, the application's route takes it: %d", global);
 }
 
 TEST_CASE(ScreenRuns, "screen.a_debuggers_runs_open_screens_of_its_host", nullptr, test::TestFlags_None)

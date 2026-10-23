@@ -275,6 +275,94 @@ struct DrawTextNode final : ScreenNode
     const EnumType& m_Align;
 };
 
+// An event of a key pressed on a screen whose window has the focus, which starts with the key.
+struct KeyPressedNode final : NodeType
+{
+    explicit KeyPressedNode(const EnumType& key): NodeType("example.KeyPressed", "Key Pressed", "Events"), m_Key(key) {}
+
+    void Declare(NodeDeclaration& declaration, const NodeConfig&, const Bindings&) const override
+    {
+        declaration.Output("key", "Key", m_Key.AsType());
+    }
+
+    Result<Exit> Execute(ExecContext&, std::string_view) const override
+    {
+        return Exit::To(m_Then);
+    }
+
+    std::string EventName(const NodeConfig&) const override
+    {
+        return "Key Pressed";
+    }
+
+    const EnumType& m_Key;
+    const FlowPin   m_Then = FlowOutput("then");
+};
+
+// Goes on once the key is pressed on a screen whose window has the focus.
+struct WaitForKeyNode final : NodeType
+{
+    explicit WaitForKeyNode(const EnumType& key): NodeType("example.WaitForKey", "Wait For Key", "Screen"), m_Key(key) {}
+
+    bool IsLatent() const override
+    {
+        return true;
+    }
+
+    void Declare(NodeDeclaration& declaration, const NodeConfig&, const Bindings&) const override
+    {
+        declaration.Input("key", "Key", m_Key.AsType(), { .m_Default = Value::Enum(m_Key.AsType(), m_Key.FindCase("Space")) });
+    }
+
+    Result<Exit> Execute(ExecContext& context, std::string_view) const override
+    {
+        if (context.IsResumed())
+            return Exit::To(m_Then);
+        auto key = context.Get("key");
+        if (!key)
+            return key.GetError();
+        return Exit::Suspend(Wake::OnSignal(KeySignal(m_Key.Cases()[static_cast<size_t>(key.GetValue().AsEnum())])));
+    }
+
+    const EnumType& m_Key;
+    const FlowPin   m_Enter = FlowInput("enter");
+    const FlowPin   m_Then  = FlowOutput("then");
+};
+
+struct KeyTable
+{
+    std::vector<ImGuiKey>    m_Keys;
+    std::vector<std::string> m_Names;
+};
+
+const KeyTable& Keys()
+{
+    static const KeyTable table = []
+    {
+        KeyTable made;
+        auto add = [&made](ImGuiKey key, std::string name)
+        {
+            made.m_Keys.push_back(key);
+            made.m_Names.push_back(std::move(name));
+        };
+        add(ImGuiKey_LeftArrow, "Left");
+        add(ImGuiKey_RightArrow, "Right");
+        add(ImGuiKey_UpArrow, "Up");
+        add(ImGuiKey_DownArrow, "Down");
+        add(ImGuiKey_Space, "Space");
+        add(ImGuiKey_Enter, "Enter");
+        add(ImGuiKey_Escape, "Escape");
+        add(ImGuiKey_Tab, "Tab");
+        add(ImGuiKey_Backspace, "Backspace");
+        for (int i = 0; i < 26; ++i)
+            add(static_cast<ImGuiKey>(ImGuiKey_A + i), std::string(1, static_cast<char>('A' + i)));
+        for (int i = 0; i < 10; ++i)
+            add(static_cast<ImGuiKey>(ImGuiKey_0 + i), std::string(1, static_cast<char>('0' + i)));
+        return made;
+    }();
+    return table;
+}
+
 bool OfFloats(const StructType& type, size_t count)
 {
     auto fields = type.Fields();
@@ -282,6 +370,21 @@ bool OfFloats(const StructType& type, size_t count)
 }
 
 } } // namespace blueprint_screen { namespace {
+
+std::span<const ImGuiKey> blueprint_screen::ScreenKeys()
+{
+    return Keys().m_Keys;
+}
+
+std::span<const std::string> blueprint_screen::ScreenKeyNames()
+{
+    return Keys().m_Names;
+}
+
+std::string blueprint_screen::KeySignal(std::string_view key)
+{
+    return "key:" + std::string(key);
+}
 
 std::shared_ptr<blueprint_screen::Screen> blueprint_screen::ScreenHost::Open(std::string title, int width, int height)
 {
@@ -294,7 +397,8 @@ std::shared_ptr<blueprint_screen::Screen> blueprint_screen::ScreenHost::Open(std
     screen->m_ShownBackground = screen->m_Background;
     screen->m_Shapes.clear();
     screen->m_Shown.clear();
-    screen->m_Open = true;
+    screen->m_Open  = true;
+    screen->m_Focus = true;
     return screen;
 }
 
@@ -317,9 +421,20 @@ void blueprint_screen::ScreenHost::ShowWindows(bool live)
         const auto  picture = ImVec2(static_cast<float>(screen->m_Width), static_cast<float>(screen->m_Height));
         ImGui::SetNextWindowSize(picture + style.WindowPadding * 2.0f + ImVec2(0.0f, ImGui::GetFrameHeight()), ImGuiCond_FirstUseEver);
         ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_FirstUseEver, ImVec2(0.5f, 0.5f));
+        if (std::exchange(screen->m_Focus, false))
+            ImGui::SetNextWindowFocus();
         const auto label = screen->m_Title + "###screen:" + screen->m_Title;
         if (ImGui::Begin(label.c_str(), &screen->m_Open, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoCollapse))
         {
+            // A focused route of its own, so the keys don't reach routes of the application's.
+            if (ImGui::IsWindowFocused(ImGuiFocusedFlags_ChildWindows))
+            {
+                auto keys = ScreenKeys();
+                for (size_t i = 0; i < keys.size(); ++i)
+                    if (ImGui::Shortcut(keys[i], ImGuiInputFlags_RouteFocused))
+                        m_Keys.push_back(static_cast<int>(i));
+            }
+
             // The picture as large as the window takes, in the middle of it.
             const auto room  = ImMax(ImGui::GetContentRegionAvail(), ImVec2(1.0f, 1.0f));
             const auto scale = ImMin(room.x / picture.x, room.y / picture.y);
@@ -367,11 +482,15 @@ crude_blueprint::Result<void> blueprint_screen::RegisterScreen(Registry& registr
         return Error(BlueprintError::WrongType, "screens take colors of four Floats, and vectors of two");
     auto  screen     = std::make_unique<ScreenType>();
     auto  align      = std::make_unique<EnumType>("example.Align", std::vector<std::string>{ "Left", "Center", "Right" });
+    auto  key        = std::make_unique<EnumType>("example.Key", Keys().m_Names);
     auto& screenType = *screen;
     auto& alignType  = *align;
+    auto& keyType    = *key;
     if (auto added = registry.AddValueType(std::move(screen)); !added)
         return added;
     if (auto added = registry.AddValueType(std::move(align)); !added)
+        return added;
+    if (auto added = registry.AddValueType(std::move(key)); !added)
         return added;
 
     std::unique_ptr<NodeType> types[] =
@@ -381,6 +500,8 @@ crude_blueprint::Result<void> blueprint_screen::RegisterScreen(Registry& registr
         std::make_unique<FillRectNode>(screenType, color, vector2),
         std::make_unique<FillCircleNode>(screenType, color, vector2),
         std::make_unique<DrawTextNode>(screenType, color, vector2, alignType),
+        std::make_unique<WaitForKeyNode>(keyType),
+        std::make_unique<KeyPressedNode>(keyType),
     };
     for (auto& type : types)
         if (auto added = registry.AddNodeType(std::move(type)); !added)

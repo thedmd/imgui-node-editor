@@ -499,8 +499,17 @@ struct BlueprintEditorExample
         m_OverlayLogger.Update(ImGui::GetIO().DeltaTime);
         m_OverlayLogger.Draw(canvasMin, canvasMax);
 
-        // A paused run's screens show what's drawn so far.
+        // A paused run's screens show what's drawn so far. A key pressed on one starts Key Pressed in
+        // the run, and sends its signal.
         m_Screens.ShowWindows(m_Debugger.IsActive() && !m_Debugger.IsRunning());
+        for (auto key : m_Screens.TakeKeys())
+        {
+            if (!m_Document || !m_Debugger.IsActive())
+                continue;
+            const Value pressed[] = { Value::Enum(m_Document->GetBlueprint().GetRegistry().FindValueType("example.Key")->AsType(), key) };
+            m_Debugger.Fire("Key Pressed", pressed);
+            m_Debugger.GetContext()->Signal(blueprint_screen::KeySignal(blueprint_screen::ScreenKeyNames()[static_cast<size_t>(key)]));
+        }
 
         ShowClosePrompt();
         ShowOpenFailure();

@@ -8,6 +8,8 @@
 # include <memory>
 # include <span>
 # include <string>
+# include <string_view>
+# include <utility>
 # include <vector>
 
 namespace blueprint_screen {
@@ -43,8 +45,16 @@ struct Screen
     std::vector<Shape> m_Shapes;
     ImVec4             m_ShownBackground = ImVec4(0.0f, 0.0f, 0.0f, 1.0f);
     std::vector<Shape> m_Shown;
-    bool               m_Open = true; // its window
+    bool               m_Open  = true; // its window
+    bool               m_Focus = true; // its window takes the focus once
 };
+
+// The keys a focused screen takes, in the order of example.Key's cases.
+std::span<const ImGuiKey>    ScreenKeys();
+std::span<const std::string> ScreenKeyNames();
+
+// The signal a key pressed on a screen sends, which Wait For Key waits for: "key:Space".
+std::string KeySignal(std::string_view key);
 
 // The screens a run's nodes open, each shown in a window of its title. They stay after their run,
 // and a run that opens a screen of the same title has it again.
@@ -53,7 +63,7 @@ class ScreenHost final : public Service
 public:
     CRUDE_BP_RTTI(ScreenHost, Service)
 
-    // The screen of the title, cleared to black, of the size, its window open.
+    // The screen of the title, cleared to black, of the size, its window open and taking the focus.
     std::shared_ptr<Screen> Open(std::string title, int width, int height);
 
     // Each screen shows what was drawn on it since it was cleared. For the host to call while no
@@ -61,19 +71,23 @@ public:
     void Present();
 
     // A window for each open screen, its picture scaled to fit; 'live' shows what was drawn so far,
-    // as for a run that's paused.
+    // as for a run that's paused. A focused window takes the screen keys, before any other route.
     void ShowWindows(bool live);
+
+    // The screen keys pressed since, as example.Key's cases' indices, in the order pressed.
+    std::vector<int> TakeKeys() { return std::exchange(m_Keys, {}); }
 
     std::span<const std::shared_ptr<Screen>> Screens() const { return m_Screens; }
 
 private:
     std::vector<std::shared_ptr<Screen>> m_Screens;
+    std::vector<int>                     m_Keys;
 };
 
-// example.Screen, a screen a run opened, which a file holds as none, and example.Align; and the
-// nodes of the Screen category: Open Screen, Clear Screen, Fill Rect, Fill Circle and Draw Text.
-// Their colors are of the struct, their positions and sizes of the vector, and both live as long
-// as the registry.
+// example.Screen, a screen a run opened, which a file holds as none, example.Align and example.Key;
+// and the nodes of the Screen category: Open Screen, Clear Screen, Fill Rect, Fill Circle, Draw
+// Text and Wait For Key, and the event Key Pressed. Their colors are of the struct, their positions
+// and sizes of the vector, and both live as long as the registry.
 Result<void> RegisterScreen(Registry& registry, const StructType& color, const StructType& vector2);
 
 } // namespace blueprint_screen
