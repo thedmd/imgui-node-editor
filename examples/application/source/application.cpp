@@ -158,6 +158,7 @@ bool Application::Create(int width /*= -1*/, int height /*= -1*/)
     io.LogFilename = nullptr;
 
     ImGui::StyleColorsDark();
+    ImGui::GetStyle().Colors[ImGuiCol_ModalWindowDimBg] = ImVec4(0.0f, 0.0f, 0.0f, 0.5f);
 
     LoadFonts();
 
