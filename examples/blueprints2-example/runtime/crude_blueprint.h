@@ -14,6 +14,7 @@
 # include <map>
 # include <memory>
 # include <optional>
+# include <random>
 # include <span>
 # include <string>
 # include <string_view>
@@ -1326,6 +1327,7 @@ public:
     const NodeConfig& Config() const;
     void              Log(std::string_view text);
     double            Time() const; // the context's clock
+    std::mt19937&     Random();     // the context's engine, which every node draws from
     // A variable of the blueprint's, by name.
     Result<Value>     GetVariable(std::string_view name) const;
     Result<void>      SetVariable(std::string_view name, Value value);
@@ -1399,6 +1401,9 @@ public:
     void               AdvanceTo(double time);
     // Readies the fibers that wait for the signal; one that none waits for is lost.
     void               Signal(std::string_view signal);
+    // Starts the engine random numbers are drawn from over, so the same seed gives the same numbers
+    // again. A new context's seed is 5489, std::mt19937's default.
+    void               Seed(uint32_t seed);
     // The blueprint's variables, by name, each from its default on. One takes only values of its type.
     Result<Value>      GetVariable(std::string_view name) const;
     Result<void>       SetVariable(std::string_view name, Value value);
@@ -1468,6 +1473,7 @@ private:
     std::vector<std::any>                m_States;      // per node
     std::vector<Value>                   m_Variables;
     std::vector<bool>                    m_Breakpoints; // per node
+    std::mt19937                         m_Random;
     CallFrame                            m_Events;      // the event graphs', for reading values outside fibers
     std::vector<Fiber>                   m_Fibers;
     std::vector<Diagnostic>              m_Diagnostics;

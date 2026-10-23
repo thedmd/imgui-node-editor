@@ -3316,6 +3316,11 @@ double crude_blueprint::NodeContext::Time() const
     return m_Context.m_Time;
 }
 
+std::mt19937& crude_blueprint::NodeContext::Random()
+{
+    return m_Context.m_Random;
+}
+
 crude_blueprint::Result<crude_blueprint::Value> crude_blueprint::NodeContext::GetVariable(std::string_view name) const
 {
     return m_Context.GetVariable(name);
@@ -3532,6 +3537,11 @@ void crude_blueprint::Context::Signal(std::string_view signal)
     for (auto& fiber : m_Fibers)
         if (fiber.m_Info.m_State == FiberState::Suspended && fiber.m_Info.m_Wake.m_Kind == Wake::Kind::Signal && fiber.m_Info.m_Wake.m_Signal == signal)
             Resume(fiber);
+}
+
+void crude_blueprint::Context::Seed(uint32_t seed)
+{
+    m_Random.seed(seed);
 }
 
 crude_blueprint::Result<crude_blueprint::Value> crude_blueprint::Context::GetVariable(std::string_view name) const

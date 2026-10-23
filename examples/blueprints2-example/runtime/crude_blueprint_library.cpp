@@ -389,6 +389,13 @@ struct ClampNode final : NodeType
     }
 };
 
+// From 0 up to 1, in steps of 2^-24, which a Float holds exactly. The standard libraries' distributions
+// differ, and this doesn't: a seed gives the same numbers everywhere.
+float UnitFloat(std::mt19937& engine)
+{
+    return static_cast<float>(static_cast<uint32_t>(engine()) >> 8) * (1.0f / 16777216.0f);
+}
+
 // From 0 up to 1, and the same within a step: pure outputs are computed once a step.
 struct RandomNode final : NodeType
 {
@@ -396,8 +403,7 @@ struct RandomNode final : NodeType
 
     Result<void> Evaluate(EvalContext& context) const override
     {
-        auto& engine = context.State<std::mt19937>();
-        context.Set(m_Value, std::uniform_real_distribution<float>(0.0f, 1.0f)(engine));
+        context.Set(m_Value, UnitFloat(context.Random()));
         return {};
     }
 

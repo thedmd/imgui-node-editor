@@ -65,6 +65,8 @@ struct Fixture : BlueprintFixture
             return {};
         }
         m_Context = std::make_unique<Context>(compiled.m_Program);
+        if (m_Seed)
+            m_Context->Seed(*m_Seed);
         Logs logs;
         m_Context->SetMonitor(&logs);
         [[maybe_unused]] auto fiber = m_Context->Start("Start");
@@ -136,6 +138,7 @@ struct Fixture : BlueprintFixture
     }
 
     std::unique_ptr<Context> m_Context;
+    std::optional<uint32_t>  m_Seed; // Run() seeds its context with it
 };
 
 using Inputs = std::vector<std::pair<const char*, Value>>;
@@ -800,6 +803,39 @@ TEST_CASE(RandomPerStep, "library.random_gives_one_value_a_step", nullptr, test:
     float a = -1.0f, b = -1.0f;
     const auto read = std::sscanf(printed.c_str(), "0 %f %f", &a, &b);
     test::Check(read == 2 && a != b && a >= 0.0f && a < 1.0f && b >= 0.0f && b < 1.0f, "0, then two values from 0 up to 1: %s", printed.c_str());
+}
+
+TEST_CASE(RandomEngine, "library.random_nodes_draw_from_their_runs_one_engine", nullptr, test::TestFlags_None)
+{
+    // Two Randoms into an array, printed twice: each print is a step of its own. The numbers are
+    // std::mt19937's, as an engine of its own computes them, so a seed gives them on every platform.
+    struct Case
+    {
+        std::optional<uint32_t> seed;
+        const char*             expected;
+    };
+    const Case cases[] =
+    {
+        { std::nullopt, "[0.8147237, 0.13547695] [0.9057919, 0.83500856]" },
+        { 1u,           "[0.417022, 0.99718475] [0.72032446, 0.93255734]" },
+        { 1u,           "[0.417022, 0.99718475] [0.72032446, 0.93255734]" },
+        { 42u,          "[0.3745401, 0.79654294] [0.9507143, 0.18343478]" },
+    };
+    for (auto& c : cases)
+    {
+        Fixture f;
+        f.m_Seed = c.seed;
+        auto start = f.Add("Start"), first = f.Add("Print"), again = f.Add("Print"), a = f.Add("Random"), b = f.Add("Random"), array = f.Grown("MakeArray", "in", 2), text = f.Add("ToString");
+        f.Link(start, "then", first, "enter");
+        f.Link(first, "then", again, "enter");
+        f.Link(a, "value", array, "in.0");
+        f.Link(b, "value", array, "in.1");
+        f.Link(array, "array", text, "value");
+        f.Link(text, "text", first, "text");
+        f.Link(text, "text", again, "text");
+        auto printed = f.Run();
+        test::Check(printed == c.expected, "seed %s: %s", c.seed ? std::to_string(*c.seed).c_str() : "none", printed.c_str());
+    }
 }
 
 TEST_CASE(LibraryOnce, "library.is_registered_once", nullptr, test::TestFlags_None)
