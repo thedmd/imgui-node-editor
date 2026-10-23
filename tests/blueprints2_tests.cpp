@@ -1061,6 +1061,46 @@ TEST_CASE(SignalledRuns, "blueprints2.a_fiber_waiting_for_a_signal_goes_on_once_
     test::Check(!debugger.Waiting() && debugger.IsActive() && debugger.NextNode() == made.m_Print, "its own does, and the run goes on");
 }
 
+TEST_CASE(FiredEvents, "blueprints2.an_event_starts_in_an_active_run_and_goes_once_it_ends", nullptr, test::TestFlags_None)
+{
+    // Start waits for a signal that never comes, and Ping adds 1 to Count.
+    test::Session session(UnnamedConfig());
+    OverlayLog    log;
+    Document      document{ ExampleRegistry(), std::make_shared<TypeTable>() };
+    auto& graph = document.GetGraph();
+    auto  pin   = [&graph](Id node, std::string_view key) { auto found = graph.FindNode(node); auto pin = found ? found->FindPin(key) : nullptr; return pin ? pin->m_Id : 0; };
+    NodeConfig ping;
+    ping.m_Data["event"] = Value::String("Ping");
+    auto made  = document.GetBlueprint().AddVariable({ "Count", Value::Int32(0) }).IsOk();
+    auto start = graph.AddNode("crude.Start").ValueOr(0), wait = graph.AddNode("crude.WaitSignal").ValueOr(0);
+    auto event = graph.AddNode("crude.CustomEvent", ping).ValueOr(0), get = graph.AddNode("get:Count").ValueOr(0), add = graph.AddNode("crude.Add").ValueOr(0), set = graph.AddNode("set:Count").ValueOr(0);
+    made = made && graph.Connect(pin(start, "then"), pin(wait, "enter")).IsOk() && graph.SetValue(pin(wait, "signal"), Value::String("never")).IsOk();
+    made = made && graph.Connect(pin(event, "then"), pin(set, "enter")).IsOk() && graph.Connect(pin(get, "value"), pin(add, "in.0")).IsOk();
+    made = made && graph.SetValue(pin(add, "in.1"), Value::Int32(1)).IsOk() && graph.Connect(pin(add, "result"), pin(set, "value")).IsOk();
+    test::Check(made, "the document is made");
+
+    Debugger debugger;
+    auto before = debugger.Fire("Ping");
+    debugger.Start(document, true);
+    debugger.Update(document);
+    auto fired = debugger.Fire("Ping") && debugger.Fire("Ping");
+    debugger.Update(document);
+    auto count = debugger.GetContext()->GetVariable("Count");
+    test::Check(!before && fired && count && count.GetValue() == Value::Int32(2) && debugger.GetContext()->Fibers().size() == 1 && debugger.IsActive(),
+        "without a run, nothing starts; in one, each Ping runs, and goes once it ended: %s", count ? ValueText(count.GetValue()).c_str() : "");
+    test::Check(!debugger.Fire("Pong"), "and an event the blueprint lacks doesn't start");
+
+    // A breakpoint on the Set: the run pauses in Ping's fiber, shows it and steps it, then shows its own.
+    debugger.SetBreakpoint(set, true);
+    debugger.Fire("Ping");
+    debugger.Update(document);
+    auto paused = !debugger.IsRunning() && debugger.IsActive() && debugger.IsAtBreakpoint() && debugger.NextNode() == set;
+    debugger.Step();
+    auto after = debugger.GetContext()->GetVariable("Count");
+    test::Check(paused && after && after.GetValue() == Value::Int32(3) && debugger.NextNode() == wait && debugger.GetContext()->Fibers().size() == 1,
+        "a breakpoint in Ping's fiber pauses the run there, a step runs it, and the run's own fiber shows again: %s", after ? ValueText(after.GetValue()).c_str() : "");
+}
+
 TEST_CASE(SeededRuns, "blueprints2.each_run_draws_random_numbers_of_its_own", nullptr, test::TestFlags_None)
 {
     // Four Randoms in an array, as a run computes it before its first step. Two runs seeded at random

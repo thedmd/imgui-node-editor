@@ -2099,8 +2099,10 @@ bool blueprint_editor_utilities::Debugger::Begin(const Document& document, bool 
     }
     LOGI("Execution: %s%s", call ? "Call" : running ? "Run" : "Start", what.c_str());
     m_Fiber    = fiber.GetValue();
+    m_Followed = m_Fiber;
     m_Revision = document.m_Revision;
     m_Running  = running;
+    m_Fired.clear();
     return true;
 }
 
@@ -2125,8 +2127,12 @@ void blueprint_editor_utilities::Debugger::Step()
         }
         m_Context->AdvanceTo(waiting->m_Time);
     }
-    if (m_Context->Step(m_Fiber))
+    auto followed = Followed();
+    if (followed && m_Context->Step(followed->m_Id))
+    {
+        Settle();
         Report();
+    }
 }
 
 void blueprint_editor_utilities::Debugger::Stop()
@@ -2135,6 +2141,7 @@ void blueprint_editor_utilities::Debugger::Stop()
         LOGI("Execution: Stop");
     m_Context.reset();
     m_Running = false;
+    m_Fired.clear();
 }
 
 void blueprint_editor_utilities::Debugger::Update(const Document& document)
@@ -2158,10 +2165,14 @@ void blueprint_editor_utilities::Debugger::Update(const Document& document)
     if (m_Context->Run(std::chrono::milliseconds(5)) == RunState::Breakpoint)
     {
         m_Running = false;
+        for (auto& fiber : m_Context->Fibers())
+            if (fiber.m_AtBreakpoint)
+                m_Followed = fiber.m_Id;
         auto index = m_Context->GetProgram().FindNode(NextNode());
         auto name  = index >= 0 ? m_Context->GetProgram().Nodes()[static_cast<size_t>(index)].m_Name : std::string("?");
         LOGI("Execution: Paused at %s's breakpoint", name.c_str());
     }
+    Settle();
     Report();
 }
 
@@ -2177,6 +2188,17 @@ void blueprint_editor_utilities::Debugger::Signal(std::string_view signal)
         return;
     LOGI("Execution: %s sent", WakeText(Wake::OnSignal(std::string(signal)), 0.0).c_str());
     m_Context->Signal(signal);
+}
+
+bool blueprint_editor_utilities::Debugger::Fire(std::string_view event, std::span<const Value> arguments)
+{
+    if (!IsActive())
+        return false;
+    auto fiber = m_Context->Start(event, arguments);
+    if (!fiber)
+        return false;
+    m_Fired.push_back(fiber.GetValue());
+    return true;
 }
 
 void blueprint_editor_utilities::Debugger::SetBreakpoint(Id node, bool enabled)
@@ -2228,7 +2250,7 @@ bool blueprint_editor_utilities::Debugger::IsWaiting() const
 
 std::optional<blueprint_editor_utilities::Wake> blueprint_editor_utilities::Debugger::Waiting() const
 {
-    auto fiber = Fiber();
+    auto fiber = Followed();
     if (!fiber || fiber->m_State != FiberState::Suspended)
         return std::nullopt;
     return fiber->m_Wake;
@@ -2236,25 +2258,25 @@ std::optional<blueprint_editor_utilities::Wake> blueprint_editor_utilities::Debu
 
 bool blueprint_editor_utilities::Debugger::IsAtBreakpoint() const
 {
-    auto fiber = Fiber();
+    auto fiber = Followed();
     return fiber && fiber->m_AtBreakpoint;
 }
 
 blueprint_editor_utilities::Id blueprint_editor_utilities::Debugger::CurrentNode() const
 {
-    auto fiber = Fiber();
+    auto fiber = Followed();
     return fiber ? fiber->m_Ran : 0;
 }
 
 blueprint_editor_utilities::Id blueprint_editor_utilities::Debugger::NextNode() const
 {
-    auto fiber = Fiber();
+    auto fiber = Followed();
     return fiber ? fiber->m_Node : 0;
 }
 
 blueprint_editor_utilities::Id blueprint_editor_utilities::Debugger::TakenLink() const
 {
-    auto fiber = Fiber();
+    auto fiber = Followed();
     return fiber ? fiber->m_Link : 0;
 }
 
@@ -2280,6 +2302,45 @@ std::optional<blueprint_editor_utilities::FiberInfo> blueprint_editor_utilities:
             if (fiber.m_Id == m_Fiber)
                 return fiber;
     return std::nullopt;
+}
+
+std::optional<blueprint_editor_utilities::FiberInfo> blueprint_editor_utilities::Debugger::Followed() const
+{
+    if (m_Context && m_Followed != m_Fiber)
+        for (auto& fiber : m_Context->Fibers())
+            if (fiber.m_Id == m_Followed && (fiber.m_State == FiberState::Ready || fiber.m_State == FiberState::Suspended))
+                return fiber;
+    return Fiber();
+}
+
+void blueprint_editor_utilities::Debugger::Settle()
+{
+    if (!m_Context)
+        return;
+    auto fibers = m_Context->Fibers();
+    auto alive  = [&fibers](FiberId id, bool* failed = nullptr)
+    {
+        for (auto& fiber : fibers)
+        {
+            if (fiber.m_Id != id)
+                continue;
+            if (failed)
+                *failed = fiber.m_State == FiberState::Failed;
+            return fiber.m_State == FiberState::Ready || fiber.m_State == FiberState::Suspended;
+        }
+        return false;
+    };
+    std::erase_if(m_Fired, [this, &alive](FiberId id)
+    {
+        auto failed = false;
+        if (alive(id, &failed))
+            return false;
+        if (!failed)
+            m_Context->Forget(id);
+        return true;
+    });
+    if (!alive(m_Followed))
+        m_Followed = m_Fiber;
 }
 
 void blueprint_editor_utilities::Debugger::Report()

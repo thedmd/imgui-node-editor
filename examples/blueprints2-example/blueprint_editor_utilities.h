@@ -362,6 +362,9 @@ struct Debugger
     void Update(const Document& document);
     void Advance(double seconds); // a running run's clock, by a frame's time
     void Signal(std::string_view signal);
+    // Starts the event in an active run, a fiber of its own, which the run forgets once it ends
+    // without an error; false when it didn't start.
+    bool Fire(std::string_view event, std::span<const Value> arguments = {});
     // For the nodes of the runs that start after; the caller keeps it while the debugger lives.
     void AddService(Service& service) { m_Services.push_back(&service); }
 
@@ -375,6 +378,8 @@ struct Debugger
     bool                IsWatched(Id pin) const;
     std::span<const Id> Watched() const { return m_Watched; }
 
+    // A run is active while the fiber its Start or Call began is. What it shows and steps is of that
+    // fiber, or of another it paused at a breakpoint, while that one goes on.
     bool IsActive() const; // a fiber that's ready or suspended
     bool IsRunning() const { return IsActive() && m_Running; }
     bool IsAtBreakpoint() const;
@@ -399,14 +404,18 @@ private:
     };
 
     bool                     Begin(const Document& document, bool running, std::string_view name, bool call, std::span<const Value> arguments);
-    std::optional<FiberInfo> Fiber() const;
-    void                     Report(); // how the fiber ended, once
+    std::optional<FiberInfo> Fiber() const;    // the run's
+    std::optional<FiberInfo> Followed() const; // the one shown and stepped
+    void                     Settle();         // the fired fibers that ended go, and the followed one that did
+    void                     Report();         // how the run's fiber ended, once
 
     std::unique_ptr<Context> m_Context;
     Monitor                  m_Monitor;
     std::vector<Service*>    m_Services;
     std::set<Id>             m_Breakpoints;
     std::vector<Id>          m_Watched;
+    std::vector<FiberId>     m_Fired;
+    FiberId                  m_Followed = 0;
     FiberId                  m_Fiber    = 0;
     uint64_t                 m_Revision = 0;
     bool                     m_Running  = false;
