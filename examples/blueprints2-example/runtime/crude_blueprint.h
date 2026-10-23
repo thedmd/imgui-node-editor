@@ -443,8 +443,11 @@ inline const Type& StringType() { return StringValueType().AsType(); }
 
 struct StructField
 {
+    StructField(std::string name, const Type* type, Value defaultValue = {}): m_Name(std::move(name)), m_Type(type), m_Default(std::move(defaultValue)) {}
+
     std::string m_Name;
     const Type* m_Type = nullptr;
+    Value       m_Default; // none: its type's
 };
 
 // In files, a struct is an object: fields it lacks take their defaults, and fields it has
@@ -453,10 +456,12 @@ struct StructType final : ValueType
 {
     CRUDE_BP_RTTI(StructType, ValueType)
 
+    // A field's default is of its type.
     StructType(std::string name, std::vector<StructField> fields);
 
     std::span<const StructField> Fields() const { return m_Fields; }
-    int FindField(std::string_view name) const; // -1 for none
+    int   FindField(std::string_view name) const; // -1 for none
+    Value FieldDefault(size_t field) const;      // its own, else its type's
 
     Value             Default(const Type& type) const override;
     Result<Value>     Load(const Type& type, const crude_json::value& json) const override;

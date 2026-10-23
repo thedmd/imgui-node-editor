@@ -521,6 +521,7 @@ crude_blueprint::StructType::StructType(std::string name, std::vector<StructFiel
     : ValueType(std::move(name))
     , m_Fields(std::move(fields))
 {
+    CRUDE_BP_ASSERT(std::all_of(m_Fields.begin(), m_Fields.end(), [](const StructField& field) { return !field.m_Default.IsValid() || field.m_Default.GetType() == field.m_Type; }));
 }
 
 int crude_blueprint::StructType::FindField(std::string_view name) const
@@ -531,11 +532,17 @@ int crude_blueprint::StructType::FindField(std::string_view name) const
     return -1;
 }
 
+crude_blueprint::Value crude_blueprint::StructType::FieldDefault(size_t field) const
+{
+    auto& declared = m_Fields[field];
+    return declared.m_Default.IsValid() ? declared.m_Default : declared.m_Type->m_Head->Default(*declared.m_Type);
+}
+
 crude_blueprint::Value crude_blueprint::StructType::Default(const Type& type) const
 {
     std::vector<Value> fields;
-    for (auto& field : m_Fields)
-        fields.push_back(field.m_Type->m_Head->Default(*field.m_Type));
+    for (size_t i = 0; i < m_Fields.size(); ++i)
+        fields.push_back(FieldDefault(i));
     return Value::Struct(type, std::move(fields));
 }
 
@@ -548,7 +555,7 @@ crude_blueprint::Result<crude_blueprint::Value> crude_blueprint::StructType::Loa
     {
         if (!json.contains(field.m_Name))
         {
-            fields.push_back(field.m_Type->m_Head->Default(*field.m_Type));
+            fields.push_back(FieldDefault(fields.size()));
             continue;
         }
         auto value = field.m_Type->m_Head->Load(*field.m_Type, json[field.m_Name]);
@@ -1622,7 +1629,7 @@ void Split(std::vector<PinDeclaration>& pins, std::span<const std::string> split
             fieldPin.m_Name        = pin.m_Name.empty() ? field.m_Name : pin.m_Name + " " + field.m_Name;
             fieldPin.m_Direction   = pin.m_Direction;
             fieldPin.m_Type        = *field.m_Type;
-            fieldPin.m_Default     = f < defaults.size() ? defaults[f] : Value();
+            fieldPin.m_Default     = f < defaults.size() ? defaults[f] : field.m_Default;
             fieldPin.m_Requirement = pin.m_Requirement;
             fields.push_back(std::move(fieldPin));
         }

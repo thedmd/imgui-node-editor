@@ -328,6 +328,13 @@ TEST_CASE(StructFieldsChange, "runtime.structs_load_with_fields_missing_or_unkno
     auto loaded = LoadText(vector2.AsType(), "{\"x\": 2, \"z\": 5}");
 
     test::Check(loaded && loaded.GetValue() == Value::Struct(vector2.AsType(), { Value::Float(2.0f), Value::Float(0.0f) }), "x loads, y takes its default, z is ignored");
+
+    // A field's own default, which a file without it gives too.
+    StructType tint("example.Tint", { { "level", &FloatType(), Value::Float(1.0f) }, { "count", &Int32Type() } });
+    auto partial = LoadText(tint.AsType(), "{\"count\": 3}");
+    test::Check(tint.Default(tint.AsType()) == Value::Struct(tint.AsType(), { Value::Float(1.0f), Value::Int32(0) }) && tint.FieldDefault(0) == Value::Float(1.0f),
+        "a field's default is its own, else its type's: %s", Format(tint.Default(tint.AsType())).c_str());
+    test::Check(partial && partial.GetValue() == Value::Struct(tint.AsType(), { Value::Float(1.0f), Value::Int32(3) }), "and a field a file lacks takes it");
 }
 
 TEST_CASE(EnumValues, "runtime.an_enumeration_is_one_of_its_cases_which_files_hold_by_name", nullptr, test::TestFlags_None)

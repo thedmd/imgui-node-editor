@@ -1656,7 +1656,7 @@ struct MakeStructNode final : NodeType
     void Declare(NodeDeclaration& declaration, const NodeConfig&, const Bindings&) const override
     {
         for (auto& field : m_Struct.Fields())
-            declaration.Input(field.m_Name, field.m_Name, *field.m_Type);
+            declaration.Input(field.m_Name, field.m_Name, *field.m_Type, { .m_Default = field.m_Default });
         declaration.Output("struct", ShortName(m_Struct), m_Struct.AsType());
     }
 

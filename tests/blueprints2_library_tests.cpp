@@ -948,6 +948,23 @@ TEST_CASE(StructNodes, "library.a_struct_is_made_and_broken_by_nodes_of_its_own"
     auto printed = f.Run();
     test::Check(splitting && printed == "{x: 1.5, y: 2} 2 1.5", "the struct, its y, and its x: %s", printed.c_str());
 
+    // A Make's inputs default to its fields' defaults.
+    static const StructType tint("test.Tint", { { "level", &FloatType(), Value::Float(0.5f) }, { "count", &Int32Type() } });
+    static const std::shared_ptr<const Registry> tints = []
+    {
+        auto made = std::make_shared<Registry>();
+        if (!RegisterBuiltins(*made) || !RegisterLibrary(*made) || !RegisterStructNodes(*made, tint))
+            test::Check(false, "the library and Tint's nodes are registered");
+        return made;
+    }();
+    Fixture defaults(tints);
+    auto begin = defaults.Add("Start"), shown = defaults.Add("Print"), made = defaults.m_Graph.AddNode("make:test.Tint").ValueOr(0), written = defaults.Add("ToString");
+    defaults.Link(begin, "then", shown, "enter");
+    defaults.Link(made, "struct", written, "value");
+    defaults.Link(written, "text", shown, "text");
+    auto tinted = defaults.Run();
+    test::Check(tinted == "{level: 0.5, count: 0}", "a Make of nothing linked makes its fields' defaults: %s", tinted.c_str());
+
     Registry other;
     const StructType clash("test.Clash", { { "struct", &Int32Type() } });
     auto refused = RegisterStructNodes(other, clash);
