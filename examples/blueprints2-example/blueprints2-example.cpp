@@ -561,6 +561,8 @@ private:
         m_View_PreviousProblem.SetEnabled(hasDocument && !m_Problems.Problems().empty());
         m_View_ToggleProblems.SetEnabled(hasDocument && !m_Problems.Problems().empty());
         m_Blueprint_AddFunction.SetEnabled(hasDocument);
+        const auto inFunction = hasDocument && m_Document->GetBlueprint().FindFunction(m_Document->GetGraph().GetId()) != nullptr;
+        m_Blueprint_DuplicateFunction.SetEnabled(inFunction);
         m_Blueprint_AddVariable.SetEnabled(hasDocument);
 
         // An error blocks a run, never an edit or saving.
@@ -679,6 +681,7 @@ private:
                 menuAction(m_Blueprint_RemoveOrphans);
                 ImGui::Separator();
                 menuAction(m_Blueprint_AddFunction);
+                menuAction(m_Blueprint_DuplicateFunction);
                 menuAction(m_Blueprint_AddVariable);
 
                 ImGui::EndMenu();
@@ -2167,7 +2170,7 @@ private:
     }
 
     // A tab for each graph, a function's with "()", and one to add a function. A function's tab,
-    // double-clicked or from its menu, renames it, and its menu deletes it.
+    // double-clicked or from its menu, renames it, and its menu duplicates and deletes it.
     void ShowGraphTabs(Document& document)
     {
         if (!ImGui::BeginTabBar("##graphs", ImGuiTabBarFlags_FittingPolicyScroll))
@@ -2182,6 +2185,8 @@ private:
             if (function && ImGui::BeginPopupContextItem())
             {
                 rename = ImGui::MenuItem("Rename...");
+                if (ImGui::MenuItem("Duplicate..."))
+                    StartDuplicateFunction(id);
                 if (ImGui::MenuItem("Delete"))
                     m_PendingDelete = id;
                 ImGui::EndPopup();
@@ -2206,12 +2211,88 @@ private:
             ImGui::SetTooltip("Add Function");
         ImGui::EndTabBar();
         ShowRenameFunction(document);
+        ShowDuplicateFunction(document);
     }
 
     void ShowRenameFunction(Document& document)
     {
         if (auto name = NamePopup("##rename-function", m_RenameFocus, m_RenameText, document.GetBlueprint().FindFunction(m_RenamedFunction) != nullptr))
             RenameFunction(document, m_RenamedFunction, *name);
+    }
+
+    // The name offered is the function's, numbered as no function is.
+    void StartDuplicateFunction(Id graph)
+    {
+        auto& blueprint = m_Document->GetBlueprint();
+        auto  found     = blueprint.FindGraph(graph);
+        auto  function  = blueprint.FindFunction(graph);
+        if (!found || !function)
+            return;
+        std::string name;
+        for (int i = 2; i < 1000; ++i)
+        {
+            name = found->GetName() + std::to_string(i);
+            if (blueprint.CheckFunction(name, function->m_Signature))
+                break;
+        }
+        m_DuplicatedFunction = graph;
+        m_DuplicateFocus     = true;
+        std::snprintf(m_DuplicateText, sizeof(m_DuplicateText), "%s", name.c_str());
+    }
+
+    // The name typed is checked as the blueprint will check it, so the reason it can't be shows at once.
+    void ShowDuplicateFunction(Document& document)
+    {
+        auto& blueprint = document.GetBlueprint();
+        auto  function  = blueprint.FindFunction(m_DuplicatedFunction);
+        std::string problem;
+        if (function && ImGui::IsPopupOpen("##duplicate-function"))
+            if (auto check = blueprint.CheckFunction(m_DuplicateText, function->m_Signature); !check)
+                problem = check.GetError().Message();
+        if (auto name = NamePopup("##duplicate-function", m_DuplicateFocus, m_DuplicateText, function != nullptr, problem))
+            DuplicateFunction(m_DuplicatedFunction, *name);
+    }
+
+    // A copy of the function under the name, shown as one undo step: its nodes where the function's
+    // are, and its view the function's.
+    void DuplicateFunction(Id graph, const std::string& name)
+    {
+        auto& document  = *m_Document;
+        auto& blueprint = document.GetBlueprint();
+        auto  source    = blueprint.FindGraph(graph);
+        if (!source)
+            return;
+        std::vector<Id> nodes;
+        for (auto& node : source->Nodes())
+            nodes.push_back(node.m_Id);
+        const auto old    = source->GetName();
+        const auto layout = document.BuildDocumentState().m_NodesState;
+        document.CaptureView();
+        const auto views = document.m_NavigationState.m_Views;
+
+        auto transaction = document.BeginUndoTransaction("Duplicate Function");
+        auto copy        = blueprint.DuplicateFunction(graph, name);
+        if (!copy)
+        {
+            auto message = copy.GetError().Message();
+            LOGW("[Function] %s: %.*s", old.c_str(), static_cast<int>(message.size()), message.data());
+            transaction->Discard();
+            return;
+        }
+        auto& duplicate = *copy.GetValue();
+        if (auto view = views.find(graph); view != views.end())
+            document.m_NavigationState.m_Views[duplicate.GetId()] = view->second;
+        ShowGraph(duplicate.GetId());
+        for (size_t i = 0; i < nodes.size() && i < duplicate.Nodes().size(); ++i)
+        {
+            auto state = std::find_if(layout.begin(), layout.end(), [node = nodes[i]](const ed::NodeState& state) { return state.Id.Get() == node; });
+            if (state == layout.end())
+                continue;
+            auto copied = *state;
+            copied.Id   = duplicate.Nodes()[i].m_Id;
+            ed::SetNodeState(copied);
+        }
+        transaction->AddAction("%s duplicated as %s", old.c_str(), name.c_str());
     }
 
     // Selects the node, and brings it into view, in its graph.
@@ -3234,6 +3315,9 @@ private:
     Id                        m_RenamedFunction = 0;     // its graph's ID
     bool                      m_RenameFocus     = false; // the rename popup opens, its name focused
     char                      m_RenameText[64]  = {};
+    Id                        m_DuplicatedFunction = 0;     // its graph's ID
+    bool                      m_DuplicateFocus     = false; // the duplicate's name popup opens, its name focused
+    char                      m_DuplicateText[64]  = {};
     Debugger                  m_Debugger;
     ProblemList               m_Problems;
     std::unordered_set<Id>    m_Bubbles;    // nodes whose problems show
@@ -3283,6 +3367,7 @@ private:
     Action m_Blueprint_Run   = { ICON_FA_PLAY,         "Run",          ImGuiKey_F5,                  [this] { Blueprint_Run();   } };
     Action m_Blueprint_ToggleBreakpoint = { ICON_FA_CIRCLE_DOT, "Toggle Breakpoint", ImGuiKey_F9, [this] { Blueprint_ToggleBreakpoint(); } };
     Action m_Blueprint_AddFunction = { ICON_FA_FLORIN_SIGN, "Add Function", [this] { Blueprint_AddFunction(); } };
+    Action m_Blueprint_DuplicateFunction = { ICON_FA_CLONE, "Duplicate Function...", [this] { StartDuplicateFunction(m_Document->GetGraph().GetId()); } };
     Action m_Blueprint_RemoveOrphans = { ICON_FA_LINK_SLASH, "Remove All Orphaned Pins", [this] { RemoveOrphans(*m_Document, 0); } };
     Action m_Blueprint_AddVariable = { ICON_FA_DATABASE, "Add Variable", [this] { AddVariable(*m_Document); } };
 };
