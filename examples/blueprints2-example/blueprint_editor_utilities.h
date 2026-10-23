@@ -326,7 +326,7 @@ private:
 // A run of a document's blueprint: a context of its compiled program, and the fiber its Start or
 // Call began. Prints go to the log, and so do a call's results. A step the document takes goes on in the run when it changed only
 // values, and stops it otherwise. Breakpoints stay for the runs that follow. The run's clock moves
-// on only while it runs.
+// on only while it runs. Each run is seeded at random, so its random numbers are its own.
 struct Debugger
 {
     // A blueprint with an error doesn't start: its diagnostics are logged. Without arguments, the

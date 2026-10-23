@@ -1059,6 +1059,35 @@ TEST_CASE(SignalledRuns, "blueprints2.a_fiber_waiting_for_a_signal_goes_on_once_
     test::Check(!debugger.Waiting() && debugger.IsActive() && debugger.NextNode() == made.m_Print, "its own does, and the run goes on");
 }
 
+TEST_CASE(SeededRuns, "blueprints2.each_run_draws_random_numbers_of_its_own", nullptr, test::TestFlags_None)
+{
+    // Four Randoms in an array, as a run computes it before its first step. Two runs seeded at random
+    // draw the same four once in 2^96 runs.
+    test::Session session(UnnamedConfig());
+    OverlayLog    log;
+    Document      document{ ExampleRegistry(), std::make_shared<TypeTable>() };
+    auto& graph = document.GetGraph();
+    auto  pin   = [&graph](Id node, std::string_view key) { auto found = graph.FindNode(node); auto pin = found ? found->FindPin(key) : nullptr; return pin ? pin->m_Id : 0; };
+    NodeConfig four;
+    four.m_Groups["in"] = 4;
+    auto start = graph.AddNode("crude.Start").ValueOr(0), print = graph.AddNode("crude.Print").ValueOr(0);
+    auto array = graph.AddNode("crude.MakeArray", four).ValueOr(0), text = graph.AddNode("crude.ToString").ValueOr(0);
+    auto made  = graph.Connect(pin(start, "then"), pin(print, "enter")).IsOk() && graph.Connect(pin(array, "array"), pin(text, "value")).IsOk() && graph.Connect(pin(text, "text"), pin(print, "text")).IsOk();
+    for (int i = 0; i < 4; ++i)
+        made = graph.Connect(pin(graph.AddNode("crude.Random").ValueOr(0), "value"), pin(array, "in." + std::to_string(i))).IsOk() && made;
+    test::Check(made, "the document is made");
+
+    auto drawn = [&]
+    {
+        Debugger debugger;
+        auto started = debugger.Start(document, false);
+        auto read    = started ? debugger.GetContext()->Evaluate(pin(text, "text")) : Result<Watch>(BlueprintError::NotFound);
+        return read ? std::string(read.GetValue().m_Value.AsString()) : std::string();
+    };
+    auto first = drawn(), second = drawn();
+    test::Check(!first.empty() && first != second, "two runs draw other numbers: %s and %s", first.c_str(), second.c_str());
+}
+
 TEST_CASE(VariableEdits, "blueprints2.variables_change_in_undo_steps_and_go_with_their_nodes", nullptr, test::TestFlags_None)
 {
     test::Session session(UnnamedConfig());

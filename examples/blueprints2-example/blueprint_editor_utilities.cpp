@@ -10,6 +10,7 @@
 # include <cstdint>
 # include <cstdio>
 # include <optional>
+# include <random>
 # include <tuple>
 # include <utility>
 
@@ -1910,6 +1911,7 @@ bool blueprint_editor_utilities::Debugger::Begin(const Document& document, bool 
 
     m_Context = std::make_unique<Context>(compiled.m_Program);
     m_Context->SetMonitor(&m_Monitor);
+    m_Context->Seed(std::random_device()());
     for (auto node : m_Breakpoints)
         m_Context->SetBreakpoint(node, true);
     auto& program = *compiled.m_Program;
