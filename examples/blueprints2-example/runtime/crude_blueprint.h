@@ -604,7 +604,10 @@ struct Bindings
 class NodeDeclaration
 {
 public:
-    explicit NodeDeclaration(const NodeConfig& config): m_Config(config) {}
+    NodeDeclaration(const Registry& registry, const NodeConfig& config): m_Registry(registry), m_Config(config) {}
+
+    // Of the graph the node is in.
+    const Registry& GetRegistry() const { return m_Registry; }
 
     TypeVariable Variable(std::string name, std::vector<const ValueType*> allowed = {});
 
@@ -626,6 +629,7 @@ private:
 
     void AddPin(PinDeclaration pin);
 
+    const Registry&                  m_Registry;
     const NodeConfig&                m_Config;
     std::vector<VariableDeclaration> m_Variables;
     std::vector<PinDeclaration>      m_Pins;
@@ -777,6 +781,7 @@ public:
 
     const ValueType*                 FindValueType(std::string_view name) const;
     std::vector<const ValueType*>    ValueTypes() const; // in the order of their names
+    std::vector<const ValueType*>    KeyTypes() const;   // those that can be map keys, in that order
     const CastInfo*                  FindCast(const Type* from, const Type* to) const;
     std::span<const CastInfo* const> CastsFrom(const Type* from) const;
     const NodeType*                  FindNodeType(std::string_view name) const;

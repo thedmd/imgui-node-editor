@@ -244,7 +244,7 @@ struct Fixture : BlueprintFixture
 
 NodeDeclaration Declared(const NodeType& type, const NodeConfig& config, const Bindings& bindings = {})
 {
-    NodeDeclaration declaration(config);
+    NodeDeclaration declaration(*TestRegistry(), config);
     type.Declare(declaration, config, bindings);
     return declaration;
 }

@@ -873,9 +873,12 @@ struct AppendNode final : NodeType
 };
 
 // The types a map may take its keys of.
+// A registry without key types would leave the variable taking any type.
 TypeVariable Keys(NodeDeclaration& declaration)
 {
-    return declaration.Variable("K", { &Int32ValueType(), &StringValueType() });
+    auto keys = declaration.GetRegistry().KeyTypes();
+    CRUDE_BP_ASSERT(!keys.empty());
+    return declaration.Variable("K", std::move(keys));
 }
 
 TypeTerm MapOf(TypeVariable key, TypeVariable value)

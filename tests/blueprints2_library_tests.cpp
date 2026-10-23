@@ -723,6 +723,60 @@ TEST_CASE(MapNodes, "library.maps_are_made_read_and_changed", nullptr, test::Tes
     }
 }
 
+TEST_CASE(ApplicationKeys, "library.maps_take_keys_of_every_key_type_the_registry_has", nullptr, test::TestFlags_None)
+{
+    // A key type of the application's: a code, in the order of its number.
+    struct CodeBox final : Box
+    {
+        CRUDE_BP_RTTI(CodeBox, Box)
+
+        explicit CodeBox(int32_t code): m_Code(code) {}
+
+        const int32_t m_Code;
+    };
+    struct CodeType final : ValueType
+    {
+        CodeType(): ValueType("test.Code") {}
+
+        static int32_t Of(const Value& value) { return Cast<CodeBox>(value.AsBox())->m_Code; }
+        Value Make(int32_t code) const        { return Value::Boxed(AsType(), MakeRef<const CodeBox>(code)); }
+
+        Value             Default(const Type&) const override { return Make(0); }
+        Result<Value>     Load(const Type&, const crude_json::value& json) const override { return json.is_number() ? Result<Value>(Make(static_cast<int32_t>(json.get<crude_json::number>()))) : Result<Value>(BlueprintError::WrongType); }
+        crude_json::value Save(const Value& value) const override { return static_cast<crude_json::number>(Of(value)); }
+        std::string       Format(const Value& value) const override { return "#" + std::to_string(Of(value)); }
+        bool              Equal(const Value& a, const Value& b) const override { return Of(a) == Of(b); }
+        bool              IsKey() const override { return true; }
+        int               Compare(const Value& a, const Value& b) const override { return (Of(a) > Of(b)) - (Of(a) < Of(b)); }
+    };
+    static const CodeType code;
+    static const std::shared_ptr<const Registry> registry = []
+    {
+        auto made = std::make_shared<Registry>();
+        if (!RegisterBuiltins(*made) || !RegisterLibrary(*made) || !made->AddValueType(code))
+            test::Check(false, "the library and the code type are registered");
+        return made;
+    }();
+
+    // Codes 2 and 1 to "b" and "a" make a map in the codes' order.
+    Fixture f(registry);
+    auto start = f.Add("Start"), print = f.Add("Print"), map = f.Grown("MakeMap", "entry", 2), text = f.Add("ToString");
+    auto keys  = f.Type(map, "key.0");
+    f.Link(f.Constant(code.Make(2)), "value", map, "key.0");
+    f.Link(f.Constant(Value::String("b")), "value", map, "value.0");
+    f.Link(f.Constant(code.Make(1)), "value", map, "key.1");
+    f.Link(f.Constant(Value::String("a")), "value", map, "value.1");
+    f.Link(start, "then", print, "enter");
+    f.Link(map, "map", text, "value");
+    f.Link(text, "text", print, "text");
+    auto printed = f.Run();
+    test::Check(keys == "?{Int32|String|test.Code}" && printed == "{#1: \"a\", #2: \"b\"}", "a key takes the registry's key types, the code's too: %s, %s", keys.c_str(), printed.c_str());
+
+    Fixture other(registry);
+    auto refused = other.Connect(other.Constant(Value::Bool(true)), "value", other.Add("MakeMap"), "key.0");
+    test::Check(!refused && refused.GetError().Is(BlueprintError::TypeMismatch), "and nothing else: %s", Message(refused).c_str());
+}
+
 TEST_CASE(AssertStops, "library.a_failing_assert_stops_its_fiber", nullptr, test::TestFlags_None)
 {
     for (auto condition : { true, false })

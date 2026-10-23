@@ -783,6 +783,15 @@ std::vector<const crude_blueprint::ValueType*> crude_blueprint::Registry::ValueT
     return types;
 }
 
+std::vector<const crude_blueprint::ValueType*> crude_blueprint::Registry::KeyTypes() const
+{
+    std::vector<const ValueType*> types;
+    for (auto& [name, type] : m_ValueTypes)
+        if (type->IsKey())
+            types.push_back(type);
+    return types;
+}
+
 const crude_blueprint::CastInfo* crude_blueprint::Registry::FindCast(const Type* from, const Type* to) const
 {
     for (auto cast : CastsFrom(from))
@@ -1747,7 +1756,7 @@ crude_blueprint::Result<std::vector<crude_blueprint::NewNodeFit>> crude_blueprin
     const auto&       registry = m_Blueprint->GetRegistry();
     for (auto type : types)
     {
-        NodeDeclaration declaration(config);
+        NodeDeclaration declaration(registry, config);
         Declare(*type, declaration, config, {});
         const auto base = resolution.Size();
         for (auto& variable : declaration.Variables())
@@ -2163,7 +2172,7 @@ void crude_blueprint::Graph::Declare()
         auto& node = m_Nodes[i];
         m_NodeIndex[node.m_Id] = i;
 
-        NodeDeclaration declaration(node.m_Config);
+        NodeDeclaration declaration(m_Blueprint->GetRegistry(), node.m_Config);
         Declare(*node.m_Type, declaration, node.m_Config, node.m_Bindings);
         node.m_Splits.clear();
         Split(declaration.m_Pins, node.m_Config.m_Split, node.m_Splits);
