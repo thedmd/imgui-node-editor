@@ -131,7 +131,8 @@ private:
 };
 
 // What the example's documents are made of: the built-in value types and casts, the library, and
-// the example's own struct, Vector2, with its Make and Break.
+// the example's own structs, Vector2, Point and Color, each with its Make and Break. A color, white
+// by default, shows as a swatch, and its editor has a picker.
 std::shared_ptr<const crude_blueprint::Registry> ExampleRegistry();
 
 // Start runs For Loop from 0 to 4, and its body prints each index plus 10, through a cast from

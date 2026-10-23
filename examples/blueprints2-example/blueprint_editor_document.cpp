@@ -1,6 +1,8 @@
 # include "blueprint_editor_document.h"
+# include "blueprint_editor_utilities.h"
 # include "crude_blueprint_library.h"
 # include "crude_logger.h"
+# include <imgui_internal.h>
 # include <cmath>
 # include <stdarg.h>
 # include <stdlib.h>
@@ -526,20 +528,105 @@ std::unique_ptr<crude_blueprint::Blueprint> blueprint_editor::Document::LoadBlue
     return blueprint;
 }
 
+namespace blueprint_editor { namespace {
+
+using crude_blueprint::Value;
+using blueprint_editor_utilities::ValueEdit;
+
+ImVec4 ColorOf(const Value& value)
+{
+    auto fields = value.AsStruct();
+    return ImVec4(fields[0].AsFloat(), fields[1].AsFloat(), fields[2].AsFloat(), fields[3].AsFloat());
+}
+
+// A swatch, opaque on the left, and on a checkerboard on the right, as Dear ImGui's color buttons
+// show alpha.
+void DrawColor(ImDrawList* drawList, ImVec2 min, ImVec2 max, const Value& value)
+{
+    const auto color  = ColorOf(value);
+    const auto middle = ImFloor((min.x + max.x) * 0.5f);
+    drawList->AddRectFilled(min, ImVec2(middle, max.y), ImGui::GetColorU32(ImVec4(color.x, color.y, color.z, 1.0f)));
+    ImGui::RenderColorRectWithAlphaCheckerboard(drawList, ImVec2(middle, min.y), max, ImGui::GetColorU32(color), ImGui::GetStyle().Alpha, ImFloor((max.y - min.y) * 0.5f), ImVec2(0.0f, 0.0f));
+    drawList->AddRect(min, max, ImGui::GetColorU32(ImGuiCol_Border));
+}
+
+// The swatch, and a picker under it of a copy of the color, which 'focus' opens: closing the picker
+// with a click elsewhere gives the copy, one edit however long the picking took, and Escape drops it.
+ValueEdit EditColor(Value& value, bool focus, bool inCanvas)
+{
+    const auto line     = ImGui::GetTextLineHeight();
+    const auto picker   = ImGui::GetID("##picker");
+    const auto storage  = ImGui::GetStateStorage();
+    const auto wasOpen  = !focus && storage->GetBool(picker);
+    const auto original = ColorOf(value);
+    const ImGuiID channels[] = { ImGui::GetID("##r"), ImGui::GetID("##g"), ImGui::GetID("##b"), ImGui::GetID("##a") };
+    float rgba[4];
+    for (int i = 0; i < 4; ++i)
+        rgba[i] = storage->GetFloat(channels[i]);
+
+    const auto swatch = ImVec4(wasOpen ? ImVec4(rgba[0], rgba[1], rgba[2], rgba[3]) : original);
+    if (ImGui::ColorButton("##editor", swatch, ImGuiColorEditFlags_AlphaPreviewHalf | ImGuiColorEditFlags_NoTooltip, ImVec2(line * 2.0f, line)) || focus)
+    {
+        for (int i = 0; i < 4; ++i)
+            storage->SetFloat(channels[i], rgba[i] = (&original.x)[i]);
+        ImGui::OpenPopup(picker);
+    }
+
+    const auto [min, max] = blueprint_editor_utilities::LastItemOnScreen(inCanvas);
+    if (inCanvas)
+        ed::Suspend();
+    ImGui::SetNextWindowPos(ImVec2(min.x, max.y), ImGuiCond_Appearing);
+    const auto open  = ImGui::BeginPopup("##picker");
+    auto       edit  = open || !wasOpen ? ValueEdit::None : ValueEdit::Done;
+    auto       apply = !open && wasOpen;
+    storage->SetBool(picker, open);
+    if (open)
+    {
+        ImGui::ColorPicker4("##color", rgba, ImGuiColorEditFlags_AlphaBar | ImGuiColorEditFlags_AlphaPreviewHalf | ImGuiColorEditFlags_NoOptions, &original.x);
+        for (int i = 0; i < 4; ++i)
+            storage->SetFloat(channels[i], rgba[i]);
+        if (ImGui::IsKeyPressed(ImGuiKey_Escape, false))
+        {
+            ImGui::CloseCurrentPopup();
+            edit = ValueEdit::Done;
+        }
+        else if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows | ImGuiHoveredFlags_AllowWhenBlockedByActiveItem))
+        {
+            ImGui::CloseCurrentPopup();
+            apply = true;
+            edit  = ValueEdit::Done;
+        }
+        blueprint_editor_utilities::HoldEditorWhileHovered();
+        ImGui::EndPopup();
+    }
+    if (inCanvas)
+        ed::Resume();
+    if (apply)
+        value = Value::Struct(*value.GetType(), { Value::Float(rgba[0]), Value::Float(rgba[1]), Value::Float(rgba[2]), Value::Float(rgba[3]) });
+    return edit;
+}
+
+} } // namespace blueprint_editor { namespace {
+
 std::shared_ptr<const crude_blueprint::Registry> blueprint_editor::ExampleRegistry()
 {
     using namespace crude_blueprint;
 
     static const std::shared_ptr<const Registry> registry = []
     {
-        auto made    = std::make_shared<Registry>();
-        auto vector2 = std::make_unique<StructType>("example.Vector2", std::vector<StructField>{ { "x", &FloatType() }, { "y", &FloatType() } });
-        auto& type   = *vector2;
-        [[maybe_unused]] auto builtins = RegisterBuiltins(*made);
-        [[maybe_unused]] auto library  = RegisterLibrary(*made);
-        [[maybe_unused]] auto added    = made->AddValueType(std::move(vector2));
-        [[maybe_unused]] auto nodes    = RegisterStructNodes(*made, type);
-        IM_ASSERT(builtins && library && added && nodes);
+        auto made = std::make_shared<Registry>();
+        auto ok   = RegisterBuiltins(*made).IsOk() && RegisterLibrary(*made).IsOk();
+        auto add  = [&made, &ok](std::unique_ptr<StructType> type) -> const StructType&
+        {
+            auto& added = *type;
+            ok = made->AddValueType(std::move(type)).IsOk() && RegisterStructNodes(*made, added).IsOk() && ok;
+            return added;
+        };
+        add(std::make_unique<StructType>("example.Vector2", std::vector<StructField>{ { "x", &FloatType() }, { "y", &FloatType() } }));
+        add(std::make_unique<StructType>("example.Point", std::vector<StructField>{ { "x", &Int32Type() }, { "y", &Int32Type() } }));
+        auto& color = add(std::make_unique<StructType>("example.Color", std::vector<StructField>{ { "r", &FloatType(), Value::Float(1.0f) }, { "g", &FloatType(), Value::Float(1.0f) }, { "b", &FloatType(), Value::Float(1.0f) }, { "a", &FloatType(), Value::Float(1.0f) } }));
+        IM_ASSERT(ok);
+        blueprint_editor_utilities::SetValueWidgets(color, { [](const Value&) { return ImGui::GetTextLineHeight() * 2.0f; }, DrawColor, EditColor });
         return made;
     }();
     return registry;

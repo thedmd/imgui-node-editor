@@ -1816,6 +1816,63 @@ TEST_CASE(ValueWidgetsUsed, "blueprints2.an_applications_widgets_draw_and_edit_t
     test::Check(drew && width == line * 2.0f && value.AsStruct()[0].AsInt32() == 7, "its box is as wide as the widgets say, %g for a line of %g, they draw it, and a click edits it with theirs: %s", width, line, ValueText(value).c_str());
 }
 
+TEST_CASE(ColorEdits, "blueprints2.a_color_shows_as_a_swatch_and_is_picked_in_one_edit", nullptr, test::TestFlags_None)
+{
+    // A Color with its editor, in the host window above the canvas. A click near the bottom left of
+    // the picker's square picks black.
+    using namespace blueprint_editor_utilities;
+    test::Session session(UnnamedConfig());
+    auto   registry = ExampleRegistry();
+    auto   head     = registry->FindValueType("example.Color");
+    auto   color    = head->Default(head->AsType());
+    auto   edits    = 0;
+    ImRect box;
+    session.BeforeEditor = [&]
+    {
+        ImGui::SetCursorScreenPos(ImVec2(100.0f, 100.0f));
+        if (DrawValueWithEditor(1, color))
+            ++edits;
+        box = ImRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
+    };
+    auto black = []() -> std::optional<ImVec2>
+    {
+        auto& popups = GImGui->OpenPopupStack;
+        if (popups.empty() || !popups.back().Window)
+            return std::nullopt;
+        auto& style  = ImGui::GetStyle();
+        auto  square = ImTrunc(ImGui::GetFontSize() * 16.0f) - 2.0f * (ImGui::GetFrameHeight() + style.ItemInnerSpacing.x);
+        auto  corner = popups.back().Window->Pos + style.WindowPadding;
+        return corner + ImVec2(4.0f, square - 4.0f);
+    };
+    const auto elsewhere = ImVec2(700.0f, 500.0f);
+    session.Run(3);
+    const auto line   = ImGui::GetTextLineHeight();
+    const auto swatch = box.GetWidth() == line * 2.0f && ValueText(color) == "{r: 1, g: 1, b: 1, a: 1}";
+
+    session.Click(box.GetCenter());
+    session.Run(3);
+    auto opened = black();
+    if (opened)
+        session.Click(*opened);
+    test::Key(ImGuiKey_Escape, true);
+    session.Run(1);
+    test::Key(ImGuiKey_Escape, false);
+    session.Run(2);
+    test::Check(swatch && opened && ValueText(color) == "{r: 1, g: 1, b: 1, a: 1}" && edits == 0 && !black(), "white shows as a swatch two lines wide, and Escape drops what the picker picked: %s", ValueText(color).c_str());
+
+    session.Click(box.GetCenter());
+    session.Run(3);
+    if (auto again = black())
+        session.Click(*again);
+    session.Run(2);
+    auto picking = edits == 0;
+    session.Click(elsewhere);
+    session.Run(2);
+    auto fields = color.AsStruct();
+    test::Check(picking && edits == 1 && fields[0].AsFloat() < 0.1f && fields[1].AsFloat() < 0.1f && fields[2].AsFloat() < 0.1f && fields[3].AsFloat() == 1.0f && !black(),
+        "a click elsewhere gives what was picked, in one edit: %s, %d", ValueText(color).c_str(), edits);
+}
+
 TEST_CASE(CommentTexts, "blueprints2.a_comments_text_is_edited_in_one_undo_step", nullptr, test::TestFlags_None)
 {
     test::Session session(UnnamedConfig());
