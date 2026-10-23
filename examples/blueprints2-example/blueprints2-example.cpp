@@ -2950,6 +2950,8 @@ private:
 
         LOGI("[File] Save \"%s\".", std::string(path).c_str());
 
+        Application_GetMostRecentlyOpenFileList().Add(std::string(path));
+
         return true;
     }
 
