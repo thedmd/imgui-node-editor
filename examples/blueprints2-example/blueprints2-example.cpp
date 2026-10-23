@@ -562,6 +562,7 @@ private:
         m_View_ToggleProblems.SetEnabled(hasDocument && !m_Problems.Problems().empty());
         m_Blueprint_AddFunction.SetEnabled(hasDocument);
         const auto inFunction = hasDocument && m_Document->GetBlueprint().FindFunction(m_Document->GetGraph().GetId()) != nullptr;
+        m_Blueprint_RenameFunction.SetEnabled(inFunction);
         m_Blueprint_DuplicateFunction.SetEnabled(inFunction);
         m_Blueprint_AddVariable.SetEnabled(hasDocument);
 
@@ -681,6 +682,7 @@ private:
                 menuAction(m_Blueprint_RemoveOrphans);
                 ImGui::Separator();
                 menuAction(m_Blueprint_AddFunction);
+                menuAction(m_Blueprint_RenameFunction);
                 menuAction(m_Blueprint_DuplicateFunction);
                 menuAction(m_Blueprint_AddVariable);
 
@@ -2184,7 +2186,7 @@ private:
             auto rename   = function && ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left);
             if (function && ImGui::BeginPopupContextItem())
             {
-                rename = ImGui::MenuItem("Rename...");
+                rename = ImGui::MenuItem("Rename...", id == document.GetGraph().GetId() ? "F2" : nullptr);
                 if (ImGui::MenuItem("Duplicate..."))
                     StartDuplicateFunction(id);
                 if (ImGui::MenuItem("Delete"))
@@ -2192,11 +2194,7 @@ private:
                 ImGui::EndPopup();
             }
             if (rename)
-            {
-                m_RenamedFunction = id;
-                m_RenameFocus     = true;
-                std::snprintf(m_RenameText, sizeof(m_RenameText), "%s", graph->GetName().c_str());
-            }
+                StartRenameFunction(id);
             if (!shown)
                 continue;
             if (m_TabRequest == id)
@@ -2212,6 +2210,16 @@ private:
         ImGui::EndTabBar();
         ShowRenameFunction(document);
         ShowDuplicateFunction(document);
+    }
+
+    void StartRenameFunction(Id graph)
+    {
+        auto found = m_Document->GetBlueprint().FindGraph(graph);
+        if (!found || !m_Document->GetBlueprint().FindFunction(graph))
+            return;
+        m_RenamedFunction = graph;
+        m_RenameFocus     = true;
+        std::snprintf(m_RenameText, sizeof(m_RenameText), "%s", found->GetName().c_str());
     }
 
     void ShowRenameFunction(Document& document)
@@ -2656,6 +2664,8 @@ private:
                              &m_View_NavigateBackward, &m_View_NavigateForward, &m_Blueprint_ToggleBreakpoint })
             if (actions.Press(action->GetName().c_str(), action->GetShortcut(), action->IsEnabled(), true))
                 action->Execute();
+        if (actions.Press("Rename Function", m_Blueprint_RenameFunction.GetShortcut(), m_Blueprint_RenameFunction.IsEnabled(), true))
+            m_Blueprint_RenameFunction.Execute();
 
         if (m_ShowActions)
             actions.Draw(canvasMin, canvasMax, m_ShowDisabledActions);
@@ -3367,6 +3377,7 @@ private:
     Action m_Blueprint_Run   = { ICON_FA_PLAY,         "Run",          ImGuiKey_F5,                  [this] { Blueprint_Run();   } };
     Action m_Blueprint_ToggleBreakpoint = { ICON_FA_CIRCLE_DOT, "Toggle Breakpoint", ImGuiKey_F9, [this] { Blueprint_ToggleBreakpoint(); } };
     Action m_Blueprint_AddFunction = { ICON_FA_FLORIN_SIGN, "Add Function", [this] { Blueprint_AddFunction(); } };
+    Action m_Blueprint_RenameFunction = { ICON_FA_I_CURSOR, "Rename Function...", ImGuiKey_F2, [this] { StartRenameFunction(m_Document->GetGraph().GetId()); } };
     Action m_Blueprint_DuplicateFunction = { ICON_FA_CLONE, "Duplicate Function...", [this] { StartDuplicateFunction(m_Document->GetGraph().GetId()); } };
     Action m_Blueprint_RemoveOrphans = { ICON_FA_LINK_SLASH, "Remove All Orphaned Pins", [this] { RemoveOrphans(*m_Document, 0); } };
     Action m_Blueprint_AddVariable = { ICON_FA_DATABASE, "Add Variable", [this] { AddVariable(*m_Document); } };
