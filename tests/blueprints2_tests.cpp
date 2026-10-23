@@ -1895,3 +1895,145 @@ TEST_CASE(OrphanMending, "blueprints2.an_orphan_is_split_again_its_links_moved_o
     session.Use([&] { RemoveOrphans(document, 0); });
     test::Check(std::all_of(graph.Nodes().begin(), graph.Nodes().end(), [](const Node& node) { return node.m_Orphans.empty(); }), "and all the graph's broken, no node has one");
 }
+
+namespace {
+
+// The document's nodes as boxes of their titles, a comment's with a group, so that the editor knows
+// their sizes.
+void DrawNodes(test::Session& session, const Document& document)
+{
+    session.DefaultContent = [&document](int)
+    {
+        for (auto& node : document.GetGraph().Nodes())
+        {
+            ed::BeginNode(node.m_Id);
+            ImGui::TextUnformatted(node.m_Type->m_Title.c_str());
+            if (blueprint_editor_utilities::IsComment(node))
+                ed::Group(ImVec2(320.0f, 180.0f));
+            ed::EndNode();
+        }
+    };
+}
+
+ImRect Bounds(std::span<const Id> nodes)
+{
+    ImRect bounds(ImVec2(FLT_MAX, FLT_MAX), ImVec2(-FLT_MAX, -FLT_MAX));
+    for (auto node : nodes)
+    {
+        bounds.Add(ed::GetNodePosition(node));
+        bounds.Add(ed::GetNodePosition(node) + ed::GetNodeSize(node));
+    }
+    return bounds;
+}
+
+} // namespace
+
+TEST_CASE(ClipboardPastes, "blueprints2.copied_nodes_paste_with_their_links_around_a_point_in_one_undo_step", nullptr, test::TestFlags_None)
+{
+    using namespace blueprint_editor_utilities;
+    test::Session session(UnnamedConfig());
+    OverlayLog    log;
+    Example       example(session);
+    auto& document = example.m_Document;
+    DrawNodes(session, document);
+    session.Run(2);
+
+    // The loop, the Add of its index and 10, and the 10: two links among them.
+    const Id   nodes[] = { example.Node("crude.ForLoop"), example.Node("crude.Add"), example.Node("crude.Constant") };
+    const auto text    = session.Use([&] { return CopyNodes(document, nodes); });
+    const auto count   = document.GetGraph().Nodes().size(), links = document.GetGraph().Links().size(), steps = document.m_Undo.size();
+    auto pasted = session.Use([&] { return PasteNodes(document, text, ImVec2(900.0f, 500.0f), "Paste"); });
+    if (!pasted || pasted.GetValue().size() != 3)
+        return test::Check(false, "the three nodes paste: %s", pasted ? "" : std::string(pasted.GetError().Message()).c_str());
+    const auto copies = pasted.GetValue();
+    test::Check(document.GetGraph().Nodes().size() == count + 3 && document.GetGraph().Links().size() == links + 2 && document.m_Undo.size() == steps + 1,
+        "they paste with the two links among them, in one undo step");
+    auto copy = document.GetGraph().FindNode(copies[0]);
+    auto last = copy && copy->FindPin("last") ? document.GetGraph().FindValue(copy->FindPin("last")->m_Id) : nullptr;
+    test::Check(last && *last == Value::Int32(4) && example.LinkBetween(example.Pin(copies[0], "index"), example.Pin(copies[1], "in.0")), "the loop's copy counts to 4 too, and gives its index to the Add's copy");
+
+    session.Run(2);
+    session.Use([&]
+    {
+        const auto offset = ed::GetNodePosition(copies[0]) - ed::GetNodePosition(nodes[0]);
+        auto kept = true, selected = true;
+        for (size_t i = 0; i < copies.size(); ++i)
+        {
+            const auto moved = ed::GetNodePosition(copies[i]) - ed::GetNodePosition(nodes[i]);
+            kept     = kept && ImFabs(moved.x - offset.x) < 0.5f && ImFabs(moved.y - offset.y) < 0.5f;
+            selected = selected && ed::IsNodeSelected(copies[i]) && !ed::IsNodeSelected(nodes[i]);
+        }
+        const auto center = Bounds(copies).GetCenter();
+        test::Check(kept && ImFabs(center.x - 900.0f) <= 1.0f && ImFabs(center.y - 500.0f) <= 1.0f, "they lie as their originals do, around the point: (%g, %g)", center.x, center.y);
+        test::Check(selected && ed::GetSelectedObjectCount() == 3, "and they're the selection");
+    });
+
+    auto refused = session.Use([&] { return PasteNodes(document, "Start, For Loop and Print", ImVec2(900.0f, 500.0f), "Paste"); });
+    test::Check(!refused && document.GetGraph().Nodes().size() == count + 3 && document.m_Undo.size() == steps + 1, "text that holds no nodes pastes none: %s", refused ? "" : std::string(refused.GetError().Message()).c_str());
+    session.Use([&] { document.Undo(); });
+    test::Check(document.GetGraph().Nodes().size() == count && document.GetGraph().Links().size() == links, "undone, the copies are gone");
+}
+
+TEST_CASE(ClipboardDuplicates, "blueprints2.duplicates_lie_beside_their_nodes_selected_in_one_undo_step", nullptr, test::TestFlags_None)
+{
+    using namespace blueprint_editor_utilities;
+    test::Session session(UnnamedConfig());
+    OverlayLog    log;
+    Example       example(session);
+    auto& document = example.m_Document;
+    DrawNodes(session, document);
+    session.Run(2);
+
+    const Id   nodes[] = { example.Node("crude.Add"), example.Node("crude.Constant") };
+    const auto steps   = document.m_Undo.size();
+    auto duplicated = session.Use([&] { return DuplicateNodes(document, nodes, ImVec2(32.0f, 32.0f)); });
+    if (!duplicated || duplicated.GetValue().size() != 2)
+        return test::Check(false, "the two nodes duplicate: %s", duplicated ? "" : std::string(duplicated.GetError().Message()).c_str());
+    const auto copies = duplicated.GetValue();
+    session.Run(2);
+    session.Use([&]
+    {
+        auto beside = true;
+        for (size_t i = 0; i < copies.size(); ++i)
+            beside = beside && ed::GetNodePosition(copies[i]) == ed::GetNodePosition(nodes[i]) + ImVec2(32.0f, 32.0f) && ed::IsNodeSelected(copies[i]);
+        test::Check(beside && document.m_Undo.size() == steps + 1, "each lies 32 units right and down of its node, selected, in one undo step");
+    });
+    auto ten = document.GetGraph().FindNode(copies[1]);
+    test::Check(ten && ten->m_Config == document.GetGraph().FindNode(nodes[1])->m_Config && example.LinkBetween(example.Pin(copies[1], "value"), example.Pin(copies[0], "in.1")),
+        "the 10's copy is a 10 too, linked into the Add's copy");
+}
+
+TEST_CASE(ClipboardComments, "blueprints2.a_selected_comment_takes_the_nodes_in_it_along", nullptr, test::TestFlags_None)
+{
+    using namespace blueprint_editor_utilities;
+    test::Session session(UnnamedConfig());
+    OverlayLog    log;
+    Example       example(session);
+    auto& document = example.m_Document;
+    DrawNodes(session, document);
+
+    // A comment around the Add and the 10.
+    const auto sum = example.Node("crude.Add"), ten = example.Node("crude.Constant");
+    const auto comment = session.Use([&]
+    {
+        auto added = document.GetGraph().AddNode("crude.Comment");
+        ed::SetNodePosition(added.ValueOr(0), ImVec2(230.0f, 240.0f));
+        ed::SetGroupSize(added.ValueOr(0), ImVec2(420.0f, 220.0f));
+        return added.ValueOr(0);
+    });
+    session.Run(2);
+
+    const auto taken = session.Use([&]
+    {
+        ed::SelectNode(comment);
+        return SelectedNodesWithContent(document.GetGraph());
+    });
+    auto has = [&taken](Id node) { return std::find(taken.begin(), taken.end(), node) != taken.end(); };
+    test::Check(taken.size() == 3 && has(comment) && has(sum) && has(ten), "a selected comment takes the Add and the 10 in it, and no other node: %d nodes", static_cast<int>(taken.size()));
+
+    auto duplicated = session.Use([&] { return DuplicateNodes(document, taken, ImVec2(0.0f, 300.0f)); });
+    session.Run(2);
+    auto copy = ed::NodeState();
+    const auto sized = duplicated && duplicated.GetValue().size() == 3 && session.Use([&] { return ed::GetNodeState(duplicated.GetValue()[0], &copy); });
+    test::Check(sized && copy.GroupSize == ImVec2(420.0f, 220.0f) && copy.Position == ImVec2(230.0f, 540.0f), "its copy is as large, 300 units below: (%g, %g)", copy.Position.x, copy.Position.y);
+}

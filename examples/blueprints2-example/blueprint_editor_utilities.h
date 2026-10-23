@@ -214,6 +214,20 @@ void DissolveReroute(Graph& graph, Id reroute);
 void RemoveReroute(Document& document, Id reroute);
 void RenamePin(Document& document, Id pin, std::string name);    // in its node's config; an empty name gives back the declared one
 
+// The clipboard's text for nodes of the graph that shows and the links among them: SaveNodes()'s,
+// and where each node lies, from the top left of them all. Needs the document's editor current.
+std::string CopyNodes(const Document& document, std::span<const Id> nodes);
+// The nodes of the clipboard's text into the graph that shows, as one undo step named 'what', the
+// middle of all of them at a point of the canvas, and selected; their IDs. Text that holds no nodes
+// changes nothing.
+Result<std::vector<Id>> PasteNodes(Document& document, std::string_view text, ImVec2 center, std::string_view what);
+// Copies of nodes of the graph that shows and of the links among them, moved by 'offset', as one
+// undo step, and selected; their IDs.
+Result<std::vector<Id>> DuplicateNodes(Document& document, std::span<const Id> nodes, ImVec2 offset);
+// The selected nodes, and those in the comments among them, as the editor's own Cut, Copy and
+// Duplicate take a selection.
+std::vector<Id> SelectedNodesWithContent(const Graph& graph);
+
 // Edits of the blueprint's variables, one undo step each. One the blueprint refuses is logged.
 void AddVariable(Document& document); // an Int32, named Variable1, or of the first number free
 void ChangeVariable(Document& document, std::string name, Variable changed, std::string_view what);

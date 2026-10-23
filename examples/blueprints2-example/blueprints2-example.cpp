@@ -547,10 +547,11 @@ private:
 
         m_Edit_Undo.SetEnabled(hasUndo);
         m_Edit_Redo.SetEnabled(hasRedo);
-        m_Edit_Cut.SetEnabled(hasDocument && false);
-        m_Edit_Copy.SetEnabled(hasDocument && false);
-        m_Edit_Paste.SetEnabled(hasDocument && false);
-        m_Edit_Duplicate.SetEnabled(hasDocument && false);
+        const auto hasNodes = hasDocument && ed::GetSelectedNodes(nullptr, 0) > 0;
+        m_Edit_Cut.SetEnabled(hasNodes);
+        m_Edit_Copy.SetEnabled(hasNodes);
+        m_Edit_Paste.SetEnabled(hasDocument);
+        m_Edit_Duplicate.SetEnabled(hasNodes);
         m_Edit_Delete.SetEnabled(hasDocument && ed::GetSelectedObjectCount() > 0);
         m_Edit_SelectAll.SetEnabled(hasDocument && !m_Document->GetGraph().Nodes().empty());
 
@@ -2415,11 +2416,36 @@ private:
 
     void HandleContextMenuAction()
     {
+        // Ctrl+X, C and D take the nodes the editor's shortcut names; Ctrl+V pastes where the mouse
+        // points, or in the middle of the view while it points elsewhere.
         auto createNode = ed::ShowBackgroundContextMenu();
+        auto cut = false, copy = false, paste = false, duplicate = false;
+        std::vector<Id> context;
         if (ed::BeginShortcut())
         {
             createNode = ed::AcceptCreateNode() || createNode;
+            cut        = ed::AcceptCut();
+            copy       = ed::AcceptCopy();
+            paste      = ed::AcceptPaste();
+            duplicate  = ed::AcceptDuplicate();
+            std::vector<ed::NodeId> nodes(static_cast<size_t>(ed::GetActionContextNodes(nullptr, 0)));
+            nodes.resize(static_cast<size_t>(ed::GetActionContextNodes(nodes.data(), static_cast<int>(nodes.size()))));
+            for (auto node : nodes)
+                context.push_back(static_cast<Id>(node.Get()));
             ed::EndShortcut();
+        }
+        if (cut)
+            CutToClipboard(context);
+        if (copy)
+            CopyToClipboard(context);
+        if (duplicate)
+            Duplicate(context);
+        if (paste)
+        {
+            const auto view  = ed::GetViewState();
+            const auto mouse = ed::ScreenToCanvas(ImGui::GetMousePos());
+            const auto over  = mouse.x >= view.VisibleMin.x && mouse.y >= view.VisibleMin.y && mouse.x <= view.VisibleMax.x && mouse.y <= view.VisibleMax.y;
+            PasteFromClipboard(over ? mouse : (view.VisibleMin + view.VisibleMax) * 0.5f);
         }
         if (createNode)
         {
@@ -2513,11 +2539,11 @@ private:
         actions.Gesture("Edit Signature", "Double-Click", !pin && node && SignatureNodeOf(document.GetBlueprint(), *node).m_Function);
 
         // The node editor's own actions, its groups being comments, but for Create Link and the
-        // context menus, which the example lists as it carries them out, and Cut, Copy, Paste and
-        // Duplicate, which it doesn't.
+        // context menus, which the example lists as it carries them out.
         for (auto action : { ed::Action::Center, ed::Action::Frame, ed::Action::Pan, ed::Action::Zoom, ed::Action::Select, ed::Action::ToggleSelection, ed::Action::ClearSelection,
                              ed::Action::SelectNodes, ed::Action::AddToSelection, ed::Action::SelectGroups, ed::Action::SelectLinks, ed::Action::Move, ed::Action::MoveWithoutSnapping,
-                             ed::Action::MoveGroupAlone, ed::Action::ResizeGroup, ed::Action::DeleteSelection, ed::Action::DeleteLink, ed::Action::CreateNode })
+                             ed::Action::MoveGroupAlone, ed::Action::ResizeGroup, ed::Action::DeleteSelection, ed::Action::DeleteLink, ed::Action::Cut, ed::Action::Copy,
+                             ed::Action::Paste, ed::Action::Duplicate, ed::Action::CreateNode })
         {
             constexpr std::string_view group = "Group";
             const auto info = ed::GetActionInfo(action);
@@ -2973,20 +2999,60 @@ private:
         m_Document->Redo();
     }
 
+    // The Edit menu's take the selection with the content of its comments, as the editor's Ctrl+X,
+    // C and D do, and paste in the middle of the view.
     void Edit_Cut()
     {
+        CutToClipboard(SelectedNodesWithContent(m_Document->GetGraph()));
     }
 
     void Edit_Copy()
     {
+        CopyToClipboard(SelectedNodesWithContent(m_Document->GetGraph()));
     }
 
     void Edit_Paste()
     {
+        const auto view = ed::GetViewState();
+        PasteFromClipboard((view.VisibleMin + view.VisibleMax) * 0.5f);
     }
 
     void Edit_Duplicate()
     {
+        Duplicate(SelectedNodesWithContent(m_Document->GetGraph()));
+    }
+
+    void CopyToClipboard(std::span<const Id> nodes)
+    {
+        ImGui::SetClipboardText(CopyNodes(*m_Document, nodes).c_str());
+    }
+
+    void CutToClipboard(std::span<const Id> nodes)
+    {
+        CopyToClipboard(nodes);
+        for (auto node : nodes)
+            ed::DeleteNode(node);
+    }
+
+    void PasteFromClipboard(ImVec2 center)
+    {
+        const auto text   = ImGui::GetClipboardText();
+        const auto pasted = PasteNodes(*m_Document, text ? text : "", center, "Paste");
+        if (!pasted)
+        {
+            const auto message = pasted.GetError().Message();
+            LOGW("[Edit] Paste: %.*s", static_cast<int>(message.size()), message.data());
+        }
+    }
+
+    void Duplicate(std::span<const Id> nodes)
+    {
+        const auto duplicated = DuplicateNodes(*m_Document, nodes, ImVec2(32.0f, 32.0f));
+        if (!duplicated)
+        {
+            const auto message = duplicated.GetError().Message();
+            LOGW("[Edit] Duplicate: %.*s", static_cast<int>(message.size()), message.data());
+        }
     }
 
     // As the Delete key deletes them.
@@ -3181,10 +3247,10 @@ private:
 
     Action m_Edit_Undo       = { ICON_FA_ROTATE_LEFT,  "Undo",         ImGuiMod_Ctrl | ImGuiKey_Z, [this] { Edit_Undo();      } };
     Action m_Edit_Redo       = { ICON_FA_ROTATE_RIGHT, "Redo",         ImGuiMod_Ctrl | ImGuiKey_Y, [this] { Edit_Redo();      } };
-    Action m_Edit_Cut        = { ICON_FA_SCISSORS,     "Cut",          [this] { Edit_Cut();       } };
-    Action m_Edit_Copy       = { ICON_FA_COPY,         "Copy",         [this] { Edit_Copy();      } };
-    Action m_Edit_Paste      = { ICON_FA_PASTE,        "Paste",        [this] { Edit_Paste();     } };
-    Action m_Edit_Duplicate  = { ICON_FA_CLONE,        "Duplicate",    [this] { Edit_Duplicate(); } };
+    Action m_Edit_Cut        = { ICON_FA_SCISSORS,     "Cut",          ImGuiMod_Ctrl | ImGuiKey_X, [this] { Edit_Cut();       } };
+    Action m_Edit_Copy       = { ICON_FA_COPY,         "Copy",         ImGuiMod_Ctrl | ImGuiKey_C, [this] { Edit_Copy();      } };
+    Action m_Edit_Paste      = { ICON_FA_PASTE,        "Paste",        ImGuiMod_Ctrl | ImGuiKey_V, [this] { Edit_Paste();     } };
+    Action m_Edit_Duplicate  = { ICON_FA_CLONE,        "Duplicate",    ImGuiMod_Ctrl | ImGuiKey_D, [this] { Edit_Duplicate(); } };
     Action m_Edit_Delete     = { ICON_FA_TRASH,        "Delete",       ImGuiKey_Delete,            [this] { Edit_Delete();    } };
     Action m_Edit_SelectAll  = { ICON_FA_OBJECT_GROUP, "Select All",   ImGuiMod_Ctrl | ImGuiKey_A, [this] { Edit_SelectAll(); } };
 

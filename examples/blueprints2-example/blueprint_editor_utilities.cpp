@@ -1054,6 +1054,132 @@ void blueprint_editor_utilities::RenamePin(Document& document, Id pin, std::stri
     transaction->AddAction("%s renamed %s", old.c_str(), graph.FindPin(pin)->m_Name.c_str());
 }
 
+// The layout holds, for each saved node in turn, its position from the top left of all of them, its
+// size, a comment's group size, and its place in the drawing order.
+std::string blueprint_editor_utilities::CopyNodes(const Document& document, std::span<const Id> nodes)
+{
+    auto saved  = SaveNodes(document.GetGraph(), nodes);
+    auto bounds = ImRect(ImVec2(FLT_MAX, FLT_MAX), ImVec2(-FLT_MAX, -FLT_MAX));
+    std::vector<std::pair<ax::NodeEditor::NodeState, ImVec2>> places;
+    for (auto& node : saved["nodes"].get<crude_json::array>())
+    {
+        ax::NodeEditor::NodeState state;
+        state.Id = static_cast<Id>(node["id"].get<crude_json::number>());
+        ax::NodeEditor::GetNodeState(state.Id, &state);
+        const auto size = ax::NodeEditor::GetNodeSize(state.Id);
+        bounds.Add(state.Position);
+        bounds.Add(state.Position + size);
+        places.emplace_back(state, size);
+    }
+
+    auto pair = [](ImVec2 value) { return crude_json::array{ static_cast<crude_json::number>(value.x), static_cast<crude_json::number>(value.y) }; };
+    crude_json::array layout;
+    for (auto& [state, size] : places)
+    {
+        crude_json::object place;
+        place["position"] = pair(state.Position - bounds.Min);
+        place["size"]     = pair(size);
+        if (state.GroupSize.x > 0.0f || state.GroupSize.y > 0.0f)
+            place["group_size"] = pair(state.GroupSize);
+        place["z"] = static_cast<crude_json::number>(state.ZPosition);
+        layout.push_back(std::move(place));
+    }
+
+    crude_json::object clipboard;
+    clipboard["nodes"]  = std::move(saved);
+    clipboard["layout"] = std::move(layout);
+    return crude_json::value(std::move(clipboard)).dump();
+}
+
+blueprint_editor_utilities::Result<std::vector<blueprint_editor_utilities::Id>> blueprint_editor_utilities::PasteNodes(Document& document, std::string_view text, ImVec2 center, std::string_view what)
+{
+    const auto clipboard = crude_json::value::parse(std::string(text));
+    const auto saved     = clipboard.is_object() ? clipboard.find("nodes") : nullptr;
+    const auto layout    = clipboard.is_object() ? clipboard.find("layout") : nullptr;
+    if (!saved || !layout || !layout->is_array())
+        return Error(BlueprintError::BadFile, "the clipboard holds no nodes");
+
+    auto transaction = document.BeginUndoTransaction(what);
+    auto loaded      = LoadNodes(document.GetGraph(), *saved);
+    if (!loaded || loaded.GetValue().empty())
+    {
+        transaction->Discard();
+        return loaded ? Result<std::vector<Id>>(Error(BlueprintError::BadFile, "the clipboard holds no nodes")) : loaded;
+    }
+
+    auto pair = [](const crude_json::value& place, const char* key)
+    {
+        auto value = place.is_object() ? place.find(key) : nullptr;
+        auto items = value && value->is_array() ? &value->get<crude_json::array>() : nullptr;
+        if (!items || items->size() != 2 || !(*items)[0].is_number() || !(*items)[1].is_number())
+            return ImVec2(0.0f, 0.0f);
+        return ImVec2(static_cast<float>((*items)[0].get<crude_json::number>()), static_cast<float>((*items)[1].get<crude_json::number>()));
+    };
+    const auto&             places = layout->get<crude_json::array>();
+    const auto&             ids    = loaded.GetValue();
+    const crude_json::value none;
+    std::vector<ax::NodeEditor::NodeState> states;
+    auto bounds = ImRect(ImVec2(FLT_MAX, FLT_MAX), ImVec2(-FLT_MAX, -FLT_MAX));
+    for (size_t i = 0; i < ids.size(); ++i)
+    {
+        auto& place = i < places.size() ? places[i] : none;
+        ax::NodeEditor::NodeState state;
+        state.Id        = ids[i];
+        state.Position  = pair(place, "position");
+        state.GroupSize = pair(place, "group_size");
+        if (auto z = place.is_object() ? place.find("z") : nullptr; z && z->is_number())
+            state.ZPosition = static_cast<float>(z->get<crude_json::number>());
+        bounds.Add(state.Position);
+        bounds.Add(state.Position + pair(place, "size"));
+        states.push_back(state);
+    }
+
+    const auto shift = center - bounds.GetCenter();
+    ax::NodeEditor::ClearSelection();
+    for (auto& state : states)
+    {
+        state.Position += ImVec2(std::round(shift.x), std::round(shift.y));
+        ax::NodeEditor::SetNodeState(state);
+        ax::NodeEditor::SelectNode(state.Id, true);
+    }
+    transaction->AddAction("%d node%s", static_cast<int>(ids.size()), ids.size() != 1 ? "s" : "");
+    return loaded;
+}
+
+blueprint_editor_utilities::Result<std::vector<blueprint_editor_utilities::Id>> blueprint_editor_utilities::DuplicateNodes(Document& document, std::span<const Id> nodes, ImVec2 offset)
+{
+    auto bounds = ImRect(ImVec2(FLT_MAX, FLT_MAX), ImVec2(-FLT_MAX, -FLT_MAX));
+    for (auto node : nodes)
+    {
+        if (!document.GetGraph().FindNode(node))
+            continue;
+        const auto position = ax::NodeEditor::GetNodePosition(node);
+        bounds.Add(position);
+        bounds.Add(position + ax::NodeEditor::GetNodeSize(node));
+    }
+    return PasteNodes(document, CopyNodes(document, nodes), bounds.GetCenter() + offset, "Duplicate");
+}
+
+std::vector<blueprint_editor_utilities::Id> blueprint_editor_utilities::SelectedNodesWithContent(const Graph& graph)
+{
+    auto nodes = GetSelectedNodes();
+    for (auto comment : std::vector<Id>(nodes))
+    {
+        auto found = graph.FindNode(comment);
+        if (!found || !IsComment(*found))
+            continue;
+        const auto min = ax::NodeEditor::GetNodePosition(comment), max = min + ax::NodeEditor::GetNodeSize(comment);
+        for (auto& node : graph.Nodes())
+        {
+            const auto position = ax::NodeEditor::GetNodePosition(node.m_Id), end = position + ax::NodeEditor::GetNodeSize(node.m_Id);
+            const auto inside   = position.x >= min.x && position.y >= min.y && end.x <= max.x && end.y <= max.y;
+            if (inside && std::find(nodes.begin(), nodes.end(), node.m_Id) == nodes.end())
+                nodes.push_back(node.m_Id);
+        }
+    }
+    return nodes;
+}
+
 void blueprint_editor_utilities::AddVariable(Document& document)
 {
     auto&       blueprint = document.GetBlueprint();
