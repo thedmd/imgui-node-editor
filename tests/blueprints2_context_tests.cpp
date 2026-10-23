@@ -321,6 +321,33 @@ TestNodeType s_Show("Show", [](NodeDeclaration& d, const NodeConfig&, const Bind
     return Exit::To("then");
 });
 
+// A service of the host's, which its nodes count on, and another.
+struct Tally final : Service
+{
+    CRUDE_BP_RTTI(Tally, Service)
+
+    int m_Count = 0;
+};
+
+struct Elsewhere final : Service
+{
+    CRUDE_BP_RTTI(Elsewhere, Service)
+};
+
+TestNodeType s_Counted("Counted", [](NodeDeclaration& d, const NodeConfig&, const Bindings&)
+{
+    d.FlowInput("enter");
+    d.FlowOutput("then");
+},
+[](ExecContext& context, std::string_view) -> Result<Exit>
+{
+    auto tally = context.FindService<Tally>();
+    if (!tally)
+        return Error(BlueprintError::Unsupported, "no tally");
+    ++tally->m_Count;
+    return Exit::To("then");
+});
+
 std::shared_ptr<const Registry> ContextRegistry()
 {
     static const std::shared_ptr<const Registry> registry = []
@@ -328,7 +355,7 @@ std::shared_ptr<const Registry> ContextRegistry()
         auto made = std::make_shared<Registry>();
         auto ok = RegisterBuiltins(*made).IsOk();
         for (auto type : { &s_Start, &s_Log, &s_Twice, &s_Count, &s_Plus, &s_Text, &s_Number, &s_Word, &s_Repeat, &s_Fail, &s_Throw, &s_Lost, &s_Idle,
-                           &s_Pretend, &s_Sleep, &s_Await, &s_Broken, &s_Pass, &s_Need, &s_Hint, &s_Probe, &s_Tick, &s_Shift, &s_Show })
+                           &s_Pretend, &s_Sleep, &s_Await, &s_Broken, &s_Pass, &s_Need, &s_Hint, &s_Probe, &s_Tick, &s_Shift, &s_Show, &s_Counted })
             ok = made->AddNodeType(*type).IsOk() && ok;
         if (!ok)
             test::Check(false, "the test registry is made");
@@ -399,6 +426,31 @@ TEST_CASE(FiberRuns, "context.a_fiber_runs_from_its_event_along_flow_links", nul
     auto after   = context.Step(fiber.ValueOr(0));
     auto unknown = context.Start("Stop");
     test::Check(!after && after.GetError().Is(BlueprintError::Unsupported) && !unknown && unknown.GetError().Is(BlueprintError::NotFound), "a fiber that's done takes no step, and no node starts Stop: %s", Message(unknown).c_str());
+}
+
+TEST_CASE(Services, "context.a_node_finds_the_hosts_service_by_its_class", nullptr, test::TestFlags_None)
+{
+    // Start, then two nodes that count on the host's tally.
+    Fixture f;
+    auto start = f.Add("Start"), first = f.Add("Counted"), second = f.Add("Counted");
+    f.Link(start, "then", first, "enter");
+    f.Link(first, "then", second, "enter");
+    auto program = f.Compiled();
+    if (!program)
+        return;
+
+    Tally     tally;
+    Elsewhere elsewhere;
+    Context   given(program);
+    given.AddService(elsewhere);
+    given.AddService(tally);
+    auto counted = Finish(given, given.Start("Start").ValueOr(0));
+    test::Check(counted == FiberState::Done && tally.m_Count == 2, "a context's nodes find the tally among its services: %d", tally.m_Count);
+
+    Context without(program);
+    without.AddService(elsewhere);
+    auto failed = Finish(without, without.Start("Start").ValueOr(0));
+    test::Check(failed == FiberState::Failed && Messages(without.Diagnostics()) == "no tally" && tally.m_Count == 2, "and one without fails its fiber: %s", Messages(without.Diagnostics()).c_str());
 }
 
 TEST_CASE(InputsWithoutLinks, "context.unlinked_inputs_read_typed_values_then_defaults", nullptr, test::TestFlags_None)

@@ -1339,6 +1339,14 @@ struct ContextMonitor
     virtual void OnLog(const Context& context, Id node, std::string_view text) = 0;
 };
 
+// An object of the host's that a context's nodes reach, as the screens an application shows: a node
+// finds one by its class.
+struct Service
+{
+    CRUDE_BP_RTTI_ROOT(Service)
+    virtual ~Service() = default;
+};
+
 class NodeContext
 {
 public:
@@ -1368,6 +1376,10 @@ public:
     // The node's own, in this context: made on first use, and kept until the context goes.
     template <typename T>
     T& State();
+
+    // The context's service of the class, the first one given; null for none.
+    template <typename T>
+    T* FindService() const;
 
 protected:
     NodeContext(Context& context, int node, CallFrame& frame): m_Context(context), m_Node(node), m_Frame(frame) {}
@@ -1455,6 +1467,8 @@ public:
     std::span<const Diagnostic> Diagnostics() const { return m_Diagnostics; }
     const Program&              GetProgram() const  { return *m_Program; }
     void                        SetMonitor(ContextMonitor* monitor) { m_Monitor = monitor; }
+    // For the context's nodes to find; the host keeps it while the context lives.
+    void                        AddService(Service& service) { m_Services.push_back(&service); }
 
     // A pin's value now. A pure output that this step hasn't computed is computed, which changes
     // nothing else; an input gives what it reads. An output a node of flow hasn't written, and what's
@@ -1512,6 +1526,7 @@ private:
     std::vector<Diagnostic>              m_Diagnostics;
     std::vector<TraceEntry>              m_Trace;
     ContextMonitor*                      m_Monitor    = nullptr;
+    std::vector<Service*>                m_Services;
     uint64_t                             m_Step       = 0;
     double                               m_Time       = 0.0;
     // Up when a step starts and when a node with flow pins writes an output, so a pure output
@@ -1606,6 +1621,15 @@ T& NodeContext::State()
     if (auto existing = std::any_cast<T>(&state))
         return *existing;
     return state.emplace<T>();
+}
+
+template <typename T>
+T* NodeContext::FindService() const
+{
+    for (auto service : m_Context.m_Services)
+        if (auto found = Cast<T>(service))
+            return found;
+    return nullptr;
 }
 
 } // namespace crude_blueprint
