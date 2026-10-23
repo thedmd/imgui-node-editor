@@ -23,6 +23,9 @@ struct Application
 
     const std::string& GetName() const;
 
+    // Where a file of the example is: a relative path is from where its data and settings are.
+    std::string ResolvePath(const std::string& path) const;
+
     ImFont* DefaultFont() const;
     ImFont* HeaderFont() const;
 

@@ -82,6 +82,11 @@ Application::Application(const char* name)
 {
 }
 
+std::string Application::ResolvePath(const std::string& path) const
+{
+    return ::ResolvePath(path);
+}
+
 Application::Application(const char* name, int argc, char** argv)
     : m_Name(name)
     , m_Platform(CreatePlatform(*this))
