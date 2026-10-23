@@ -362,6 +362,8 @@ struct Debugger
     void Update(const Document& document);
     void Advance(double seconds); // a running run's clock, by a frame's time
     void Signal(std::string_view signal);
+    // For the nodes of the runs that start after; the caller keeps it while the debugger lives.
+    void AddService(Service& service) { m_Services.push_back(&service); }
 
     void SetBreakpoint(Id node, bool enabled);
     bool HasBreakpoint(Id node) const { return m_Breakpoints.contains(node); }
@@ -376,6 +378,7 @@ struct Debugger
     bool IsActive() const; // a fiber that's ready or suspended
     bool IsRunning() const { return IsActive() && m_Running; }
     bool IsAtBreakpoint() const;
+    bool IsWaiting() const; // a run none of whose fibers is ready: each waits, or ended
     std::optional<Wake> Waiting() const; // what the fiber waits for, while it's suspended
 
     // A pin's value: the run's while there is one, else as a run that hasn't started computes it,
@@ -401,6 +404,7 @@ private:
 
     std::unique_ptr<Context> m_Context;
     Monitor                  m_Monitor;
+    std::vector<Service*>    m_Services;
     std::set<Id>             m_Breakpoints;
     std::vector<Id>          m_Watched;
     FiberId                  m_Fiber    = 0;

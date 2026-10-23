@@ -143,6 +143,7 @@ if (IMGUI_NODE_EDITOR_TESTS_BLUEPRINTS2)
         ${_Blueprints2Dir}/blueprint_editor_document.cpp
         ${_Blueprints2Dir}/blueprint_editor_icons.cpp
         ${_Blueprints2Dir}/blueprint_editor_utilities.cpp
+        ${_Blueprints2Dir}/blueprint_screen.cpp
         ${_Blueprints2Dir}/crude_layout.cpp
         ${_Blueprints2Dir}/crude_logger.cpp
         ${_Blueprints2Dir}/imgui_extras.cpp
@@ -162,6 +163,7 @@ if (IMGUI_NODE_EDITOR_TESTS_BLUEPRINTS2)
         blueprints2_function_tests.cpp
         blueprints2_graph_tests.cpp
         blueprints2_library_tests.cpp
+        blueprints2_screen_tests.cpp
         blueprints2_tests.cpp
         blueprints2_variable_tests.cpp
     )

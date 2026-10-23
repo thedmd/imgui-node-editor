@@ -94,6 +94,7 @@ const char* blueprint_editor_utilities::NodeIcon(const Blueprint& blueprint, con
         { "Variables",  ICON_FA_DATABASE           },
         { "Coroutines", ICON_FA_HOURGLASS_HALF     },
         { "Debugging",  ICON_FA_BUG                },
+        { "Screen",     ICON_FA_DISPLAY            },
     };
 
     auto& type = *node.m_Type;
@@ -2055,6 +2056,8 @@ bool blueprint_editor_utilities::Debugger::Begin(const Document& document, bool 
     m_Context = std::make_unique<Context>(compiled.m_Program);
     m_Context->SetMonitor(&m_Monitor);
     m_Context->Seed(std::random_device()());
+    for (auto service : m_Services)
+        m_Context->AddService(*service);
     for (auto node : m_Breakpoints)
         m_Context->SetBreakpoint(node, true);
     auto& program = *compiled.m_Program;
@@ -2213,6 +2216,14 @@ bool blueprint_editor_utilities::Debugger::IsActive() const
 {
     auto fiber = Fiber();
     return fiber && (fiber->m_State == FiberState::Ready || fiber->m_State == FiberState::Suspended);
+}
+
+bool blueprint_editor_utilities::Debugger::IsWaiting() const
+{
+    if (!m_Context)
+        return false;
+    auto fibers = m_Context->Fibers();
+    return std::none_of(fibers.begin(), fibers.end(), [](const FiberInfo& fiber) { return fiber.m_State == FiberState::Ready; });
 }
 
 std::optional<blueprint_editor_utilities::Wake> blueprint_editor_utilities::Debugger::Waiting() const

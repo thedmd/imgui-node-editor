@@ -5,6 +5,8 @@ add_example_executable(blueprints2-example
     blueprint_editor_icons.h
     blueprint_editor_utilities.cpp
     blueprint_editor_utilities.h
+    blueprint_screen.cpp
+    blueprint_screen.h
     blueprints2-example.cpp
     crude_layout.cpp
     crude_layout.h

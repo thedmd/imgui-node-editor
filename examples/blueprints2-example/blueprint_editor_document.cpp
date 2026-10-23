@@ -1,5 +1,6 @@
 # include "blueprint_editor_document.h"
 # include "blueprint_editor_utilities.h"
+# include "blueprint_screen.h"
 # include "crude_blueprint_library.h"
 # include "crude_logger.h"
 # include <imgui_internal.h>
@@ -622,9 +623,10 @@ std::shared_ptr<const crude_blueprint::Registry> blueprint_editor::ExampleRegist
             ok = made->AddValueType(std::move(type)).IsOk() && RegisterStructNodes(*made, added).IsOk() && ok;
             return added;
         };
-        add(std::make_unique<StructType>("example.Vector2", std::vector<StructField>{ { "x", &FloatType() }, { "y", &FloatType() } }));
+        auto& vector2 = add(std::make_unique<StructType>("example.Vector2", std::vector<StructField>{ { "x", &FloatType() }, { "y", &FloatType() } }));
         add(std::make_unique<StructType>("example.Point", std::vector<StructField>{ { "x", &Int32Type() }, { "y", &Int32Type() } }));
         auto& color = add(std::make_unique<StructType>("example.Color", std::vector<StructField>{ { "r", &FloatType(), Value::Float(1.0f) }, { "g", &FloatType(), Value::Float(1.0f) }, { "b", &FloatType(), Value::Float(1.0f) }, { "a", &FloatType(), Value::Float(1.0f) } }));
+        ok = blueprint_screen::RegisterScreen(*made, color, vector2).IsOk() && RegisterEnumNodes(*made).IsOk() && ok;
         IM_ASSERT(ok);
         blueprint_editor_utilities::SetValueWidgets(color, { [](const Value&) { return ImGui::GetTextLineHeight() * 2.0f; }, DrawColor, EditColor });
         return made;

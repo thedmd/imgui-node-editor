@@ -10,6 +10,7 @@
 # include "blueprint_editor_document.h"
 # include "blueprint_editor_utilities.h"
 # include "blueprint_editor_icons.h"
+# include "blueprint_screen.h"
 # include "crude_layout.h"
 # include "imgui_extras.h"
 # include "imgui_node_editor.h"
@@ -372,6 +373,7 @@ struct BlueprintEditorExample
 
         ImEx::MostRecentlyUsedList::Install(ImGui::GetCurrentContext());
 
+        m_Debugger.AddService(m_Screens);
         CreateExampleDocument();
 
         for (auto type : ExampleRegistry()->NodeTypes())
@@ -403,6 +405,8 @@ struct BlueprintEditorExample
         {
             m_Debugger.Advance(deltaTime);
             m_Debugger.Update(*m_Document);
+            if (m_Debugger.IsWaiting())
+                m_Screens.Present();
             m_Problems.Update(*m_Document, m_Debugger);
 
             // A paused run shows the graph of the node it runs next.
@@ -494,6 +498,9 @@ struct BlueprintEditorExample
 
         m_OverlayLogger.Update(ImGui::GetIO().DeltaTime);
         m_OverlayLogger.Draw(canvasMin, canvasMax);
+
+        // A paused run's screens show what's drawn so far.
+        m_Screens.ShowWindows(m_Debugger.IsActive() && !m_Debugger.IsRunning());
 
         ShowClosePrompt();
         ShowOpenFailure();
@@ -3328,6 +3335,7 @@ private:
     Id                        m_DuplicatedFunction = 0;     // its graph's ID
     bool                      m_DuplicateFocus     = false; // the duplicate's name popup opens, its name focused
     char                      m_DuplicateText[64]  = {};
+    blueprint_screen::ScreenHost m_Screens; // the debugger's runs open them
     Debugger                  m_Debugger;
     ProblemList               m_Problems;
     std::unordered_set<Id>    m_Bubbles;    // nodes whose problems show
