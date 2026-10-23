@@ -178,7 +178,7 @@ TestNodeType s_Repeat("Repeat", [](NodeDeclaration& d, const NodeConfig&, const 
     return Exit::Loop("body");
 });
 
-// Logs what it reads, writes its output, and logs what it reads again.
+// Writes its output, logs what it reads, writes it again, and logs what it reads again.
 TestNodeType s_Probe("Probe", [](NodeDeclaration& d, const NodeConfig&, const Bindings&)
 {
     d.FlowInput("enter");
@@ -188,6 +188,7 @@ TestNodeType s_Probe("Probe", [](NodeDeclaration& d, const NodeConfig&, const Bi
 },
 [](ExecContext& context, std::string_view) -> Result<Exit>
 {
+    context.Set("value", Value::Int32(0));
     auto before = context.Get<int32_t>("check");
     context.Set("value", Value::Int32(10));
     auto after = context.Get<int32_t>("check");
@@ -469,7 +470,7 @@ TEST_CASE(PureOnce, "context.a_pure_output_is_computed_once_for_what_it_reads", 
 
 TEST_CASE(Generations, "context.pure_outputs_compute_again_after_a_write_or_in_a_new_step", nullptr, test::TestFlags_None)
 {
-    // Probe reads Plus of its own output, before and after writing it.
+    // Probe reads Plus of its own output, written once and then again.
     Fixture f;
     auto start = f.Add("Start"), probe = f.Add("Probe"), plus = f.Add("Plus");
     f.Link(start, "then", probe, "enter");
@@ -665,8 +666,9 @@ TEST_CASE(CompileRefuses, "context.compiling_refuses_what_cant_run", nullptr, te
 
 TEST_CASE(Debugger, "context.the_debugger_reads_any_pin_without_running_a_node", nullptr, test::TestFlags_None)
 {
+    // A second Plus reads only its constants.
     Fixture f;
-    auto start = f.Add("Start"), count = f.Add("Count"), log = f.Add("Log"), plus = f.Add("Plus"), text = f.Add("Text");
+    auto start = f.Add("Start"), count = f.Add("Count"), log = f.Add("Log"), plus = f.Add("Plus"), text = f.Add("Text"), alone = f.Add("Plus");
     f.Link(start, "then", count, "enter");
     f.Link(count, "then", log, "enter");
     f.Link(count, "count", plus, "a");
@@ -677,12 +679,17 @@ TEST_CASE(Debugger, "context.the_debugger_reads_any_pin_without_running_a_node",
         return;
     Context context(program);
 
-    s_PlusRuns = 0;
     auto stored = context.Evaluate(f.Pin(count, "count"));
     auto sum    = context.Evaluate(f.Pin(plus, "sum"));
-    auto again  = context.Evaluate(f.Pin(plus, "sum"));
-    test::Check(stored && stored.GetValue().m_Value == Value::Int32(0) && !stored.GetValue().m_Step, "before a run, an output nothing wrote reads its default, of no step");
-    test::Check(sum && sum.GetValue().m_Value == Value::Int32(1) && sum.GetValue().m_Step == 0u && again && s_PlusRuns == 1 && context.StepCount() == 0, "a pure output is computed once, before any step, and nothing runs: %d runs", s_PlusRuns);
+    test::Check(!stored && stored.GetError().Is(BlueprintError::NotRun) && stored.GetError().Message() == "Count#" + std::to_string(count) + ".count is undefined: nothing wrote it yet",
+        "before a run, an output a node of flow hasn't written is undefined: %s", Message(stored).c_str());
+    test::Check(!sum && sum.GetError().Is(BlueprintError::NotRun), "and so is what a pure node computes from it: %s", Message(sum).c_str());
+
+    s_PlusRuns = 0;
+    auto constants = context.Evaluate(f.Pin(alone, "sum"));
+    auto again     = context.Evaluate(f.Pin(alone, "sum"));
+    test::Check(constants && constants.GetValue().m_Value == Value::Int32(1) && constants.GetValue().m_Step == 0u && again && s_PlusRuns == 1 && context.StepCount() == 0,
+        "a pure output of constants is computed once, before any step, and nothing runs: %d runs", s_PlusRuns);
 
     auto fiber = context.Start("Start");
     auto event = context.Step(fiber.ValueOr(0));

@@ -210,7 +210,7 @@ enum class BlueprintError : uint16_t
     Unsupported,    // what a node or a fiber can't do now, such as a node type that doesn't run
     BadFile,        // a file that isn't a blueprint this runtime reads
     TooDeep,        // pure nodes computed in the inputs of others, nested deeper than the runtime goes
-    NotRun,         // a read of what a node of flow writes, where the reader's flow never runs the node
+    NotRun,         // a read of what a node of flow writes, where the reader's flow never runs the node, or before the node wrote it
 };
 
 constexpr ErrorCategory CategoryOf(BlueprintError) { return ErrorCategory::Blueprint; }
@@ -1276,7 +1276,7 @@ struct TraceEntry
 struct Watch
 {
     Value                   m_Value;
-    std::optional<uint64_t> m_Step; // the step that stored or computed it, 0 before any; none for a constant, or a default nothing wrote
+    std::optional<uint64_t> m_Step; // the step that stored or computed it, 0 before any; none for a constant, or a default a pure node didn't set
 };
 
 // A fiber's place in a call of a function: the function's slots, which every call has its own of,
@@ -1414,7 +1414,8 @@ public:
     void                        SetMonitor(ContextMonitor* monitor) { m_Monitor = monitor; }
 
     // A pin's value now. A pure output that this step hasn't computed is computed, which changes
-    // nothing else; an input gives what it reads.
+    // nothing else; an input gives what it reads. An output a node of flow hasn't written, and what's
+    // computed from one, is undefined: a NotRun error.
     Result<Watch> Evaluate(Id pin);
 
 private:

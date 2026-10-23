@@ -476,17 +476,39 @@ TEST_CASE(ForEachEntries, "library.for_each_entry_gives_each_key_and_value_in_or
 
 TEST_CASE(WhileLoopRounds, "library.a_while_loop_reads_its_condition_before_each_round", nullptr, test::TestFlags_None)
 {
-    // The condition is that Flip Flop isn't at A: true until the body enters it once.
+    // The condition is a variable, true until the body sets it false.
     Fixture f;
-    auto start = f.Add("Start"), loop = f.Add("WhileLoop"), flipFlop = f.Add("FlipFlop"), isB = f.Add("Not"), done = f.Printer("done");
+    auto added = f.m_Blueprint.AddVariable({ "Going", Value::Bool(true) });
+    auto start = f.Add("Start"), loop = f.Add("WhileLoop"), done = f.Printer("done");
+    auto going = f.m_Graph.AddNode("get:Going"), stop = f.m_Graph.AddNode("set:Going");
+    if (!added || !going || !stop)
+        return test::Check(false, "the variable and its nodes are added");
+    auto cleared = f.m_Graph.SetValue(f.Pin(stop.GetValue(), "value"), Value::Bool(false));
     f.Link(start, "then", loop, "enter");
-    f.Link(flipFlop, "isA", isB, "value");
-    f.Link(isB, "result", loop, "condition");
-    f.Link(loop, "body", flipFlop, "enter");
-    f.Link(flipFlop, "a", f.Printer("a"), "enter");
+    f.Link(going.GetValue(), "value", loop, "condition");
+    f.Link(loop, "body", stop.GetValue(), "enter");
+    f.Link(stop.GetValue(), "then", f.Printer("a"), "enter");
     f.Link(loop, "completed", done, "enter");
     auto printed = f.Run();
-    test::Check(printed == "a done", "one round, then done: %s", printed.c_str());
+    test::Check(cleared && printed == "a done", "one round, then done: %s", printed.c_str());
+}
+
+TEST_CASE(UnwrittenIndex, "library.a_for_loop_that_runs_no_round_leaves_its_index_undefined", nullptr, test::TestFlags_None)
+{
+    // From 1 to 0: Completed prints the Index, which no round wrote.
+    Fixture f;
+    auto start = f.Add("Start"), loop = f.Add("ForLoop"), print = f.Add("Print");
+    auto first = f.m_Graph.SetValue(f.Pin(loop, "first"), Value::Int32(1));
+    auto last  = f.m_Graph.SetValue(f.Pin(loop, "last"), Value::Int32(0));
+    f.Link(start, "then", loop, "enter");
+    f.Link(loop, "completed", print, "enter");
+    f.Link(loop, "index", print, "text", LinkMode::Cast);
+    FiberState                  end = FiberState::Ready;
+    std::span<const Diagnostic> diagnostics;
+    auto printed = f.Run(&end, &diagnostics);
+    auto undefined = std::any_of(diagnostics.begin(), diagnostics.end(), [&](const Diagnostic& d) { return d.m_Error.Is(BlueprintError::NotRun) && d.m_Node == print; });
+    test::Check(first && last && printed.empty() && end == FiberState::Failed && undefined,
+        "Print can't read it, and the fiber fails: %s", diagnostics.empty() ? "" : std::string(diagnostics[0].m_Error.Message()).c_str());
 }
 
 TEST_CASE(DoOnceReset, "library.do_once_goes_on_once_until_its_reset", nullptr, test::TestFlags_None)

@@ -3697,19 +3697,23 @@ crude_blueprint::Result<crude_blueprint::Value> crude_blueprint::Context::Read(C
     return cast;
 }
 
-// An output that nothing wrote reads as its type's default.
+// An output of a node of flow is undefined until the node writes it, and so is what pure nodes
+// compute from it. One that a pure node didn't set reads as its type's default.
 crude_blueprint::Result<crude_blueprint::Value> crude_blueprint::Context::ReadSlot(CallFrame& frame, int slot)
 {
     auto [node, pin] = m_Program->m_Slots[slot];
-    if (m_Program->m_Nodes[node].m_Pure && ComputedOf(frame, node) != m_Generation)
+    auto& writer = m_Program->m_Nodes[node];
+    if (writer.m_Pure && ComputedOf(frame, node) != m_Generation)
         if (auto computed = EvaluateNode(frame, node); !computed)
             return computed.GetError();
     auto stored = SlotOf(frame, slot);
     if (stored.m_Value.IsValid())
         return stored.m_Value;
-    auto type = Resolve(frame, m_Program->m_Nodes[node].m_Pins[pin].m_Type);
+    if (!writer.m_Pure)
+        return Error(BlueprintError::NotRun, writer.m_Name + "." + writer.m_Pins[pin].m_Key + " is undefined: nothing wrote it yet");
+    auto type = Resolve(frame, writer.m_Pins[pin].m_Type);
     if (!type)
-        return Error(BlueprintError::Undecided, m_Program->m_Nodes[node].m_Name + "." + m_Program->m_Nodes[node].m_Pins[pin].m_Key + "'s type isn't decided at this call");
+        return Error(BlueprintError::Undecided, writer.m_Name + "." + writer.m_Pins[pin].m_Key + "'s type isn't decided at this call");
     return type->m_Head->Default(*type);
 }
 

@@ -226,11 +226,13 @@ TEST_CASE(LiveValues, "blueprints2.values_show_from_the_run_else_as_an_unstarted
     using blueprint_editor_utilities::WhenWritten;
 
     Debugger debugger;
-    auto read = [&](Id node, const char* key) { auto watch = debugger.Evaluate(document, example.Pin(node, key)); return watch ? watch.GetValue() : Watch(); };
-    auto sum  = read(add, "result");
-    auto index = read(loop, "index");
-    test::Check(sum.m_Value == Value::Int32(10) && WhenWritten(sum, debugger.StepCount()).empty(), "with no run, Add's result is what it computes, 10 from 0 and 10, before any step");
-    test::Check(index.m_Value == Value::Int32(0) && WhenWritten(index, debugger.StepCount()) == "not run yet", "and For Loop's Index, which no step wrote, reads its default");
+    auto evaluate = [&](Id node, const char* key) { return debugger.Evaluate(document, example.Pin(node, key)); };
+    auto read     = [&](Id node, const char* key) { auto watch = evaluate(node, key); return watch ? watch.GetValue() : Watch(); };
+    auto value = read(ten, "value");
+    auto index = evaluate(loop, "index"), sum = evaluate(add, "result");
+    test::Check(value.m_Value == Value::Int32(10) && WhenWritten(value, debugger.StepCount()).empty(), "with no run, the Constant's value is what it computes, before any step");
+    test::Check(!index && index.GetError().Is(BlueprintError::NotRun) && !sum && sum.GetError().Is(BlueprintError::NotRun),
+        "and For Loop's Index, which no step wrote, is undefined, as is Add's result, computed from it: %s", index ? "" : std::string(index.GetError().Message()).c_str());
 
     session.Use([&]
     {
@@ -240,7 +242,7 @@ TEST_CASE(LiveValues, "blueprints2.values_show_from_the_run_else_as_an_unstarted
         if (document.GetGraph().SetConfig(ten, twenty))
             transaction->AddAction("Constant changed");
     });
-    test::Check(read(add, "result").m_Value == Value::Int32(20), "a change to the document computes it again");
+    test::Check(read(ten, "value").m_Value == Value::Int32(20), "a change to the document computes it again");
 
     debugger.Start(document, false);
     for (int i = 0; i < 4; ++i)
