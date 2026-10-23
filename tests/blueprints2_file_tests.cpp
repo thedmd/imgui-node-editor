@@ -16,6 +16,7 @@ using namespace blueprints2_tests;
 namespace {
 
 StructType s_Vector2("example.Vector2", { { "x", &FloatType() }, { "y", &FloatType() } });
+EnumType   s_Direction("example.Direction", { "North", "East", "South", "West" });
 
 TestNodeType Constant(const char* title, const Type& (*type)())
 {
@@ -108,7 +109,7 @@ TestNodeType s_Thing("Thing", [](NodeDeclaration& d, const NodeConfig&, const Bi
 std::shared_ptr<Registry> Registered(bool thing)
 {
     auto made = std::make_shared<Registry>();
-    auto ok = RegisterBuiltins(*made).IsOk() && made->AddValueType(s_Vector2).IsOk();
+    auto ok = RegisterBuiltins(*made).IsOk() && made->AddValueType(s_Vector2).IsOk() && made->AddValueType(s_Direction).IsOk();
     for (auto type : std::initializer_list<const NodeType*>{ &s_ConstInt32, &s_ConstFloat, &s_Add, &s_Hold, &s_Start, &s_Print, &s_MoveBy, &s_MakeVector2, &s_BreakAny, &s_Renamed })
         ok = made->AddNodeType(*type).IsOk() && ok;
     if (thing)
@@ -464,6 +465,27 @@ TEST_CASE(Placeholders, "file.a_node_it_cant_use_loads_as_a_placeholder_and_save
         auto found = std::any_of(all.begin(), all.end(), [&](const Diagnostic& d) { return d.m_Node == f.add && d.m_Error.Message().find(c.reason) != std::string_view::npos; });
         test::Check(add && found && Save(*changed)["graphs"][0]["nodes"][4].dump() == file["graphs"][0]["nodes"][4].dump(), "%s makes a placeholder, and saves back unchanged", c.what);
     }
+}
+
+TEST_CASE(EnumFiles, "file.a_case_loads_by_its_name_and_one_gone_makes_a_placeholder", nullptr, test::TestFlags_None)
+{
+    // A Hold of West; then the file as a Direction without West would find it.
+    Fixture f;
+    NodeConfig held = Chosen("T", s_Direction.AsType());
+    held.m_Data["value"] = Value::Enum(s_Direction.AsType(), 3);
+    auto hold   = f.Add("Hold", held);
+    auto file   = Save(f.m_Blueprint);
+    auto saved  = file["graphs"][0]["nodes"][0]["config"]["data"]["value"].dump();
+    auto loaded = Loaded(file.dump());
+    auto node   = !loaded->Graphs().empty() ? loaded->Graphs()[0]->FindNode(hold) : nullptr;
+    auto data   = node ? node->m_Config.m_Data.find("value") : held.m_Data.end();
+    test::Check(saved == "{\"data\":\"West\",\"type\":\"example.Direction\"}" && node && data != node->m_Config.m_Data.end() && data->second == Value::Enum(s_Direction.AsType(), 3), "the file holds the case's name, which loads as the case: %s", saved.c_str());
+
+    file["graphs"][0]["nodes"][0]["config"]["data"]["value"]["data"] = "Up";
+    auto lost  = Loaded(file.dump());
+    auto all   = !lost->Graphs().empty() ? lost->Graphs()[0]->Diagnostics() : std::span<const Diagnostic>();
+    auto found = std::any_of(all.begin(), all.end(), [&](const Diagnostic& d) { return d.m_Node == hold && d.m_Error.Message().find("example.Direction has no case \"Up\"") != std::string_view::npos; });
+    test::Check(found && Save(*lost).dump() == file.dump(), "a case gone makes a placeholder, which saves back unchanged");
 }
 
 TEST_CASE(Upgrades, "file.a_node_an_older_version_saved_is_upgraded", nullptr, test::TestFlags_None)

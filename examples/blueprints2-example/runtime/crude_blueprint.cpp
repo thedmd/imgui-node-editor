@@ -149,6 +149,12 @@ crude_blueprint::Value crude_blueprint::Value::Struct(const Type& type, std::vec
     return Value(type, MakeRef<const StructBox>(std::move(fields)));
 }
 
+crude_blueprint::Value crude_blueprint::Value::Enum(const Type& type, int32_t index)
+{
+    CRUDE_BP_ASSERT(IsA<EnumType>(type.m_Head) && index >= 0 && static_cast<size_t>(index) < static_cast<const EnumType*>(type.m_Head)->Cases().size());
+    return Value(type, index);
+}
+
 crude_blueprint::Value crude_blueprint::Value::Boxed(const Type& type, Ref<const Box> box)
 {
     return Value(type, std::move(box));
@@ -201,6 +207,13 @@ std::span<const crude_blueprint::Value> crude_blueprint::Value::AsStruct() const
     auto box = BoxOf<StructBox>(m_Data);
     CRUDE_BP_ASSERT(box);
     return box ? std::span<const Value>(box->m_Fields) : std::span<const Value>();
+}
+
+int32_t crude_blueprint::Value::AsEnum() const
+{
+    auto value = std::get_if<int32_t>(&m_Data);
+    CRUDE_BP_ASSERT(value && m_Type && IsA<EnumType>(m_Type->m_Head));
+    return value ? *value : 0;
 }
 
 const crude_blueprint::Box* crude_blueprint::Value::AsBox() const
@@ -568,6 +581,56 @@ bool crude_blueprint::StructType::Equal(const Value& a, const Value& b) const
 {
     auto x = a.AsStruct(), y = b.AsStruct();
     return std::equal(x.begin(), x.end(), y.begin(), y.end());
+}
+
+crude_blueprint::EnumType::EnumType(std::string name, std::vector<std::string> cases)
+    : ValueType(std::move(name))
+    , m_Cases(std::move(cases))
+{
+    CRUDE_BP_ASSERT(!m_Cases.empty());
+    CRUDE_BP_ASSERT(std::all_of(m_Cases.begin(), m_Cases.end(), [this](const std::string& item) { return std::count(m_Cases.begin(), m_Cases.end(), item) == 1; }));
+}
+
+int crude_blueprint::EnumType::FindCase(std::string_view name) const
+{
+    auto it = std::find(m_Cases.begin(), m_Cases.end(), name);
+    return it != m_Cases.end() ? static_cast<int>(it - m_Cases.begin()) : -1;
+}
+
+crude_blueprint::Value crude_blueprint::EnumType::Default(const Type& type) const
+{
+    return Value::Enum(type, 0);
+}
+
+crude_blueprint::Result<crude_blueprint::Value> crude_blueprint::EnumType::Load(const Type& type, const crude_json::value& json) const
+{
+    if (!json.is_string())
+        return Error(BlueprintError::WrongType, "not a case of " + m_Name);
+    auto& name  = json.get<crude_json::string>();
+    auto  index = FindCase(name);
+    if (index < 0)
+        return Error(BlueprintError::NotFound, m_Name + " has no case " + Quote(name));
+    return Value::Enum(type, index);
+}
+
+crude_json::value crude_blueprint::EnumType::Save(const Value& value) const
+{
+    return m_Cases[static_cast<size_t>(value.AsEnum())];
+}
+
+std::string crude_blueprint::EnumType::Format(const Value& value) const
+{
+    return m_Cases[static_cast<size_t>(value.AsEnum())];
+}
+
+bool crude_blueprint::EnumType::Equal(const Value& a, const Value& b) const
+{
+    return a.AsEnum() == b.AsEnum();
+}
+
+int crude_blueprint::EnumType::Compare(const Value& a, const Value& b) const
+{
+    return (a.AsEnum() > b.AsEnum()) - (a.AsEnum() < b.AsEnum());
 }
 
 crude_blueprint::ParameterType::ParameterType(std::string name, std::vector<const ValueType*> allowed)

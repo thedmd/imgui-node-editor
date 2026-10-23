@@ -777,6 +777,41 @@ TEST_CASE(ApplicationKeys, "library.maps_take_keys_of_every_key_type_the_registr
     test::Check(!refused && refused.GetError().Is(BlueprintError::TypeMismatch), "and nothing else: %s", Message(refused).c_str());
 }
 
+TEST_CASE(EnumRuns, "library.cases_key_maps_compare_and_print_as_their_names", nullptr, test::TestFlags_None)
+{
+    static const EnumType direction("test.Direction", { "North", "East", "South", "West" });
+    static const std::shared_ptr<const Registry> registry = []
+    {
+        auto made = std::make_shared<Registry>();
+        if (!RegisterBuiltins(*made) || !RegisterLibrary(*made) || !made->AddValueType(direction))
+            test::Check(false, "the library and Direction are registered");
+        return made;
+    }();
+    auto heading = [](int32_t index) { return Value::Enum(direction.AsType(), index); };
+
+    // West to "w" and North to "n" printed, then North's value, then whether West is West.
+    Fixture f(registry);
+    auto start = f.Add("Start"), whole = f.Add("Print"), found = f.Add("Print"), same = f.Add("Print");
+    auto map   = f.Grown("MakeMap", "entry", 2), text = f.Add("ToString"), find = f.Add("Find"), equal = f.Add("Equal");
+    f.Link(f.Constant(heading(3)), "value", map, "key.0");
+    f.Link(f.Constant(Value::String("w")), "value", map, "value.0");
+    f.Link(f.Constant(heading(0)), "value", map, "key.1");
+    f.Link(f.Constant(Value::String("n")), "value", map, "value.1");
+    f.Link(start, "then", whole, "enter");
+    f.Link(whole, "then", found, "enter");
+    f.Link(found, "then", same, "enter");
+    f.Link(map, "map", text, "value");
+    f.Link(text, "text", whole, "text");
+    f.Link(map, "map", find, "map");
+    f.Link(f.Constant(heading(0)), "value", find, "key");
+    f.Link(find, "value", found, "text");
+    f.Link(f.Constant(heading(3)), "value", equal, "a");
+    f.Link(f.Constant(heading(3)), "value", equal, "b");
+    f.Link(equal, "result", same, "text", LinkMode::Cast);
+    auto printed = f.Run();
+    test::Check(printed == "{North: \"n\", West: \"w\"} n true", "the map in the cases' order, North's value, and West = West: %s", printed.c_str());
+}
+
 TEST_CASE(AssertStops, "library.a_failing_assert_stops_its_fiber", nullptr, test::TestFlags_None)
 {
     for (auto condition : { true, false })

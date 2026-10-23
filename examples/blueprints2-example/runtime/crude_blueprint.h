@@ -362,6 +362,8 @@ public:
     static Value Map(const Type& type, std::vector<std::pair<Value, Value>> entries);
     // In the struct's order of fields.
     static Value Struct(const Type& type, std::vector<Value> fields);
+    // An enumeration's case, by its index.
+    static Value Enum(const Type& type, int32_t index);
     static Value Boxed(const Type& type, Ref<const Box> box);
 
     const Type* GetType() const { return m_Type; }
@@ -374,6 +376,7 @@ public:
     std::span<const Value>                   AsArray() const;
     std::span<const std::pair<Value, Value>> AsMap() const;
     std::span<const Value>                   AsStruct() const;
+    int32_t                                  AsEnum() const; // its case's index
     const Box*                               AsBox() const;
 
     // A map's value for a key, or null.
@@ -463,6 +466,31 @@ struct StructType final : ValueType
 
 private:
     const std::vector<StructField> m_Fields;
+};
+
+// A value that is one of its cases. In files, a case is its name, so documents survive cases added
+// or put in another order; as map keys, cases are in the order they're declared in.
+struct EnumType final : ValueType
+{
+    CRUDE_BP_RTTI(EnumType, ValueType)
+
+    // A case at least, each of a name of its own.
+    EnumType(std::string name, std::vector<std::string> cases);
+
+    std::span<const std::string> Cases() const { return m_Cases; }
+    int FindCase(std::string_view name) const; // -1 for none
+
+    Value             Default(const Type& type) const override; // the first case
+    Result<Value>     Load(const Type& type, const crude_json::value& json) const override;
+    crude_json::value Save(const Value& value) const override;
+    std::string       Format(const Value& value) const override;
+    bool              Equal(const Value& a, const Value& b) const override;
+
+    bool IsKey() const override { return true; }
+    int  Compare(const Value& a, const Value& b) const override;
+
+private:
+    const std::vector<std::string> m_Cases;
 };
 
 // A generic function's type parameter, as its body sees it: a type of its own, which stands for

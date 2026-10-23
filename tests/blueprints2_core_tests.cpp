@@ -4,6 +4,7 @@
 # include "harness.h"
 # include "crude_blueprint.h"
 # include <crude_json.h>
+# include <algorithm>
 # include <array>
 # include <cstdint>
 # include <limits>
@@ -327,6 +328,34 @@ TEST_CASE(StructFieldsChange, "runtime.structs_load_with_fields_missing_or_unkno
     auto loaded = LoadText(vector2.AsType(), "{\"x\": 2, \"z\": 5}");
 
     test::Check(loaded && loaded.GetValue() == Value::Struct(vector2.AsType(), { Value::Float(2.0f), Value::Float(0.0f) }), "x loads, y takes its default, z is ignored");
+}
+
+TEST_CASE(EnumValues, "runtime.an_enumeration_is_one_of_its_cases_which_files_hold_by_name", nullptr, test::TestFlags_None)
+{
+    TypeTable table;
+    EnumType  direction("example.Direction", { "North", "East", "South", "West" });
+    auto&     type   = direction.AsType();
+    auto      east   = Value::Enum(type, 1);
+    auto&     map    = MapOf(table, type, Int32Type());
+    auto      scores = Value::Map(map, { { Value::Enum(type, 3), Value::Int32(1) }, { Value::Enum(type, 0), Value::Int32(2) } });
+
+    test::Check(east.AsEnum() == 1 && Format(east) == "East" && direction.FindCase("South") == 2 && direction.FindCase("Up") == -1, "a case is of an index, and named");
+    test::Check(direction.Default(type) == Value::Enum(type, 0) && east == Value::Enum(type, 1) && !(east == Value::Enum(type, 2)), "the first case is the default, and cases are equal by index");
+    test::Check(Format(scores) == "{North: 2, West: 1}", "as keys, cases are in the order they're declared in: %s", Format(scores).c_str());
+
+    auto saved   = crude_json::value(direction.Save(east)).dump();
+    auto loaded  = LoadText(type, "\"West\"");
+    auto missing = LoadText(type, "\"Up\"");
+    auto number  = LoadText(type, "3");
+    test::Check(saved == "\"East\"" && loaded && loaded.GetValue() == Value::Enum(type, 3), "a file holds a case by its name: %s", saved.c_str());
+    test::Check(!missing && missing.GetError().Is(BlueprintError::NotFound) && missing.GetError().Message() == "example.Direction has no case \"Up\"", "a name of no case is refused: %s", missing ? "loaded" : std::string(missing.GetError().Message()).c_str());
+    test::Check(!number && number.GetError().Is(BlueprintError::WrongType), "and so is what isn't a name");
+
+    Registry registry;
+    auto added  = RegisterBuiltins(registry).IsOk() && registry.AddValueType(direction).IsOk();
+    auto parsed = table.Parse(registry, "Map<example.Direction,Int32>");
+    auto keys   = registry.KeyTypes();
+    test::Check(added && parsed && parsed.GetValue() == &map && std::find(keys.begin(), keys.end(), &direction) != keys.end(), "registered, it's a key type, in type text too");
 }
 
 TEST_CASE(RegistryHoldsTypesAndCasts, "runtime.registry_holds_value_types_and_casts", nullptr, test::TestFlags_None)
