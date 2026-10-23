@@ -9,9 +9,11 @@
 # include "imgui_extras.h"
 # include <crude_json.h>
 # include <algorithm>
+# include <cmath>
 # include <cstdio>
 # include <functional>
 # include <memory>
+# include <optional>
 # include <string>
 # include <utility>
 # include <vector>
@@ -1699,6 +1701,88 @@ TEST_CASE(StructEdits, "blueprints2.a_structs_fields_are_edited_in_turn_in_one_e
         blueprint_editor_utilities::ValueText(vector).c_str());
     session.Click(elsewhere);
     test::Check(vectorRect.GetHeight() == line, "and a click elsewhere closes it: %g high, %g before", vectorRect.GetHeight(), line);
+}
+
+TEST_CASE(CaseEdits, "blueprints2.an_enumerations_case_is_chosen_from_the_list_its_editor_opens", nullptr, test::TestFlags_None)
+{
+    // A Direction with its editor, in the host window above the canvas.
+    using blueprint_editor_utilities::DrawValueWithEditor;
+    using blueprint_editor_utilities::ValueText;
+    static const EnumType direction("test.Direction", { "North", "East", "South", "West" });
+    test::Session session(UnnamedConfig());
+    auto   value = Value::Enum(direction.AsType(), 0);
+    ImRect box;
+    session.BeforeEditor = [&]
+    {
+        ImGui::SetCursorScreenPos(ImVec2(100.0f, 100.0f));
+        DrawValueWithEditor(1, value);
+        box = ImRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
+    };
+    // A case's row in the open list; none while it's closed.
+    auto row = [](int index) -> std::optional<ImVec2>
+    {
+        auto list = ImGui::FindWindowByName("##Combo_00");
+        if (!list || !list->Active)
+            return std::nullopt;
+        auto& style = ImGui::GetStyle();
+        auto  line  = ImGui::GetTextLineHeight();
+        return ImVec2(list->Pos.x + list->Size.x * 0.5f, list->Pos.y + style.WindowPadding.y + index * (line + style.ItemSpacing.y) + line * 0.5f);
+    };
+    const auto elsewhere = ImVec2(700.0f, 500.0f);
+    session.Run(3);
+
+    session.Click(box.GetCenter());
+    session.Run(3);
+    auto south = row(2);
+    auto under = south && std::abs(ImGui::FindWindowByName("##Combo_00")->Pos.y - box.Max.y) < 1.0f;
+    if (south)
+        session.Click(*south);
+    session.Run(2);
+    test::Check(under && value == Value::Enum(direction.AsType(), 2) && !row(0) && ValueText(value) == "South", "a click opens the list under the case, and a click on South chooses it, closing the list: %s", ValueText(value).c_str());
+
+    session.Click(box.GetCenter());
+    session.Run(3);
+    auto opened = row(0).has_value();
+    test::Key(ImGuiKey_Escape, true);
+    session.Run(1);
+    test::Key(ImGuiKey_Escape, false);
+    session.Run(2);
+    session.Click(box.GetCenter());
+    session.Run(3);
+    auto again = row(0).has_value();
+    session.Click(elsewhere);
+    session.Run(2);
+    test::Check(opened && again && !row(0) && value == Value::Enum(direction.AsType(), 2), "Escape closes it, and so does a click elsewhere, the case kept: %s", ValueText(value).c_str());
+}
+
+TEST_CASE(CaseEditsInCanvas, "blueprints2.an_enumerations_list_opens_under_its_value_on_the_screen_in_a_canvas", nullptr, test::TestFlags_None)
+{
+    // A Direction with its editor in a node, which the canvas shows away from where the host is.
+    using blueprint_editor_utilities::DrawValueWithEditor;
+    static const EnumType direction("test.Direction", { "North", "East", "South", "West" });
+    test::Session session(UnnamedConfig());
+    auto   value = Value::Enum(direction.AsType(), 0);
+    ImRect box;
+    session.DefaultContent = [&](int)
+    {
+        ed::BeginNode(1);
+        DrawValueWithEditor(5, value, true);
+        box = ImRect(ed::CanvasToScreen(ImGui::GetItemRectMin()), ed::CanvasToScreen(ImGui::GetItemRectMax()));
+        ed::EndNode();
+    };
+    session.Run(3);
+
+    session.Click(box.GetCenter());
+    session.Run(3);
+    auto list  = ImGui::FindWindowByName("##Combo_00");
+    auto under = list && list->Active && std::abs(list->Pos.x - box.Min.x) < 1.0f && std::abs(list->Pos.y - box.Max.y) < 1.0f;
+    auto& style = ImGui::GetStyle();
+    auto  line  = ImGui::GetTextLineHeight();
+    if (list)
+        session.Click(ImVec2(list->Pos.x + list->Size.x * 0.5f, list->Pos.y + style.WindowPadding.y + 3 * (line + style.ItemSpacing.y) + line * 0.5f));
+    session.Run(2);
+    test::Check(under && value == Value::Enum(direction.AsType(), 3), "the list opens under the case where it is on the screen, %g, %g for %g, %g, and takes a click: %s",
+        list ? list->Pos.x : 0.0f, list ? list->Pos.y : 0.0f, box.Min.x, box.Max.y, blueprint_editor_utilities::ValueText(value).c_str());
 }
 
 TEST_CASE(CommentTexts, "blueprints2.a_comments_text_is_edited_in_one_undo_step", nullptr, test::TestFlags_None)

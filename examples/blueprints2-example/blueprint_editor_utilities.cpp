@@ -1543,8 +1543,89 @@ bool blueprint_editor_utilities::DrawValue(const Value& value)
     return true;
 }
 
+namespace blueprint_editor_utilities { namespace {
+
+// Set while an editor's list of cases is hovered: the list is a popup, not an item of the editor,
+// and a click on it isn't one elsewhere.
+bool s_CaseListHovered = false;
+
+// A combo's preview, as ImGui::BeginCombo() draws it, without the list: true when clicked.
+bool ComboPreview(ImGuiID id, const char* text, bool open)
+{
+    auto window = ImGui::GetCurrentWindow();
+    if (window->SkipItems)
+        return false;
+    const auto& style   = ImGui::GetStyle();
+    const auto  arrow   = ImGui::GetFrameHeight();
+    const auto  bb      = ImRect(window->DC.CursorPos, window->DC.CursorPos + ImVec2(ImGui::CalcItemWidth(), ImGui::GetFrameHeight()));
+    ImGui::ItemSize(bb, style.FramePadding.y);
+    if (!ImGui::ItemAdd(bb, id))
+        return false;
+    bool hovered = false, held = false;
+    const auto pressed = ImGui::ButtonBehavior(bb, id, &hovered, &held);
+    const auto valueX2 = ImMax(bb.Min.x, bb.Max.x - arrow);
+    window->DrawList->AddRectFilled(bb.Min, ImVec2(valueX2, bb.Max.y), ImGui::GetColorU32(hovered ? ImGuiCol_FrameBgHovered : ImGuiCol_FrameBg), style.FrameRounding, ImDrawFlags_RoundLeft);
+    window->DrawList->AddRectFilled(ImVec2(valueX2, bb.Min.y), bb.Max, ImGui::GetColorU32(open || hovered ? ImGuiCol_ButtonHovered : ImGuiCol_Button), style.FrameRounding, ImDrawFlags_RoundRight);
+    ImGui::RenderArrow(window->DrawList, ImVec2(valueX2 + style.FramePadding.y, bb.Min.y + style.FramePadding.y), ImGui::GetColorU32(ImGuiCol_Text), ImGuiDir_Down, 1.0f);
+    ImGui::RenderFrameBorder(bb.Min, bb.Max, style.FrameRounding);
+    ImGui::RenderTextClipped(bb.Min + style.FramePadding, ImVec2(valueX2, bb.Max.y), text, nullptr, nullptr);
+    return pressed;
+}
+
+// The cases in a list under a combo's preview, which 'focus' opens: a click on one chooses it, and
+// closing the list ends the edit, as Escape does without keyboard navigation too. A popup isn't in a
+// canvas' space, so in one, the list opens where the preview is on the screen, the node editor
+// suspended.
+ValueEdit EditCase(Value& value, bool focus, bool inCanvas)
+{
+    const auto& type    = *value.GetType();
+    const auto  cases   = static_cast<const EnumType*>(type.m_Head)->Cases();
+    const auto  current = static_cast<size_t>(value.AsEnum());
+    const auto  list    = ImGui::GetID("##cases");
+    const auto  storage = ImGui::GetStateStorage();
+    const auto  wasOpen = !focus && storage->GetBool(list);
+    ImGui::SetNextItemWidth(ComboWidth(cases));
+    if (ComboPreview(ImGui::GetID("##editor"), cases[current].c_str(), wasOpen) || focus)
+        ImGui::OpenPopupEx(list, ImGuiPopupFlags_None);
+
+    auto under = ImRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
+    if (inCanvas)
+    {
+        under = ImRect(ed::CanvasToScreen(under.Min), ed::CanvasToScreen(under.Max));
+        ed::Suspend();
+    }
+    const auto open = ImGui::BeginComboPopup(list, under, ImGuiComboFlags_HeightLarge);
+    auto       edit = open || !wasOpen ? ValueEdit::None : ValueEdit::Done;
+    storage->SetBool(list, open);
+    if (open)
+    {
+        for (size_t i = 0; i < cases.size(); ++i)
+        {
+            if (ImGui::Selectable(cases[i].c_str(), i == current, ImGuiSelectableFlags_SelectOnClick))
+            {
+                value = Value::Enum(type, static_cast<int32_t>(i));
+                edit  = ValueEdit::Done;
+            }
+            if (i == current && ImGui::IsWindowAppearing())
+                ImGui::SetItemDefaultFocus();
+        }
+        if (ImGui::IsKeyPressed(ImGuiKey_Escape, false))
+        {
+            ImGui::CloseCurrentPopup();
+            edit = ValueEdit::Done;
+        }
+        s_CaseListHovered = ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows | ImGuiHoveredFlags_AllowWhenBlockedByActiveItem);
+        ImGui::EndCombo();
+    }
+    if (inCanvas)
+        ed::Resume();
+    return edit;
+}
+
+} } // namespace blueprint_editor_utilities { namespace {
+
 // Files can't hold NaN or an infinity, so a Float editor takes only finite numbers.
-blueprint_editor_utilities::ValueEdit blueprint_editor_utilities::EditValue(Value& value, bool focus)
+blueprint_editor_utilities::ValueEdit blueprint_editor_utilities::EditValue(Value& value, bool focus, bool inCanvas)
 {
     ImEx::ScopedItemWidth scopedItemWidth{120};
 
@@ -1658,8 +1739,8 @@ blueprint_editor_utilities::ValueEdit blueprint_editor_utilities::EditValue(Valu
                 if (ImGui::Checkbox("##field", &checked))
                     fields[i] = Value::Bool(checked);
             }
-            else if (head == &Int32ValueType() || head == &FloatValueType() || head == &StringValueType() || IsA<StructType>(head))
-                ended = EditValue(fields[i], focus && i == 0) == ValueEdit::Done || ended;
+            else if (head == &Int32ValueType() || head == &FloatValueType() || head == &StringValueType() || IsA<StructType>(head) || IsA<EnumType>(head))
+                ended = EditValue(fields[i], focus && i == 0, inCanvas) == ValueEdit::Done || ended;
             else
             {
                 ImGui::BeginDisabled();
@@ -1675,12 +1756,14 @@ blueprint_editor_utilities::ValueEdit blueprint_editor_utilities::EditValue(Valu
             value = Value::Struct(*type, std::move(fields));
         return done ? ValueEdit::Done : changed ? ValueEdit::Changed : ValueEdit::None;
     }
+    if (type && IsA<EnumType>(type->m_Head))
+        return EditCase(value, focus, inCanvas);
 
     // Values of other types have no editor yet.
     return ValueEdit::Done;
 }
 
-bool blueprint_editor_utilities::DrawValueWithEditor(Id id, Value& value)
+bool blueprint_editor_utilities::DrawValueWithEditor(Id id, Value& value, bool inCanvas)
 {
     auto storage  = ImGui::GetStateStorage();
     auto focusKey = ImGui::GetID("PinValueEditor_Focus");
@@ -1690,12 +1773,13 @@ bool blueprint_editor_utilities::DrawValueWithEditor(Id id, Value& value)
     if (activeId == id)
     {
         const auto before = value;
+        s_CaseListHovered = false;
         ImGui::BeginGroup();
-        const auto edit = EditValue(value, storage->GetBool(focusKey));
+        const auto edit = EditValue(value, storage->GetBool(focusKey), inCanvas);
         ImGui::EndGroup();
         storage->SetBool(focusKey, false);
         const auto clicked = ImGui::IsMouseClicked(ImGuiMouseButton_Left) || ImGui::IsMouseClicked(ImGuiMouseButton_Right);
-        if (edit == ValueEdit::Done || (clicked && !ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem)))
+        if (edit == ValueEdit::Done || (clicked && !ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem) && !s_CaseListHovered))
             activeId = 0;
         changed = edit != ValueEdit::None && !(value == before);
     }

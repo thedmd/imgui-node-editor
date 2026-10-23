@@ -1116,7 +1116,7 @@ private:
         auto valueEditor = [&edit, &document](Id pin, Value value)
         {
             ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(ImGui::GetStyle().FramePadding.x, 0.0f));
-            if (DrawValueWithEditor(pin, value))
+            if (DrawValueWithEditor(pin, value, true))
                 edit = [&document, pin, value] { SetPinValue(document, pin, value); };
             ImGui::PopStyleVar();
         };

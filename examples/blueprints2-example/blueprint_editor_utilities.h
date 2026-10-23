@@ -257,14 +257,16 @@ bool DrawValue(const Value& value);        // Draws a value; false for none.
 // An editor of a value. A number's - and + change it, the editor staying; Enter ends the edit.
 // A field ends its edit when it stops being active, keeping what was typed, but for a click on a
 // number's - or +, which steps it. 'focus' makes the field active. A struct's fields are edited
-// each in its type's editor, the struct's edit going on while one of them is active.
+// each in its type's editor, the struct's edit going on while one of them is active. An
+// enumeration's cases are in a list under it, which 'focus' opens; choosing one, or closing the
+// list, ends the edit. In a node editor's canvas, 'inCanvas' opens the list on the screen.
 enum class ValueEdit { None, Changed, Done };
-ValueEdit EditValue(Value& value, bool focus = false);
+ValueEdit EditValue(Value& value, bool focus = false, bool inCanvas = false);
 
 // Draws a value in a box half as wide as a line is high at least, or its editor once clicked, its
 // field active; true when an edit changed it. The editor closes when its edit ends, and on a click
 // elsewhere.
-bool DrawValueWithEditor(Id id, Value& value);
+bool DrawValueWithEditor(Id id, Value& value, bool inCanvas = false);
 
 // A popup of a name's field, which opens while 'open' is set, its field focused, and clears it.
 // Enter gives the name typed, unless a problem with it shows under the field. Escape closes it,
