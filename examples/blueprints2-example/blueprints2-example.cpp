@@ -2848,22 +2848,12 @@ private:
         UpdateTitle();
     }
 
-    // A modal popup that doesn't dim the window behind it: the pinned Dear ImGui asserts as it dims
-    // at a fractional framebuffer scale, where it anti-aliases the edges of the dim's rect.
-    static bool BeginPrompt(const char* title)
-    {
-        ImGui::PushStyleColor(ImGuiCol_ModalWindowDimBg, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
-        const auto open = ImGui::BeginPopupModal(title, nullptr, ImGuiWindowFlags_AlwaysAutoResize);
-        ImGui::PopStyleColor();
-        return open;
-    }
-
     void ShowClosePrompt()
     {
         const auto title = "Save Changes?###ClosePrompt";
         if (m_CloseRequest && !ImGui::IsPopupOpen(title))
             ImGui::OpenPopup(title);
-        if (!BeginPrompt(title))
+        if (!ImGui::BeginPopupModal(title, nullptr, ImGuiWindowFlags_AlwaysAutoResize))
             return;
 
         ImGui::TextUnformatted("Do you want to save changes to this blueprint before closing it?");
@@ -2898,7 +2888,7 @@ private:
         const auto title = "Open Blueprint###OpenFailure";
         if (!m_OpenFailure.empty() && !ImGui::IsPopupOpen(title))
             ImGui::OpenPopup(title);
-        if (!BeginPrompt(title))
+        if (!ImGui::BeginPopupModal(title, nullptr, ImGuiWindowFlags_AlwaysAutoResize))
             return;
 
         ImGui::TextUnformatted(m_OpenFailure.c_str());
