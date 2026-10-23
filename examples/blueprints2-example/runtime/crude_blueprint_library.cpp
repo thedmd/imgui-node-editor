@@ -722,13 +722,13 @@ std::string Items(size_t count)
     return std::to_string(count) + (count == 1 ? " item" : " items");
 }
 
-// An index outside the array is an error.
-Result<size_t> ItemIndex(EvalContext& context, size_t size)
+// An index outside the array is an error, but for the one past its last item where 'end' allows it.
+Result<size_t> ItemIndex(EvalContext& context, size_t size, bool end = false)
 {
     auto index = context.Get<int32_t>("index");
     if (!index)
         return index.GetError();
-    if (index.GetValue() < 0 || static_cast<size_t>(index.GetValue()) >= size)
+    if (index.GetValue() < 0 || static_cast<size_t>(index.GetValue()) >= size + (end ? 1 : 0))
         return Error(BlueprintError::OutOfRange, "index " + std::to_string(index.GetValue()) + " is outside the array of " + Items(size));
     return static_cast<size_t>(index.GetValue());
 }
@@ -867,6 +867,97 @@ struct AppendNode final : NodeType
             return item.GetError();
         auto items = std::vector<Value>(array.GetValue().AsArray().begin(), array.GetValue().AsArray().end());
         items.push_back(std::move(item).GetValue());
+        context.Set("result", Value::Array(*context.TypeOf("result"), std::move(items)));
+        return {};
+    }
+};
+
+// The index of the first item equal to the item, by its type's equality, and -1 for none.
+struct IndexOfNode final : NodeType
+{
+    IndexOfNode(): NodeType("crude.IndexOf", "Index Of", "Arrays") {}
+
+    void Declare(NodeDeclaration& declaration, const NodeConfig&, const Bindings&) const override
+    {
+        auto T = declaration.Variable("T");
+        declaration.Input("array", "Array", ArrayOf(T));
+        declaration.Input("item", "Item", T);
+        declaration.Output("index", "Index", Int32Type());
+        declaration.Output("found", "Found", BoolType());
+    }
+
+    Result<void> Evaluate(EvalContext& context) const override
+    {
+        auto array = context.Get("array");
+        if (!array)
+            return array.GetError();
+        auto item = context.Get("item");
+        if (!item)
+            return item.GetError();
+        auto items = array.GetValue().AsArray();
+        auto found = std::find(items.begin(), items.end(), item.GetValue());
+        context.Set("index", Value::Int32(found != items.end() ? static_cast<int32_t>(found - items.begin()) : -1));
+        context.Set("found", Value::Bool(found != items.end()));
+        return {};
+    }
+};
+
+// A copy of the array, with the item at the index and the items from there on after it. The index
+// one past the last item appends it.
+struct InsertAtNode final : NodeType
+{
+    InsertAtNode(): NodeType("crude.InsertAt", "Insert At", "Arrays") {}
+
+    void Declare(NodeDeclaration& declaration, const NodeConfig&, const Bindings&) const override
+    {
+        auto T = declaration.Variable("T");
+        declaration.Input("array", "Array", ArrayOf(T));
+        declaration.Input("index", "Index", Int32Type());
+        declaration.Input("item", "Item", T);
+        declaration.Output("result", "Result", ArrayOf(T));
+    }
+
+    Result<void> Evaluate(EvalContext& context) const override
+    {
+        auto array = context.Get("array");
+        if (!array)
+            return array.GetError();
+        auto items = std::vector<Value>(array.GetValue().AsArray().begin(), array.GetValue().AsArray().end());
+        auto index = ItemIndex(context, items.size(), true);
+        if (!index)
+            return index.GetError();
+        auto item = context.Get("item");
+        if (!item)
+            return item.GetError();
+        items.insert(items.begin() + static_cast<std::ptrdiff_t>(index.GetValue()), std::move(item).GetValue());
+        context.Set("result", Value::Array(*context.TypeOf("result"), std::move(items)));
+        return {};
+    }
+};
+
+// A copy of the array, without the item at the index.
+struct RemoveAtNode final : NodeType
+{
+    RemoveAtNode(): NodeType("crude.RemoveAt", "Remove At", "Arrays") {}
+
+    void Declare(NodeDeclaration& declaration, const NodeConfig&, const Bindings&) const override
+    {
+        auto T = declaration.Variable("T");
+        declaration.Input("array", "Array", ArrayOf(T));
+        declaration.Input("index", "Index", Int32Type());
+        declaration.Output("result", "Result", ArrayOf(T));
+    }
+
+    Result<void> Evaluate(EvalContext& context) const override
+    {
+        auto array = context.Get("array");
+        if (!array)
+            return array.GetError();
+        auto items = std::vector<Value>(array.GetValue().AsArray().begin(), array.GetValue().AsArray().end());
+        auto index = ItemIndex(context, items.size());
+        if (!index)
+            return index.GetError();
+        items.erase(items.begin() + static_cast<std::ptrdiff_t>(index.GetValue()));
         context.Set("result", Value::Array(*context.TypeOf("result"), std::move(items)));
         return {};
     }
@@ -1748,6 +1839,9 @@ crude_blueprint::Result<void> crude_blueprint::RegisterLibrary(Registry& registr
         std::make_unique<GetNode>(),
         std::make_unique<SetNode>(),
         std::make_unique<AppendNode>(),
+        std::make_unique<IndexOfNode>(),
+        std::make_unique<InsertAtNode>(),
+        std::make_unique<RemoveAtNode>(),
         std::make_unique<MakeMapNode>(),
         std::make_unique<FindNode>(),
         std::make_unique<ContainsNode>(),

@@ -606,6 +606,17 @@ TEST_CASE(ValueNodes, "library.select_text_and_arrays_give_their_values", nullpt
         { "Set",       "result", { { "array", Array{ 10, 20, 30 } }, { "index", i(1) }, { "item", i(99) } }, "[10, 99, 30]" },
         { "Set",       "result", { { "array", Array{ 10 } },         { "index", i(5) }, { "item", i(99) } }, "error: index 5 is outside the array of 1 item" },
         { "Append",    "result", { { "array", Array{ 10 } },         { "item", i(20) } }, "[10, 20]" },
+        { "IndexOf",   "index",  { { "array", Array{ 10, 20, 30, 20 } }, { "item", i(20) } }, "1" },
+        { "IndexOf",   "found",  { { "array", Array{ 10, 20, 30, 20 } }, { "item", i(20) } }, "true" },
+        { "IndexOf",   "index",  { { "array", Array{ 10, 20 } },     { "item", i(5) } },  "-1" },
+        { "IndexOf",   "found",  { { "array", Array{ 10, 20 } },     { "item", i(5) } },  "false" },
+        { "InsertAt",  "result", { { "array", Array{ 10, 20 } },     { "index", i(1) }, { "item", i(15) } }, "[10, 15, 20]" },
+        { "InsertAt",  "result", { { "array", Array{ 10, 20 } },     { "index", i(2) }, { "item", i(30) } }, "[10, 20, 30]" },
+        { "InsertAt",  "result", { { "array", Array{ 10 } },         { "index", i(2) }, { "item", i(99) } }, "error: index 2 is outside the array of 1 item" },
+        { "InsertAt",  "result", { { "array", Array{ 10 } },         { "index", i(-1) }, { "item", i(99) } }, "error: index -1 is outside the array of 1 item" },
+        { "RemoveAt",  "result", { { "array", Array{ 10, 20, 30 } }, { "index", i(0) } }, "[20, 30]" },
+        { "RemoveAt",  "result", { { "array", Array{ 10, 20, 30 } }, { "index", i(2) } }, "[10, 20]" },
+        { "RemoveAt",  "result", { { "array", Array{ 10 } },         { "index", i(1) } }, "error: index 1 is outside the array of 1 item" },
     };
     for (auto& c : cases)
     {
