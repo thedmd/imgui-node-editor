@@ -1612,6 +1612,82 @@ struct BreakStructNode final : NodeType
     const StructType& m_Struct;
 };
 
+// The case each of a Switch on Enum's outputs takes, of the enumeration: the one its config names,
+// "case.<index>" in its data, else the first case no output names and no earlier one takes. One
+// naming no case of the enumeration takes none, "".
+std::vector<std::string> SwitchCases(const EnumType* type, const NodeConfig& config, int count)
+{
+    std::vector<std::string> cases(static_cast<size_t>(count));
+    if (!type)
+        return cases;
+    std::vector<bool> taken(type->Cases().size(), false), named(cases.size(), false);
+    for (size_t i = 0; i < cases.size(); ++i)
+    {
+        auto data = config.m_Data.find("case." + std::to_string(i));
+        if (data == config.m_Data.end() || data->second.GetType() != &StringType())
+            continue;
+        named[i] = true;
+        if (auto at = type->FindCase(data->second.AsString()); at >= 0)
+        {
+            cases[i] = type->Cases()[static_cast<size_t>(at)];
+            taken[static_cast<size_t>(at)] = true;
+        }
+    }
+    for (size_t i = 0; i < cases.size(); ++i)
+    {
+        auto free = std::find(taken.begin(), taken.end(), false);
+        if (named[i] || free == taken.end())
+            continue;
+        *free    = true;
+        cases[i] = type->Cases()[static_cast<size_t>(free - taken.begin())];
+    }
+    return cases;
+}
+
+// The output of its selection's case, else Default. As Switch on Int's, its outputs are a group, each
+// taking a case of the selection's enumeration (SwitchCases()), up to one for each case. The selection
+// takes the registry's enumerations, which links or the user decide.
+struct SwitchOnEnumNode final : NodeType
+{
+    SwitchOnEnumNode(): NodeType("crude.SwitchOnEnum", "Switch on Enum", "Flow") {}
+
+    void Declare(NodeDeclaration& declaration, const NodeConfig& config, const Bindings& bindings) const override
+    {
+        std::vector<const ValueType*> enumerations;
+        for (auto type : declaration.GetRegistry().ValueTypes())
+            if (Cast<EnumType>(type))
+                enumerations.push_back(type);
+        declaration.FlowInput("enter");
+        declaration.Input("selection", "Selection", declaration.Variable("E", std::move(enumerations)));
+        auto decided = bindings.Get("E");
+        auto type    = decided ? Cast<EnumType>(decided->m_Head) : nullptr;
+        auto count   = declaration.Group("case", 1, type ? static_cast<int>(type->Cases().size()) : 16, Direction::Output);
+        auto cases   = SwitchCases(type, config, count);
+        for (int i = 0; i < count; ++i)
+            declaration.FlowOutput("case." + std::to_string(i), cases[static_cast<size_t>(i)].empty() ? std::string("?") : cases[static_cast<size_t>(i)]);
+        declaration.FlowOutput("default", "Default");
+    }
+
+    Result<Exit> Execute(ExecContext& context, std::string_view) const override
+    {
+        auto selection = context.Get("selection");
+        if (!selection)
+            return selection.GetError();
+        auto type = Cast<EnumType>(selection.GetValue().GetType()->m_Head);
+        if (!type)
+            return Error(BlueprintError::WrongType, "Selection isn't of an enumeration");
+        auto count = 0;
+        while (context.HasPin("case." + std::to_string(count)))
+            ++count;
+        auto cases = SwitchCases(type, context.Config(), count);
+        auto name  = type->Cases()[static_cast<size_t>(selection.GetValue().AsEnum())];
+        for (int i = 0; i < count; ++i)
+            if (cases[static_cast<size_t>(i)] == name)
+                return Exit::To("case." + std::to_string(i));
+        return Exit::To("default");
+    }
+};
+
 } } // namespace crude_blueprint { namespace {
 
 crude_blueprint::Result<void> crude_blueprint::RegisterStructNodes(Registry& registry, const StructType& type)
@@ -1622,6 +1698,14 @@ crude_blueprint::Result<void> crude_blueprint::RegisterStructNodes(Registry& reg
     if (auto made = registry.AddNodeType(std::make_unique<MakeStructNode>(type)); !made)
         return made;
     return registry.AddNodeType(std::make_unique<BreakStructNode>(type));
+}
+
+crude_blueprint::Result<void> crude_blueprint::RegisterEnumNodes(Registry& registry)
+{
+    auto types = registry.ValueTypes();
+    if (std::none_of(types.begin(), types.end(), [](const ValueType* type) { return Cast<EnumType>(type) != nullptr; }))
+        return Error(BlueprintError::NotFound, "Switch on Enum takes the registry's enumerations, and it has none");
+    return registry.AddNodeType(std::make_unique<SwitchOnEnumNode>());
 }
 
 crude_blueprint::Result<void> crude_blueprint::RegisterLibrary(Registry& registry)

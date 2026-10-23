@@ -23,4 +23,8 @@ Result<void> RegisterLibrary(Registry& registry);
 // "struct", the key of their struct pins, is refused.
 Result<void> RegisterStructNodes(Registry& registry, const StructType& type);
 
+// Switch on Enum, "crude.SwitchOnEnum", of every enumeration the registry has once it's built; refused
+// while it has none.
+Result<void> RegisterEnumNodes(Registry& registry);
+
 } // namespace crude_blueprint

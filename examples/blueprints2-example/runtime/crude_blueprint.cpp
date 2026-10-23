@@ -1933,9 +1933,14 @@ crude_blueprint::Result<void> crude_blueprint::Graph::RemoveGroupPin(Id node, st
     for (auto& [key, name] : changed->m_Config.m_Names)
         if (auto moved = AfterRemoval(key, *declared, index))
             names.emplace(std::move(*moved), name);
+    std::map<std::string, Value, std::less<>> data;
+    for (auto& [key, value] : changed->m_Config.m_Data)
+        if (auto moved = AfterRemoval(key, *declared, index))
+            data.emplace(std::move(*moved), value);
     changed->m_KeyIds = std::move(keyIds);
     changed->m_Config.m_Split = std::move(split);
     changed->m_Config.m_Names = std::move(names);
+    changed->m_Config.m_Data  = std::move(data);
     changed->m_Config.m_Groups[declared->m_Name] = count - 1;
     std::erase_if(m_Links, [&removed](const Link& link) { return std::find(removed.begin(), removed.end(), link.m_From) != removed.end() || std::find(removed.begin(), removed.end(), link.m_To) != removed.end(); });
     for (auto id : removed)

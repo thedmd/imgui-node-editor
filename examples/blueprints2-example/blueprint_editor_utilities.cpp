@@ -69,6 +69,7 @@ const char* blueprint_editor_utilities::NodeIcon(const Blueprint& blueprint, con
         { "crude.ForEachEntry", ICON_FA_REPEAT       },
         { "crude.WhileLoop",    ICON_FA_REPEAT       },
         { "crude.SwitchOnInt",  ICON_FA_SHUFFLE      },
+        { "crude.SwitchOnEnum", ICON_FA_SHUFFLE      },
         { "crude.SwitchOnType", ICON_FA_SHUFFLE      },
         { "crude.DoOnce",       ICON_FA_1            },
         { "crude.DoN",          ICON_FA_HASHTAG      },

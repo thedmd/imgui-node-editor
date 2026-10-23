@@ -812,6 +812,75 @@ TEST_CASE(EnumRuns, "library.cases_key_maps_compare_and_print_as_their_names", n
     test::Check(printed == "{North: \"n\", West: \"w\"} n true", "the map in the cases' order, North's value, and West = West: %s", printed.c_str());
 }
 
+TEST_CASE(EnumSwitches, "library.switch_on_enum_goes_on_from_the_output_of_its_selections_case", nullptr, test::TestFlags_None)
+{
+    static const EnumType direction("test.Direction", { "North", "East", "South", "West" });
+    static const std::shared_ptr<const Registry> registry = []
+    {
+        auto made = std::make_shared<Registry>();
+        if (!RegisterBuiltins(*made) || !RegisterLibrary(*made) || !made->AddValueType(direction) || !RegisterEnumNodes(*made))
+            test::Check(false, "the library, Direction and Switch on Enum are registered");
+        return made;
+    }();
+    {
+        Registry bare;
+        auto refused = RegisterBuiltins(bare) && RegisterLibrary(bare) && !RegisterEnumNodes(bare);
+        test::Check(refused, "a registry of no enumeration refuses Switch on Enum");
+    }
+    auto names = [](const Graph& graph, Id node)
+    {
+        std::string text;
+        if (auto found = graph.FindNode(node))
+            for (auto& pin : found->m_Pins)
+                if (pin.m_Direction == Direction::Output)
+                    text += (text.empty() ? "" : " ") + pin.m_Name;
+        return text;
+    };
+
+    // Two outputs: West, as the config names, then North, the first case no other takes; East and
+    // South go on from Default.
+    const std::pair<int32_t, const char*> ways[] = { { 3, "west" }, { 0, "north" }, { 1, "default" }, { 2, "default" } };
+    for (auto [selection, expected] : ways)
+    {
+        Fixture f(registry);
+        NodeConfig config;
+        config.m_Groups["case"] = 2;
+        config.m_Data["case.0"] = Value::String("West");
+        auto start = f.Add("Start"), node = f.m_Graph.AddNode("crude.SwitchOnEnum", std::move(config)).ValueOr(0);
+        f.Link(start, "then", node, "enter");
+        f.Link(f.Constant(Value::Enum(direction.AsType(), selection)), "value", node, "selection");
+        f.Link(node, "case.0", f.Printer("west"), "enter");
+        f.Link(node, "case.1", f.Printer("north"), "enter");
+        f.Link(node, "default", f.Printer("default"), "enter");
+        auto printed = f.Run();
+        test::Check(printed == expected && names(f.m_Graph, node) == "West North Default", "%s goes on from %s: %s, of %s", direction.Cases()[static_cast<size_t>(selection)].c_str(), expected, printed.c_str(), names(f.m_Graph, node).c_str());
+    }
+
+    // Until a link or the user decides the enumeration, the cases are unknown; the selection takes
+    // enumerations alone; there's an output for each case at most; and an output's case in the config
+    // goes with it when an output before it goes.
+    {
+        Fixture f(registry);
+        auto node  = f.m_Graph.AddNode("crude.SwitchOnEnum").ValueOr(0);
+        auto first = names(f.m_Graph, node);
+        auto whole = f.m_Graph.Connect(f.Pin(f.Constant(Value::Int32(1)), "value"), f.Pin(node, "selection"));
+        test::Check(first == "? Default" && !whole, "undecided, its case is ?, and Int32 isn't taken: %s", first.c_str());
+
+        NodeConfig config;
+        config.m_Groups["case"] = 3;
+        config.m_Data["case.1"] = Value::String("South");
+        config.m_Types["E"]     = &direction.AsType();
+        auto three = f.m_Graph.AddNode("crude.SwitchOnEnum", std::move(config)).ValueOr(0);
+        auto before = names(f.m_Graph, three);
+        auto grown  = f.m_Graph.AddGroupPin(three, "case").IsOk();
+        auto full   = !f.m_Graph.AddGroupPin(three, "case");
+        auto gone   = f.m_Graph.RemoveGroupPin(three, "case", 0).IsOk();
+        auto after  = names(f.m_Graph, three);
+        test::Check(before == "North South East Default" && grown && full && gone && after == "South North East Default",
+            "with South named for the second: %s; a fourth for the last case, no fifth; and without the first, South is the first's: %s", before.c_str(), after.c_str());
+    }
+}
+
 TEST_CASE(AssertStops, "library.a_failing_assert_stops_its_fiber", nullptr, test::TestFlags_None)
 {
     for (auto condition : { true, false })
