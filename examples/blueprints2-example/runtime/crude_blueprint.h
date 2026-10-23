@@ -1053,10 +1053,16 @@ public:
     Result<void>    SetSignature(Id graph, Signature signature);
     // Its graph, its nodes' types and its type parameters take the new name.
     Result<void>    RenameFunction(Id graph, std::string name);
+    // A function of the same signature under a new name, its graph a copy of the function's: the
+    // nodes and links under new IDs, the nodes in their order. The copy's entry, returns and calls
+    // of itself are the new function's.
+    Result<Graph*>  DuplicateFunction(Id graph, std::string name);
     // Its calls keep the types chosen for it, under the new name.
     Result<void>    RenameTypeParameter(Id graph, size_t index, std::string name);
     // What SetSignature() refuses a signature for.
     Result<void>    CheckSignature(const Signature& signature) const;
+    // What AddFunction() refuses a name and a signature for.
+    Result<void>    CheckFunction(std::string_view name, const Signature& signature) const;
     // With its graph; refused while another graph calls it.
     Result<void>    RemoveFunction(Id graph);
     const Function* FindFunction(Id graph) const;
@@ -1089,7 +1095,6 @@ private:
     friend Result<void>      Load(Blueprint& blueprint, const crude_json::value& file);
     friend CompileResult     Compile(const Blueprint& blueprint);
 
-    Result<void> CheckFunction(std::string_view name, const Signature& signature) const;
     void         DefineFunction(const Graph& graph, Signature signature);
     void         SetParameters(Function& function);
     Result<void> CheckVariable(const Variable& variable, std::string_view replaced) const;

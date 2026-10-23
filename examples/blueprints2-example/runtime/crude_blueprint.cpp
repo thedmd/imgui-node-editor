@@ -2479,6 +2479,39 @@ crude_blueprint::Result<void> crude_blueprint::Blueprint::RenameFunction(Id grap
     return {};
 }
 
+// The graph goes through SaveNodes() and LoadNodes(), its node types renamed in what's saved.
+crude_blueprint::Result<crude_blueprint::Graph*> crude_blueprint::Blueprint::DuplicateFunction(Id graph, std::string name)
+{
+    auto function = FindFunction(graph);
+    auto source   = FindGraph(graph);
+    if (!function || !source)
+        return Error(BlueprintError::NotFound, "graph " + std::to_string(graph) + " isn't a function's");
+    const auto old       = function->m_Name;
+    const auto signature = function->m_Signature;
+
+    std::vector<Id> nodes;
+    for (auto& node : source->Nodes())
+        nodes.push_back(node.m_Id);
+    auto saved = SaveNodes(*source, nodes);
+    for (auto& node : saved["nodes"].get<crude_json::array>())
+    {
+        auto& type = node["type"].get<crude_json::string>();
+        for (auto role : { FunctionNodeType::Role::Entry, FunctionNodeType::Role::Return, FunctionNodeType::Role::Call })
+            if (type == FunctionNodeType::Prefix(role) + old)
+                type = FunctionNodeType::Prefix(role) + name;
+    }
+
+    auto added = AddFunction(std::move(name), signature);
+    if (!added)
+        return added;
+    if (auto loaded = LoadNodes(*added.GetValue(), saved); !loaded)
+    {
+        [[maybe_unused]] auto removed = RemoveFunction(added.GetValue()->GetId());
+        return loaded.GetError();
+    }
+    return added;
+}
+
 crude_blueprint::Result<void> crude_blueprint::Blueprint::RenameTypeParameter(Id graph, size_t index, std::string name)
 {
     auto function = std::find_if(m_Functions.begin(), m_Functions.end(), [graph](const auto& other) { return other->m_Graph == graph; });

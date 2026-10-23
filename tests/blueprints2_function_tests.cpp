@@ -713,6 +713,75 @@ TEST_CASE(RenamedFunctions, "function.a_renamed_functions_graph_and_nodes_take_i
     test::Check(!taken && taken.GetError().Is(BlueprintError::Duplicate) && !bad && !missing && missing.GetError().Is(BlueprintError::NotFound) && same, "another function's name, a bad one, and an event graph's are refused: %s", Message(taken).c_str());
 }
 
+TEST_CASE(DuplicatedFunctions, "function.a_duplicate_is_a_function_of_its_own_with_a_copy_of_the_graph", nullptr, test::TestFlags_None)
+{
+    // Down(n: Int32), while n > 0, prints n and calls itself with n - 1. Duplicated as Count.
+    Fixture f;
+    Signature down;
+    down.m_Inputs = { { "n", "N", Int32Type() } };
+    auto& body  = f.Function("Down", down);
+    auto  entry = f.In(body, "entry:Down"), branch = f.In(body, "crude.Branch"), greater = f.In(body, "crude.Greater");
+    auto  print = f.In(body, "crude.Print"), less = f.In(body, "crude.Subtract"), again = f.In(body, "call:Down");
+    f.Wire(body, entry, "then", branch, "enter");
+    f.Wire(body, entry, "n", greater, "a");
+    f.Wire(body, greater, "result", branch, "condition");
+    f.Wire(body, branch, "true", print, "enter");
+    f.Wire(body, entry, "n", print, "text", LinkMode::Cast);
+    f.Wire(body, print, "then", again, "enter");
+    f.Wire(body, entry, "n", less, "a");
+    f.Wire(body, less, "result", again, "n");
+    f.Assign(body, greater, "b", Value::Int32(0));
+    f.Assign(body, less, "b", Value::Int32(1));
+
+    auto copy = f.m_Blueprint.DuplicateFunction(body.GetId(), "Count");
+    if (!copy)
+        return test::Check(false, "Down is duplicated: %s", Message(copy).c_str());
+    auto& graph    = *copy.GetValue();
+    auto  function = f.m_Blueprint.FindFunction(graph.GetId());
+    test::Check(function && function->m_Name == "Count" && graph.GetName() == "Count" && function->m_Signature == down, "the copy is a function of the same signature, named Count");
+    std::vector<std::string> types, originals;
+    for (auto& node : graph.Nodes())
+        types.push_back(node.m_Type->m_Name);
+    for (auto& node : body.Nodes())
+        originals.push_back(node.m_Type->m_Name);
+    const std::vector<std::string> expected = { "entry:Count", "crude.Branch", "crude.Greater", "crude.Print", "crude.Subtract", "call:Count" };
+    auto apart = std::none_of(graph.Nodes().begin(), graph.Nodes().end(), [&body](const Node& node) { return body.FindNode(node.m_Id) != nullptr; });
+    test::Check(types == expected && apart && graph.Links().size() == body.Links().size() && originals[0] == "entry:Down" && originals[5] == "call:Down",
+        "its graph has the nodes in their order under new IDs, and the links; its entry and its call of itself are Count's, and Down's stay Down's");
+
+    auto start = f.Add("Start"), call = f.Call("Count");
+    f.Link(start, "then", call, "enter");
+    f.Assign(f.m_Graph, call, "n", Value::Int32(3));
+    auto end     = FiberState::Ready;
+    auto printed = f.Run(&end);
+    test::Check(printed == "3 2 1" && end == FiberState::Done, "called from Start, the copy counts down, calling itself: %s", printed.c_str());
+
+    auto taken = f.m_Blueprint.DuplicateFunction(body.GetId(), "Count");
+    auto event = f.m_Blueprint.DuplicateFunction(f.m_Graph.GetId(), "Main2");
+    test::Check(!taken && taken.GetError().Is(BlueprintError::Duplicate) && !event && event.GetError().Is(BlueprintError::NotFound) && f.m_Blueprint.Graphs().size() == 3,
+        "a name another function has, and an event graph, are refused, adding no graph: %s", Message(taken).c_str());
+}
+
+TEST_CASE(DuplicatedParameters, "function.a_duplicates_body_has_its_own_type_parameters", nullptr, test::TestFlags_None)
+{
+    // Lerp<T>'s Add of a and b, to the Return. Duplicated as Mix.
+    Fixture f;
+    auto& lerp  = f.Function("Lerp", Lerp());
+    auto  entry = f.In(lerp, "entry:Lerp"), add = f.In(lerp, "crude.Add"), ret = f.In(lerp, "return:Lerp");
+    f.Wire(lerp, entry, "then", ret, "enter");
+    f.Wire(lerp, entry, "a", add, "in.0");
+    f.Wire(lerp, entry, "b", add, "in.1");
+    f.Wire(lerp, add, "result", ret, "value");
+
+    auto copy = f.m_Blueprint.DuplicateFunction(lerp.GetId(), "Mix");
+    if (!copy)
+        return test::Check(false, "Lerp is duplicated: %s", Message(copy).c_str());
+    auto& mix    = *copy.GetValue();
+    auto  copied = mix.Nodes().size() == 3 ? &mix.Nodes()[1] : nullptr;
+    test::Check(copied && f.TypeIn(mix, copied->m_Id, "result") == "Mix.T" && !mix.IsBroken(), "the copy's Add is of the copy's parameter, Mix.T: %s", copied ? f.TypeIn(mix, copied->m_Id, "result").c_str() : "none");
+    test::Check(f.TypeIn(lerp, add, "result") == "Lerp.T" && !lerp.IsBroken(), "and Lerp's of Lerp's");
+}
+
 TEST_CASE(EventsInFunctions, "function.an_event_in_a_function_graph_is_refused", nullptr, test::TestFlags_None)
 {
     Fixture f;
