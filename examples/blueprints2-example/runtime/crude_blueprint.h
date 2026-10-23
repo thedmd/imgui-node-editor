@@ -1119,6 +1119,15 @@ crude_json::value Save(const Blueprint& blueprint);
 // placeholder: its links disabled, an error on it, and saved back unchanged.
 Result<void> Load(Blueprint& blueprint, const crude_json::value& file);
 
+// Nodes of a graph and the links among them, for a clipboard: "format": "crude_blueprint_nodes",
+// "version": 2, and "nodes" and "links" as a file's graph has them. Links to other nodes stay out.
+crude_json::value SaveNodes(const Graph& graph, std::span<const Id> nodes);
+
+// What SaveNodes() gave, into a graph, under new IDs, as a file's nodes load: links that don't fit
+// load disabled, and a node it can't understand loads as a placeholder. The saved nodes' new IDs,
+// in their order. What it can't read leaves the graph as it was.
+Result<std::vector<Id>> LoadNodes(Graph& graph, const crude_json::value& saved);
+
 
 //
 // -------[ Programs ]-------

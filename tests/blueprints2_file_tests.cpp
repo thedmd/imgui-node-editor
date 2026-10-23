@@ -5,7 +5,10 @@
 # include <crude_json.h>
 # include <algorithm>
 # include <functional>
+# include <map>
 # include <memory>
+# include <set>
+# include <span>
 # include <string>
 
 using namespace blueprints2_tests;
@@ -500,4 +503,138 @@ TEST_CASE(LinkOrder, "file.links_load_forced_first_then_in_the_order_the_file_li
     auto unforced = Loaded(file.dump());
     auto graph2   = unforced->Graphs().empty() ? nullptr : unforced->Graphs()[0].get();
     test::Check(graph2 && graph2->FindLink(plain)->m_Active && !graph2->FindLink(forced)->m_Active && graph2->TypeText(f.Pin(add, "result")) == "Int32", "unforced, the first link the file lists wins");
+}
+
+namespace {
+
+// Saved nodes with their IDs numbered in the order they come in, so that copies compare equal.
+std::string Canonical(crude_json::value saved)
+{
+    std::map<crude_json::number, crude_json::number> numbers;
+    auto renumber = [&numbers](crude_json::value& id)
+    {
+        auto& number = id.get<crude_json::number>();
+        number = numbers.emplace(number, static_cast<crude_json::number>(numbers.size() + 1)).first->second;
+    };
+    for (auto& node : saved["nodes"].get<crude_json::array>())
+    {
+        renumber(node["id"]);
+        for (auto& [key, pin] : node["pins"].get<crude_json::object>())
+            renumber(pin["id"]);
+    }
+    for (auto& link : saved["links"].get<crude_json::array>())
+    {
+        renumber(link["id"]);
+        renumber(link["from"]);
+        renumber(link["to"]);
+    }
+    return saved.dump();
+}
+
+const Link* LinkBetween(const Graph& graph, Id from, Id to)
+{
+    for (auto& link : graph.Links())
+        if (link.m_From == from && link.m_To == to)
+            return &link;
+    return nullptr;
+}
+
+} // namespace
+
+TEST_CASE(SavedNodes, "file.saved_nodes_load_as_a_copy_under_new_ids", nullptr, test::TestFlags_None)
+{
+    // The two Adds, linked through a cast, the first of them from the ConstInt32, the Hold, whose
+    // link to Print stays out, and the MoveBy with its split pin.
+    Rich f;
+    const Id   nodes[] = { f.ints, f.add, f.sum, f.hold, f.move };
+    const auto saved   = SaveNodes(f.m_Graph, nodes);
+    const auto count   = f.m_Graph.Nodes().size();
+    const auto links   = f.m_Graph.Links().size();
+    auto loaded = LoadNodes(f.m_Graph, saved);
+    if (!loaded || loaded.GetValue().size() != 5)
+        return test::Check(false, "the saved nodes load, five of them: %s", Message(loaded).c_str());
+    const auto copies = loaded.GetValue();
+    auto fresh = std::none_of(copies.begin(), copies.end(), [&nodes](Id id) { return std::find(std::begin(nodes), std::end(nodes), id) != std::end(nodes); });
+    test::Check(fresh && std::set<Id>(copies.begin(), copies.end()).size() == 5 && f.m_Graph.Nodes().size() == count + 5, "each under a new ID");
+    test::Check(f.m_Graph.Links().size() == links + 2, "with the two links among them: %d links more", static_cast<int>(f.m_Graph.Links().size() - links));
+    const auto first = Canonical(saved), again = Canonical(SaveNodes(f.m_Graph, copies));
+    test::Check(again == first, "the copies save as the nodes did, configs, values and the cast included: %s", Difference(first, again).c_str());
+    auto cast = LinkBetween(f.m_Graph, f.Pin(copies[1], "result"), f.Pin(copies[2], "in.0"));
+    test::Check(cast && cast->m_Active && cast->m_Cast == "Int32->Float" && f.Type(copies[2], "result") == "Float", "the copied cast link is active, as the one it copies");
+
+    // The Add a forced link reaches, with both its sources: the forced link wins again.
+    const auto contested = f.m_Graph.NodeOf(f.m_Graph.FindLink(f.plain)->m_To)->m_Id;
+    const Id   rivals[]  = { f.ints, f.floats, contested };
+    auto copied = LoadNodes(f.m_Graph, SaveNodes(f.m_Graph, rivals));
+    if (!copied || copied.GetValue().size() != 3)
+        return test::Check(false, "the rivals load: %s", Message(copied).c_str());
+    const auto& r = copied.GetValue();
+    auto plain  = LinkBetween(f.m_Graph, f.Pin(r[0], "value"), f.Pin(r[2], "in.0"));
+    auto forced = LinkBetween(f.m_Graph, f.Pin(r[1], "value"), f.Pin(r[2], "in.1"));
+    test::Check(plain && !plain->m_Active && forced && forced->m_Active && f.Type(r[2], "result") == "Float", "of the copies, the forced link is active and the other disabled");
+
+    auto none = LoadNodes(f.m_Graph, SaveNodes(f.m_Graph, std::span<const Id>()));
+    test::Check(none && none.GetValue().empty() && f.m_Graph.Nodes().size() == count + 8, "and no nodes load as none");
+}
+
+TEST_CASE(SavedNodesElsewhere, "file.saved_nodes_of_types_a_blueprint_lacks_load_there_as_placeholders", nullptr, test::TestFlags_None)
+{
+    // Main's ConstInt32, and its call of Lerp, which another blueprint lacks.
+    WithFunctions f;
+    Id ints = 0, call = 0;
+    for (auto& node : f.m_Graph.Nodes())
+        (node.m_Type->m_Name == "call:Lerp" ? call : ints) = node.m_Id;
+    const Id   nodes[] = { ints, call };
+    const auto saved   = SaveNodes(f.m_Graph, nodes);
+
+    Fixture other;
+    auto loaded = LoadNodes(other.m_Graph, saved);
+    if (!loaded || loaded.GetValue().size() != 2)
+        return test::Check(false, "they load into the other blueprint: %s", Message(loaded).c_str());
+    const auto copies = loaded.GetValue();
+    auto diagnostics = other.m_Graph.Diagnostics();
+    auto named = std::any_of(diagnostics.begin(), diagnostics.end(), [&](const Diagnostic& d) { return d.m_Node == copies[1] && d.m_Error.Message() == "no node type is named call:Lerp"; });
+    auto link  = LinkBetween(other.m_Graph, other.Pin(copies[0], "value"), other.Pin(copies[1], "a"));
+    test::Check(named && link && !link->m_Active && other.m_Graph.FindNode(copies[0])->m_Type->m_Name == "test.ConstInt32", "the call is a placeholder there, an error naming its type, its link disabled");
+
+    auto back = LoadNodes(f.m_Graph, SaveNodes(other.m_Graph, copies));
+    auto home = back && back.GetValue().size() == 2 ? f.m_Graph.FindNode(back.GetValue()[1]) : nullptr;
+    auto relinked = home ? LinkBetween(f.m_Graph, f.Pin(back.GetValue()[0], "value"), f.Pin(home->m_Id, "a")) : nullptr;
+    test::Check(home && home->m_Type->m_Name == "call:Lerp" && relinked && relinked->m_Active && Canonical(SaveNodes(f.m_Graph, back.GetValue())) == Canonical(saved),
+        "copied back where Lerp is, it's a call again, linked, and saves as it did");
+}
+
+TEST_CASE(MalformedSavedNodes, "file.malformed_saved_nodes_are_refused_and_change_nothing", nullptr, test::TestFlags_None)
+{
+    Rich f;
+    const Id   nodes[] = { f.ints, f.add };
+    const auto saved   = SaveNodes(f.m_Graph, nodes);
+
+    struct Case
+    {
+        const char*                                   what;
+        std::function<void(crude_json::value& saved)> change;
+        const char*                                   message; // a part of it
+    };
+    const Case cases[] =
+    {
+        { "an array",                    [](crude_json::value& s) { s = crude_json::array{}; },                   "are an object"                },
+        { "a file's format",             [](crude_json::value& s) { s["format"] = "crude_blueprint"; },           "aren't crude_blueprint_nodes" },
+        { "version 1",                   [](crude_json::value& s) { s["version"] = 1; },                          "their version is 1"           },
+        { "no nodes",                    [](crude_json::value& s) { s.erase("nodes"); },                          "no array of nodes"            },
+        { "links that aren't an array",  [](crude_json::value& s) { s["links"] = 5; },                            "no array of links"            },
+        { "a node that isn't an object", [](crude_json::value& s) { s["nodes"][1] = 5; },                         "nodes[1] isn't an object"     },
+        { "an ID used twice",            [](crude_json::value& s) { s["nodes"][1]["id"] = s["nodes"][0]["id"]; }, "another part has too"         },
+        { "a link to a pin none has",    [](crude_json::value& s) { s["links"][0]["to"] = 99999; },               "which no saved node has"      },
+        { "a link without its end",      [](crude_json::value& s) { s["links"][0].erase("from"); },               "links[0] has no from"         },
+    };
+    const auto before = Describe(f.m_Graph);
+    for (auto& c : cases)
+    {
+        auto changed = saved;
+        c.change(changed);
+        auto read = LoadNodes(f.m_Graph, changed);
+        auto refused = !read && read.GetError().Is(BlueprintError::BadFile) && read.GetError().Message().find(c.message) != std::string_view::npos;
+        test::Check(refused && Describe(f.m_Graph) == before, "%s is refused, and the graph stays as it was: %s", c.what, Message(read).c_str());
+    }
 }

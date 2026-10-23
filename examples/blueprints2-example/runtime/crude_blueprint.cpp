@@ -3953,8 +3953,9 @@ int crude_blueprint::Context::FindVariable(std::string_view name) const
 
 namespace crude_blueprint { namespace {
 
-const char* const c_Format  = "crude_blueprint";
-const int         c_Version = 2;
+const char* const c_Format      = "crude_blueprint";
+const char* const c_NodesFormat = "crude_blueprint_nodes";
+const int         c_Version     = 2;
 
 crude_json::value SaveValue(const Value& value)
 {
@@ -4040,6 +4041,48 @@ crude_json::object SaveSignature(const Signature& signature)
     saved["outputs"]    = pins(signature.m_Outputs);
     if (signature.m_Pure)
         saved["pure"] = true;
+    return saved;
+}
+
+crude_json::value SaveNode(const Node& node)
+{
+    if (auto placeholder = Cast<PlaceholderNodeType>(node.m_Type))
+        return placeholder->m_Saved;
+    crude_json::object saved;
+    saved["id"]           = node.m_Id;
+    saved["type"]         = node.m_Type->m_Name;
+    saved["type_version"] = node.m_Type->m_Version;
+    if (auto config = SaveConfig(node.m_Config); !config.empty())
+        saved["config"] = std::move(config);
+    crude_json::object pins;
+    for (auto& [key, id] : node.m_KeyIds)
+    {
+        crude_json::object pin;
+        pin["id"] = id;
+        if (auto declared = node.FindPin(key))
+        {
+            pin["dir"] = declared->m_Direction == Direction::Input ? "in" : "out";
+            if (declared->m_Flow)
+                pin["flow"] = true;
+        }
+        if (auto value = node.m_Values.find(id); value != node.m_Values.end())
+            pin["value"] = SaveValue(value->second);
+        pins[key] = std::move(pin);
+    }
+    saved["pins"] = std::move(pins);
+    return saved;
+}
+
+crude_json::value SaveLink(const Link& link)
+{
+    crude_json::object saved;
+    saved["id"]   = link.m_Id;
+    saved["from"] = link.m_From;
+    saved["to"]   = link.m_To;
+    if (link.m_Forced > 0)
+        saved["forced"] = link.m_Forced;
+    if (!link.m_Cast.empty())
+        saved["cast"] = link.m_Cast;
     return saved;
 }
 
@@ -4489,6 +4532,90 @@ struct crude_blueprint::FileLoader
             graph->Update();
         return {};
     }
+
+    static Result<std::vector<Id>> ReadNodes(Graph& graph, const crude_json::value& saved)
+    {
+        if (!saved.is_object())
+            return Error(BlueprintError::BadFile, "saved nodes are an object");
+        auto format  = saved.find("format");
+        auto version = saved.find("version");
+        if (!format || !format->is_string() || format->get<crude_json::string>() != c_NodesFormat)
+            return Error(BlueprintError::BadFile, std::string("they aren't ") + c_NodesFormat);
+        if (!version || !version->is_number() || version->get<crude_json::number>() != c_Version)
+            return Error(BlueprintError::BadFile, "their version is " + (version ? version->dump() : std::string("missing")) + ", and this runtime reads version " + std::to_string(c_Version));
+        auto nodes = saved.find("nodes");
+        auto links = saved.find("links");
+        if (!nodes || !nodes->is_array() || !links || !links->is_array())
+            return Error(BlueprintError::BadFile, std::string("they have no ") + (!nodes || !nodes->is_array() ? "array of nodes" : "array of links"));
+
+        // Every ID they hold gets a new one, which no part of the blueprint has.
+        FileLoader loader{ *graph.m_Blueprint, graph.m_Blueprint->GetTypes(), graph.m_Blueprint->GetRegistry(), {}, 0 };
+        std::unordered_map<Id, Id> renewed;
+        auto renew = [&](crude_json::value& object, const char* key, const std::string& where) -> Result<void>
+        {
+            auto id = loader.ReadId(object, key, where, false);
+            if (!id)
+                return id.GetError();
+            auto [entry, added] = renewed.emplace(id.GetValue(), 0);
+            if (!added)
+                return Bad(where + "." + key, "is " + std::to_string(id.GetValue()) + ", which another part has too");
+            entry->second = graph.m_Blueprint->NewId();
+            object[key]   = entry->second;
+            return {};
+        };
+        auto nodeList = nodes->get<crude_json::array>();
+        for (size_t i = 0; i < nodeList.size(); ++i)
+        {
+            const auto where = "nodes[" + std::to_string(i) + "]";
+            if (!nodeList[i].is_object())
+                return Bad(where, "isn't an object");
+            if (auto read = renew(nodeList[i], "id", where); !read)
+                return read.GetError();
+            if (auto pins = nodeList[i].find("pins"); pins && pins->is_object())
+                for (auto& [key, pin] : pins->get<crude_json::object>())
+                    if (pin.is_object())
+                        if (auto read = renew(pin, "id", where + ".pins." + key); !read)
+                            return read.GetError();
+        }
+        auto linkList = links->get<crude_json::array>();
+        for (size_t i = 0; i < linkList.size(); ++i)
+        {
+            const auto where = "links[" + std::to_string(i) + "]";
+            if (!linkList[i].is_object())
+                return Bad(where, "isn't an object");
+            if (auto read = renew(linkList[i], "id", where); !read)
+                return read.GetError();
+            for (auto end : { "from", "to" })
+            {
+                auto id = loader.ReadId(linkList[i], end, where, false);
+                if (!id)
+                    return id.GetError();
+                auto found = renewed.find(id.GetValue());
+                if (found == renewed.end())
+                    return Bad(where, "joins pin " + std::to_string(id.GetValue()) + ", which no saved node has");
+                linkList[i][end] = found->second;
+            }
+        }
+
+        Graph trial = graph;
+        for (size_t i = 0; i < nodeList.size(); ++i)
+            if (auto read = loader.ReadNode(trial, nodeList[i], "nodes[" + std::to_string(i) + "]"); !read)
+                return read.GetError();
+        std::unordered_set<Id> pins;
+        for (auto& node : trial.m_Nodes)
+            for (auto& [key, pin] : node.m_KeyIds)
+                pins.insert(pin);
+        for (size_t i = 0; i < linkList.size(); ++i)
+            if (auto read = loader.ReadLink(trial, pins, linkList[i], "links[" + std::to_string(i) + "]"); !read)
+                return read.GetError();
+        trial.Update();
+        graph = std::move(trial);
+
+        std::vector<Id> ids;
+        for (auto& node : nodeList)
+            ids.push_back(static_cast<Id>(node["id"].get<crude_json::number>()));
+        return ids;
+    }
 };
 
 crude_blueprint::Result<void> crude_blueprint::NodeType::Upgrade(crude_json::value&, uint32_t version) const
@@ -4503,50 +4630,11 @@ crude_json::value crude_blueprint::Save(const Blueprint& blueprint)
     {
         crude_json::array nodes;
         for (auto& node : graph->Nodes())
-        {
-            if (auto placeholder = Cast<PlaceholderNodeType>(node.m_Type))
-            {
-                nodes.push_back(placeholder->m_Saved);
-                continue;
-            }
-            crude_json::object saved;
-            saved["id"]           = node.m_Id;
-            saved["type"]         = node.m_Type->m_Name;
-            saved["type_version"] = node.m_Type->m_Version;
-            if (auto config = SaveConfig(node.m_Config); !config.empty())
-                saved["config"] = std::move(config);
-            crude_json::object pins;
-            for (auto& [key, id] : node.m_KeyIds)
-            {
-                crude_json::object pin;
-                pin["id"] = id;
-                if (auto declared = node.FindPin(key))
-                {
-                    pin["dir"] = declared->m_Direction == Direction::Input ? "in" : "out";
-                    if (declared->m_Flow)
-                        pin["flow"] = true;
-                }
-                if (auto value = node.m_Values.find(id); value != node.m_Values.end())
-                    pin["value"] = SaveValue(value->second);
-                pins[key] = std::move(pin);
-            }
-            saved["pins"] = std::move(pins);
-            nodes.push_back(std::move(saved));
-        }
+            nodes.push_back(SaveNode(node));
 
         crude_json::array links;
         for (auto& link : graph->Links())
-        {
-            crude_json::object saved;
-            saved["id"]   = link.m_Id;
-            saved["from"] = link.m_From;
-            saved["to"]   = link.m_To;
-            if (link.m_Forced > 0)
-                saved["forced"] = link.m_Forced;
-            if (!link.m_Cast.empty())
-                saved["cast"] = link.m_Cast;
-            links.push_back(std::move(saved));
-        }
+            links.push_back(SaveLink(link));
 
         crude_json::object saved;
         saved["id"]   = graph->GetId();
@@ -4598,4 +4686,36 @@ crude_blueprint::Result<void> crude_blueprint::Load(Blueprint& blueprint, const 
         blueprint.m_NextId = 1;
     }
     return read;
+}
+
+crude_json::value crude_blueprint::SaveNodes(const Graph& graph, std::span<const Id> nodes)
+{
+    crude_json::array      savedNodes;
+    std::unordered_set<Id> savedIds, pins;
+    for (auto id : nodes)
+    {
+        auto node = graph.FindNode(id);
+        if (!node || !savedIds.insert(id).second)
+            continue;
+        savedNodes.push_back(SaveNode(*node));
+        for (auto& [key, pin] : node->m_KeyIds)
+            pins.insert(pin);
+    }
+
+    crude_json::array savedLinks;
+    for (auto& link : graph.Links())
+        if (pins.count(link.m_From) && pins.count(link.m_To))
+            savedLinks.push_back(SaveLink(link));
+
+    crude_json::object saved;
+    saved["format"]  = c_NodesFormat;
+    saved["version"] = c_Version;
+    saved["nodes"]   = std::move(savedNodes);
+    saved["links"]   = std::move(savedLinks);
+    return saved;
+}
+
+crude_blueprint::Result<std::vector<crude_blueprint::Id>> crude_blueprint::LoadNodes(Graph& graph, const crude_json::value& saved)
+{
+    return FileLoader::ReadNodes(graph, saved);
 }
