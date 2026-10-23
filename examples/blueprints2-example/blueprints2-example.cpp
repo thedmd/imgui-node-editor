@@ -643,6 +643,17 @@ private:
                     if (!clickedPath.empty())
                         File_Open(clickedPath.c_str());
                 }
+                if (ImGui::BeginMenuEx("Open Sample", ICON_FA_BOOK_OPEN))
+                {
+                    const char* clicked = nullptr;
+                    for (auto sample : c_Samples)
+                        if (ImGui::MenuItem(sample))
+                            clicked = sample;
+                    ImGui::EndMenu();
+
+                    if (clicked)
+                        File_OpenSample(clicked);
+                }
                 ImGui::Separator();
                 menuAction(m_File_SaveAs);
                 menuAction(m_File_Save);
@@ -2921,6 +2932,33 @@ private:
         return true;
     }
 
+    // Blueprints the example ships in its data, each in a file of its name.
+    static constexpr const char* c_Samples[] = { "Snake" };
+
+    // A sample opens without a file of its own, under its name, so saving it asks where; the copy
+    // in the example's data stays as it was.
+    void File_OpenSample(const char* name)
+    {
+        const auto path     = ResolvePath(std::string("data/") + name + ".bp");
+        auto       document = std::make_unique<Document>(ExampleRegistry(), ExampleTypes());
+        if (!document->Load(path))
+        {
+            LOGE("Failed to load the sample from file \"%s\".", path.c_str());
+            return;
+        }
+
+        if (!File_Close([this, name] { File_OpenSample(name); }))
+            return;
+
+        LOGI("[File] Open Sample %s", name);
+
+        document->m_Name = name;
+        m_Document = std::move(document);
+        MakeDocumentCurrent();
+        UpdateTitle();
+        m_Document->OnMakeCurrent();
+    }
+
     // The dialogs start in the directory of the document's file, and show blueprints alone. A
     // dialog that failed tells the log why; one the user cancelled doesn't.
     static std::string DialogDirectory(std::string_view documentPath)
@@ -3080,7 +3118,7 @@ private:
     bool File_SaveAs()
     {
         auto directory = DialogDirectory(m_Document->m_Path);
-        auto name      = m_Document->m_Path.substr(directory.size());
+        auto name      = m_Document->m_Path.empty() && !m_Document->m_Name.empty() ? m_Document->m_Name + ".bp" : m_Document->m_Path.substr(directory.size());
         NFD::UniquePathU8 path;
         if (!DialogPicked(NFD::SaveDialog(path, c_BlueprintFiles, 1, directory.empty() ? nullptr : directory.c_str(), name.empty() ? nullptr : name.c_str())))
             return false;

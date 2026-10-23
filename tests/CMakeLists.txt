@@ -163,6 +163,7 @@ if (IMGUI_NODE_EDITOR_TESTS_BLUEPRINTS2)
         blueprints2_function_tests.cpp
         blueprints2_graph_tests.cpp
         blueprints2_library_tests.cpp
+        blueprints2_sample_tests.cpp
         blueprints2_screen_tests.cpp
         blueprints2_tests.cpp
         blueprints2_variable_tests.cpp
@@ -176,6 +177,8 @@ if (IMGUI_NODE_EDITOR_TESTS_BLUEPRINTS2)
         ${_RuntimeTestSources}
     )
     target_link_libraries(blueprints2_tests PRIVATE blueprints2_for_tests)
+    # The samples are read from where the example's data is.
+    target_compile_definitions(blueprints2_tests PRIVATE BLUEPRINTS2_EXAMPLE_DIR="${_Blueprints2Dir}")
     if (IMGUI_NODE_EDITOR_TESTS_SANITIZE)
         target_compile_definitions(blueprints2_tests PRIVATE IMGUI_NODE_EDITOR_TESTS_SANITIZE)
     endif()
