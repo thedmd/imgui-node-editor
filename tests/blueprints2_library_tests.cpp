@@ -838,6 +838,44 @@ TEST_CASE(RandomEngine, "library.random_nodes_draw_from_their_runs_one_engine", 
     }
 }
 
+TEST_CASE(RandomInts, "library.random_int_draws_from_its_min_to_its_max", nullptr, test::TestFlags_None)
+{
+    // A For Loop's body prints a draw a round, each a step of its own. The numbers are std::mt19937's
+    // mapped as an engine of its own maps them, so a seed gives them on every platform.
+    struct Case
+    {
+        uint32_t    seed;
+        int32_t     min, max;
+        int32_t     rounds;
+        const char* expected;
+    };
+    const Case cases[] =
+    {
+        { 5489, 1, 6, 12, "3 1 3 6 5 2 6 6 1 2 2 6" },
+        { 1, 0, 9, 12, "5 9 4 8 3 3 1 1 9 2 8 9" },
+        { 7, std::numeric_limits<int32_t>::min(), std::numeric_limits<int32_t>::max(), 3, "-1819742033 -1171069756 1202242073" },
+        { 1, 4, 4, 3, "4 4 4" },
+    };
+    for (auto& c : cases)
+    {
+        Fixture f;
+        f.m_Seed = c.seed;
+        auto start = f.Add("Start"), loop = f.Add("ForLoop"), print = f.Add("Print"), random = f.Add("RandomInt");
+        f.Link(start, "then", loop, "enter");
+        f.Link(loop, "body", print, "enter");
+        f.Link(random, "value", print, "text", LinkMode::Cast);
+        auto set = f.m_Graph.SetValue(f.Pin(loop, "first"), Value::Int32(1)).IsOk() && f.m_Graph.SetValue(f.Pin(loop, "last"), Value::Int32(c.rounds)).IsOk()
+            && f.m_Graph.SetValue(f.Pin(random, "min"), Value::Int32(c.min)).IsOk() && f.m_Graph.SetValue(f.Pin(random, "max"), Value::Int32(c.max)).IsOk();
+        auto printed = f.Run();
+        test::Check(set && printed == c.expected, "seed %u, from %d to %d: %s", c.seed, c.min, c.max, printed.c_str());
+    }
+
+    Fixture f;
+    const std::pair<const char*, Value> inputs[] = { { "min", Value::Int32(5) }, { "max", Value::Int32(3) } };
+    auto got = f.Compute("RandomInt", inputs, "value");
+    test::Check(got == "error: the min, 5, is above the max, 3", "a min above the max is an error: %s", got.c_str());
+}
+
 TEST_CASE(LibraryOnce, "library.is_registered_once", nullptr, test::TestFlags_None)
 {
     Registry registry;

@@ -77,6 +77,7 @@ const char* blueprint_editor_utilities::NodeIcon(const Blueprint& blueprint, con
         { "crude.Delay",        ICON_FA_STOPWATCH    },
         { "crude.WaitSignal",   ICON_FA_BELL         },
         { "crude.Random",       ICON_FA_DICE         },
+        { "crude.RandomInt",    ICON_FA_DICE         },
         { "crude.Select",       ICON_FA_FILTER       },
     };
     static const std::pair<std::string_view, const char*> c_Categories[] =

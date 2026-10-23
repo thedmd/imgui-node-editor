@@ -410,6 +410,41 @@ struct RandomNode final : NodeType
     const OutputPin<float> m_Value = Output<float>("value", "Value");
 };
 
+// From the first to the last, both included, each as likely: a draw past the largest multiple of
+// the range's size is drawn again.
+int32_t IntBetween(std::mt19937& engine, int32_t first, int32_t last)
+{
+    const auto size  = static_cast<uint64_t>(static_cast<int64_t>(last) - first) + 1;
+    const auto limit = (uint64_t{ 1 } << 32) - (uint64_t{ 1 } << 32) % size;
+    for (;;)
+        if (const uint64_t draw = static_cast<uint32_t>(engine()); draw < limit)
+            return static_cast<int32_t>(first + static_cast<int64_t>(draw % size));
+}
+
+// From Min to Max, both included, and the same within a step.
+struct RandomIntNode final : NodeType
+{
+    RandomIntNode(): NodeType("crude.RandomInt", "Random Int", "Math") {}
+
+    Result<void> Evaluate(EvalContext& context) const override
+    {
+        auto min = context.Get(m_Min);
+        if (!min)
+            return min.GetError();
+        auto max = context.Get(m_Max);
+        if (!max)
+            return max.GetError();
+        if (min.GetValue() > max.GetValue())
+            return Error(BlueprintError::OutOfRange, "the min, " + std::to_string(min.GetValue()) + ", is above the max, " + std::to_string(max.GetValue()));
+        context.Set(m_Value, IntBetween(context.Random(), min.GetValue(), max.GetValue()));
+        return {};
+    }
+
+    const InputPin<int32_t>  m_Min   = Input<int32_t>("min", "Min");
+    const InputPin<int32_t>  m_Max   = Input<int32_t>("max", "Max", { .m_Default = Value::Int32(9) });
+    const OutputPin<int32_t> m_Value = Output<int32_t>("value", "Value");
+};
+
 // a and b of any type T, by their type's own equality.
 struct EqualityNode final : NodeType
 {
@@ -1605,6 +1640,7 @@ crude_blueprint::Result<void> crude_blueprint::RegisterLibrary(Registry& registr
         std::make_unique<MaxNode>(),
         std::make_unique<ClampNode>(),
         std::make_unique<RandomNode>(),
+        std::make_unique<RandomIntNode>(),
         std::make_unique<EqualityNode>("crude.Equal", "Equal", "=", true),
         std::make_unique<EqualityNode>("crude.NotEqual", "Not Equal", "\xE2\x89\xA0", false),
         std::make_unique<OrderNode>("crude.Less", "Less", "<", [](std::partial_ordering order) { return order < 0; }),
