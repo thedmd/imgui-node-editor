@@ -1445,6 +1445,8 @@ public:
     // with a breakpoint doesn't stop there again.
     RunState           Run(std::chrono::microseconds budget);
     void               Stop(FiberId fiber);
+    // A fiber that ended goes from Fibers(); one that hasn't stays. Its ID isn't given again.
+    void               Forget(FiberId fiber);
     // Moves the clock on, in seconds; only the host does. The fibers whose time came are ready again.
     void               Advance(double seconds);
     // As Advance(), to the time, unless the clock is past it.

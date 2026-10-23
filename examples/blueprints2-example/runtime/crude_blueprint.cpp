@@ -3602,6 +3602,15 @@ void crude_blueprint::Context::Stop(FiberId id)
     }
 }
 
+void crude_blueprint::Context::Forget(FiberId id)
+{
+    std::erase_if(m_Fibers, [id](const Fiber& fiber)
+    {
+        auto state = fiber.m_Info.m_State;
+        return fiber.m_Info.m_Id == id && (state == FiberState::Done || state == FiberState::Failed || state == FiberState::Stopped);
+    });
+}
+
 void crude_blueprint::Context::Advance(double seconds)
 {
     AdvanceTo(m_Time + seconds);

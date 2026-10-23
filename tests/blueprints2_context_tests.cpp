@@ -453,6 +453,30 @@ TEST_CASE(Services, "context.a_node_finds_the_hosts_service_by_its_class", nullp
     test::Check(failed == FiberState::Failed && Messages(without.Diagnostics()) == "no tally" && tally.m_Count == 2, "and one without fails its fiber: %s", Messages(without.Diagnostics()).c_str());
 }
 
+TEST_CASE(ForgottenFibers, "context.a_fiber_that_ended_is_forgotten_and_one_that_hasnt_stays", nullptr, test::TestFlags_None)
+{
+    // Start sleeps; Ping logs, and Fail fails.
+    Fixture f;
+    auto start = f.Add("Start"), sleep = f.Add("Sleep"), ping = f.Add("Start", Event("Ping")), log = f.Add("Log"), fails = f.Add("Start", Event("Fails")), fail = f.Add("Fail");
+    f.Link(start, "then", sleep, "enter");
+    f.Link(ping, "then", log, "enter");
+    f.Link(fails, "then", fail, "enter");
+    f.SetValue(log, "text", Value::String("pong"));
+    auto program = f.Compiled();
+    if (!program)
+        return;
+
+    Context context(program);
+    auto sleeping = context.Start("Start"), pinged = context.Start("Ping"), failed = context.Start("Fails");
+    context.Run(std::chrono::seconds(5));
+    for (auto fiber : { sleeping, pinged, failed })
+        context.Forget(fiber.ValueOr(0));
+    auto fibers = context.Fibers();
+    auto again  = context.Start("Ping");
+    test::Check(fibers.size() == 1 && fibers[0].m_Id == sleeping.ValueOr(0) && fibers[0].m_State == FiberState::Suspended, "the done and the failed fibers go, and the sleeping one stays: %d fibers", static_cast<int>(fibers.size()));
+    test::Check(again && again.GetValue() > failed.ValueOr(0) && context.Diagnostics().size() == 1, "a new fiber takes a new ID, and the failure's diagnostic stays");
+}
+
 TEST_CASE(InputsWithoutLinks, "context.unlinked_inputs_read_typed_values_then_defaults", nullptr, test::TestFlags_None)
 {
     Fixture f;
