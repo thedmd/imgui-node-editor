@@ -135,8 +135,4 @@ private:
 // color, white by default, shows as a swatch, and its editor has a picker.
 std::shared_ptr<const crude_blueprint::Registry> ExampleRegistry();
 
-// Start runs For Loop from 0 to 4, and its body prints each index plus 10, through a cast from
-// Int32 to String; then Print says "Done". Needs the document's editor current, for the layout.
-void CreateExampleBlueprint(Document& document);
-
 } // namespace blueprint_editor

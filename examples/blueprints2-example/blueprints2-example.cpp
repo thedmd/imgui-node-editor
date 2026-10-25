@@ -351,13 +351,6 @@ struct BlueprintEditorExample
         ed::EndEdits();
     }
 
-    void CreateExampleDocument()
-    {
-        m_Document = std::make_unique<Document>(ExampleRegistry(), ExampleTypes());
-        MakeDocumentCurrent();
-        CreateExampleBlueprint(*m_Document);
-    }
-
     void OnStart() override
     {
         crude_logger::OverlayLogger::SetCurrent(&m_OverlayLogger);
@@ -374,7 +367,8 @@ struct BlueprintEditorExample
         ImEx::MostRecentlyUsedList::Install(ImGui::GetCurrentContext());
 
         m_Debugger.AddService(m_Screens);
-        CreateExampleDocument();
+        if (!File_OpenSample("Tour"))
+            File_New();
 
         for (auto type : ExampleRegistry()->NodeTypes())
             m_OverlayLogger.AddKeyword(type->m_Title);
@@ -2936,19 +2930,19 @@ private:
     static constexpr const char* c_Samples[] = { "Tour", "Snake" };
 
     // A sample opens without a file of its own, under its name, so saving it asks where; the copy
-    // in the example's data stays as it was.
-    void File_OpenSample(const char* name)
+    // in the example's data stays as it was. Whether it's open now.
+    bool File_OpenSample(const char* name)
     {
         const auto path     = ResolvePath(std::string("data/") + name + ".bp");
         auto       document = std::make_unique<Document>(ExampleRegistry(), ExampleTypes());
         if (!document->Load(path))
         {
             LOGE("Failed to load the sample from file \"%s\".", path.c_str());
-            return;
+            return false;
         }
 
         if (!File_Close([this, name] { File_OpenSample(name); }))
-            return;
+            return false;
 
         LOGI("[File] Open Sample %s", name);
 
@@ -2957,6 +2951,7 @@ private:
         MakeDocumentCurrent();
         UpdateTitle();
         m_Document->OnMakeCurrent();
+        return true;
     }
 
     // The dialogs start in the directory of the document's file, and show blueprints alone. A

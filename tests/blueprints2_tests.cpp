@@ -54,6 +54,58 @@ struct OverlayLog
     crude_logger::OverlayLogger m_Logger;
 };
 
+// Start runs For Loop from 0 to 4, and its body prints each index plus 10, through a cast from
+// Int32 to String; then Print says "Done". Needs the document's editor current, for the layout.
+void CreateExampleBlueprint(Document& document)
+{
+    auto& graph = document.GetGraph();
+    auto add = [&graph](const char* type, ImVec2 position, NodeConfig config = {})
+    {
+        auto node = graph.AddNode(type, std::move(config));
+        IM_ASSERT(node);
+        ed::SetNodePosition(node.ValueOr(0), position);
+        return node.ValueOr(0);
+    };
+    auto pin = [&graph](Id node, std::string_view key)
+    {
+        auto found = graph.FindNode(node) ? graph.FindNode(node)->FindPin(key) : nullptr;
+        IM_ASSERT(found);
+        return found ? found->m_Id : 0;
+    };
+    auto link = [&graph, &pin](Id from, std::string_view output, Id to, std::string_view input, LinkMode mode = LinkMode::Plain)
+    {
+        [[maybe_unused]] auto made = graph.Connect(pin(from, output), pin(to, input), mode);
+        IM_ASSERT(made);
+    };
+    auto constant = [](Value value)
+    {
+        NodeConfig config;
+        config.m_Types["T"]     = value.GetType();
+        config.m_Data["value"] = std::move(value);
+        return config;
+    };
+
+    auto start = add("crude.Start",    ImVec2( 20,  80));
+    auto loop  = add("crude.ForLoop",  ImVec2(200,  60));
+    auto print = add("crude.Print",    ImVec2(760,  40));
+    auto sum   = add("crude.Add",      ImVec2(480, 300));
+    auto ten   = add("crude.Constant", ImVec2(260, 380), constant(Value::Int32(10)));
+    auto done  = add("crude.Print",    ImVec2(760, 180));
+
+    link(start, "then", loop, "enter");
+    link(loop, "body", print, "enter");
+    link(loop, "index", sum, "in.0");
+    link(ten, "value", sum, "in.1");
+    link(sum, "result", print, "text", LinkMode::Cast);
+    link(loop, "completed", done, "enter");
+    [[maybe_unused]] auto last = graph.SetValue(pin(loop, "last"), Value::Int32(4));
+    [[maybe_unused]] auto text = graph.SetValue(pin(done, "text"), Value::String("Done"));
+    IM_ASSERT(last && text);
+
+    // The state the first undo step goes back to.
+    document.m_DocumentState = document.BuildDocumentState();
+}
+
 struct TestFile
 {
     explicit TestFile(const char* path): Path(path) { std::remove(Path.c_str()); }
@@ -62,13 +114,12 @@ struct TestFile
     std::string Path;
 };
 
-// A document of the example's blueprint, laid out in the session's editor: Start runs For Loop
-// from 0 to 4, whose body prints each index plus 10, then Print says "Done".
+// A document of CreateExampleBlueprint()'s, laid out in the session's editor.
 struct Example
 {
     explicit Example(test::Session& session)
     {
-        session.Use([&] { blueprint_editor::CreateExampleBlueprint(m_Document); });
+        session.Use([&] { CreateExampleBlueprint(m_Document); });
     }
 
     // The nth node of a type, in the order the example makes them.
