@@ -131,8 +131,12 @@ const Node*  FindNode(const Blueprint& blueprint, Id node);
 
 // Edits of one undo step each. One the graph refuses is logged, and makes no step.
 void CreateLink(Document& document, Id from, Id to, LinkMode mode = LinkMode::Plain);
+// A Switch on Enum's outputs keep their cases through these: each output's case is written into its
+// config first, so none takes another case for being free.
 void AddGroupPin(Document& document, Id node, std::string group);
 void RemoveGroupPin(Document& document, Id node, std::string group, int index);
+// The case a Switch on Enum's output, by key, takes.
+void ChooseCase(Document& document, Id node, std::string key, std::string name);
 // Whether a link between a pin and the first pin a node's group would add next fits, tried on a copy
 // of the graph; and the group grown by that pin, linked to the one given, as one undo step.
 Result<void> CanLinkNewGroupPin(const Graph& graph, Id node, const std::string& group, Id pin);

@@ -1291,6 +1291,29 @@ void blueprint_editor_utilities::CreateLink(Document& document, Id from, Id to, 
     transaction->AddAction("%s", name.c_str());
 }
 
+namespace blueprint_editor_utilities { namespace {
+
+// The cases a Switch on Enum's outputs take now, written into its config.
+Result<void> SettleCases(Graph& graph, Id node)
+{
+    auto found = graph.FindNode(node);
+    if (!found || found->m_Type->m_Name != "crude.SwitchOnEnum")
+        return {};
+    auto config  = found->m_Config;
+    auto changed = false;
+    for (auto& pin : found->m_Pins)
+    {
+        auto data = config.m_Data.find(pin.m_Key);
+        if (!pin.m_Key.starts_with("case.") || pin.m_Name == "?" || (data != config.m_Data.end() && data->second == Value::String(pin.m_Name)))
+            continue;
+        config.m_Data[pin.m_Key] = Value::String(pin.m_Name);
+        changed = true;
+    }
+    return changed ? graph.SetConfig(node, std::move(config)) : Result<void>();
+}
+
+} } // namespace blueprint_editor_utilities { namespace {
+
 void blueprint_editor_utilities::AddGroupPin(Document& document, Id node, std::string group)
 {
     auto& graph = document.GetGraph();
@@ -1300,7 +1323,10 @@ void blueprint_editor_utilities::AddGroupPin(Document& document, Id node, std::s
 
     const auto name = found->Name();
     auto transaction = document.BeginUndoTransaction("Add Pin");
-    if (auto added = graph.AddGroupPin(node, group); !added)
+    auto added       = graph.AddGroupPin(node, group);
+    if (added)
+        added = SettleCases(graph, node);
+    if (!added)
     {
         auto message = added.GetError().Message();
         LOGW("%.*s", static_cast<int>(message.size()), message.data());
@@ -1370,6 +1396,8 @@ void blueprint_editor_utilities::AddGroupPinLinked(Document& document, Id node, 
         return refused(Error(BlueprintError::NoPin, "the pin added isn't " + key));
     if (auto made = output ? graph.Connect(pin, fresh->m_Id) : graph.Connect(fresh->m_Id, pin); !made)
         return refused(made.GetError());
+    if (auto settled = SettleCases(graph, node); !settled)
+        return refused(settled.GetError());
     transaction->AddAction("%s: %s added, linked to %s", name.c_str(), key.c_str(), linked.c_str());
 }
 
@@ -1382,7 +1410,10 @@ void blueprint_editor_utilities::RemoveGroupPin(Document& document, Id node, std
 
     const auto name = found->Name();
     auto transaction = document.BeginUndoTransaction("Remove Pin");
-    if (auto removed = graph.RemoveGroupPin(node, group, index); !removed)
+    auto removed     = SettleCases(graph, node);
+    if (removed)
+        removed = graph.RemoveGroupPin(node, group, index);
+    if (!removed)
     {
         auto message = removed.GetError().Message();
         LOGW("%.*s", static_cast<int>(message.size()), message.data());
@@ -1390,6 +1421,30 @@ void blueprint_editor_utilities::RemoveGroupPin(Document& document, Id node, std
         return;
     }
     transaction->AddAction("%s: %s.%d removed", name.c_str(), group.c_str(), index);
+}
+
+void blueprint_editor_utilities::ChooseCase(Document& document, Id node, std::string key, std::string name)
+{
+    auto& graph = document.GetGraph();
+    if (!graph.FindNode(node))
+        return;
+
+    auto transaction = document.BeginUndoTransaction("Choose Case");
+    auto chosen      = SettleCases(graph, node);
+    if (chosen)
+    {
+        auto config = graph.FindNode(node)->m_Config;
+        config.m_Data[key] = Value::String(name);
+        chosen = graph.SetConfig(node, std::move(config));
+    }
+    if (!chosen)
+    {
+        auto message = chosen.GetError().Message();
+        LOGW("%.*s", static_cast<int>(message.size()), message.data());
+        transaction->Discard();
+        return;
+    }
+    transaction->AddAction("%s: %s takes %s", graph.FindNode(node)->Name().c_str(), key.c_str(), name.c_str());
 }
 
 ImU32 blueprint_editor_utilities::ProblemColor(Severity severity)
@@ -3247,6 +3302,25 @@ void blueprint_editor_utilities::PinContextMenu::Show(Document& document, Debugg
                 choice = nullptr;
         }
 
+        // A Switch on Enum's output: a case of the selection's enumeration that no other output takes.
+        auto decided     = node && node->m_Type->m_Name == "crude.SwitchOnEnum" ? node->m_Bindings.Get("E") : nullptr;
+        auto enumeration = decided && pin && pin->m_Key.starts_with("case.") ? Cast<EnumType>(decided->m_Head) : nullptr;
+        std::optional<std::string> chosenCase;
+        if (enumeration)
+        {
+            ImGui::Separator();
+            if (ImGui::BeginMenu("Case"))
+            {
+                for (auto& name : enumeration->Cases())
+                {
+                    auto taken = std::any_of(node->m_Pins.begin(), node->m_Pins.end(), [&](const Pin& other) { return other.m_Key.starts_with("case.") && other.m_Id != pin->m_Id && other.m_Name == name; });
+                    if (ImGui::MenuItem(name.c_str(), nullptr, pin->m_Name == name, !taken))
+                        chosenCase = name;
+                }
+                ImGui::EndMenu();
+            }
+        }
+
         auto edit = pin && node ? ShowSignatureItems(document, *node, *pin) : std::function<void()>();
         if (pin && node && IsCustomEvent(*node) && !pin->m_Flow)
         {
@@ -3273,6 +3347,8 @@ void blueprint_editor_utilities::PinContextMenu::Show(Document& document, Debugg
             else
                 transaction->AddAction("%s: %s", graph.FindNode(id)->Name().c_str(), what);
         }
+        else if (chosenCase && *chosenCase != pin->m_Name)
+            ChooseCase(document, node->m_Id, pin->m_Key, *chosenCase);
         else if (remove)
             RemoveGroupPin(document, node->m_Id, group->m_Name, index);
         else if (split || recombine)

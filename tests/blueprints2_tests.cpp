@@ -641,6 +641,68 @@ TEST_CASE(GroupPinEdits, "blueprints2.group_pins_are_added_and_removed_in_undo_s
     test::Check(inputs() == 3 && linkedTo("in.1"), "undo brings in.1 back with its link");
 }
 
+TEST_CASE(SwitchCaseEdits, "blueprints2.switch_on_enums_outputs_keep_their_cases_through_edits", nullptr, test::TestFlags_None)
+{
+    // Switch on Enum of Align, of three outputs, Left, Center and Right, each the first case free;
+    // Right's output starts a Print.
+    test::Session session(UnnamedConfig());
+    OverlayLog    log;
+    Example       example(session);
+    auto& document = example.m_Document;
+    Id    on = 0, print = 0;
+    session.Use([&]
+    {
+        auto&      graph = document.GetGraph();
+        NodeConfig config;
+        config.m_Groups["case"] = 3;
+        config.m_Types["E"]     = &document.GetBlueprint().GetRegistry().FindValueType("example.Align")->AsType();
+        on    = graph.AddNode("crude.SwitchOnEnum", std::move(config)).ValueOr(0);
+        print = graph.AddNode("crude.Print").ValueOr(0);
+        (void)graph.Connect(example.Pin(on, "case.2"), example.Pin(print, "enter"));
+        document.m_DocumentState = document.BuildDocumentState();
+    });
+    // Undo makes the graph anew.
+    auto names = [&]
+    {
+        std::string text;
+        for (auto& pin : document.GetGraph().FindNode(on)->m_Pins)
+            if (pin.m_Direction == Direction::Output)
+                text += (text.empty() ? "" : " ") + pin.m_Name;
+        return text;
+    };
+    auto printed = [&]
+    {
+        auto& graph = document.GetGraph();
+        for (auto& link : graph.Links())
+            if (link.m_To == example.Pin(print, "enter"))
+                return graph.FindPin(link.m_From)->m_Name;
+        return std::string();
+    };
+    auto first = names();
+    auto steps = document.m_Undo.size();
+
+    std::string removed, removedPrint, chosen, added;
+    session.Use([&]
+    {
+        blueprint_editor_utilities::RemoveGroupPin(document, on, "case", 0);
+        removed      = names();
+        removedPrint = printed();
+        blueprint_editor_utilities::ChooseCase(document, on, "case.0", "Left");
+        chosen = names();
+        blueprint_editor_utilities::AddGroupPin(document, on, "case");
+        added = names();
+    });
+    auto cases = document.GetGraph().FindNode(on)->m_Config.m_Data.size();
+    test::Check(first == "Left Center Right Default" && removed == "Center Right Default" && removedPrint == "Right",
+        "without Left's output, the others keep Center and Right, and Print stays on Right's: %s, %s", removed.c_str(), removedPrint.c_str());
+    test::Check(chosen == "Left Right Default" && added == "Left Right Center Default" && cases == 3,
+        "the first output takes Left, and one more the case left, Center, each case in the config: %s, %s", chosen.c_str(), added.c_str());
+
+    auto made = document.m_Undo.size() - steps;
+    session.Use([&] { document.Undo(); document.Undo(); document.Undo(); });
+    test::Check(made == 3 && names() == first && printed() == "Right", "each edit is an undo step, %d, and undone, the outputs are as they were: %s", static_cast<int>(made), names().c_str());
+}
+
 TEST_CASE(KeptValues, "blueprints2.an_undecided_pin_shows_the_value_it_keeps", nullptr, test::TestFlags_None)
 {
     // A new Add, whose T the example's Constant decides as Int32 through in.0.
