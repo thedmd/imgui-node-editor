@@ -2933,7 +2933,7 @@ private:
     }
 
     // Blueprints the example ships in its data, each in a file of its name.
-    static constexpr const char* c_Samples[] = { "Snake" };
+    static constexpr const char* c_Samples[] = { "Tour", "Snake" };
 
     // A sample opens without a file of its own, under its name, so saving it asks where; the copy
     // in the example's data stays as it was.

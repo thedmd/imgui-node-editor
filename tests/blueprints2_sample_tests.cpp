@@ -12,6 +12,7 @@
 # include <memory>
 # include <string>
 # include <string_view>
+# include <vector>
 
 using namespace crude_blueprint;
 using blueprint_editor::ExampleRegistry;
@@ -46,6 +47,16 @@ bool Shows(const blueprint_screen::Screen& screen, std::string_view text)
 {
     return std::any_of(screen.m_Shapes.begin(), screen.m_Shapes.end(), [text](const Shape& shape) { return shape.m_Kind == Shape::Kind::Text && shape.m_Text == text; });
 }
+
+// The lines a run's Print nodes write.
+struct Printed final : ContextMonitor
+{
+    void OnLog(const Context&, Id, std::string_view text) override { m_Lines.emplace_back(text); }
+
+    bool Has(std::string_view line) const { return std::find(m_Lines.begin(), m_Lines.end(), line) != m_Lines.end(); }
+
+    std::vector<std::string> m_Lines;
+};
 
 } // namespace
 
@@ -119,4 +130,45 @@ TEST_CASE(SnakePlays, "samples.snake_is_played_to_a_score_and_its_end", nullptr,
     test::Check(score >= 3 && longest >= 6, "the snake eats, and grows: a score of %d, %d cells at most", score, longest);
     test::Check(over && ended && read("Best") == Value::Int32(score) && Shows(screen, "Best: " + std::to_string(score)) && context.Diagnostics().empty(),
         "a wall ends the round: the score shows, is the best, and the title waits for Space again: %s", context.Diagnostics().empty() ? "" : std::string(context.Diagnostics()[0].m_Error.Message()).c_str());
+}
+
+TEST_CASE(TourRuns, "samples.the_tour_runs_its_chapters_and_every_assert_holds", nullptr, test::TestFlags_None)
+{
+    auto blueprint = LoadSample("Tour.bp");
+    if (!blueprint)
+        return;
+    auto compiled = Compile(*blueprint);
+    if (!compiled.m_Program || !compiled.m_Diagnostics.empty())
+        return test::Check(false, "the tour compiles, without a warning: %s", compiled.m_Diagnostics.empty() ? "" : std::string(compiled.m_Diagnostics[0].m_Error.Message()).c_str());
+
+    Printed printed;
+    Context context(compiled.m_Program);
+    context.SetMonitor(&printed);
+    context.Seed(1);
+    auto failure = [&context] { return context.Diagnostics().empty() ? std::string() : std::string(context.Diagnostics()[0].m_Error.Message()); };
+
+    // Start runs the chapters, then waits a second, then for the signal continue.
+    auto main = context.Start("Start");
+    context.Run(std::chrono::seconds(5));
+    auto chapters = static_cast<int>(printed.m_Lines.size());
+    auto delayed  = !context.Fibers().empty() && context.Fibers()[0].m_State == FiberState::Suspended && context.Fibers()[0].m_Wake.m_Kind == Wake::Kind::Time;
+    test::Check(main && delayed && context.Diagnostics().empty() && printed.Has("Every chapter's Asserts held"),
+        "Start runs every chapter, each Assert holding, and waits a second: %d lines printed %s", chapters, failure().c_str());
+    test::Check(printed.Has("1 + 2 + 3 + 4 + 5 = 15") && printed.Has("The Gate let 2 of 4 rounds through") && printed.Has("Fibonacci of 10 is 55")
+        && printed.Has("an Int32: 5; a String: hi; a Float: 2.5; something else"), "the chapters print what they compute");
+
+    context.Advance(1.0);
+    context.Run(std::chrono::seconds(5));
+    auto waits = !context.Fibers().empty() && context.Fibers()[0].m_Wake == Wake::OnSignal("continue") && printed.Has("A second later");
+    context.Signal("continue");
+    context.Run(std::chrono::seconds(5));
+    test::Check(waits && context.Fibers()[0].m_State == FiberState::Done && printed.m_Lines.back() == "The signal came: the tour is over",
+        "a second later, it waits for the signal continue, and ends once it comes");
+
+    // Greet, with its parameters.
+    const Value who[] = { Value::String("Ada"), Value::Int32(2) };
+    auto greet = context.Start("Greet", who);
+    context.Run(std::chrono::seconds(5));
+    auto hellos = std::count(printed.m_Lines.begin(), printed.m_Lines.end(), "Hello, Ada!");
+    test::Check(greet && hellos == 2 && context.Diagnostics().empty(), "Greet of Ada, 2 times, greets Ada twice: %d %s", static_cast<int>(hellos), failure().c_str());
 }
