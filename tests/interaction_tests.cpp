@@ -330,6 +330,36 @@ TEST_CASE(ZoomLevelTables, "interaction.zoom_levels_step_in_order", "INT-13", te
     }
 }
 
+TEST_CASE(SmoothZoomPowers, "interaction.wheel_notches_land_on_whole_powers_of_the_smooth_zoom_power", nullptr, test::TestFlags_None)
+{
+    // A quarter octave a notch, from 1, and from 0.9, which no notch reaches; half a notch zooms as far.
+    struct Case { const char* Name; float Start; float Delta; int Notches; float Expected; };
+    const Case cases[] =
+    {
+        { "three notches in from 1",  1.0f,  1.0f, 3, powf(2.0f, 0.75f)  },
+        { "a notch in from 0.9",      0.9f,  1.0f, 1, 1.0f               },
+        { "a notch out from 0.9",     0.9f, -1.0f, 1, powf(2.0f, -0.25f) },
+        { "two notches out from 0.9", 0.9f, -1.0f, 2, powf(2.0f, -0.5f)  },
+        { "half a notch in from 1",   1.0f,  0.5f, 1, powf(2.0f, 0.125f) },
+    };
+    for (auto& testCase : cases)
+    {
+        auto config = ZoomConfig(true);
+        config.SmoothZoomPower = powf(2.0f, 0.25f);
+        test::Session session(config);
+        char settings[128];
+        snprintf(settings, sizeof(settings), R"({"view":{"scroll":{"x":0,"y":0},"zoom":%g}})", testCase.Start);
+        session.Use([&] { ed::LoadSettingsFromMemory(settings); });
+        session.DefaultContent = SmallNode;
+        test::MouseMove(ImVec2(500.0f, 300.0f));
+        session.Run(3);
+        for (int i = 0; i < testCase.Notches; ++i)
+            Wheel(session, testCase.Delta);
+        const float zoom = Zoom(session);
+        test::Check(ImFabs(zoom - testCase.Expected) < testCase.Expected * 0.0001f, "%s: %g, %g expected", testCase.Name, zoom, testCase.Expected);
+    }
+}
+
 TEST_CASE(InvalidSmoothZoomPower, "interaction.invalid_smooth_zoom_power_asserts", "INT-13", test::TestFlags_None)
 {
     test::ExpectAsserts(1);

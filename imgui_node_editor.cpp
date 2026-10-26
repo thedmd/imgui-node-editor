@@ -4561,10 +4561,14 @@ float ed::NavigateAction::GetNextZoom(float steps)
     return MatchZoom(wholeSteps);
 }
 
-// A zoom outside the zoom levels, which navigation may set, only moves back toward them.
+// A zoom outside the zoom levels, which navigation may set, only moves back toward them. Whole
+// steps, a wheel's notches, land on whole powers of the power, from any zoom navigation set.
 float ed::NavigateAction::MatchSmoothZoom(float steps)
 {
-    const auto newZoom = m_Zoom * powf(m_SmoothZoomPower, steps);
+    auto exponent = std::log(static_cast<double>(m_Zoom)) / std::log(static_cast<double>(m_SmoothZoomPower)) + steps;
+    if (steps == std::trunc(steps))
+        exponent = steps > 0.0f ? std::floor(exponent + 0.001) : std::ceil(exponent - 0.001);
+    const auto newZoom = static_cast<float>(std::pow(static_cast<double>(m_SmoothZoomPower), exponent));
     if (steps > 0.0f)
         return ImMax(m_Zoom, ImMin(newZoom, m_ZoomLevels.back()));
     else

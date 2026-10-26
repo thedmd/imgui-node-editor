@@ -347,7 +347,7 @@ long FirstIndexOf(const Geometry& geometry, ImU32 color)
 ed::Config MakeConfig(Storage* storage)
 {
     ed::Config config;
-    config.SmoothZoomPower = 1.3f; // the default on all but Apple platforms, where it is 1.1
+    config.SmoothZoomPower = 1.3f; // one power on every platform, whose defaults differ
     config.SettingsName = nullptr;
     config.UserPointer  = storage;
     return config;

@@ -689,6 +689,11 @@ v0.10.0 (WIP):
         Config's buttons, and whether it would act on what the mouse is over and on the selection. F's name tells where it
         would go. An application can list them in help, menus or hints.
 
+    CHANGE: Editor: Wheel notches zoom a quarter octave, and land on whole powers of Config::SmoothZoomPower
+        The power is 2^(1/4) by default, was 1.3, on all but Apple platforms, where it stays 1.1. A notch lands on a whole
+        power of it from any zoom navigation set, so the wheel comes back to the same zooms; at 2^(1/4) they are those text
+        is rasterized at, where glyph bitmaps map 1:1 onto pixels. Fractions of a notch still zoom smoothly.
+
 v0.9.3 (2023-10-14):
 
     CHANGE: Canvas: Use ImDrawCallback_ImCanvas macro as draw callback sentinel (#256), thanks @nspitko

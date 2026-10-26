@@ -152,7 +152,7 @@ struct Config
     int                     NavigateButtonIndex;    // Mouse button index navigate action will react to (0-left, 1-right, 2-middle)
     int                     ContextMenuButtonIndex; // Mouse button index context menu action will react to (0-left, 1-right, 2-middle)
     bool                    EnableSmoothZoom;
-    float                   SmoothZoomPower;
+    float                   SmoothZoomPower;        // Zoom per wheel notch, greater than 1; notches land on its whole powers, which at 2^(1/4) are the zooms text is rasterized at
     bool                    RasterizeTextForZoom;   // Text is rasterized for the zoom, so it stays sharp; needs Dear ImGui 1.92 and a renderer backend that sets ImGuiBackendFlags_RendererHasTextures
     bool                    ReportNavigationEdits;  // Edits report navigation too, once the view settles
 
@@ -170,7 +170,7 @@ struct Config
 # ifdef __APPLE__
         , SmoothZoomPower(1.1f)
 # else
-        , SmoothZoomPower(1.3f)
+        , SmoothZoomPower(1.18920712f) // 2^(1/4)
 # endif
         , RasterizeTextForZoom(true)
         , ReportNavigationEdits(false)
