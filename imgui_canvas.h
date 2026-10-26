@@ -235,7 +235,7 @@ struct Canvas
     bool IsSuspended() const { return m_SuspendCounter > 0; }
 
     // Rasterizes text in local space for the view's scale, so it stays sharp when
-    // zoomed in. The scale is taken in quarter octave steps from 0.5 up, and glyphs
+    // zoomed in. The scale is taken in quarter octave steps from 0.25 up, and glyphs
     // are rasterized at most 8 times their size, or at the framebuffer's density when
     // that is higher. On by default; see Limitations.
     void SetRasterizeTextForScale(bool rasterize) { m_RasterizeTextForScale = rasterize; }

@@ -622,12 +622,13 @@ TEST_CASE(TextDensitySteps, "canvas_widget.text_density_takes_quarter_octave_ste
     struct Case { float FramebufferScale, ViewScale, Expected; };
     const Case cases[] =
     {
-        { 1.0f,  1.0f, 1.0f             }, // as without a canvas
-        { 1.0f,  1.5f, powf(2.0f, 0.5f) }, // the nearest quarter octave
-        { 1.0f,  0.3f, 0.5f             }, // no less than half
-        { 1.0f, 20.0f, 8.0f             }, // no more than 8 times the font's size
-        { 2.0f,  8.0f, 8.0f             }, // whatever the framebuffer's density
-        { 2.0f,  0.3f, 1.0f             }, // half of it
+        { 1.0f,  1.0f, 1.0f               }, // as without a canvas
+        { 1.0f,  1.5f, powf(2.0f, 0.5f)   }, // the nearest quarter octave
+        { 1.0f,  0.3f, powf(2.0f, -1.75f) }, // under half too
+        { 1.0f,  0.1f, 0.25f              }, // no less than a quarter
+        { 1.0f, 20.0f, 8.0f               }, // no more than 8 times the font's size
+        { 2.0f,  8.0f, 8.0f               }, // whatever the framebuffer's density
+        { 2.0f,  0.1f, 0.5f               }, // a quarter of it
     };
     for (auto& c : cases)
     {

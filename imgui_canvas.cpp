@@ -35,7 +35,7 @@ static void SetTextDensity(float density)
 static float CalcTextDensity(float density, float viewScale)
 {
     const float maxDensity = 8.0f;
-    const float scale = ImMax(powf(2.0f, roundf(log2f(viewScale) * 4.0f) * 0.25f), 0.5f);
+    const float scale = ImMax(powf(2.0f, roundf(log2f(viewScale) * 4.0f) * 0.25f), 0.25f);
     return ImMin(density * scale, ImMax(density, maxDensity));
 }
 # endif
