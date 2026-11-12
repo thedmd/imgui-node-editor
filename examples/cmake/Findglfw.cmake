@@ -2,6 +2,7 @@ if (NOT TARGET glfw)
     include(FetchContent)
 
     # 3.4 for GLFW_SCALE_FRAMEBUFFER.
+    set(FETCHCONTENT_QUIET FALSE)
     FetchContent_Declare(
         glfw
         GIT_REPOSITORY https://github.com/glfw/glfw.git

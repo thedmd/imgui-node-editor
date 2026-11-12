@@ -1,6 +1,7 @@
 include(FetchContent)
 
 if (NOT TARGET imgui)
+    set(FETCHCONTENT_QUIET FALSE)
     FetchContent_Declare(
         imgui
         GIT_REPOSITORY      https://github.com/thedmd/imgui.git

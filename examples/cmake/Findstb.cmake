@@ -1,6 +1,7 @@
 include(FetchContent)
 
 if (NOT TARGET stb)
+    set(FETCHCONTENT_QUIET FALSE)
     FetchContent_Declare(
         stb
         GIT_REPOSITORY      https://github.com/nothings/stb.git

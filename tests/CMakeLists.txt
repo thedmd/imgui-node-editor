@@ -17,6 +17,7 @@ option(IMGUI_NODE_EDITOR_WARNINGS_AS_ERRORS "Treat warnings in the node editor s
 
 if (NOT IMGUI_DIR)
     include(FetchContent)
+    set(FETCHCONTENT_QUIET FALSE)
     FetchContent_Declare(
         imgui
         GIT_REPOSITORY https://github.com/thedmd/imgui.git
