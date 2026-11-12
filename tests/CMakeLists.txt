@@ -22,6 +22,7 @@ if (NOT IMGUI_DIR)
         imgui
         GIT_REPOSITORY https://github.com/thedmd/imgui.git
         GIT_TAG        b085dd8feac1595915d85243b5515af34a10a394 # feature/layout-external: Dear ImGui 1.93.0 WIP with Stack Layout v2.1
+        GIT_PROGRESS   TRUE
     )
     FetchContent_MakeAvailable(imgui)
     set(IMGUI_DIR ${imgui_SOURCE_DIR})
