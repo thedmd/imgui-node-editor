@@ -17,10 +17,12 @@ option(IMGUI_NODE_EDITOR_WARNINGS_AS_ERRORS "Treat warnings in the node editor s
 
 if (NOT IMGUI_DIR)
     include(FetchContent)
+    set(FETCHCONTENT_QUIET FALSE)
     FetchContent_Declare(
         imgui
         GIT_REPOSITORY https://github.com/thedmd/imgui.git
         GIT_TAG        b085dd8feac1595915d85243b5515af34a10a394 # feature/layout-external: Dear ImGui 1.93.0 WIP with Stack Layout v2.1
+        GIT_PROGRESS   TRUE
     )
     FetchContent_MakeAvailable(imgui)
     set(IMGUI_DIR ${imgui_SOURCE_DIR})
