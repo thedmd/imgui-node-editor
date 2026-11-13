@@ -673,6 +673,11 @@ float ax::NodeEditor::GetCurrentZoom()
     return CurrentEditor()->GetView().InvScale();
 }
 
+void ax::NodeEditor::SetZoom(float zoom)
+{
+    CurrentEditor()->SetCanvasViewScale(zoom);
+}
+
 ax::NodeEditor::NodeId ax::NodeEditor::GetHoveredNode()
 {
     return CurrentEditor()->GetHoveredNode();

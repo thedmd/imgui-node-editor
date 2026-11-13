@@ -34,6 +34,24 @@ struct Example:
         ImGui::Separator();
 
         ed::SetCurrentEditor(m_Context);
+
+        // Buttons to change zoom level
+        static float zoom = 1.0f;
+        ImGui::Text("Zoom:");
+        ImGui::SameLine();
+        if (ImGui::Button("Reset")) {
+            zoom = 1.0f;
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("[+]")) {
+            zoom *= 2.0f;
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("[-]")) {
+            zoom /= 2.0f;
+        }
+        ed::SetZoom(zoom);
+
         ed::Begin("My Editor", ImVec2(0.0, 0.0f));
         int uniqueId = 1;
         // Start drawing nodes.
