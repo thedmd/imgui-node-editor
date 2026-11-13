@@ -885,6 +885,7 @@ struct NavigateAction final: EditorAction
     ImGuiEx::CanvasView GetView() const;
     ImVec2 GetViewOrigin() const;
     float GetViewScale() const;
+    void SetViewScale(float scale);
 
     void SetViewRect(const ImRect& rect);
     ImRect GetViewRect() const;
@@ -1363,6 +1364,8 @@ struct EditorContext
     const ImGuiEx::CanvasView& GetView() const { return m_Canvas.View(); }
     const ImRect& GetViewRect() const { return m_Canvas.ViewRect(); }
     const ImRect& GetRect() const { return m_Canvas.Rect(); }
+
+    void SetCanvasViewScale(float scale) { m_NavigateAction.SetViewScale(scale); }
 
     void SetNodePosition(NodeId nodeId, const ImVec2& screenPosition);
     void SetGroupSize(NodeId nodeId, const ImVec2& size);

@@ -3927,6 +3927,11 @@ float ed::NavigateAction::GetViewScale() const
     return m_Zoom;
 }
 
+void ed::NavigateAction::SetViewScale(float scale)
+{
+    m_Zoom = scale;
+}
+
 void ed::NavigateAction::SetViewRect(const ImRect& rect)
 {
     auto view = m_Canvas.CalcCenterView(rect);

@@ -410,6 +410,7 @@ IMGUI_NODE_EDITOR_API int  GetActionContextLinks(LinkId* links, int size);
 IMGUI_NODE_EDITOR_API void EndShortcut();
 
 IMGUI_NODE_EDITOR_API float GetCurrentZoom();
+IMGUI_NODE_EDITOR_API void  SetZoom(float zoom);
 
 IMGUI_NODE_EDITOR_API NodeId GetHoveredNode();
 IMGUI_NODE_EDITOR_API PinId GetHoveredPin();
