@@ -3634,8 +3634,11 @@ ed::EditorAction::AcceptResult ed::NavigateAction::Accept(const Control& control
         return False;
 
     // A drag that enters the editor from another window was pressed on nothing of the editor's.
-    const auto isPressedOnEditor = control.BackgroundActive || control.ActiveObject != nullptr;
-    if (Editor->CanAcceptUserInput() && isPressedOnEditor && ImGui::IsMouseDragging(Editor->GetConfig().NavigateButtonIndex, 0.0f))
+    // If panning uses the drag button, only drags from the background actually pan.
+    const auto& config            = Editor->GetConfig();
+    const auto  sharesDragButton  = config.NavigateButtonIndex == config.DragButtonIndex;
+    const auto  isPressedOnEditor = control.BackgroundActive || (!sharesDragButton && control.ActiveObject != nullptr);
+    if (Editor->CanAcceptUserInput() && isPressedOnEditor && ImGui::IsMouseDragging(config.NavigateButtonIndex, 0.0f))
     {
         m_Animation.Stop();
 
