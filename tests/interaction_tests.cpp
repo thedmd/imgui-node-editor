@@ -419,6 +419,36 @@ TEST_CASE(ZoomAnchorDuringAnimation, "interaction.second_wheel_notch_zooms_at_th
     test::Check(error < 0.5f, "the second notch zooms around the point under the mouse: off by %g canvas units", error);
 }
 
+TEST_CASE(WheelStepLandsOnZoomLevel, "interaction.wheel_step_lands_on_zoom_level", "INT-21", test::TestFlags_None)
+{
+    // The zoom animation ends on a rectangle, and the scale computed from it
+    // was slightly off the zoom level (float rounding): 1.2499999 instead of 1.25.
+    {
+        test::Session session(ZoomConfig(false));
+        session.DefaultContent = SmallNode;
+        test::MouseMove(ImVec2(500.0f, 300.0f));
+        session.Run(10);
+        for (float level : { 1.25f, 1.5f, 2.0f })
+        {
+            Wheel(session, 1.0f);
+            const float zoom = Zoom(session);
+            test::Check(zoom == level, "default levels: one wheel step lands on %g exactly: %.9g", level, zoom);
+        }
+    }
+    {
+        test::Session session(ZoomConfig(false, { 1.0f, 2.0f, 3.0f, 4.0f }));
+        session.DefaultContent = SmallNode;
+        test::MouseMove(ImVec2(500.0f, 300.0f));
+        session.Run(10);
+        for (float level : { 2.0f, 3.0f, 4.0f, 3.0f })
+        {
+            Wheel(session, level > Zoom(session) ? 1.0f : -1.0f);
+            const float zoom = Zoom(session);
+            test::Check(zoom == level, "custom levels: one wheel step lands on %g exactly: %.9g", level, zoom);
+        }
+    }
+}
+
 namespace {
 
 // Node 2 holds pin 'pinId' in front of 'pinContent'; node 1, submitted after it and

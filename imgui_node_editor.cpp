@@ -3302,12 +3302,13 @@ ed::NavigateAnimation::NavigateAnimation(EditorContext* editor, NavigateAction& 
 {
 }
 
-void ed::NavigateAnimation::NavigateTo(const ImRect& target, float duration)
+void ed::NavigateAnimation::NavigateTo(const ImRect& target, float duration, float targetZoom)
 {
     Stop();
 
     m_Start      = Action.GetViewRect();
     m_Target     = target;
+    m_TargetZoom = targetZoom;
 
     // Skip tiny animations
     auto minoffset = m_Target.Min - m_Start.Min;
@@ -3339,6 +3340,8 @@ void ed::NavigateAnimation::OnStop()
 void ed::NavigateAnimation::OnFinish()
 {
     Action.SetViewRect(m_Target);
+    if (m_TargetZoom > 0.0f) // the scale computed back from the rectangle is slightly off (float rounding)
+        Action.SetZoomAroundCenter(m_TargetZoom);
 }
 
 
@@ -3782,7 +3785,7 @@ bool ed::NavigateAction::HandleZoom(const Control& control)
 
     auto targetRect = m_Canvas.CalcViewRect(ImGuiEx::CanvasView(-targetScroll, newZoom));
 
-    NavigateTo(targetRect, c_MouseZoomDuration, NavigationReason::MouseZoom);
+    NavigateTo(targetRect, c_MouseZoomDuration, NavigationReason::MouseZoom, newZoom);
 
     return true;
 }
@@ -3842,11 +3845,11 @@ void ed::NavigateAction::NavigateTo(const ImRect& bounds, ZoomMode zoomMode, flo
     }
 }
 
-void ed::NavigateAction::NavigateTo(const ImRect& target, float duration, NavigationReason reason)
+void ed::NavigateAction::NavigateTo(const ImRect& target, float duration, NavigationReason reason, float targetZoom)
 {
     m_Reason = reason;
 
-    m_Animation.NavigateTo(target, duration);
+    m_Animation.NavigateTo(target, duration, targetZoom);
 }
 
 void ed::NavigateAction::StopNavigation()
@@ -3945,6 +3948,11 @@ void ed::NavigateAction::ClampZoom()
     if (zoom == m_Zoom)
         return;
 
+    SetZoomAroundCenter(zoom);
+}
+
+void ed::NavigateAction::SetZoomAroundCenter(float zoom)
+{
     const auto halfSize = m_Canvas.Rect().GetSize() * 0.5f;
     const auto center   = (m_Scroll + halfSize) / m_Zoom;
     m_Scroll = center * zoom - halfSize;
